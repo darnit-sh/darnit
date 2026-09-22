@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { Command } from "commander";
-import { check, render } from "./check.js";
+import { check, render, toJson } from "./check.js";
 import { init } from "./init.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
@@ -25,9 +25,10 @@ program
 program
   .command("check")
   .description("report vendor API changes that affect this repo's call sites")
-  .action(async () => {
+  .option("--json", "machine-readable output")
+  .action(async ({ json }: { json?: boolean }) => {
     const hits = await check(process.cwd());
-    console.log(render(hits));
+    console.log(json ? JSON.stringify({ version, hits: toJson(hits) }, null, 2) : render(hits));
     if (hits.length > 0) process.exitCode = 1;
   });
 
