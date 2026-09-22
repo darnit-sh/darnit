@@ -24,6 +24,8 @@ export const ChangeRecordSchema = z
     id: z
       .string()
       .regex(/^[a-z0-9-]+:\d{4}-\d{2}-\d{2}:[a-z0-9-]+$/, "id must be <vendor>:<YYYY-MM-DD>:<slug>"),
+    /** One human sentence, used for report headings, commit subjects and pull request titles. */
+    title: z.string().min(1).max(100).optional(),
     vendor: z.string().min(1),
     announcedAt: IsoDate,
     effectiveAt: IsoDate.optional(),

@@ -1,5 +1,6 @@
 {
   "id": "openai:2023-11-06:chat-functions-to-tools",
+  "title": "Move chat completion functions to tools",
   "vendor": "openai",
   "announcedAt": "2023-11-06",
   "kind": "deprecation",
