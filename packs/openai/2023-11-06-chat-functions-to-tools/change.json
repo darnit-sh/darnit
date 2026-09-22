@@ -1,0 +1,45 @@
+{
+  "id": "openai:2023-11-06:chat-functions-to-tools",
+  "vendor": "openai",
+  "announcedAt": "2023-11-06",
+  "kind": "deprecation",
+  "surface": {
+    "endpoints": ["/v1/chat/completions"],
+    "sdkSymbols": ["chat.completions.create"],
+    "fields": ["functions", "function_call"]
+  },
+  "classification": "mechanical",
+  "sources": [
+    {
+      "url": "https://developers.openai.com/api/docs/changelog",
+      "quoteId": "nov-6-2023 — 'Deprecated the Chat Completions functions parameter in favor of tools'"
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/api-reference/chat/create",
+      "quoteId": "chat/create — functions 'Deprecated in favor of tools'; function_call 'Deprecated in favor of tool_choice'; response message.function_call 'Deprecated and replaced by tool_calls' (verified 2026-08-03)"
+    }
+  ],
+  "notes": {
+    "migration": "functions: [{name, description, parameters}] becomes tools: [{type: 'function', function: {name, description, parameters}}]. function_call: 'auto' | 'none' | {name} becomes tool_choice: 'auto' | 'none' | {type: 'function', function: {name}}. Response side: message.function_call becomes message.tool_calls[] (array — parallel calls possible), and role:'function' result messages become role:'tool' with tool_call_id. The response-side change is why fixtures must cover the read path, not just the request payload.",
+    "removalDate": "None announced as of 2026-08-03 (community thread explicitly asked; no date given). Old param still functional.",
+    "edgeCases": [
+      "message.function_call consumers assume a single call; tool_calls is an array — rewrite must handle iteration or assert length 1",
+      "role:'function' follow-up messages need tool_call_id threading, which requires capturing the id from the response — borderline semantic; if the rule pack can't express it, flag those call sites for human review rather than rewriting"
+    ]
+  },
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        { "context": "({ functions: $FNS })", "selector": "pair" },
+        { "context": "({ function_call: $CHOICE })", "selector": "pair" }
+      ],
+      "py": [
+        { "context": "f(functions=$FNS)", "selector": "keyword_argument" },
+        { "context": "f(function_call=$CHOICE)", "selector": "keyword_argument" }
+      ]
+    }
+  },
+  "fix": {
+    "rulePackPath": "packs/openai/2023-11-06-chat-functions-to-tools/"
+  }
+}
