@@ -39,33 +39,41 @@ export type Match = {
 
 /**
  * Keeps a match only when it belongs to the vendor's own API surface: the
- * enclosing call must be one of `symbols` (e.g. `chat.completions.create`), or
- * the file must reference one of the vendor's `endpoints` (raw HTTP users). A
- * parameter name like `max_tokens` exists on other vendors' APIs too, where it
- * is correct; without this gate those would be reported.
+ * nearest enclosing call must be one of `symbols` (e.g. `chat.completions.create`),
+ * or the match must sit inside a call that names one of the vendor's `endpoints`
+ * (raw HTTP users). A parameter name like `max_tokens` exists on other vendors'
+ * APIs too, where it is correct; without this gate those would be reported.
  */
 export type Gate = { symbols?: readonly string[] | undefined; endpoints?: readonly string[] | undefined };
 
-/** Callee text of the nearest enclosing call, looking at most three levels up. */
+const isCall = (n: SgNode) => n.is("call_expression") || n.is("call");
+
+/** Callee text of the nearest enclosing call. Bounded so a detached object literal never inherits a distant call. */
 function enclosingCallee(node: SgNode): string | undefined {
   let n: SgNode | null = node;
-  for (let i = 0; i < 3 && (n = n.parent()); i++) {
-    if (n.is("call_expression") || n.is("call")) return n.field("function")?.text();
+  for (let i = 0; i < 8 && (n = n.parent()); i++) {
+    if (isCall(n)) return n.field("function")?.text();
   }
   return undefined;
+}
+
+/** True if some enclosing call's text names one of the endpoints (the fetch/request carrying the URL). */
+function insideEndpointCall(node: SgNode, endpoints: readonly string[]): boolean {
+  return node.ancestors().some((a) => isCall(a) && endpoints.some((e) => a.text().includes(e)));
 }
 
 /** Every node in `source` matching any of `patterns`, optionally gated. */
 export function findMatches(source: string, grammar: Grammar, patterns: readonly AstGrepPattern[], gate?: Gate): Match[] {
   const root = parse(grammar, source).root();
   const symbols = gate?.symbols ?? [];
-  const viaEndpoint = gate?.endpoints?.some((e) => source.includes(e)) ?? false;
+  const endpoints = gate?.endpoints ?? [];
   const matches: Match[] = [];
   for (const { context, selector } of patterns) {
     for (const node of root.findAll({ rule: { pattern: { context, selector } } })) {
-      if (symbols.length > 0 && !viaEndpoint) {
+      if (symbols.length > 0 || endpoints.length > 0) {
         const callee = enclosingCallee(node);
-        if (!callee || !symbols.some((s) => callee.endsWith(s))) continue;
+        const viaSymbol = callee !== undefined && symbols.some((s) => callee.endsWith(s));
+        if (!viaSymbol && !(endpoints.length > 0 && insideEndpointCall(node, endpoints))) continue;
       }
       const { start } = node.range();
       matches.push({ line: start.line + 1, column: start.column + 1, text: node.text() });
