@@ -35,10 +35,15 @@ function pythonDeclares(text: string, pkg: string): boolean {
   return new RegExp(`(^|["'\\s])${escapeRegExp(pkg)}(?=[\\s\\[=<>~!;"',]|$)`, "m").test(text);
 }
 
+/** Every path under root (relative, sorted), skipping vendored and build directories. */
+export async function listFiles(root: string): Promise<string[]> {
+  return (await readdir(root, { recursive: true })).filter((f) => !SKIP_DIRS.test(f)).sort();
+}
+
 /** Scans a repo for known vendor APIs. Sorted by vendor; evidence in path order. */
 export async function detectApis(root: string): Promise<Detection[]> {
   // ponytail: reads every source file in full to look for host strings; stream or cap sizes if repos get huge
-  const files = (await readdir(root, { recursive: true })).filter((f) => !SKIP_DIRS.test(f)).sort();
+  const files = await listFiles(root);
   const evidence = new Map<Vendor, string[]>();
   const add = (vendor: Vendor, note: string) => evidence.set(vendor, [...(evidence.get(vendor) ?? []), note]);
 
