@@ -1,7 +1,18 @@
 id: openai-functions-to-tools-rename-functions-js
 language: javascript
+# Only a direct property of the options object passed to chat.completions.create;
+# `functions:` is an ordinary key name in plenty of unrelated config.
 rule:
   pattern:
     context: '({ functions: $FNS })'
     selector: pair
+  inside:
+    kind: object
+    inside:
+      kind: arguments
+      inside:
+        kind: call_expression
+        has:
+          field: function
+          regex: 'chat\.completions\.create$'
 fix: 'tools: $FNS'
