@@ -32,8 +32,9 @@ change. Each holds a description of the change with a link to the vendor's own
 announcement, the rewrite rules, and before/after examples that must pass in CI.
 A rule that changes nothing when its examples expect a change fails the build.
 
-What darnit does not see: an options object built in one place and passed to the
-API call by name. Those call sites are listed as unchecked rather than guessed at.
+darnit reads JavaScript, TypeScript and Python. What it does not see: an options
+object built in one place and passed to the API call by name. Those call sites
+are listed as unchecked rather than guessed at.
 
 ## License
 
