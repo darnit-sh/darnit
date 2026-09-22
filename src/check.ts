@@ -50,13 +50,33 @@ export async function check(root: string): Promise<Hit[]> {
   return hits;
 }
 
-function title(r: ChangeRecord): string {
+/** The record's own title, or one derived from its data for records without one. */
+export function title(r: ChangeRecord): string {
+  if (r.title) return r.title;
   const fields = (r.surface.fields ?? []).join(", ");
   const on = r.surface.sdkSymbols ? ` on ${r.surface.sdkSymbols.join(", ")}` : "";
-  return `${r.vendor} ${r.announcedAt}, ${r.kind}: ${fields}${on}`;
+  return `${r.kind}: ${fields}${on}`;
 }
 
+const heading = (r: ChangeRecord) => `${r.vendor} ${r.announcedAt}: ${title(r)}`;
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** Machine-readable form of the hits. */
+export function toJson(hits: Hit[]): object[] {
+  return hits.map((h) => ({
+    id: h.record.id,
+    title: title(h.record),
+    vendor: h.record.vendor,
+    announcedAt: h.record.announcedAt,
+    kind: h.record.kind,
+    file: h.file,
+    line: h.line,
+    column: h.column,
+    text: h.text,
+    sources: h.record.sources.map((s) => s.url),
+  }));
+}
 
 /** Terminal report, grouped by vendor change. */
 export function render(hits: Hit[]): string {
@@ -69,7 +89,7 @@ export function render(hits: Hit[]): string {
     const record = group[0]!.record;
     const locations = group.map((h) => `${h.file}:${h.line}:${h.column}`);
     const width = Math.max(...locations.map((l) => l.length)) + 2;
-    out.push(title(record));
+    out.push(heading(record));
     group.forEach((h, i) => out.push(`  ${locations[i]!.padEnd(width)}${h.text.split("\n")[0]!.slice(0, 60)}`));
     out.push(`  ${plural(group.length, "call site")} in ${plural(new Set(group.map((h) => h.file)).size, "file")}`);
     for (const source of record.sources) out.push(`  ${source.url}`);

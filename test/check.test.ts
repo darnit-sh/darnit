@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { check, render, type Hit } from "../src/check.js";
+import { check, render, toJson, type Hit } from "../src/check.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -78,11 +78,27 @@ describe("check", () => {
   });
 
   it("renders a grouped report with locations, counts and the citation", async () => {
-    const text = render(await check(join(SAMPLES, "medium")));
-    expect(text).toContain("openai 2024-09-12, deprecation: max_tokens on chat.completions.create");
+    const hits = await check(join(SAMPLES, "medium"));
+    const text = render(hits);
+    expect(text).toContain("openai 2024-09-12: Rename max_tokens to max_completion_tokens on chat completions");
     expect(text).toContain("worker.py:10:9");
     expect(text).toContain("1 call site in 1 file");
     expect(text).toContain("https://developers.openai.com/api/docs/api-reference/chat/create");
     expect(text).toContain("Not checked:");
+
+    expect(toJson(hits)).toEqual([
+      {
+        id: "openai:2024-09-12:max-tokens-to-max-completion-tokens",
+        title: "Rename max_tokens to max_completion_tokens on chat completions",
+        vendor: "openai",
+        announcedAt: "2024-09-12",
+        kind: "deprecation",
+        file: "worker.py",
+        line: 10,
+        column: 9,
+        text: "max_tokens=128",
+        sources: ["https://developers.openai.com/api/docs/api-reference/chat/create"],
+      },
+    ]);
   });
 });
