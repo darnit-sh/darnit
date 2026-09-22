@@ -1,0 +1,49 @@
+{
+  "name": "darnit",
+  "version": "0.1.0-dev.0",
+  "description": "Your API integrations, invisibly mended. Detects vendor API changes in the code you actually wrote and opens verified migration PRs.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "darnit": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "packs/**/change.json",
+    "packs/**/rules/**"
+  ],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darnit-sh/darnit.git"
+  },
+  "homepage": "https://darnit.sh",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:fixtures": "tsx scripts/fixtures.ts",
+    "check": "npm run lint && npm run typecheck && npm test && npm run test:fixtures",
+    "prepare": "git config core.hooksPath .githooks || true"
+  },
+  "dependencies": {
+    "@ast-grep/lang-python": "^0.0.6",
+    "@ast-grep/napi": "^0.45.3",
+    "commander": "^15.0.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@ast-grep/cli": "^0.45.3",
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.4",
+    "eslint": "^9.39.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.1"
+  }
+}

@@ -1,0 +1,15 @@
+# Planning material
+TASKS.md
+docs/
+
+# build + deps
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# local env + noise
+.env
+.env.*
+*.log
+.DS_Store
