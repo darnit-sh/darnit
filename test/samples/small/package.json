@@ -1,0 +1,7 @@
+{
+  "name": "small-sample",
+  "private": true,
+  "dependencies": {
+    "openai": "^4.0.0"
+  }
+}

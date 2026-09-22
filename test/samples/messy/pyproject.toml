@@ -1,0 +1,4 @@
+[project]
+name = "messy-sample"
+version = "0.1.0"
+dependencies = ["stripe>=10", "httpx"]
