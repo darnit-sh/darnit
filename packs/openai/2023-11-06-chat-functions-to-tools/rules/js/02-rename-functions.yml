@@ -1,0 +1,7 @@
+id: openai-functions-to-tools-rename-functions-js
+language: javascript
+rule:
+  pattern:
+    context: '({ functions: $FNS })'
+    selector: pair
+fix: 'tools: $FNS'
