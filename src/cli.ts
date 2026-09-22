@@ -6,6 +6,9 @@ import { init } from "./init.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
+// Exit codes: 0 nothing to report, 1 affected call sites found, 2 darnit itself failed.
+// process.exitCode (not process.exit) so a long report is fully flushed through a pipe.
+
 const program = new Command()
   .name("darnit")
   .description("Your API integrations, invisibly mended.")
@@ -25,17 +28,20 @@ program
   .action(async () => {
     const hits = await check(process.cwd());
     console.log(render(hits));
-    process.exit(hits.length > 0 ? 1 : 0);
+    if (hits.length > 0) process.exitCode = 1;
   });
 
 program
   .command("fix")
   .description("apply a verified migration and show the diff")
-  .action(() => notYet("fix"));
+  .action(() => {
+    console.error("darnit fix: not implemented yet");
+    process.exitCode = 2;
+  });
 
-function notYet(command: string): never {
-  console.error(`darnit ${command}: not implemented yet`);
-  process.exit(2);
+try {
+  await program.parseAsync();
+} catch (err) {
+  console.error(`darnit: ${err instanceof Error ? err.message : String(err)}`);
+  process.exitCode = 2;
 }
-
-await program.parseAsync();
