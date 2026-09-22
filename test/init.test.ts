@@ -23,11 +23,16 @@ async function scratchCopy(sample: string): Promise<string> {
 describe("detectApis", () => {
   it("finds openai in every sample repo, by the right evidence", async () => {
     const small = await detectApis(join(SAMPLES, "small"));
-    expect(small).toEqual([{ vendor: "openai", evidence: ["package.json: openai"] }]);
+    expect(small).toEqual([{ vendor: "openai", evidence: ["index.js: import openai", "package.json: openai"] }]);
 
     const medium = await detectApis(join(SAMPLES, "medium"));
     expect(medium.map((d) => d.vendor)).toEqual(["openai", "stripe"]);
-    expect(medium[0]?.evidence).toEqual(["package.json: openai", "requirements.txt: openai"]);
+    expect(medium[0]?.evidence).toEqual([
+      "package.json: openai",
+      "requirements.txt: openai",
+      "src/chat.ts: import openai",
+      "worker.py: import openai",
+    ]);
 
     // messy: no SDK anywhere, only a raw fetch to the API host
     const messy = await detectApis(join(SAMPLES, "messy"));
@@ -35,14 +40,26 @@ describe("detectApis", () => {
     expect(messy.find((d) => d.vendor === "stripe")?.evidence).toEqual(["pyproject.toml: stripe"]);
   });
 
-  it("ignores node_modules and other vendored directories", async () => {
+  it("ignores node_modules and other vendored directories, and survives bad manifests", async () => {
     const dir = await scratchCopy("small");
     await mkdir(join(dir, "node_modules", "some-lib"), { recursive: true });
     await writeFile(
       join(dir, "node_modules", "some-lib", "package.json"),
       JSON.stringify({ dependencies: { "@anthropic-ai/sdk": "1.0.0", stripe: "1.0.0" } }),
     );
+    await mkdir(join(dir, "templates"));
+    await writeFile(join(dir, "templates", "package.json"), '﻿{ "name": "{{name}}", // not json\n');
     expect((await detectApis(dir)).map((d) => d.vendor)).toEqual(["openai"]);
+  });
+
+  it("counts a Python package only when a manifest declares it, not when prose mentions it", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, "Pipfile"), '[packages]\nstripe = "*"\n');
+    await writeFile(join(dir, "pyproject.toml"), '[project]\ndescription = "an anthropic wrapper"\n# openai not used\n');
+    expect(await detectApis(dir)).toEqual([
+      { vendor: "openai", evidence: ["index.js: import openai", "package.json: openai"] },
+      { vendor: "stripe", evidence: ["Pipfile: stripe"] },
+    ]);
   });
 });
 

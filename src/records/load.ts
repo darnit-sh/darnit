@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseChangeRecord, type ChangeRecord } from "./schema.js";
 
@@ -16,7 +16,9 @@ export type LoadedRecord = {
 
 /** Loads every packs/<vendor>/<pack>/change.json, validated. Throws on the first invalid record. */
 export async function loadRecords(packsDir: string = PACKS_DIR): Promise<LoadedRecord[]> {
-  const files = (await readdir(packsDir, { recursive: true })).filter((f) => f.endsWith("/change.json"));
+  const files = (await readdir(packsDir, { recursive: true }))
+    .map((f) => f.split(sep).join("/"))
+    .filter((f) => f.endsWith("/change.json"));
   const loaded = await Promise.all(
     files.map(async (file) => ({
       record: parseChangeRecord(JSON.parse(await readFile(join(packsDir, file), "utf8")), file),
