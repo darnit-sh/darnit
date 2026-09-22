@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { Command } from "commander";
+import { check, render } from "./check.js";
 import { init } from "./init.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
@@ -21,7 +22,11 @@ program
 program
   .command("check")
   .description("report vendor API changes that affect this repo's call sites")
-  .action(() => notYet("check"));
+  .action(async () => {
+    const hits = await check(process.cwd());
+    console.log(render(hits));
+    process.exit(hits.length > 0 ? 1 : 0);
+  });
 
 program
   .command("fix")
