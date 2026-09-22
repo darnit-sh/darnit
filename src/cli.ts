@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { Command } from "commander";
+import { init } from "./init.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -12,7 +13,10 @@ const program = new Command()
 program
   .command("init")
   .description("detect the APIs this repo uses and install the scheduled check")
-  .action(() => notYet("init", "M0"));
+  .option("--force", "rewrite darnit.yml and the workflow if they exist")
+  .action(async ({ force }: { force?: boolean }) => {
+    for (const line of await init(process.cwd(), { force: force ?? false })) console.log(`✓ ${line}`);
+  });
 
 program
   .command("check")
