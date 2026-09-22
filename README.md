@@ -6,28 +6,34 @@ darnit watches the third-party APIs your code actually calls, notices when a
 vendor changes something that affects you, and opens a pull request that fixes
 it, with the evidence to show the fix is safe.
 
-## Status
+## Install
 
-Early. Today the command line tool can find the APIs a repository uses and set
-up a scheduled check. Reporting affected code and opening fix pull requests are
-being built in the open, here.
+```
+npm install -g darnit
+```
 
-## What it does
+Or run any command without installing: `npx darnit check`.
 
-- `npx darnit init` scans your repository, writes `darnit.yml`, and adds a
-  scheduled GitHub Actions workflow.
-- `npx darnit check` reports vendor changes that touch code you wrote, down to
-  the file and line. In progress.
-- `npx darnit fix` applies a tested rewrite and opens a pull request with build
-  and test results attached. In progress.
+## Use
 
-## Repository layout
+```
+darnit init     # find the APIs this repository uses, write darnit.yml, add a daily check
+darnit check    # list the vendor changes that touch your code, file and line, with the vendor's announcement
+darnit fix      # apply a tested rewrite and open a pull request with the results attached (in progress)
+```
 
-- `packs/`: one folder per vendor per change. Each holds a description of the
-  change with a link to the vendor's own announcement, the rewrite rules, and
-  before/after examples that must pass in CI. A rule that changes nothing when
-  its examples expect a change fails the build.
-- `src/`: the command line tool.
+`darnit check` exits with status 1 when something is affected, so the scheduled
+workflow fails the day a change lands and GitHub lets you know.
+
+## What darnit knows
+
+Every change darnit can report lives in `packs/`, one folder per vendor per
+change. Each holds a description of the change with a link to the vendor's own
+announcement, the rewrite rules, and before/after examples that must pass in CI.
+A rule that changes nothing when its examples expect a change fails the build.
+
+What darnit does not see: an options object built in one place and passed to the
+API call by name. Those call sites are listed as unchecked rather than guessed at.
 
 ## License
 
