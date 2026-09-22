@@ -1,22 +1,33 @@
 # darnit
 
-> Your API integrations, invisibly mended.
+Your API integrations, invisibly mended.
 
-darnit watches the third-party APIs a codebase actually uses, detects breaking and
-notable changes at the vendor — including ones with no version bump anywhere in
-your lockfile — and opens verified migration pull requests, each with an evidence
-report a reviewer can audit.
+darnit watches the third-party APIs your code actually calls, notices when a
+vendor changes something that affects you, and opens a pull request that fixes
+it, with the evidence to show the fix is safe.
 
-**Status: pre-release.** `npx darnit init` and `npx darnit check` land in October
-2026; verified auto-PRs follow.
+## Status
 
-## What's in this repo today
+Early. Today the command line tool can find the APIs a repository uses and set
+up a scheduled check. Reporting affected code and opening fix pull requests are
+being built in the open, here.
 
-- `packs/` — the ChangeRecord corpus and its rule packs: one directory per vendor
-  per change, each with a cited `change.json`, ast-grep rewrite rules, and
-  before/after fixtures that CI runs on every push. A pack whose rules apply
-  zero changes when its fixtures expect some fails CI.
-- `src/` — the CLI (`init`, `check`, `fix`) and the ChangeRecord schema.
+## What it does
+
+- `npx darnit init` scans your repository, writes `darnit.yml`, and adds a
+  scheduled GitHub Actions workflow.
+- `npx darnit check` reports vendor changes that touch code you wrote, down to
+  the file and line. In progress.
+- `npx darnit fix` applies a tested rewrite and opens a pull request with build
+  and test results attached. In progress.
+
+## Repository layout
+
+- `packs/`: one folder per vendor per change. Each holds a description of the
+  change with a link to the vendor's own announcement, the rewrite rules, and
+  before/after examples that must pass in CI. A rule that changes nothing when
+  its examples expect a change fails the build.
+- `src/`: the command line tool.
 
 ## License
 
