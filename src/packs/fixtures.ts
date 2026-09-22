@@ -1,13 +1,10 @@
-import { execFile } from "node:child_process";
-import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
+import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
-import { promisify } from "node:util";
-import { parse as parseYaml, stringify as toYaml } from "yaml";
+import { basename, join, relative } from "node:path";
 import { z } from "zod";
 import { LANGS, type ChangeRecord, type Lang } from "../records/schema.js";
 import { findMatches, grammarFor } from "../scan/astgrep.js";
+import { applyRules, ruleFiles } from "./apply.js";
 
 // The fixture contract for a pack, per fixtures/<case>/:
 //   before/         files as a user would write them
@@ -17,16 +14,6 @@ import { findMatches, grammarFor } from "../scan/astgrep.js";
 // rules must reproduce after/. Silence is failure: zero expected matches, or
 // rules that change nothing, both fail; ast-grep does not complain about a
 // malformed rule, so the fixture has to.
-
-const execFileAsync = promisify(execFile);
-
-// A pack's "js" rules are written once, against the JavaScript grammar, but a
-// repo's call sites live in .ts/.tsx too. ast-grep applies a rule only to files
-// of its declared language, so each rule is applied once per grammar.
-const GRAMMARS: Record<Lang, string[]> = {
-  js: ["javascript", "typescript", "tsx"],
-  py: ["python"],
-};
 
 const ExpectedSchema = z
   .object({
@@ -40,16 +27,6 @@ export type CaseResult = {
   case: string;
   problems: string[];
 };
-
-const require = createRequire(import.meta.url);
-
-function astGrepBinary(): string {
-  const pkgPath = require.resolve("@ast-grep/cli/package.json");
-  const pkg = require(pkgPath) as { bin: Record<string, string> };
-  const rel = pkg.bin["ast-grep"];
-  if (!rel) throw new Error("@ast-grep/cli does not expose an ast-grep bin");
-  return join(dirname(pkgPath), rel);
-}
 
 async function subdirs(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
@@ -66,15 +43,6 @@ async function listFiles(dir: string): Promise<string[]> {
     .filter((e) => e.isFile())
     .map((e) => relative(dir, join(e.parentPath, e.name)))
     .sort();
-}
-
-async function ruleFiles(packDir: string, lang: Lang): Promise<string[]> {
-  const dir = join(packDir, "rules", lang);
-  const entries = await readdir(dir).catch(() => []);
-  return entries
-    .filter((f) => /\.ya?ml$/.test(f))
-    .sort()
-    .map((f) => join(dir, f));
 }
 
 function firstDifference(expected: string, actual: string): string {
@@ -124,32 +92,17 @@ async function checkDetection(record: ChangeRecord, caseDir: string, problems: s
 async function checkRewrite(packDir: string, caseDir: string, problems: string[]): Promise<void> {
   const beforeDir = join(caseDir, "before");
   const afterDir = join(caseDir, "after");
-  const rules = new Map<Lang, string[]>();
-  for (const lang of LANGS) {
-    const files = await ruleFiles(packDir, lang);
-    if (files.length > 0) rules.set(lang, files);
-  }
+  const langsWithRules = new Set<Lang>();
+  for (const lang of LANGS) if ((await ruleFiles(packDir, lang)).length > 0) langsWithRules.add(lang);
 
-  const tmp = await mkdtemp(join(tmpdir(), "darnit-fixture-"));
-  const work = join(tmp, "work");
+  const work = await mkdtemp(join(tmpdir(), "darnit-fixture-"));
   try {
     await cp(beforeDir, work, { recursive: true });
-    const bin = astGrepBinary();
-    for (const [lang, files] of rules) {
-      for (const [i, rule] of files.entries()) {
-        const doc = parseYaml(await readFile(rule, "utf8")) as { language: string };
-        for (const grammar of GRAMMARS[lang]) {
-          const variant = join(tmp, `${lang}-${i}-${grammar}.yml`);
-          await writeFile(variant, toYaml({ ...doc, language: grammar }));
-          try {
-            await execFileAsync(bin, ["scan", "--rule", variant, "--update-all", work]);
-          } catch (err) {
-            const { stderr } = err as { stderr?: string };
-            problems.push(`ast-grep failed on ${relative(packDir, rule)} (${grammar}): ${(stderr ?? String(err)).trim()}`);
-            return;
-          }
-        }
-      }
+    try {
+      await applyRules(packDir, [work]);
+    } catch (err) {
+      problems.push(err instanceof Error ? err.message : String(err));
+      return;
     }
 
     const afterFiles = await listFiles(afterDir);
@@ -177,13 +130,13 @@ async function checkRewrite(packDir: string, caseDir: string, problems: string[]
       present.add(lang);
       if (got !== before) changed.add(lang);
     }
-    for (const lang of rules.keys()) {
+    for (const lang of langsWithRules) {
       if (present.has(lang) && !changed.has(lang)) {
         problems.push(`rules/${lang}/ applied 0 changes to before/; a silent no-match is a broken rule, not a pass`);
       }
     }
   } finally {
-    await rm(tmp, { recursive: true, force: true });
+    await rm(work, { recursive: true, force: true });
   }
 }
 
