@@ -1,0 +1,12 @@
+{
+  "name": "medium-sample",
+  "private": true,
+  "dependencies": {
+    "express": "^4.19.0",
+    "openai": "^4.0.0",
+    "stripe": "^16.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
