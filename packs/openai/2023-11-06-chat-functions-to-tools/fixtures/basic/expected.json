@@ -1,5 +1,5 @@
 {
-  "note": "Python has detection only in M0 — no rules/py yet, so after/app.py is identical to before/app.py. The Python rewrite (dict-wrapping inside a list) is M2 work.",
+  "note": "Python has detection only for now: there are no rules/py yet, so after/app.py is identical to before/app.py. The Python rewrite (dict-wrapping inside a list) is still to be written.",
   "matches": {
     "before/app.js": 2,
     "before/app.py": 2

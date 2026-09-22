@@ -2,7 +2,7 @@ id: openai-functions-to-tools-rename-function-call-js
 language: javascript
 # Handles the string forms ("auto" | "none"). The object form
 # `function_call: { name }` needs `{ type: "function", function: { name } }`
-# and is deliberately NOT matched here — see change.json edgeCases; M2.
+# and is deliberately NOT matched here; see change.json edgeCases.
 rule:
   pattern:
     context: '({ function_call: $CHOICE })'

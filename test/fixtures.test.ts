@@ -53,7 +53,7 @@ describe("pack fixtures", () => {
     const { dir, record } = await packCopy();
     tempDirs.push(dir);
     // A bare pattern (no context/selector) parses as a labeled statement and
-    // matches nothing — exactly the P0 gotcha the runner exists to catch.
+    // matches nothing: exactly the mistake the runner exists to catch.
     await writeFile(
       join(dir, "rules", "js", "01-rename.yml"),
       ["id: broken", "language: javascript", "rule:", "  pattern: 'max_tokens: $N'", "fix: 'max_completion_tokens: $N'", ""].join("\n"),

@@ -1,5 +1,5 @@
 {
-  "note": "Detection patterns are plain: app.js counts all four max_tokens pairs (two OpenAI create() calls, the nested trim() one, the Anthropic one). `check` (M1) gates records by which vendor a file actually imports; the rewrite rule is scoped to the direct options object of chat.completions.create and must leave the trim() and Anthropic ones untouched. app.ts proves the js rules also apply under the TypeScript grammar.",
+  "note": "Detection patterns are plain: app.js counts all four max_tokens pairs (two OpenAI create() calls, the nested trim() one, the Anthropic one). `check` gates records by which vendor a file actually imports; the rewrite rule is scoped to the direct options object of chat.completions.create and must leave the trim() and Anthropic ones untouched. app.ts proves the js rules also apply under the TypeScript grammar.",
   "matches": {
     "before/app.js": 4,
     "before/app.ts": 1,

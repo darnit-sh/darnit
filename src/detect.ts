@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 // Known vendors. "supported" = a rule pack exists in packs/; "detected" = named
-// in config only (SPEC §3.1 tier 3). Extend by adding a row.
+// in config only. Extend by adding a row.
 export const VENDORS = {
   openai: { npm: ["openai"], pypi: ["openai"], hosts: ["api.openai.com"], tier: "supported" },
   anthropic: { npm: ["@anthropic-ai/sdk"], pypi: ["anthropic"], hosts: ["api.anthropic.com"], tier: "detected" },

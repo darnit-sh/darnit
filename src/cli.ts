@@ -21,15 +21,15 @@ program
 program
   .command("check")
   .description("report vendor API changes that affect this repo's call sites")
-  .action(() => notYet("check", "M1"));
+  .action(() => notYet("check"));
 
 program
   .command("fix")
   .description("apply a verified migration and show the diff")
-  .action(() => notYet("fix", "M2"));
+  .action(() => notYet("fix"));
 
-function notYet(command: string, milestone: string): never {
-  console.error(`darnit ${command}: not implemented yet (lands in ${milestone})`);
+function notYet(command: string): never {
+  console.error(`darnit ${command}: not implemented yet`);
   process.exit(2);
 }
 

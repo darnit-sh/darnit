@@ -7,7 +7,7 @@ import type { AstGrepPattern, Lang } from "../records/schema.js";
 type Grammar = Parameters<typeof parse>[0];
 
 // napi ships only the web grammars built in; Python is a plug-in grammar and
-// must be registered exactly once per process — here, at module load.
+// must be registered exactly once per process; here, at module load.
 registerDynamicLanguage({ python });
 
 // A record's "js" patterns are written against the JavaScript grammar; the

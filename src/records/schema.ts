@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// SPEC §5.1. Absent fields are omitted, never null — hence .optional() throughout
+// Absent fields are omitted, never null; hence .optional() throughout
 // and .strict() so a typo'd key fails loudly instead of being silently ignored.
 
 export const LANGS = ["js", "py"] as const;
