@@ -22,5 +22,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       # Every pack's rules against its fixtures. Zero matches where fixtures
-      # expect some is a failure, not a skip (SPEC §5.2).
+      # expect some is a failure, not a skip.
       - run: npm run test:fixtures

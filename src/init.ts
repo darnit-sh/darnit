@@ -50,7 +50,7 @@ export async function init(root: string, { force = false } = {}): Promise<string
     version: 1,
     apis: Object.fromEntries(found.map((f) => [f.vendor, { tier: VENDORS[f.vendor].tier, evidence: f.evidence }])),
   };
-  const yml = `# darnit — https://darnit.sh\n# tier: supported = rule packs exist; detected = named only, request support on GitHub\n${stringify(config)}`;
+  const yml = `# darnit configuration (https://darnit.sh)\n# tier: supported = rule packs exist; detected = named only, request support on GitHub\n${stringify(config)}`;
 
   return [summary, await place(root, "darnit.yml", yml, force), await place(root, ".github/workflows/darnit.yml", WORKFLOW, force)];
 }

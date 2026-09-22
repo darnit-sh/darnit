@@ -4,7 +4,7 @@ language: javascript
 # chat.completions.create(...): `max_tokens` is a live, correct parameter on
 # other APIs (Anthropic messages.create), and on calls nested inside the
 # options. Call sites that pass a config object built elsewhere are not
-# matched — see change.json edgeCases; those get flagged for a human.
+# matched; see change.json edgeCases. Those get flagged for a human.
 rule:
   pattern:
     context: '({ max_tokens: $N })'

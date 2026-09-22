@@ -9,13 +9,13 @@ import { z } from "zod";
 import { LANGS, type ChangeRecord, type Lang } from "../records/schema.js";
 import { findMatches, grammarFor } from "../scan/astgrep.js";
 
-// The fixture contract for a pack (SPEC §5.2), per fixtures/<case>/:
+// The fixture contract for a pack, per fixtures/<case>/:
 //   before/         files as a user would write them
 //   after/          byte-exact result of applying rules/ to before/
 //   expected.json   detection match counts per before/ file
 // Two checks per case: detection counts must match exactly, and applying the
 // rules must reproduce after/. Silence is failure: zero expected matches, or
-// rules that change nothing, both fail — ast-grep does not complain about a
+// rules that change nothing, both fail; ast-grep does not complain about a
 // malformed rule, so the fixture has to.
 
 const execFileAsync = promisify(execFile);
@@ -85,7 +85,7 @@ function firstDifference(expected: string, actual: string): string {
       return `line ${i + 1}: expected ${JSON.stringify(e[i] ?? "<EOF>")}, got ${JSON.stringify(a[i] ?? "<EOF>")}`;
     }
   }
-  return "(identical text, differing bytes — line endings or trailing newline?)";
+  return "(identical text, differing bytes; line endings or trailing newline?)";
 }
 
 async function checkDetection(record: ChangeRecord, caseDir: string, problems: string[]): Promise<void> {
@@ -118,7 +118,7 @@ async function checkDetection(record: ChangeRecord, caseDir: string, problems: s
     if (!seen.has(key)) problems.push(`${key}: listed in expected.json but not present in before/`);
   }
   const total = Object.values(expected).reduce((a, b) => a + b, 0);
-  if (total === 0) problems.push("expected.json expects zero matches everywhere — a fixture must exercise detection");
+  if (total === 0) problems.push("expected.json expects zero matches everywhere; a fixture must exercise detection");
 }
 
 async function checkRewrite(packDir: string, caseDir: string, problems: string[]): Promise<void> {
@@ -155,7 +155,7 @@ async function checkRewrite(packDir: string, caseDir: string, problems: string[]
     const afterFiles = await listFiles(afterDir);
     const gotFiles = await listFiles(work);
     if (afterFiles.length === 0) {
-      problems.push("missing after/ — every case needs the expected result, even when no rules apply");
+      problems.push("missing after/; every case needs the expected result, even when no rules apply");
       return;
     }
     if (afterFiles.join("\n") !== gotFiles.join("\n")) {
@@ -179,7 +179,7 @@ async function checkRewrite(packDir: string, caseDir: string, problems: string[]
     }
     for (const lang of rules.keys()) {
       if (present.has(lang) && !changed.has(lang)) {
-        problems.push(`rules/${lang}/ applied 0 changes to before/ — a silent no-match is a broken rule, not a pass`);
+        problems.push(`rules/${lang}/ applied 0 changes to before/; a silent no-match is a broken rule, not a pass`);
       }
     }
   } finally {
@@ -192,7 +192,7 @@ export async function runPackFixtures(packDir: string, record: ChangeRecord): Pr
   const pack = basename(packDir);
   const cases = await subdirs(join(packDir, "fixtures"));
   if (cases.length === 0) {
-    return [{ pack, case: "-", problems: ["no fixtures/ cases — a pack without passing fixtures does not ship"] }];
+    return [{ pack, case: "-", problems: ["no fixtures/ cases; a pack without passing fixtures does not ship"] }];
   }
   const results: CaseResult[] = [];
   for (const name of cases) {
