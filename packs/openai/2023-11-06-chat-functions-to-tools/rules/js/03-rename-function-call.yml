@@ -1,6 +1,7 @@
 id: openai-functions-to-tools-rename-function-call-js
 language: javascript
-# Handles the string forms ("auto" | "none"). The object form
+# Handles the string forms ("auto" | "none") as a direct property of the
+# chat.completions.create options object. The object form
 # `function_call: { name }` needs `{ type: "function", function: { name } }`
 # and is deliberately NOT matched here; see change.json edgeCases.
 rule:
@@ -10,4 +11,13 @@ rule:
   has:
     field: value
     kind: string
+  inside:
+    kind: object
+    inside:
+      kind: arguments
+      inside:
+        kind: call_expression
+        has:
+          field: function
+          regex: 'chat\.completions\.create$'
 fix: 'tool_choice: $CHOICE'

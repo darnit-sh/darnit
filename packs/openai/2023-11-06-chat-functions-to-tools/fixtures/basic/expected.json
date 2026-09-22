@@ -1,7 +1,7 @@
 {
-  "note": "Python has detection only for now: there are no rules/py yet, so after/app.py is identical to before/app.py. The Python rewrite (dict-wrapping inside a list) is still to be written.",
+  "note": "Detection patterns are plain and count the unrelated `deploy` config's keys too (4 in app.js); `check` drops those because they are not inside a chat.completions.create call, and the rewrite rules are scoped the same way and must leave `deploy` untouched. Python has detection only for now: there are no rules/py yet, so after/app.py is identical to before/app.py. The Python rewrite (dict-wrapping inside a list) is still to be written.",
   "matches": {
-    "before/app.js": 2,
+    "before/app.js": 4,
     "before/app.py": 2
   }
 }
