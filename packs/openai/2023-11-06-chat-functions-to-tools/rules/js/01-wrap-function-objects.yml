@@ -1,0 +1,18 @@
+id: openai-functions-to-tools-wrap-js
+language: javascript
+# Runs FIRST. Wraps each element of the `functions` array in the tools shape.
+# The relational chain (object ← array ← pair keyed `functions`) is what stops
+# the pattern from matching the outermost config object — P0 gotcha #2. The
+# rename in 02- changes the key this rule anchors on, hence the ordering.
+rule:
+  pattern:
+    context: '({ $$$PROPS })'
+    selector: object
+  inside:
+    kind: array
+    inside:
+      kind: pair
+      has:
+        field: key
+        regex: '^functions$'
+fix: '{ type: "function", function: { $$$PROPS } }'
