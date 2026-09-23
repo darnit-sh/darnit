@@ -58,7 +58,8 @@ export function title(r: ChangeRecord): string {
   return `${r.kind}: ${fields}${on}`;
 }
 
-const heading = (r: ChangeRecord) => `${r.vendor} ${r.announcedAt}: ${title(r)}`;
+const heading = (r: ChangeRecord) =>
+  `${r.vendor} ${r.announcedAt}: ${title(r)}${r.status === "candidate" ? " (unreviewed change, detection only)" : ""}`;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -67,6 +68,7 @@ export function toJson(hits: Hit[]): object[] {
   return hits.map((h) => ({
     id: h.record.id,
     title: title(h.record),
+    status: h.record.status,
     vendor: h.record.vendor,
     announcedAt: h.record.announcedAt,
     kind: h.record.kind,

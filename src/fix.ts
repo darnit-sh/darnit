@@ -102,8 +102,10 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   const applicable: Group[] = [];
   const touched: string[] = [];
   for (const grp of groups) {
-    const applied = await hasRules(grp.packDir);
-    records.push({ record: grp.record, title: title(grp.record), files: grp.files, applied, ...(applied ? {} : { reason: "no rewrite rules yet" }) });
+    const reviewed = grp.record.status === "reviewed";
+    const applied = reviewed && (await hasRules(grp.packDir));
+    const reason = reviewed ? "no rewrite rules yet" : "unreviewed change record";
+    records.push({ record: grp.record, title: title(grp.record), files: grp.files, applied, ...(applied ? {} : { reason }) });
     if (!applied) continue;
     applicable.push(grp);
     for (const f of grp.files) if (!touched.includes(f)) touched.push(f);

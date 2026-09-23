@@ -86,10 +86,14 @@ describe("check", () => {
     expect(text).toContain("https://developers.openai.com/api/docs/api-reference/chat/create");
     expect(text).toContain("Not checked:");
 
+    const candidate = { ...hits[0]!, record: { ...hits[0]!.record, status: "candidate" as const } };
+    expect(render([candidate])).toContain("(unreviewed change, detection only)");
+
     expect(toJson(hits)).toEqual([
       {
         id: "openai:2024-09-12:max-tokens-to-max-completion-tokens",
         title: "Rename max_tokens to max_completion_tokens on chat completions",
+        status: "reviewed",
         vendor: "openai",
         announcedAt: "2024-09-12",
         kind: "deprecation",

@@ -1,13 +1,21 @@
 {
   "id": "openai:2023-11-06:chat-functions-to-tools",
   "title": "Move chat completion functions to tools",
+  "status": "reviewed",
   "vendor": "openai",
   "announcedAt": "2023-11-06",
   "kind": "deprecation",
   "surface": {
-    "endpoints": ["/v1/chat/completions"],
-    "sdkSymbols": ["chat.completions.create"],
-    "fields": ["functions", "function_call"]
+    "endpoints": [
+      "/v1/chat/completions"
+    ],
+    "sdkSymbols": [
+      "chat.completions.create"
+    ],
+    "fields": [
+      "functions",
+      "function_call"
+    ]
   },
   "classification": "mechanical",
   "sources": [
@@ -31,12 +39,24 @@
   "detection": {
     "astGrepPatterns": {
       "js": [
-        { "context": "({ functions: $FNS })", "selector": "pair" },
-        { "context": "({ function_call: $CHOICE })", "selector": "pair" }
+        {
+          "context": "({ functions: $FNS })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ function_call: $CHOICE })",
+          "selector": "pair"
+        }
       ],
       "py": [
-        { "context": "f(functions=$FNS)", "selector": "keyword_argument" },
-        { "context": "f(function_call=$CHOICE)", "selector": "keyword_argument" }
+        {
+          "context": "f(functions=$FNS)",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(function_call=$CHOICE)",
+          "selector": "keyword_argument"
+        }
       ]
     }
   },
