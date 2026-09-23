@@ -130,7 +130,12 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   if (opts.pr) return pullRequests(root, applicable, base, command, opts);
 
   const snap = await snapshotOf(root, touched);
-  for (const grp of applicable) await applyRules(grp.packDir, grp.files.map((f) => join(root, f)));
+  try {
+    for (const grp of applicable) await applyRules(grp.packDir, grp.files.map((f) => join(root, f)));
+  } catch (err) {
+    await restore(root, snap);
+    throw err;
+  }
   const tests = command ? await testAndAttribute(root, command, snap) : undefined;
   const reverted = tests !== undefined && !tests.passed;
   return { ...base, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
@@ -142,12 +147,17 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
   if (!opts.allowDirty && !(await g.isClean(root))) {
     throw new Refusal("uncommitted changes in the working tree; commit or stash them, or pass --allow-dirty");
   }
+  // --allow-dirty tolerates edits elsewhere, never in the files darnit is about to commit
+  const wanted = [...new Set(groups.flatMap((grp) => grp.files))];
+  if (await g.dirtyAmong(root, wanted)) {
+    throw new Refusal("uncommitted changes in files darnit needs to edit; commit or stash them first");
+  }
   const repo = opts.repo ? parseSlug(opts.repo) : parseRemote(await g.remoteUrl(root).catch(() => ""));
   if (!repo) throw new Refusal("could not tell which GitHub repository this is; pass --repo owner/name");
   const token = await githubToken();
   if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
   const target = await defaultBranch(token, repo);
-  const original = await g.currentBranch(root);
+  const home = await g.position(root);
   let anyFailed = false;
 
   for (const grp of groups) {
@@ -164,7 +174,8 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
     }
 
     const snap = await snapshotOf(root, grp.files);
-    await g.switchTo(root, branch, true);
+    await g.switchTo(root, branch, "create");
+    let committed = false;
     let opened = false;
     try {
       await applyRules(grp.packDir, grp.files.map((f) => join(root, f)));
@@ -176,15 +187,17 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       }
       await g.add(root, grp.files);
       await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
+      committed = true;
       await g.push(root, branch);
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body: prBody(grp.record, grp.files, tests, opts.version ?? "dev") });
       result.pr = { state: "opened", url, tests };
       opened = true;
     } catch (err) {
-      await restore(root, snap);
+      // once committed the tree already matches the branch; restoring would only block the switch back
+      if (!committed) await restore(root, snap);
       throw err;
     } finally {
-      await g.switchTo(root, original);
+      await g.switchTo(root, home.ref, home.detached ? "detach" : "existing");
       if (!opened) await g.deleteBranch(root, branch).catch(() => undefined);
     }
   }

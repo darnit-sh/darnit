@@ -29,8 +29,18 @@ export const remoteBranchExists = async (root: string, name: string) =>
 
 export const remoteUrl = async (root: string) => (await git(root, ["remote", "get-url", "origin"])).trim();
 
-export const switchTo = (root: string, name: string, create = false) =>
-  git(root, create ? ["switch", "-q", "-c", name] : ["switch", "-q", name]);
+export const switchTo = (root: string, ref: string, mode: "existing" | "create" | "detach" = "existing") =>
+  git(root, ["switch", "-q", ...(mode === "create" ? ["-c"] : mode === "detach" ? ["--detach"] : []), ref]);
+
+/** where to come back to: a branch name, or a commit when HEAD is detached */
+export async function position(root: string): Promise<{ ref: string; detached: boolean }> {
+  const branch = await currentBranch(root);
+  if (branch !== "HEAD") return { ref: branch, detached: false };
+  return { ref: (await git(root, ["rev-parse", "HEAD"])).trim(), detached: true };
+}
+
+export const dirtyAmong = async (root: string, files: readonly string[]) =>
+  (await git(root, ["status", "--porcelain", "--", ...files])).trim() !== "";
 
 export const deleteBranch = (root: string, name: string) => git(root, ["branch", "-q", "-D", name]);
 
