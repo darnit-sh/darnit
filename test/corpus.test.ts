@@ -77,6 +77,27 @@ describe("deriveCandidates", () => {
     expect(ignored["request-property-deprecated (already recorded)"]).toBe(2);
   });
 
+  it("merges the same change across endpoints into one record", async () => {
+    const spec = parseSpec(await readFile(`${SPECS}after.yaml`, "utf8"));
+    spec.paths!["/other"] = spec.paths!["/chat/completions"]!;
+    const entry = (path: string) => ({ id: "request-property-deprecated", level: 1 as const, text: "request property `max_tokens` deprecated", operation: "POST", path });
+    const { candidates } = deriveCandidates({
+      vendor: "openai",
+      config: { ...config, symbols: { "POST /chat/completions": "chat.completions.create", "POST /other": "other.create" } },
+      entries: [entry("/chat/completions"), entry("/other")],
+      spec,
+      existing: [],
+      observedAt,
+    });
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.record.surface).toEqual({
+      endpoints: ["/chat/completions", "/other"],
+      sdkSymbols: ["chat.completions.create", "other.create"],
+      fields: ["max_tokens"],
+    });
+    expect(candidates[0]?.files["rules/js/01-rename.yml"]).toContain("regex: '(chat\\.completions\\.create|other\\.create)$'");
+  });
+
   it("produces nothing from purely additive drift", async () => {
     const { candidates, ignored } = await derive("additive-after.yaml");
     expect(candidates).toEqual([]);

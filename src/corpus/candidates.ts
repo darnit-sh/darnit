@@ -37,15 +37,16 @@ const firstSentence = (s: string) => sentences(s)[0]!.slice(0, 200);
 const quote = (s: string) => (sentences(s).find((x) => /deprecat|in favou?r of|replaced by/i.test(x)) ?? firstSentence(s)).slice(0, 200);
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-function renameRule(lang: "js" | "py", id: string, field: string, replacement: string, symbol: string): string {
+/** callee is an already-escaped regex alternation of SDK symbols */
+function renameRule(lang: "js" | "py", id: string, field: string, replacement: string, callee: string): string {
   const [pattern, selector, obj, args, call, fix] =
     lang === "js"
       ? [`({ ${field}: $V })`, "pair", "object", "arguments", "call_expression", `${replacement}: $V`]
       : [`f(${field}=$V)`, "keyword_argument", "argument_list", "argument_list", "call", `${replacement}=$V`];
   const chain =
     lang === "js"
-      ? `  inside:\n    kind: ${obj}\n    inside:\n      kind: ${args}\n      inside:\n        kind: ${call}\n        has:\n          field: function\n          regex: '${escapeRegExp(symbol)}$'\n`
-      : `  inside:\n    kind: ${args}\n    inside:\n      kind: ${call}\n      has:\n        field: function\n        regex: '${escapeRegExp(symbol)}$'\n`;
+      ? `  inside:\n    kind: ${obj}\n    inside:\n      kind: ${args}\n      inside:\n        kind: ${call}\n        has:\n          field: function\n          regex: '(${callee})$'\n`
+      : `  inside:\n    kind: ${args}\n    inside:\n      kind: ${call}\n      has:\n        field: function\n        regex: '(${callee})$'\n`;
   return `id: ${id}-${lang}\nlanguage: ${lang === "js" ? "javascript" : "python"}\nrule:\n  pattern:\n    context: '${pattern}'\n    selector: ${selector}\n${chain}fix: '${fix}'\n`;
 }
 
@@ -63,7 +64,9 @@ export function deriveCandidates(input: {
   const skip = (why: string) => (ignored[why] = (ignored[why] ?? 0) + 1);
   const unmapped = new Set<string>();
   const seen = new Set<string>();
-  const candidates: Candidate[] = [];
+  // the same field changing on several endpoints is one record with several endpoints
+  type Draft = { kind: ChangeRecord["kind"]; field?: string | undefined; rename?: string | undefined; description: string; text: string; endpoints: string[]; paths: string[]; symbols: string[] };
+  const drafts = new Map<string, Draft>();
 
   const covered = (path: string, field: string | undefined) =>
     existing.some(
@@ -100,13 +103,26 @@ export function deriveCandidates(input: {
     const description = field ? (requestProperties(spec, e.operation, e.path)[field]?.description ?? "") : "";
     const replacement = kind === "deprecation" && field ? description.match(REPLACEMENT)?.[1] : undefined;
     const rename = replacement !== undefined && replacement !== field ? replacement : undefined;
-    const where = symbol ?? endpoint;
     const gone = kind === "breaking";
     const slug = field
       ? rename
         ? `${kebab(field)}-to-${kebab(rename)}`
         : `${kebab(field)}-${gone ? "removed" : "deprecated"}`
       : `${kebab(endpoint)}-${gone ? "removed" : "deprecated"}`;
+    const draft = drafts.get(slug) ?? { kind, field, rename, description, text: e.text, endpoints: [], paths: [], symbols: [] };
+    draft.endpoints.push(endpoint);
+    draft.paths.push(e.path);
+    if (symbol && !draft.symbols.includes(symbol)) draft.symbols.push(symbol);
+    drafts.set(slug, draft);
+  }
+
+  const candidates: Candidate[] = [];
+  for (const [slug, d] of drafts) {
+    const { kind, field, rename, description } = d;
+    const symbol = d.symbols[0];
+    const endpoint = d.endpoints[0]!;
+    const gone = kind === "breaking";
+    const where = d.symbols.length > 0 ? d.symbols.join(", ") : d.endpoints.join(", ");
     const title = field
       ? rename
         ? `Rename ${field} to ${rename} on ${where}`
@@ -134,9 +150,9 @@ export function deriveCandidates(input: {
         vendor,
         announcedAt: observedAt,
         kind,
-        surface: { endpoints: [e.path], ...(symbol ? { sdkSymbols: [symbol] } : {}), ...(field ? { fields: [field] } : {}) },
+        surface: { endpoints: d.paths, ...(d.symbols.length > 0 ? { sdkSymbols: d.symbols } : {}), ...(field ? { fields: [field] } : {}) },
         classification: rename && symbol ? "mechanical" : "semantic",
-        sources: [{ url: config.spec, quoteId: `${endpoint}${field ? ` ${field}` : ""}: ${quote(description) || e.text}` }],
+        sources: [{ url: config.spec, quoteId: `${endpoint}${field ? ` ${field}` : ""}: ${quote(description) || d.text}` }],
         detection: { astGrepPatterns: patterns },
         ...(rename && symbol ? { fix: { rulePackPath: `packs/${dir}/` } } : {}),
         notes: {
@@ -159,8 +175,9 @@ export function deriveCandidates(input: {
     };
     if (rename && symbol && field) {
       const ruleId = `${vendor}-${slug}`;
-      files["rules/js/01-rename.yml"] = renameRule("js", ruleId, field, rename, symbol);
-      files["rules/py/01-rename.yml"] = renameRule("py", ruleId, field, rename, symbol);
+      const callee = d.symbols.map(escapeRegExp).join("|");
+      files["rules/js/01-rename.yml"] = renameRule("js", ruleId, field, rename, callee);
+      files["rules/py/01-rename.yml"] = renameRule("py", ruleId, field, rename, callee);
     }
     candidates.push({ record, dir, files });
   }
