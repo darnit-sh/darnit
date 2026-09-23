@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -162,6 +162,42 @@ describe("fix --pr", () => {
     stubGitHub(branch);
     await writeFile(join(dir, "notes.txt"), "wip\n");
     await expect(fix(dir, { pr: true, noTest: true, repo: "o/r" })).rejects.toThrow(/uncommitted changes/);
+  });
+
+  it("comes back to the same commit when HEAD was detached", async () => {
+    const { dir, branch } = await repoWithOrigin();
+    stubGitHub(branch);
+    const sha = (await git(dir, ["rev-parse", "HEAD"])).trim();
+    await git(dir, ["switch", "-q", "--detach", sha]);
+    const result = await fix(dir, { pr: true, noTest: true, repo: "o/r" });
+    expect(result.records[0]?.pr).toMatchObject({ state: "opened" });
+    expect((await git(dir, ["rev-parse", "HEAD"])).trim()).toBe(sha);
+    await expect(git(dir, ["symbolic-ref", "--short", "-q", "HEAD"])).rejects.toBeDefined();
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+  });
+
+  it("leaves the tree clean on the original branch when the push fails", async () => {
+    const { dir, branch } = await repoWithOrigin();
+    stubGitHub(branch);
+    await git(dir, ["remote", "set-url", "--push", "origin", join(dir, "does-not-exist")]);
+    await expect(fix(dir, { pr: true, noTest: true, repo: "o/r" })).rejects.toThrow();
+    expect((await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe(branch);
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+    expect((await git(dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
+  });
+
+  it("--allow-dirty tolerates edits elsewhere but never in the files it will commit", async () => {
+    const { dir, branch } = await repoWithOrigin();
+    const posts = stubGitHub(branch);
+    await appendFile(join(dir, "app.py"), "# local work in progress\n");
+    await expect(fix(dir, { pr: true, noTest: true, repo: "o/r", allowDirty: true })).rejects.toThrow(/files darnit needs to edit/);
+    await git(dir, ["checkout", "--", "app.py"]);
+    await writeFile(join(dir, "notes.txt"), "wip\n");
+    const result = await fix(dir, { pr: true, noTest: true, repo: "o/r", allowDirty: true });
+    expect(result.records[0]?.pr).toMatchObject({ state: "opened" });
+    expect(posts).toHaveLength(1);
+    expect(await readFile(join(dir, "notes.txt"), "utf8")).toBe("wip\n");
   });
 
   it("pushes nothing and leaves no branch when the change breaks the tests", async () => {
