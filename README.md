@@ -19,11 +19,39 @@ Or run any command without installing: `npx darnit check`.
 ```
 darnit init     # find the APIs this repository uses, write darnit.yml, add a daily check
 darnit check    # list the vendor changes that touch your code, file and line, with the vendor's announcement
-darnit fix      # apply a tested rewrite and open a pull request with the results attached (in progress)
+darnit fix      # rewrite the affected code, run your tests, show the diff
 ```
 
 `darnit check` exits with status 1 when something is affected, so the scheduled
 workflow fails the day a change lands and GitHub lets you know.
+
+### fix
+
+`darnit fix` only runs inside a git repository, so everything it does can be
+undone with git. It rewrites only the files `check` reported, runs your test
+command if it can find one (`npm test`, `pnpm test`, `yarn test`, or `pytest`),
+and prints the diff. If the tests fail it puts the files back and runs them once
+more, so it can tell you whether the change broke them or they were already failing.
+
+```
+darnit fix --dry-run          # show the diff, write nothing (works outside git too)
+darnit fix --pr               # one branch and one pull request per change, tests run on each
+darnit fix --only <record>    # just one change, by its id from check --json
+darnit fix --test "<cmd>"     # use this test command
+darnit fix --no-test          # skip tests
+darnit fix --allow-dirty      # let --pr run with uncommitted changes present
+darnit fix --repo owner/name  # when origin is not a GitHub URL
+darnit fix --json             # machine-readable result
+```
+
+With `--pr`, darnit needs a clean tree and a GitHub token (`GITHUB_TOKEN`,
+`GH_TOKEN`, or a `gh auth login` session). It never force-pushes and never
+pushes to your default branch. Running it again finds the open pull request
+instead of opening a second one. The pull request body says what changed, links
+the vendor's announcement, shows the test result, and lists what was not verified.
+
+Exit codes: 0 nothing to do or done; 1 tests failed after the change (files put
+back, nothing pushed); 2 darnit refused or failed.
 
 ## What darnit knows
 
