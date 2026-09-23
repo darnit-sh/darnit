@@ -28,7 +28,8 @@ const KIND: Record<string, ChangeRecord["kind"]> = {
 };
 const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
 
-const REPLACEMENT = /(?:in favou?r of|replaced by|use)\s+`?([A-Za-z_][A-Za-z0-9_]*)`?/i;
+// only explicit phrasings; a bare "use X" would turn prose like "Use this to…" into a rename
+const REPLACEMENT = /(?:in favou?r of|replaced by)\s+`?([A-Za-z_][A-Za-z0-9_]*)`?|use\s+`([A-Za-z_][A-Za-z0-9_]*)`\s+instead/i;
 
 const kebab = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const sentences = (s: string) => s.replace(/\s+/g, " ").trim().split(/(?<=\.)\s/);
@@ -101,7 +102,8 @@ export function deriveCandidates(input: {
     }
 
     const description = field ? (requestProperties(spec, e.operation, e.path)[field]?.description ?? "") : "";
-    const replacement = kind === "deprecation" && field ? description.match(REPLACEMENT)?.[1] : undefined;
+    const m = kind === "deprecation" && field ? description.match(REPLACEMENT) : null;
+    const replacement = m?.[1] ?? m?.[2];
     const rename = replacement !== undefined && replacement !== field ? replacement : undefined;
     const gone = kind === "breaking";
     const slug = field

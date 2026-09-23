@@ -19,7 +19,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run corpus | tee corpus.log
+      - run: npm run corpus | tee "$RUNNER_TEMP/corpus.log"
       - id: changes
         run: echo "count=$(git status --porcelain | wc -l)" >> "$GITHUB_OUTPUT"
       # Pull requests opened with the workflow token get no CI run of their own,
@@ -37,4 +37,4 @@ jobs:
           git add corpus packs
           git commit -m "feat(corpus): refresh vendor specs"
           git push -u origin "$branch"
-          gh pr create --base main --title "corpus: new vendor changes" --body-file corpus.log
+          gh pr create --base main --title "corpus: new vendor changes" --body-file "$RUNNER_TEMP/corpus.log"

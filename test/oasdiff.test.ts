@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { assetName, changelog } from "../src/corpus/oasdiff.js";
 
-const SPECS = fileURLToPath(new URL("./fixtures/specs/", import.meta.url));
+const YAML_DIR = fileURLToPath(new URL("./fixtures/specs/", import.meta.url));
 
 describe("oasdiff", () => {
   it("picks the release asset for the platform", () => {
@@ -14,7 +14,7 @@ describe("oasdiff", () => {
   });
 
   it("reports deprecations and removals between two specs", async () => {
-    const entries = await changelog(`${SPECS}before.yaml`, `${SPECS}after.yaml`);
+    const entries = await changelog(`${YAML_DIR}before.yaml`, `${YAML_DIR}after.yaml`);
     const ids = entries.map((e) => `${e.id} ${e.text.match(/`([^`]+)`/)?.[1] ?? e.path}`).sort();
     expect(ids).toEqual(
       expect.arrayContaining([
@@ -24,6 +24,6 @@ describe("oasdiff", () => {
         "api-path-removed-without-deprecation /edits",
       ]),
     );
-    expect(await changelog(`${SPECS}before.yaml`, `${SPECS}before.yaml`)).toEqual([]);
+    expect(await changelog(`${YAML_DIR}before.yaml`, `${YAML_DIR}before.yaml`)).toEqual([]);
   });
 });
