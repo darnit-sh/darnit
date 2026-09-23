@@ -18,6 +18,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # the corpus tests shell out to oasdiff; fetch the pinned release once
+      - run: npx tsx -e "import('./src/corpus/oasdiff.ts').then((m) => m.oasdiffBinary()).then(console.log)"
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
