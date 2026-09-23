@@ -33,12 +33,15 @@ program
     if (hits.length > 0) process.exitCode = 1;
   });
 
-type FixFlags = { dryRun?: boolean; only?: string[]; test?: string | false; json?: boolean };
+type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean };
 
 program
   .command("fix")
   .description("apply the rewrite for each affected change, run your tests, show the diff")
   .option("--dry-run", "show what would change without writing anything")
+  .option("--pr", "commit on a branch, push, and open one pull request per change")
+  .option("--allow-dirty", "let --pr run with uncommitted changes present")
+  .option("--repo <owner/name>", "GitHub repository, when origin is not a GitHub URL")
   .option("--only <id>", "restrict to one change record (repeatable)", (id: string, all: string[] = []) => [...all, id])
   .option("--test <command>", "run this instead of the detected test command")
   .option("--no-test", "skip tests")
@@ -46,8 +49,12 @@ program
   .action(async (flags: FixFlags) => {
     const result = await fix(process.cwd(), {
       dryRun: flags.dryRun ?? false,
+      pr: flags.pr ?? false,
+      allowDirty: flags.allowDirty ?? false,
       noTest: flags.test === false,
       color: process.stdout.isTTY ?? false,
+      version,
+      ...(flags.repo ? { repo: flags.repo } : {}),
       ...(flags.only ? { only: flags.only } : {}),
       ...(typeof flags.test === "string" ? { test: flags.test } : {}),
     });

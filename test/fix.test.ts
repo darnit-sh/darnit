@@ -2,7 +2,7 @@ import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fix, Refusal, renderSummary } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords } from "../src/records/load.js";
@@ -96,5 +96,85 @@ describe("fix", () => {
     const result = await fix(dir);
     expect(result.tests).toMatchObject({ command: "npm test", passed: true });
     expect(renderSummary(result)).toContain("tests: npm test passed");
+  });
+});
+
+describe("fix --pr", () => {
+  const BEFORE = join(PACKS, "openai", "2024-09-12-max-tokens-to-max-completion-tokens", "fixtures", "basic", "before");
+  const BRANCH = "darnit/openai-max-tokens-to-max-completion-tokens";
+
+  async function repoWithOrigin(): Promise<{ dir: string; bare: string; branch: string }> {
+    const dir = await repoFrom(BEFORE);
+    const bare = await mkdtemp(join(tmpdir(), "darnit-origin-"));
+    tempDirs.push(bare);
+    await git(bare, ["init", "-q", "--bare"]);
+    await git(dir, ["remote", "add", "origin", bare]);
+    const branch = (await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim();
+    await git(dir, ["push", "-q", "-u", "origin", branch]);
+    return { dir, bare, branch };
+  }
+
+  function stubGitHub(base: string, openPrs: { html_url: string }[] = []) {
+    const posts: Record<string, unknown>[] = [];
+    vi.stubEnv("GITHUB_TOKEN", "test-token");
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit): Promise<Response> => {
+      const body = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status }));
+      if (url.endsWith("/repos/o/r")) return body({ default_branch: base });
+      if (url.includes("/pulls?")) return body(openPrs);
+      posts.push(JSON.parse(init?.body as string) as Record<string, unknown>);
+      return body({ html_url: `https://github.com/o/r/pull/${posts.length}` }, 201);
+    });
+    return posts;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("opens one pull request per change and leaves the tree as it found it", async () => {
+    const { dir, bare, branch } = await repoWithOrigin();
+    const posts = stubGitHub(branch);
+    const result = await fix(dir, { pr: true, noTest: true, repo: "o/r", version: "t" });
+
+    expect(result.records[0]?.pr).toEqual({ state: "opened", url: "https://github.com/o/r/pull/1", tests: undefined });
+    expect(posts[0]).toMatchObject({ title: "Rename max_tokens to max_completion_tokens on chat completions", head: BRANCH, base: branch });
+    expect(String(posts[0]?.body)).toContain("## Verified");
+    expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toContain(BRANCH);
+    expect((await git(bare, ["show", `${BRANCH}:app.py`])).toString()).toContain("max_completion_tokens=256");
+    expect((await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe(branch);
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
+    expect(renderSummary(result)).toContain("pull request opened https://github.com/o/r/pull/1");
+  });
+
+  it("finds an already open pull request instead of opening another", async () => {
+    const { dir, branch } = await repoWithOrigin();
+    const posts = stubGitHub(branch, [{ html_url: "https://github.com/o/r/pull/7" }]);
+    const result = await fix(dir, { pr: true, noTest: true, repo: "o/r" });
+    expect(result.records[0]?.pr).toEqual({ state: "exists", url: "https://github.com/o/r/pull/7" });
+    expect(posts).toEqual([]);
+    expect((await git(dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+  });
+
+  it("refuses a dirty tree", async () => {
+    const { dir, branch } = await repoWithOrigin();
+    stubGitHub(branch);
+    await writeFile(join(dir, "notes.txt"), "wip\n");
+    await expect(fix(dir, { pr: true, noTest: true, repo: "o/r" })).rejects.toThrow(/uncommitted changes/);
+  });
+
+  it("pushes nothing and leaves no branch when the change breaks the tests", async () => {
+    const { dir, bare, branch } = await repoWithOrigin();
+    const posts = stubGitHub(branch);
+    const breaks = "node -e \"process.exit(require('fs').readFileSync('app.js','utf8').includes('max_completion_tokens') ? 1 : 0)\"";
+    const result = await fix(dir, { pr: true, test: breaks, repo: "o/r" });
+    expect(result.records[0]?.pr).toMatchObject({ state: "tests-failed", tests: { passed: false, attributed: "change" } });
+    expect(posts).toEqual([]);
+    expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe(branch);
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
+    expect(renderSummary(result)).toContain("nothing pushed");
   });
 });

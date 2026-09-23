@@ -31,6 +31,7 @@
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
+    "@ast-grep/cli": "^0.45.3",
     "@ast-grep/lang-python": "^0.0.6",
     "@ast-grep/napi": "^0.45.3",
     "commander": "^15.0.0",
@@ -38,7 +39,6 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@ast-grep/cli": "^0.45.3",
     "@eslint/js": "^9.39.5",
     "@types/node": "^22.20.4",
     "eslint": "^9.39.5",

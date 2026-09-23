@@ -2,7 +2,8 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { check, title } from "./check.js";
-import { diff, diffDirs, isRepo } from "./git.js";
+import * as g from "./git.js";
+import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
@@ -10,34 +11,44 @@ import { detectTestCommand, runTests, type TestRun } from "./tests.js";
 
 export type FixOptions = {
   dryRun?: boolean;
+  pr?: boolean;
+  allowDirty?: boolean;
+  /** owner/name when origin is not a GitHub URL */
+  repo?: string;
   only?: string[];
   test?: string;
   noTest?: boolean;
   color?: boolean;
+  version?: string;
 };
+
+export type TestOutcome = TestRun & {
+  /** "change": passed before, failed after; "baseline": already failing before */
+  attributed?: "change" | "baseline";
+};
+
+export type PrResult =
+  | { state: "opened"; url: string; tests?: TestOutcome | undefined }
+  | { state: "exists"; url: string }
+  | { state: "skipped"; reason: string }
+  | { state: "tests-failed"; tests: TestOutcome };
 
 export type RecordResult = {
   record: ChangeRecord;
   title: string;
   files: string[];
   applied: boolean;
-  /** why not applied, when applied is false */
   reason?: string;
-};
-
-export type TestOutcome = TestRun & {
-  /** "change": tests passed before and failed after; "baseline": they already failed before */
-  attributed?: "change" | "baseline";
+  pr?: PrResult;
 };
 
 export type FixResult = {
   records: RecordResult[];
   dryRun: boolean;
-  /** undefined when no test command was found or tests were skipped */
+  pr: boolean;
   tests?: TestOutcome | undefined;
   testsSkipped: boolean;
   diff: string;
-  /** true when tests failed and the files were put back */
   reverted: boolean;
 };
 
@@ -59,98 +70,202 @@ async function groupHits(root: string, only: string[] | undefined): Promise<Grou
   return [...byId.values()];
 }
 
+async function snapshotOf(root: string, files: readonly string[]): Promise<Map<string, string>> {
+  const snap = new Map<string, string>();
+  for (const f of files) snap.set(f, await readFile(join(root, f), "utf8"));
+  return snap;
+}
+
+async function restore(root: string, snap: Map<string, string>): Promise<void> {
+  for (const [f, text] of snap) await writeFile(join(root, f), text);
+}
+
+/** runs tests; on failure puts the files back and runs again to say whether the change was the cause */
+async function testAndAttribute(root: string, command: string, snap: Map<string, string>): Promise<TestOutcome> {
+  const tests: TestOutcome = await runTests(root, command);
+  if (!tests.passed) {
+    await restore(root, snap);
+    tests.attributed = (await runTests(root, command)).passed ? "change" : "baseline";
+  }
+  return tests;
+}
+
 export async function fix(root: string, opts: FixOptions = {}): Promise<FixResult> {
   const color = opts.color ?? false;
-  if (!opts.dryRun && !(await isRepo(root))) {
+  const dryRun = opts.dryRun ?? false;
+  if (!dryRun && !(await g.isRepo(root))) {
     throw new Refusal("not a git repository; darnit only edits files it can undo. Use --dry-run to preview.");
   }
 
   const groups = await groupHits(root, opts.only);
   const records: RecordResult[] = [];
-  const touched: string[] = [];
   const applicable: Group[] = [];
-  for (const g of groups) {
-    const applied = await hasRules(g.packDir);
-    records.push({ record: g.record, title: title(g.record), files: g.files, applied, ...(applied ? {} : { reason: "no rewrite rules yet" }) });
-    if (applied) {
-      applicable.push(g);
-      for (const f of g.files) if (!touched.includes(f)) touched.push(f);
-    }
+  const touched: string[] = [];
+  for (const grp of groups) {
+    const applied = await hasRules(grp.packDir);
+    records.push({ record: grp.record, title: title(grp.record), files: grp.files, applied, ...(applied ? {} : { reason: "no rewrite rules yet" }) });
+    if (!applied) continue;
+    applicable.push(grp);
+    for (const f of grp.files) if (!touched.includes(f)) touched.push(f);
   }
-  const dryRun = opts.dryRun ?? false;
-  if (applicable.length === 0) return { records, dryRun, testsSkipped: true, diff: "", reverted: false };
+  const base = { records, dryRun, pr: opts.pr ?? false, testsSkipped: opts.noTest ?? false, diff: "", reverted: false };
+  if (applicable.length === 0) return base;
 
-  if (opts.dryRun) {
+  if (dryRun) {
     const tmp = await mkdtemp(join(tmpdir(), "darnit-dry-"));
     try {
-      const before = join(tmp, "before");
-      const after = join(tmp, "after");
       for (const f of touched) {
-        await cp(join(root, f), join(before, f));
-        await cp(join(root, f), join(after, f));
+        await cp(join(root, f), join(tmp, "before", f));
+        await cp(join(root, f), join(tmp, "after", f));
       }
-      for (const g of applicable) await applyRules(g.packDir, g.files.map((f) => join(after, f)));
-      const out = (await diffDirs(tmp, "before", "after", color)).replaceAll("a/before/", "a/").replaceAll("b/after/", "b/");
-      return { records, dryRun, testsSkipped: true, diff: out, reverted: false };
+      for (const grp of applicable) await applyRules(grp.packDir, grp.files.map((f) => join(tmp, "after", f)));
+      const out = (await g.diffDirs(tmp, "before", "after", color)).replaceAll("a/before/", "a/").replaceAll("b/after/", "b/");
+      return { ...base, diff: out };
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
   }
 
-  const snapshot = new Map<string, string>();
-  for (const f of touched) snapshot.set(f, await readFile(join(root, f), "utf8"));
-  for (const g of applicable) await applyRules(g.packDir, g.files.map((f) => join(root, f)));
-
-  let tests: TestOutcome | undefined;
-  let reverted = false;
   const command = opts.noTest ? undefined : (opts.test ?? (await detectTestCommand(root)));
-  if (command) {
-    tests = await runTests(root, command);
-    if (!tests.passed) {
-      for (const [f, text] of snapshot) await writeFile(join(root, f), text);
-      reverted = true;
-      const baseline = await runTests(root, command);
-      tests.attributed = baseline.passed ? "change" : "baseline";
+  if (opts.pr) return pullRequests(root, applicable, base, command, opts);
+
+  const snap = await snapshotOf(root, touched);
+  for (const grp of applicable) await applyRules(grp.packDir, grp.files.map((f) => join(root, f)));
+  const tests = command ? await testAndAttribute(root, command, snap) : undefined;
+  const reverted = tests !== undefined && !tests.passed;
+  return { ...base, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
+}
+
+// one branch, one test run and one pull request per change; the working tree is
+// left exactly as it was found, on the branch it was found on
+async function pullRequests(root: string, groups: Group[], base: FixResult, command: string | undefined, opts: FixOptions): Promise<FixResult> {
+  if (!opts.allowDirty && !(await g.isClean(root))) {
+    throw new Refusal("uncommitted changes in the working tree; commit or stash them, or pass --allow-dirty");
+  }
+  const repo = opts.repo ? parseSlug(opts.repo) : parseRemote(await g.remoteUrl(root).catch(() => ""));
+  if (!repo) throw new Refusal("could not tell which GitHub repository this is; pass --repo owner/name");
+  const token = await githubToken();
+  if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
+  const target = await defaultBranch(token, repo);
+  const original = await g.currentBranch(root);
+  let anyFailed = false;
+
+  for (const grp of groups) {
+    const result = base.records.find((r) => r.record.id === grp.record.id)!;
+    const branch = `darnit/${grp.record.vendor}-${grp.record.id.split(":")[2]}`;
+    const existing = await findOpenPr(token, repo, branch);
+    if (existing) {
+      result.pr = { state: "exists", url: existing };
+      continue;
+    }
+    if ((await g.localBranchExists(root, branch)) || (await g.remoteBranchExists(root, branch))) {
+      result.pr = { state: "skipped", reason: `branch ${branch} already exists; delete it or open the pull request from it yourself` };
+      continue;
+    }
+
+    const snap = await snapshotOf(root, grp.files);
+    await g.switchTo(root, branch, true);
+    let opened = false;
+    try {
+      await applyRules(grp.packDir, grp.files.map((f) => join(root, f)));
+      const tests = command ? await testAndAttribute(root, command, snap) : undefined;
+      if (tests && !tests.passed) {
+        result.pr = { state: "tests-failed", tests };
+        anyFailed = true;
+        continue;
+      }
+      await g.add(root, grp.files);
+      await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
+      await g.push(root, branch);
+      const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body: prBody(grp.record, grp.files, tests, opts.version ?? "dev") });
+      result.pr = { state: "opened", url, tests };
+      opened = true;
+    } catch (err) {
+      await restore(root, snap);
+      throw err;
+    } finally {
+      await g.switchTo(root, original);
+      if (!opened) await g.deleteBranch(root, branch).catch(() => undefined);
     }
   }
+  return { ...base, reverted: anyFailed };
+}
 
-  const out = reverted ? "" : await diff(root, touched, color);
-  return { records, dryRun, tests, testsSkipped: opts.noTest ?? false, diff: out, reverted };
+export function prBody(record: ChangeRecord, files: readonly string[], tests: TestOutcome | undefined, version: string): string {
+  const source = record.sources[0]!;
+  return [
+    record.notes?.migration ?? title(record),
+    "",
+    "## Why",
+    `${record.vendor} announced this change on ${record.announcedAt}: ${source.url}`,
+    ...(source.quoteId ? [`> ${source.quoteId}`] : []),
+    "",
+    "## What changed",
+    ...files.map((f) => `- \`${f}\``),
+    "",
+    "## Verified",
+    tests ? `- [${tests.passed ? "x" : " "}] \`${tests.command}\` ${tests.passed ? "passed" : "failed"}` : "- [ ] no test command found in this repository",
+    ...(tests?.output ? ["", "<details><summary>test output</summary>", "", "```", tests.output, "```", "", "</details>"] : []),
+    "",
+    "## Not verified",
+    "- No generated regression tests yet; the checks above are the repository's own.",
+    "- Options objects built in one place and passed by name are not covered.",
+    ...(record.notes?.edgeCases ?? []).map((e) => `- ${e}`),
+    "",
+    "---",
+    `darnit ${version}, change record \`${record.id}\``,
+    "",
+  ].join("\n");
 }
 
 export function exitCodeFor(result: FixResult): 0 | 1 {
-  return result.tests && !result.tests.passed ? 1 : 0;
+  if (result.tests && !result.tests.passed) return 1;
+  return result.records.some((r) => r.pr?.state === "tests-failed") ? 1 : 0;
+}
+
+function testLine(t: TestOutcome): string {
+  if (t.passed) return `tests: ${t.command} passed`;
+  const why = t.attributed === "change" ? "The change broke your tests." : "They already fail without the change.";
+  return `tests: ${t.command} failed; files put back. ${why}${t.output ? `\n${t.output}` : ""}`;
 }
 
 export function renderSummary(result: FixResult): string {
   const lines: string[] = [];
   for (const r of result.records) {
     const where = `${r.files.length} file${r.files.length === 1 ? "" : "s"}`;
-    lines.push(r.applied ? `✓ ${r.title}: ${where}` : `- ${r.title}: ${where} reported, ${r.reason}`);
+    if (!r.applied) lines.push(`- ${r.title}: ${where} reported, ${r.reason}`);
+    else if (!r.pr) lines.push(`✓ ${r.title}: ${where}`);
+    else if (r.pr.state === "opened") lines.push(`✓ ${r.title}: pull request opened ${r.pr.url}${r.pr.tests ? `\n  ${testLine(r.pr.tests)}` : ""}`);
+    else if (r.pr.state === "exists") lines.push(`= ${r.title}: pull request already open ${r.pr.url}`);
+    else if (r.pr.state === "skipped") lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
+    else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.tests)}`);
   }
   if (lines.length === 0) lines.push("Nothing to fix.");
+  const applied = result.records.some((r) => r.applied);
   if (result.dryRun) {
-    if (result.records.some((r) => r.applied)) lines.push("dry run: nothing written");
+    if (applied) lines.push("dry run: nothing written");
+  } else if (result.pr) {
+    // per-record lines already carry the test result
   } else if (result.tests) {
-    const t = result.tests;
-    if (t.passed) lines.push(`tests: ${t.command} passed`);
-    else if (t.attributed === "change") lines.push(`tests: ${t.command} failed after the change; files put back. The change broke your tests.`);
-    else lines.push(`tests: ${t.command} failed; files put back. They already fail without the change.`);
-    if (!t.passed && t.output) lines.push(t.output);
-  } else if (result.testsSkipped) {
-    if (result.records.some((r) => r.applied)) lines.push("tests: skipped");
-  } else if (result.records.some((r) => r.applied)) {
-    lines.push("tests: none found (no test script or pytest setup)");
+    lines.push(testLine(result.tests));
+  } else if (applied) {
+    lines.push(result.testsSkipped ? "tests: skipped" : "tests: none found (no test script or pytest setup)");
   }
   return lines.join("\n");
 }
 
 export function toJson(result: FixResult): object {
+  const tests = (t: TestOutcome | undefined) => (t ? { command: t.command, passed: t.passed, attributed: t.attributed, output: t.output } : null);
   return {
-    records: result.records.map((r) => ({ id: r.record.id, title: r.title, files: r.files, applied: r.applied, reason: r.reason })),
-    tests: result.tests
-      ? { command: result.tests.command, passed: result.tests.passed, attributed: result.tests.attributed, output: result.tests.output }
-      : null,
+    records: result.records.map((r) => ({
+      id: r.record.id,
+      title: r.title,
+      files: r.files,
+      applied: r.applied,
+      reason: r.reason,
+      pr: r.pr ? { ...r.pr, ...("tests" in r.pr ? { tests: tests(r.pr.tests) } : {}) } : null,
+    })),
+    tests: tests(result.tests),
     testsSkipped: result.testsSkipped,
     dryRun: result.dryRun,
     reverted: result.reverted,

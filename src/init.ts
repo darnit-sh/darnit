@@ -23,6 +23,10 @@ jobs:
         with:
           node-version: 22
       - run: npx darnit check
+      # To have darnit open pull requests instead of only reporting, replace the
+      # step above with "npx darnit fix --pr" and give the job
+      #   contents: write
+      #   pull-requests: write
 `;
 
 /** Writes `text` to root/rel unless it already exists. Returns the log line. */
