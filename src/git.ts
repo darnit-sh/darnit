@@ -29,6 +29,22 @@ export const remoteBranchExists = async (root: string, name: string) =>
 
 export const remoteUrl = async (root: string) => (await git(root, ["remote", "get-url", "origin"])).trim();
 
+export const switchTo = (root: string, name: string, create = false) =>
+  git(root, create ? ["switch", "-q", "-c", name] : ["switch", "-q", name]);
+
+export const deleteBranch = (root: string, name: string) => git(root, ["branch", "-q", "-D", name]);
+
+export const add = (root: string, files: readonly string[]) => git(root, ["add", "--", ...files]);
+
+/** commits as the configured user, or as darnit when the machine has no identity (CI runners) */
+export async function commit(root: string, subject: string, body: string): Promise<void> {
+  const email = await git(root, ["config", "user.email"]).catch(() => "");
+  const identity = email.trim() ? [] : ["-c", "user.name=darnit", "-c", "user.email=darnit@users.noreply.github.com"];
+  await git(root, [...identity, "commit", "-q", "-m", subject, "-m", body]);
+}
+
+export const push = (root: string, branch: string) => git(root, ["push", "-q", "-u", "origin", branch]);
+
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
 
