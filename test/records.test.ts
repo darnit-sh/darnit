@@ -5,6 +5,7 @@ import { loadRecords } from "../src/records/load.js";
 
 const valid = {
   id: "openai:2024-09-12:max-tokens-to-max-completion-tokens",
+  status: "reviewed",
   vendor: "openai",
   announcedAt: "2024-09-12",
   kind: "deprecation",
@@ -19,6 +20,11 @@ const valid = {
 describe("ChangeRecord schema", () => {
   it("accepts a minimal valid record", () => {
     expect(parseChangeRecord(valid, "x.json").id).toBe(valid.id);
+  });
+
+  it("requires a review status", () => {
+    const noStatus = Object.fromEntries(Object.entries(valid).filter(([k]) => k !== "status"));
+    expect(() => parseChangeRecord(noStatus, "x.json")).toThrow(/status/);
   });
 
   it("rejects a record with no sources (every record is cited)", () => {

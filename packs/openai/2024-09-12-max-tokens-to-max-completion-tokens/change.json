@@ -1,13 +1,20 @@
 {
   "id": "openai:2024-09-12:max-tokens-to-max-completion-tokens",
   "title": "Rename max_tokens to max_completion_tokens on chat completions",
+  "status": "reviewed",
   "vendor": "openai",
   "announcedAt": "2024-09-12",
   "kind": "deprecation",
   "surface": {
-    "endpoints": ["/v1/chat/completions"],
-    "sdkSymbols": ["chat.completions.create"],
-    "fields": ["max_tokens"]
+    "endpoints": [
+      "/v1/chat/completions"
+    ],
+    "sdkSymbols": [
+      "chat.completions.create"
+    ],
+    "fields": [
+      "max_tokens"
+    ]
   },
   "classification": "mechanical",
   "sources": [
@@ -26,8 +33,18 @@
   },
   "detection": {
     "astGrepPatterns": {
-      "js": [{ "context": "({ max_tokens: $N })", "selector": "pair" }],
-      "py": [{ "context": "f(max_tokens=$N)", "selector": "keyword_argument" }]
+      "js": [
+        {
+          "context": "({ max_tokens: $N })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(max_tokens=$N)",
+          "selector": "keyword_argument"
+        }
+      ]
     }
   },
   "fix": {
