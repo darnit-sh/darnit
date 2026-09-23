@@ -8,5 +8,5 @@
     "sourceMap": true
   },
   "include": ["src"],
-  "exclude": ["src/packs"]
+  "exclude": ["src/packs", "src/corpus"]
 }
