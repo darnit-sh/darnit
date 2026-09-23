@@ -9,7 +9,7 @@ import { parseSpec } from "../src/corpus/spec.js";
 import { runPackFixtures } from "../src/packs/fixtures.js";
 import { loadRecords } from "../src/records/load.js";
 
-const SPECS = fileURLToPath(new URL("./fixtures/specs/", import.meta.url));
+const YAML_DIR = fileURLToPath(new URL("./fixtures/specs/", import.meta.url));
 const config = { spec: "https://example.com/openapi.yaml", symbols: { "POST /chat/completions": "chat.completions.create" } };
 const observedAt = "2026-01-01";
 
@@ -19,8 +19,8 @@ afterEach(async () => {
 });
 
 async function derive(after = "after.yaml", existing: Awaited<ReturnType<typeof loadRecords>>[number]["record"][] = []) {
-  const entries = await changelog(`${SPECS}before.yaml`, `${SPECS}${after}`);
-  const spec = parseSpec(await readFile(`${SPECS}${after}`, "utf8"));
+  const entries = await changelog(`${YAML_DIR}before.yaml`, `${YAML_DIR}${after}`);
+  const spec = parseSpec(await readFile(`${YAML_DIR}${after}`, "utf8"));
   return deriveCandidates({ vendor: "openai", config, entries, spec, existing, observedAt });
 }
 
@@ -78,7 +78,7 @@ describe("deriveCandidates", () => {
   });
 
   it("merges the same change across endpoints into one record", async () => {
-    const spec = parseSpec(await readFile(`${SPECS}after.yaml`, "utf8"));
+    const spec = parseSpec(await readFile(`${YAML_DIR}after.yaml`, "utf8"));
     spec.paths!["/other"] = spec.paths!["/chat/completions"]!;
     const entry = (path: string) => ({ id: "request-property-deprecated", level: 1 as const, text: "request property `max_tokens` deprecated", operation: "POST", path });
     const { candidates } = deriveCandidates({
@@ -96,6 +96,17 @@ describe("deriveCandidates", () => {
       fields: ["max_tokens"],
     });
     expect(candidates[0]?.files["rules/js/01-rename.yml"]).toContain("regex: '(chat\\.completions\\.create|other\\.create)$'");
+  });
+
+  it("only treats explicit replacement phrasing as a rename", async () => {
+    const spec = parseSpec(await readFile(`${YAML_DIR}after.yaml`, "utf8"));
+    const props = spec.components!.schemas!["Req"]!.properties!;
+    props["max_tokens"]!.description = "Deprecated. Use this to cap output; prefer the newer field.";
+    props["functions"]!.description = "Deprecated, use `tools` instead.";
+    const entry = (field: string) => ({ id: "request-property-deprecated", level: 1 as const, text: `request property \`${field}\` deprecated`, operation: "POST", path: "/chat/completions" });
+    const { candidates } = deriveCandidates({ vendor: "openai", config, entries: [entry("max_tokens"), entry("functions")], spec, existing: [], observedAt });
+    expect(candidates.map((c) => c.record.id).sort()).toEqual(["openai:2026-01-01:functions-to-tools", "openai:2026-01-01:max-tokens-deprecated"]);
+    expect(candidates.find((c) => c.record.id.endsWith("max-tokens-deprecated"))?.record.classification).toBe("semantic");
   });
 
   it("produces nothing from purely additive drift", async () => {
