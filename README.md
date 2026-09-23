@@ -60,6 +60,19 @@ change. Each holds a description of the change with a link to the vendor's own
 announcement, the rewrite rules, and before/after examples that must pass in CI.
 A rule that changes nothing when its examples expect a change fails the build.
 
+### Where records come from
+
+Vendors listed in `vendors.yml` publish an OpenAPI specification. Once a week a
+workflow fetches each spec, compares it with the last snapshot in `corpus/`
+using [oasdiff](https://github.com/oasdiff/oasdiff), and turns every deprecated
+or removed request field and every removed endpoint into a candidate record,
+complete with detection patterns, example files, and, when the spec names the
+replacement, the rename rules. The candidates arrive as a pull request. A
+maintainer reads each one, adds anything the spec could not say, and marks it
+reviewed. `check` reports candidates as unreviewed; `fix` only acts on reviewed
+records. To watch a new vendor, add its spec URL and the SDK calls for its
+endpoints to `vendors.yml`.
+
 darnit reads JavaScript, TypeScript and Python. What it does not see: an options
 object built in one place and passed to the API call by name. Those call sites
 are listed as unchecked rather than guessed at.
