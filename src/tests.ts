@@ -36,12 +36,19 @@ const TAIL_LINES = 40;
 
 export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 1000): Promise<TestRun> {
   return new Promise((resolve) => {
-    const child = spawn(command, { cwd: root, shell: true, env: { ...process.env, CI: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+    // detached = own process group, so a timeout kills the command and not just the shell around it
+    const detached = process.platform !== "win32";
+    const child = spawn(command, { cwd: root, shell: true, detached, env: { ...process.env, CI: "1" }, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      try {
+        if (detached && child.pid) process.kill(-child.pid, "SIGKILL");
+        else child.kill("SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
     }, timeoutMs);
     child.stdout.on("data", (d: Buffer) => (output += d.toString()));
     child.stderr.on("data", (d: Buffer) => (output += d.toString()));
