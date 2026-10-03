@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fix, Refusal, renderSummary } from "../src/fix.js";
+import { fix, prBody, Refusal, renderSummary } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords } from "../src/records/load.js";
 
@@ -221,5 +221,24 @@ describe("fix --pr", () => {
     expect((await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe(branch);
     expect(await tree(dir)).toEqual(await tree(BEFORE));
     expect(renderSummary(result)).toContain("nothing pushed");
+  });
+});
+
+describe("prBody", () => {
+  it("renders hostile record text as inert plain text", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const hostile = "Use tools.\n# Heading <img src=x onerror=alert(1)> [click](https://evil.example) ![](https://pixel.example) @octocat";
+    const body = prBody(
+      { ...record, sources: [{ url: "https://example.com/changelog", quoteId: hostile }], notes: { migration: hostile, edgeCases: [hostile] } },
+      ["app.js"],
+      undefined,
+      "test",
+    );
+    const span = "`Use tools. # Heading <img src=x onerror=alert(1)> [click](https://evil.example) ![](https://pixel.example) @octocat`";
+    const lines = body.split("\n");
+    expect(lines[0]).toBe(span);
+    expect(lines).toContain(`> ${span}`);
+    expect(lines).toContain(`- ${span}`);
+    expect(prBody({ ...record, notes: { migration: "a `b` c" } }, [], undefined, "test").split("\n")[0]).toBe("`a 'b' c`");
   });
 });
