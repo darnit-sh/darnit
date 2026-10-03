@@ -35,6 +35,12 @@ describe("ChangeRecord schema", () => {
     expect(() => parseChangeRecord({ ...valid, surface: { fields: ["max_tokens"] } }, "x.json")).toThrow(/sdkSymbols or endpoints/);
   });
 
+  it("rejects source urls that are not plain https", () => {
+    for (const url of ["javascript:alert(1)", "http://example.com", "https://a.example/x)<img src=x>", "https://a.example/ @octocat"]) {
+      expect(() => parseChangeRecord({ ...valid, sources: [{ url }] }, "x.json")).toThrow(ChangeRecordError);
+    }
+  });
+
   it("rejects null for an absent optional field (omit, never null)", () => {
     expect(() => parseChangeRecord({ ...valid, effectiveAt: null }, "x.json")).toThrow(ChangeRecordError);
   });
