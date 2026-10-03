@@ -38,7 +38,8 @@ export const ChangeRecordSchema = z
         sdkSymbols: z.array(z.string().min(1)).optional(),
         fields: z.array(z.string().min(1)).optional(),
       })
-      .strict(),
+      .strict()
+      .refine((s) => s.sdkSymbols?.length || s.endpoints?.length, "surface needs sdkSymbols or endpoints, or matches are not tied to the vendor"),
     classification: z.enum(["mechanical", "semantic", "unfixable"]),
     sources: z
       .array(
