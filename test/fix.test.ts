@@ -49,7 +49,7 @@ describe("fix", () => {
     const before = join(PACKS, "openai", "2023-11-06-chat-functions-to-tools", "fixtures", "basic", "before");
     const dir = await repoFrom(before);
     const result = await fix(dir, { noTest: true });
-    expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "response-side migration not yet automated; see the record notes"]]);
+    expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "migration not yet automated; see the record notes"]]);
     expect(await tree(dir)).toEqual(await tree(before));
   });
 
