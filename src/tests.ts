@@ -20,7 +20,7 @@ export async function detectTestCommand(root: string): Promise<string | undefine
         return "npm test";
       }
     } catch {
-      // not json; fall through to python
+      // Not JSON; fall through to Python.
     }
   }
   for (const marker of ["pytest.ini", "tox.ini", "conftest.py", "tests"]) {
@@ -36,7 +36,7 @@ const TAIL_LINES = 40;
 
 export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 1000): Promise<TestRun> {
   return new Promise((resolve) => {
-    // detached = own process group, so a timeout kills the command and not just the shell around it
+    // Detached = its own process group, so a timeout kills the command and not just the shell around it.
     const detached = process.platform !== "win32";
     const child = spawn(command, { cwd: root, shell: true, detached, env: { ...process.env, CI: "1" }, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";

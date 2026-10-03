@@ -26,7 +26,7 @@ export async function check(root: string): Promise<Hit[]> {
   const only = await configuredVendors(root);
   const records = (await loadRecords()).filter(({ record }) => !only || only.has(record.vendor));
   const hits: Hit[] = [];
-  // ponytail: parses every source file once per record; index records by vendor if the corpus grows large
+  // Known limit: each file is parsed once per record. Fine for a handful of records; index them by vendor as the corpus grows.
   for (const file of await listFiles(root)) {
     const grammar = grammarFor(file);
     if (!grammar) continue;

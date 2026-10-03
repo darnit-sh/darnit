@@ -32,7 +32,7 @@ export const remoteUrl = async (root: string) => (await git(root, ["remote", "ge
 export const switchTo = (root: string, ref: string, mode: "existing" | "create" | "detach" = "existing") =>
   git(root, ["switch", "-q", ...(mode === "create" ? ["-c"] : mode === "detach" ? ["--detach"] : []), ref]);
 
-/** where to come back to: a branch name, or a commit when HEAD is detached */
+/** Where to come back to: a branch name, or a commit when HEAD is detached. */
 export async function position(root: string): Promise<{ ref: string; detached: boolean }> {
   const branch = await currentBranch(root);
   if (branch !== "HEAD") return { ref: branch, detached: false };
@@ -46,7 +46,7 @@ export const deleteBranch = (root: string, name: string) => git(root, ["branch",
 
 export const add = (root: string, files: readonly string[]) => git(root, ["add", "--", ...files]);
 
-/** commits as the configured user, or as darnit when the machine has no identity (CI runners) */
+/** Commits as the configured user, or as darnit when the machine has no identity (CI runners). */
 export async function commit(root: string, subject: string, body: string): Promise<void> {
   const email = await git(root, ["config", "user.email"]).catch(() => "");
   const identity = email.trim() ? [] : ["-c", "user.name=darnit", "-c", "user.email=darnit@users.noreply.github.com"];
@@ -58,7 +58,7 @@ export const push = (root: string, branch: string) => git(root, ["push", "-q", "
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
 
-/** diff between two dirs under cwd, no repo needed; git exits 1 when they differ, which is not an error here */
+/** Diff between two dirs under cwd, no repo needed. git exits 1 when they differ, which is not an error here. */
 export async function diffDirs(cwd: string, before: string, after: string, color: boolean): Promise<string> {
   try {
     return await git(cwd, ["--no-pager", "diff", "--no-index", color ? "--color=always" : "--color=never", before, after]);

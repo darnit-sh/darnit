@@ -27,7 +27,7 @@ function resolve(spec: Spec, schema: Schema | undefined): Schema | undefined {
   return resolve(spec, spec.components?.schemas?.[name]);
 }
 
-/** properties of an operation's JSON request body; $ref resolved, allOf flattened one level */
+/** Properties of an operation's JSON request body; $ref resolved, allOf flattened one level. */
 export function requestProperties(spec: Spec, method: string, path: string): Record<string, Schema> {
   const op = spec.paths?.[path]?.[method.toLowerCase()];
   const schema = resolve(spec, op?.requestBody?.content?.["application/json"]?.schema);
