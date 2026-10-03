@@ -36,12 +36,21 @@ async function tree(dir: string): Promise<Record<string, string>> {
 describe("fix", () => {
   it("turns every pack's before/ into its after/, touching only reported files", async () => {
     for (const { record, packDir } of await loadRecords()) {
+      if (record.classification !== "mechanical") continue;
       const dir = await repoFrom(join(packDir, "fixtures", "basic", "before"));
       const result = await fix(dir, { noTest: true });
       expect(result.records.map((r) => r.record.id)).toEqual([record.id]);
       expect(await tree(dir)).toEqual(await tree(join(packDir, "fixtures", "basic", "after")));
       expect(result.diff).toContain("diff --git");
     }
+  });
+
+  it("reports a semantic change but leaves its files alone", async () => {
+    const before = join(PACKS, "openai", "2023-11-06-chat-functions-to-tools", "fixtures", "basic", "before");
+    const dir = await repoFrom(before);
+    const result = await fix(dir, { noTest: true });
+    expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "response-side migration not yet automated; see the record notes"]]);
+    expect(await tree(dir)).toEqual(await tree(before));
   });
 
   it("--dry-run leaves the tree untouched and still shows the diff", async () => {
