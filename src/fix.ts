@@ -13,7 +13,7 @@ export type FixOptions = {
   dryRun?: boolean;
   pr?: boolean;
   allowDirty?: boolean;
-  /** owner/name when origin is not a GitHub URL */
+  /** Owner/name when origin is not a GitHub URL. */
   repo?: string;
   only?: string[];
   test?: string;
@@ -23,7 +23,7 @@ export type FixOptions = {
 };
 
 export type TestOutcome = TestRun & {
-  /** "change": passed before, failed after; "baseline": already failing before */
+  /** "change": passed before, failed after. "baseline": already failing before. */
   attributed?: "change" | "baseline";
 };
 
@@ -52,7 +52,7 @@ export type FixResult = {
   reverted: boolean;
 };
 
-/** darnit declined to act; the message says what to change */
+/** Thrown when darnit declines to act; the message says what to change. */
 export class Refusal extends Error {}
 
 type Group = { record: ChangeRecord; packDir: string; files: string[] };
@@ -80,7 +80,7 @@ async function restore(root: string, snap: Map<string, string>): Promise<void> {
   for (const [f, text] of snap) await writeFile(join(root, f), text);
 }
 
-/** runs tests; on failure puts the files back and runs again to say whether the change was the cause */
+/** Runs tests; on failure puts the files back and runs again to say whether the change was the cause. */
 async function testAndAttribute(root: string, command: string, snap: Map<string, string>): Promise<TestOutcome> {
   const tests: TestOutcome = await runTests(root, command);
   if (!tests.passed) {
@@ -148,13 +148,13 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   return { ...base, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
 }
 
-// one branch, one test run and one pull request per change; the working tree is
-// left exactly as it was found, on the branch it was found on
+// One branch, one test run and one pull request per change. The working tree is
+// left exactly as it was found, on the branch it was found on.
 async function pullRequests(root: string, groups: Group[], base: FixResult, command: string | undefined, opts: FixOptions): Promise<FixResult> {
   if (!opts.allowDirty && !(await g.isClean(root))) {
     throw new Refusal("uncommitted changes in the working tree; commit or stash them, or pass --allow-dirty");
   }
-  // --allow-dirty tolerates edits elsewhere, never in the files darnit is about to commit
+  // --allow-dirty tolerates edits elsewhere, never in the files darnit is about to commit.
   const wanted = [...new Set(groups.flatMap((grp) => grp.files))];
   if (await g.dirtyAmong(root, wanted)) {
     throw new Refusal("uncommitted changes in files darnit needs to edit; commit or stash them first");
@@ -200,7 +200,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       result.pr = { state: "opened", url, tests };
       opened = true;
     } catch (err) {
-      // once committed the tree already matches the branch; restoring would only block the switch back
+      // Once committed, the tree already matches the branch; restoring would only block the switch back.
       if (!committed) await restore(root, snap);
       throw err;
     } finally {
@@ -271,7 +271,7 @@ export function renderSummary(result: FixResult): string {
   if (result.dryRun) {
     if (applied) lines.push("dry run: nothing written");
   } else if (result.pr) {
-    // per-record lines already carry the test result
+    // Per-record lines already carry the test result.
   } else if (result.tests) {
     lines.push(testLine(result.tests));
   } else if (applied) {

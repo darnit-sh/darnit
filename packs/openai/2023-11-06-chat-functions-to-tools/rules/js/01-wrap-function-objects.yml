@@ -1,6 +1,6 @@
 id: openai-functions-to-tools-wrap-js
 language: javascript
-# Runs FIRST. Wraps each element of the `functions` array in the tools shape.
+# Runs first. Wraps each element of the `functions` array in the tools shape.
 # The relational chain (object inside array inside a pair keyed `functions`,
 # inside the options object of a chat.completions.create call) is what stops
 # the pattern from matching the outermost config object or an unrelated
