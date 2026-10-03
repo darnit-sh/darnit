@@ -157,7 +157,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   check:
