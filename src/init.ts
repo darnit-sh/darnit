@@ -48,13 +48,13 @@ export async function init(root: string, { force = false } = {}): Promise<string
   const summary =
     found.length === 0
       ? "Scanned repo: no known APIs found (the scheduled check still runs)"
-      : `Scanned repo: found ${found.map((f) => `${f.vendor} (${f.evidence[0]})`).join(", ")}`;
+      : `Scanned repo: found ${found.map((f) => `${f.vendor} (${f.evidence[0]}${VENDORS[f.vendor].tier === "recognized" ? "; recognized only" : ""})`).join(", ")}`;
 
   const config = {
     version: 1,
     apis: Object.fromEntries(found.map((f) => [f.vendor, { tier: VENDORS[f.vendor].tier, evidence: f.evidence }])),
   };
-  const yml = `# darnit configuration (https://darnit.sh)\n# tier: supported = rule packs exist; detected = named only, request support on GitHub\n${stringify(config)}`;
+  const yml = `# darnit configuration (https://darnit.sh)\n# tier: supported = rule packs exist; recognized = named only, no change records yet; request support on GitHub\n${stringify(config)}`;
 
   return [summary, await place(root, "darnit.yml", yml, force), await place(root, ".github/workflows/darnit.yml", WORKFLOW, force)];
 }

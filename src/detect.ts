@@ -1,13 +1,13 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-// Known vendors. "supported" = a rule pack exists in packs/; "detected" = named
+// Known vendors. "supported" = a rule pack exists in packs/; "recognized" = named
 // in config only. Extend by adding a row.
 export const VENDORS = {
   openai: { npm: ["openai"], pypi: ["openai"], hosts: ["api.openai.com"], tier: "supported" },
-  anthropic: { npm: ["@anthropic-ai/sdk"], pypi: ["anthropic"], hosts: ["api.anthropic.com"], tier: "detected" },
-  stripe: { npm: ["stripe"], pypi: ["stripe"], hosts: ["api.stripe.com"], tier: "detected" },
-  twilio: { npm: ["twilio"], pypi: ["twilio"], hosts: ["api.twilio.com"], tier: "detected" },
+  anthropic: { npm: ["@anthropic-ai/sdk"], pypi: ["anthropic"], hosts: ["api.anthropic.com"], tier: "recognized" },
+  stripe: { npm: ["stripe"], pypi: ["stripe"], hosts: ["api.stripe.com"], tier: "recognized" },
+  twilio: { npm: ["twilio"], pypi: ["twilio"], hosts: ["api.twilio.com"], tier: "recognized" },
 } as const;
 
 export type Vendor = keyof typeof VENDORS;
