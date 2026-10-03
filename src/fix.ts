@@ -211,14 +211,20 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
   return { ...base, reverted: anyFailed };
 }
 
+/** Record text can come from vendor specs: GitHub renders a code span as literal text, so no links, HTML or mentions. */
+const plain = (text: string) => {
+  const t = text.replaceAll("`", "'").replace(/\s+/g, " ").trim();
+  return t ? `\`${t}\`` : "";
+};
+
 export function prBody(record: ChangeRecord, files: readonly string[], tests: TestOutcome | undefined, version: string): string {
   const source = record.sources[0]!;
   return [
-    record.notes?.migration ?? title(record),
+    plain(record.notes?.migration ?? title(record)),
     "",
     "## Why",
     `${record.vendor} announced this change on ${record.announcedAt}: ${source.url}`,
-    ...(source.quoteId ? [`> ${source.quoteId}`] : []),
+    ...(source.quoteId ? [`> ${plain(source.quoteId)}`] : []),
     "",
     "## What changed",
     ...files.map((f) => `- \`${f}\``),
@@ -230,7 +236,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], tests: Te
     "## Not verified",
     "- No generated regression tests yet; the checks above are the repository's own.",
     "- Options objects built in one place and passed by name are not covered.",
-    ...(record.notes?.edgeCases ?? []).map((e) => `- ${e}`),
+    ...(record.notes?.edgeCases ?? []).map((e) => `- ${plain(e)}`),
     "",
     "---",
     `darnit ${version}, change record \`${record.id}\``,
