@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { listFiles, VENDORS, type Vendor } from "./detect.js";
+import { listFiles } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, type Match } from "./scan/astgrep.js";
@@ -21,13 +21,6 @@ async function configuredVendors(root: string): Promise<Set<string> | undefined>
   }
 }
 
-/** Cheap pre-filter for records with no call symbols or endpoints: a file that never names the vendor cannot be calling it. */
-function mentionsVendor(text: string, vendor: string): boolean {
-  const known = (VENDORS as Partial<Record<string, (typeof VENDORS)[Vendor]>>)[vendor];
-  const needles = known ? [...known.npm, ...known.pypi, ...known.hosts] : [vendor];
-  return needles.some((n) => text.includes(n));
-}
-
 /** Every call site in `root` affected by a known vendor change. */
 export async function check(root: string): Promise<Hit[]> {
   const only = await configuredVendors(root);
@@ -43,7 +36,6 @@ export async function check(root: string): Promise<Hit[]> {
       const patterns = record.detection.astGrepPatterns[grammar.lang];
       if (!patterns) continue;
       const { sdkSymbols: symbols, endpoints } = record.surface;
-      if (!symbols?.length && !endpoints?.length && !mentionsVendor(text, record.vendor)) continue;
       for (const match of findMatches(text, grammar.grammar, patterns, { symbols, endpoints })) hits.push({ ...match, record, file });
     }
   }
