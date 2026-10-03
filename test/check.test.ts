@@ -71,7 +71,7 @@ describe("check", () => {
 
   it("only reports vendors listed in darnit.yml when the file lists any", async () => {
     const source = 'import OpenAI from "openai";\nexport const r = new OpenAI().chat.completions.create({ model: "x", max_tokens: 1 });\n';
-    const stripeOnly = await scratch({ "app.js": source, "darnit.yml": "version: 1\napis:\n  stripe:\n    tier: detected\n" });
+    const stripeOnly = await scratch({ "app.js": source, "darnit.yml": "version: 1\napis:\n  stripe:\n    tier: recognized\n" });
     expect(await check(stripeOnly)).toEqual([]);
     const openai = await scratch({ "app.js": source, "darnit.yml": "version: 1\napis:\n  openai:\n    tier: supported\n" });
     expect(locations(await check(openai))).toEqual(["app.js:2"]);
