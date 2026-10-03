@@ -17,7 +17,7 @@
       "function_call"
     ]
   },
-  "classification": "mechanical",
+  "classification": "semantic",
   "sources": [
     {
       "url": "https://developers.openai.com/api/docs/changelog",
