@@ -45,7 +45,8 @@ export const ChangeRecordSchema = z
       .array(
         z
           .object({
-            url: z.url(),
+            // rendered into pull requests and commit messages, so plain https only
+            url: z.url({ protocol: /^https$/ }).regex(/^[^\s<>[\]()`]+$/, "url must not contain spaces, brackets or backticks"),
             quoteId: z.string().min(1).optional(),
           })
           .strict(),
