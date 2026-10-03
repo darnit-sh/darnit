@@ -64,10 +64,10 @@ describe("ChangeRecord schema", () => {
 describe("packs/ corpus", () => {
   it("loads every committed ChangeRecord and each lives in a directory named after its id", async () => {
     const loaded = await loadRecords();
-    expect(loaded.map((l) => l.record.id)).toEqual([
-      "openai:2023-11-06:chat-functions-to-tools",
-      "openai:2024-09-12:max-tokens-to-max-completion-tokens",
-    ]);
+    // Candidates from the weekly corpus run sit alongside these.
+    expect(loaded.map((l) => l.record.id)).toEqual(
+      expect.arrayContaining(["openai:2023-11-06:chat-functions-to-tools", "openai:2024-09-12:max-tokens-to-max-completion-tokens"]),
+    );
     for (const { record, packDir } of loaded) {
       const [vendor, date, slug] = record.id.split(":");
       expect(basename(packDir)).toBe(`${date}-${slug}`);

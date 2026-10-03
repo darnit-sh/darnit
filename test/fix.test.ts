@@ -36,7 +36,7 @@ async function tree(dir: string): Promise<Record<string, string>> {
 describe("fix", () => {
   it("turns every pack's before/ into its after/, touching only reported files", async () => {
     for (const { record, packDir } of await loadRecords()) {
-      if (record.classification !== "mechanical") continue;
+      if (record.status !== "reviewed" || record.classification !== "mechanical") continue;
       const dir = await repoFrom(join(packDir, "fixtures", "basic", "before"));
       const result = await fix(dir, { noTest: true });
       expect(result.records.map((r) => r.record.id)).toEqual([record.id]);
