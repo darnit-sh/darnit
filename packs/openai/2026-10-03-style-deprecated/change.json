@@ -1,0 +1,46 @@
+{
+  "id": "openai:2026-10-03:style-deprecated",
+  "title": "style is deprecated on images.generate",
+  "status": "candidate",
+  "vendor": "openai",
+  "announcedAt": "2026-10-03",
+  "kind": "deprecation",
+  "surface": {
+    "endpoints": [
+      "/images/generations"
+    ],
+    "sdkSymbols": [
+      "images.generate"
+    ],
+    "fields": [
+      "style"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/openai/openai-openapi/main/openapi.yaml",
+      "quoteId": "POST /images/generations style: Legacy style parameter for retired image models."
+    }
+  ],
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "({ style: $V })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(style=$V)",
+          "selector": "keyword_argument"
+        }
+      ]
+    }
+  },
+  "notes": {
+    "migration": "Legacy style parameter for retired image models.",
+    "citationQuality": "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it."
+  }
+}
