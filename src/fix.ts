@@ -108,7 +108,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     const reason = !reviewed
       ? "unreviewed change record"
       : !mechanical
-        ? "response-side migration not yet automated; see the record notes"
+        ? "migration not yet automated; see the record notes"
         : "no rewrite rules yet";
     records.push({ record: grp.record, title: title(grp.record), files: grp.files, applied, ...(applied ? {} : { reason }) });
     if (!applied) continue;
