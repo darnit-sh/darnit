@@ -50,6 +50,10 @@ pushes to your default branch. Running it again finds the open pull request
 instead of opening a second one. The pull request body says what changed, links
 the vendor's announcement, shows the test result, and lists what was not verified.
 
+To have the scheduled workflow open pull requests instead of only reporting,
+change its `npx darnit check` step to `npx darnit fix --pr` and give the job
+`contents: write` and `pull-requests: write` permissions.
+
 Exit codes: 0 nothing to do or done; 1 tests failed after the change (files put
 back, nothing pushed); 2 darnit refused or failed.
 
