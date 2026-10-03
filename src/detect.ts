@@ -82,7 +82,7 @@ function importsPackage(text: string, pkg: string, lang: "js" | "py"): boolean {
 
 /** Scans a repo for known vendor APIs. Sorted by vendor; evidence in path order. */
 export async function detectApis(root: string): Promise<Detection[]> {
-  // ponytail: reads every source file in full to look for host strings; stream or cap sizes if repos get huge
+  // Known limit: every source file is read in full to look for host strings. Stream or cap sizes if repos get huge.
   const evidence = new Map<Vendor, string[]>();
   const add = (vendor: Vendor, note: string) => evidence.set(vendor, [...(evidence.get(vendor) ?? []), note]);
 

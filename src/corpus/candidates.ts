@@ -14,7 +14,7 @@ export type Candidate = {
   record: ChangeRecord;
   /** "<vendor>/<date>-<slug>" under packs/ */
   dir: string;
-  /** rules and fixtures, relative to dir; change.json is written from record */
+  /** Rules and fixtures, relative to dir; change.json is written from record. */
   files: Record<string, string>;
 };
 
@@ -28,17 +28,17 @@ const KIND: Record<string, ChangeRecord["kind"]> = {
 };
 const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
 
-// only explicit phrasings; a bare "use X" would turn prose like "Use this to…" into a rename
+// Only explicit phrasings; a bare "use X" would turn prose like "Use this to…" into a rename.
 const REPLACEMENT = /(?:in favou?r of|replaced by)\s+`?([A-Za-z_][A-Za-z0-9_]*)`?|use\s+`([A-Za-z_][A-Za-z0-9_]*)`\s+instead/i;
 
 const kebab = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const sentences = (s: string) => s.replace(/\s+/g, " ").trim().split(/(?<=\.)\s/);
 const firstSentence = (s: string) => sentences(s)[0]!.slice(0, 200);
-// the sentence that states the deprecation, when there is one
+// The sentence that states the deprecation, when there is one.
 const quote = (s: string) => (sentences(s).find((x) => /deprecat|in favou?r of|replaced by/i.test(x)) ?? firstSentence(s)).slice(0, 200);
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** callee is an already-escaped regex alternation of SDK symbols */
+/** `callee` is an already-escaped regex alternation of SDK symbols. */
 function renameRule(lang: "js" | "py", id: string, field: string, replacement: string, callee: string): string {
   const [pattern, selector, obj, args, call, fix] =
     lang === "js"
@@ -65,7 +65,7 @@ export function deriveCandidates(input: {
   const skip = (why: string) => (ignored[why] = (ignored[why] ?? 0) + 1);
   const unmapped = new Set<string>();
   const seen = new Set<string>();
-  // the same field changing on several endpoints is one record with several endpoints
+  // The same field changing on several endpoints is one record with several endpoints.
   type Draft = { kind: ChangeRecord["kind"]; field?: string | undefined; rename?: string | undefined; description: string; text: string; endpoints: string[]; paths: string[]; symbols: string[] };
   const drafts = new Map<string, Draft>();
 

@@ -23,7 +23,7 @@ async function download(url: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
-/** OASDIFF env, then PATH, then a pinned release downloaded once into ~/.cache/darnit */
+/** OASDIFF env, then PATH, then a pinned release downloaded once into ~/.cache/darnit. */
 export async function oasdiffBinary(): Promise<string> {
   if (process.env.OASDIFF) return process.env.OASDIFF;
   const onPath = await exec("oasdiff", ["--version"]).then(() => true, () => false);
@@ -50,7 +50,7 @@ export async function oasdiffBinary(): Promise<string> {
 
 export type ChangeEntry = {
   id: string;
-  /** 1 info, 2 warning, 3 error, as oasdiff grades them */
+  /** 1 info, 2 warning, 3 error, as oasdiff grades them. */
   level: 1 | 2 | 3;
   text: string;
   operation?: string;

@@ -3,7 +3,7 @@ language: javascript
 # Handles the string forms ("auto" | "none") as a direct property of the
 # chat.completions.create options object. The object form
 # `function_call: { name }` needs `{ type: "function", function: { name } }`
-# and is deliberately NOT matched here; see change.json edgeCases.
+# and is deliberately not matched here; see change.json edgeCases.
 rule:
   pattern:
     context: '({ function_call: $CHOICE })'
