@@ -1,10 +1,31 @@
 # darnit
 
-Your API integrations, invisibly mended.
+*Your API integrations, invisibly mended.*
 
-darnit watches the third-party APIs your code actually calls, notices when a
-vendor changes something that affects you, and opens a pull request that fixes
-it, with the evidence to show the fix is safe.
+Vendors change their APIs. Your code keeps calling them the old way.
+darnit finds the exact lines, rewrites them, runs your tests, and opens the pull request.
+
+```
+$ npx darnit check
+openai 2024-09-12: Rename max_tokens to max_completion_tokens on chat completions
+  chat.ts:10:3  max_tokens: 256
+  1 call site in 1 file
+  https://developers.openai.com/api/docs/api-reference/chat/create
+
+$ npx darnit fix
+@@ -7,7 +7,7 @@ const anthropic = new Anthropic();
+ export const summary = await openai.chat.completions.create({
+   model: "gpt-4o",
+   messages,
+-  max_tokens: 256,
++  max_completion_tokens: 256,
+ });
+✓ Rename max_tokens to max_completion_tokens on chat completions: 1 file
+tests: npm test passed
+```
+
+The same file also calls `anthropic.messages.create({ max_tokens: 1024 })`.
+darnit leaves it alone. That one is correct.
 
 ## Install
 
@@ -12,74 +33,202 @@ it, with the evidence to show the fix is safe.
 npm install -g darnit
 ```
 
-Or run any command without installing: `npx darnit check`.
+Or skip the install: `npx darnit check`. Needs Node 20.12 or newer.
 
-## Use
+## How it works
 
 ```
-darnit init     # find the APIs this repository uses, write darnit.yml, add a daily check
-darnit check    # list the vendor changes that touch your code, file and line, with the vendor's announcement
-darnit fix      # rewrite the affected code, run your tests, show the diff
+vendor changes its API   →  a change record: what changed, cited, reviewed by a person
+change record            →  the exact call sites in your repo, inside that vendor's calls only
+call sites               →  rewrite rules, proven against before/after examples in CI
+rewrite                  →  your own tests, run before anything is pushed
+tests pass               →  one pull request per change, with the evidence in the body
 ```
 
-`darnit check` exits with status 1 when something is affected, so the scheduled
-workflow fails the day a change lands and GitHub lets you know.
+No guessing anywhere in that chain. Every rewrite is a rule that was tested
+before it shipped, and the same rule gives the same result in every repo.
 
-### fix
+## What it covers
 
-`darnit fix` only runs inside a git repository, so everything it does can be
-undone with git. It rewrites only the files `check` reported, runs your test
-command if it can find one (`npm test`, `pnpm test`, `yarn test`, or `pytest`),
-and prints the diff. If the tests fail it puts the files back and runs them once
+Small on purpose. A change gets a rewrite only when the rewrite is proven.
+
+| Change | `check` | `fix` |
+|---|---|---|
+| OpenAI: `max_tokens` → `max_completion_tokens` on chat completions | reports | rewrites |
+| OpenAI: chat completions `functions` → `tools` | reports | reports only: code that reads the response needs changes a rule can't make safely |
+
+| Vendor | Status |
+|---|---|
+| OpenAI | supported: change records and rewrites |
+| Anthropic, Stripe, Twilio | recognized: `init` finds them; no change records yet |
+
+Want one covered? Open an issue.
+
+Reads JavaScript, TypeScript and Python.
+
+## Commands
+
+### `darnit init`
+
+Finds the APIs the repo uses and sets up the daily check. It reads your
+dependency files, your imports, and any API hostnames in your code.
+
+```
+$ npx darnit init
+✓ Scanned repo: found openai (package.json: openai), stripe (package.json: stripe; recognized only)
+✓ Wrote darnit.yml
+✓ Wrote .github/workflows/darnit.yml
+```
+
+| Flag | |
+|---|---|
+| `--force` | overwrite `darnit.yml` and the workflow if they already exist |
+
+Without `--force`, existing files are left untouched.
+
+### `darnit check`
+
+Lists every call site affected by a known change: file, line, and the vendor's
+own announcement. Changes still waiting for review are marked
+`(unreviewed change, detection only)`.
+
+| Flag | |
+|---|---|
+| `--json` | machine-readable output |
+
+| Exit | |
+|---|---|
+| 0 | nothing affected |
+| 1 | affected call sites found |
+| 2 | darnit itself failed |
+
+### `darnit fix`
+
+Rewrites the affected code, runs your tests, and shows the diff. It only runs
+inside a git repository, so everything it does can be undone. It touches only
+the files `check` reported.
+
+It finds your test command on its own (`npm test`, `pnpm test`, `yarn test`
+or pytest). If the tests fail, darnit puts your files back and runs them once
 more, so it can tell you whether the change broke them or they were already failing.
 
+`fix` skips changes that are not yet reviewed, and changes that a rule can't
+fully make. Both still show up in `check`.
+
+| Flag | |
+|---|---|
+| `--dry-run` | show the diff, write nothing (works outside git too) |
+| `--pr` | one branch, one test run and one pull request per change |
+| `--only <id>` | just this change, by its id from `check --json` (repeatable) |
+| `--test <command>` | run this instead of the detected test command |
+| `--no-test` | skip tests |
+| `--allow-dirty` | let `--pr` run with uncommitted changes elsewhere in the tree |
+| `--repo <owner/name>` | the GitHub repository, when `origin` is not a GitHub URL |
+| `--json` | machine-readable output |
+
+| Exit | |
+|---|---|
+| 0 | done, or nothing to do |
+| 1 | tests failed after the change (files put back, nothing pushed) |
+| 2 | darnit refused or failed |
+
+#### `--pr`
+
+Needs a clean working tree and a GitHub token: `GITHUB_TOKEN`, `GH_TOKEN`, or a
+`gh auth login` session. Each change gets its own branch (`darnit/<vendor>-<change>`)
+and its own pull request against your default branch. darnit never force-pushes
+and never pushes to the default branch. Run it again and it finds the open pull
+request instead of opening a second one.
+
+The pull request says what changed and why, links the vendor's announcement,
+shows the test result, and lists what was not verified.
+
+## The scheduled check
+
+`init` writes `.github/workflows/darnit.yml`:
+
+```yaml
+name: darnit
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx darnit check
 ```
-darnit fix --dry-run          # show the diff, write nothing (works outside git too)
-darnit fix --pr               # one branch and one pull request per change, tests run on each
-darnit fix --only <record>    # just one change, by its id from check --json
-darnit fix --test "<cmd>"     # use this test command
-darnit fix --no-test          # skip tests
-darnit fix --allow-dirty      # let --pr run with uncommitted changes present
-darnit fix --repo owner/name  # when origin is not a GitHub URL
-darnit fix --json             # machine-readable result
+
+Once a day it runs `check`. The day a change hits your code, the run fails and
+GitHub tells you, like any failed workflow. Scheduled workflows only run from
+the default branch, so commit this file there.
+
+Want pull requests instead of a red run? darnit runs your tests before it
+pushes, so the job has to install your dependencies first:
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+
+# ...same as above, then replace the last step with:
+      - run: npm ci   # or whatever installs your project
+      - run: npx darnit fix --pr
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 ```
 
-With `--pr`, darnit needs a clean tree and a GitHub token (`GITHUB_TOKEN`,
-`GH_TOKEN`, or a `gh auth login` session). It never force-pushes and never
-pushes to your default branch. Running it again finds the open pull request
-instead of opening a second one. The pull request body says what changed, links
-the vendor's announcement, shows the test result, and lists what was not verified.
+Also turn on *Settings → Actions → General → Allow GitHub Actions to create
+and approve pull requests*. Pull requests opened this way don't trigger your
+own CI (a GitHub rule for workflow tokens), which is why darnit runs the tests
+itself and puts the result in the pull request.
 
-To have the scheduled workflow open pull requests instead of only reporting,
-change its `npx darnit check` step to `npx darnit fix --pr` and give the job
-`contents: write` and `pull-requests: write` permissions.
+## darnit.yml
 
-Exit codes: 0 nothing to do or done; 1 tests failed after the change (files put
-back, nothing pushed); 2 darnit refused or failed.
+```yaml
+version: 1
+apis:
+  openai:
+    tier: supported
+    evidence:
+      - "package.json: openai"
+```
 
-## What darnit knows
+`check` only reports vendors listed under `apis`. Remove one to stop hearing
+about it. With no file, or an empty list, `check` reports every vendor it knows.
 
-Every change darnit can report lives in `packs/`, one folder per vendor per
-change. Each holds a description of the change with a link to the vendor's own
-announcement, the rewrite rules, and before/after examples that must pass in CI.
-A rule that changes nothing when its examples expect a change fails the build.
+## Where change records come from
 
-### Where records come from
+Every change darnit knows lives in `packs/`, one folder per vendor per change:
+the record (what changed, with a link to the vendor's announcement), the rewrite
+rules, and before/after examples. CI applies the rules to the examples and fails
+on any difference. A rule that quietly changes nothing fails the build too.
 
-Vendors listed in `vendors.yml` publish an OpenAPI specification. Once a week a
-workflow fetches each spec, compares it with the last snapshot in `corpus/`
-using [oasdiff](https://github.com/oasdiff/oasdiff), and turns every deprecated
-or removed request field and every removed endpoint into a candidate record,
-complete with detection patterns, example files, and, when the spec names the
-replacement, the rename rules. The candidates arrive as a pull request. A
-maintainer reads each one, adds anything the spec could not say, and marks it
-reviewed. `check` reports candidates as unreviewed; `fix` only acts on reviewed
-records. To watch a new vendor, add its spec URL and the SDK calls for its
-endpoints to `vendors.yml`.
+New records come from the vendors' own API specs. Once a week a workflow
+compares each spec in `vendors.yml` with the last saved copy (using
+[oasdiff](https://github.com/oasdiff/oasdiff)) and turns deprecated or removed
+fields and endpoints into candidate records. Candidates arrive as a pull request, and a
+person reviews each one before `fix` will touch it.
 
-darnit reads JavaScript, TypeScript and Python. What it does not see: an options
-object built in one place and passed to the API call by name. Those call sites
-are listed as unchecked rather than guessed at.
+To watch another vendor, add its spec URL and its SDK calls to `vendors.yml`.
+
+## Limits
+
+- Request options built somewhere else and passed in as a variable are not
+  followed. `check` reminds you at the end of every report that finds something.
+- Only changes with a record are found. No record, no report.
+- `fix` runs in your working tree, not a sandbox. Your test command runs as you.
 
 ## License
 
