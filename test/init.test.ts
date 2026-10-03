@@ -68,12 +68,12 @@ describe("init", () => {
     const dir = await scratchCopy("medium");
 
     const first = await init(dir);
-    expect(first[0]).toMatch(/^Scanned repo: found openai \(package\.json: openai\), stripe/);
+    expect(first[0]).toMatch(/^Scanned repo: found openai \(package\.json: openai\), stripe \([^)]*; recognized only\)/);
     expect(first.slice(1)).toEqual(["Wrote darnit.yml", "Wrote .github/workflows/darnit.yml"]);
 
     const yml = await readFile(join(dir, "darnit.yml"), "utf8");
     expect(yml).toContain("openai:\n    tier: supported");
-    expect(yml).toContain("stripe:\n    tier: detected");
+    expect(yml).toContain("stripe:\n    tier: recognized");
     const workflow = await readFile(join(dir, ".github", "workflows", "darnit.yml"), "utf8");
     expect(workflow).toContain("cron:");
     expect(workflow).toContain("npx darnit check");
