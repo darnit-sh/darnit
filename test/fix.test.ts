@@ -159,6 +159,17 @@ describe("fix runs the repo's build check", () => {
     expect(summary).toContain("tests: none found");
   });
 
+  it("puts back tracked files the build wrote, but never the user's own edits", async () => {
+    const pkg = JSON.stringify({ scripts: { build: "node -e \"require('fs').writeFileSync('dist/out.js', 'rebuilt')\"" } });
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg, "dist/out.js": "committed", "notes.md": "committed" });
+    await writeFile(join(dir, "notes.md"), "my uncommitted notes");
+    const result = await fix(dir);
+    expect(result.build).toMatchObject({ passed: true });
+    expect(await readFile(join(dir, "dist/out.js"), "utf8")).toBe("committed");
+    expect(await readFile(join(dir, "notes.md"), "utf8")).toBe("my uncommitted notes");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toContain("max_completion_tokens: 5");
+  });
+
   it("reports a passing build alongside the tests", async () => {
     const pkg = JSON.stringify({ scripts: { typecheck: "node -e 0", test: "node -e 0" } });
     const result = await fix(await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg }));
@@ -378,6 +389,16 @@ describe("fix --pr", () => {
     expect(body).toContain("- `sdk.js`");
     expect(body).not.toContain("- `client.js`\n");
     expect((await git(bare, ["show", `${BRANCH}:client.js`])).toString()).toBe(RAW_FETCH);
+  });
+
+  it("leaves the tree clean after --pr even when the build writes tracked files", async () => {
+    const pkg = JSON.stringify({ scripts: { build: "node -e \"require('fs').writeFileSync('dist/out.js', 'rebuilt')\"" } });
+    const { dir, bare, branch } = await repoWithOrigin(await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg, "dist/out.js": "committed" }));
+    stubGitHub(branch);
+    const result = await fix(dir, { pr: true, repo: "o/r" });
+    expect(result.records[0]?.pr).toMatchObject({ state: "opened", build: { passed: true } });
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+    expect((await git(bare, ["show", `${BRANCH}:dist/out.js`])).toString()).toBe("committed");
   });
 
   it("opens no pull request when the change breaks the build", async () => {
