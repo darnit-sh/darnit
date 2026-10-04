@@ -1,6 +1,6 @@
-import { appendFile, cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, cp, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fix, prBody, Refusal, renderSummary } from "../src/fix.js";
@@ -78,6 +78,27 @@ describe("fix verifies its own rewrites", () => {
 });
 
 describe("fix", () => {
+  it("says why tests did not run when a pytest setup has no Python to run it", async () => {
+    const dir = await repoWith({ "pytest.ini": "", "app.py": "c.chat.completions.create(model='x', max_tokens=5)\n" });
+    // A PATH with git and nothing else, so no python3 or python is found.
+    const bin = await mkdtemp(join(tmpdir(), "darnit-bin-"));
+    tempDirs.push(bin);
+    for (const d of (process.env.PATH ?? "").split(delimiter)) {
+      if (await access(join(d, "git")).then(() => true, () => false)) {
+        await symlink(join(d, "git"), join(bin, "git"));
+        break;
+      }
+    }
+    vi.stubEnv("PATH", bin);
+    try {
+      const result = await fix(dir);
+      expect(result.testsNote).toBe("found a pytest setup but no python3 or python on PATH");
+      expect(renderSummary(result)).toContain("tests: none run (found a pytest setup but no python3 or python on PATH)");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("turns every pack's before/ into its after/, touching only reported files", async () => {
     for (const { record, packDir } of await loadRecords()) {
       if (record.status !== "reviewed" || record.classification !== "mechanical") continue;

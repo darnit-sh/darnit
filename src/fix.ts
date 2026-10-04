@@ -7,7 +7,7 @@ import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlu
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
-import { detectTestCommand, runTests, type TestRun } from "./tests.js";
+import { detectTestCommand, hasPytestSetup, runTests, type TestRun } from "./tests.js";
 
 export type FixOptions = {
   dryRun?: boolean;
@@ -54,6 +54,8 @@ export type FixResult = {
   pr: boolean;
   tests?: TestOutcome | undefined;
   testsSkipped: boolean;
+  /** Why no tests ran, when darnit found a test setup it could not run. */
+  testsNote?: string | undefined;
   diff: string;
   reverted: boolean;
 };
@@ -148,7 +150,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     if (applied) applicable.push(grp);
   }
   const resultOf = (grp: Group) => records.find((r) => r.record.id === grp.record.id)!;
-  const base = { records, dryRun, pr: opts.pr ?? false, testsSkipped: opts.noTest ?? false, diff: "", reverted: false };
+  const base: FixResult = { records, dryRun, pr: opts.pr ?? false, testsSkipped: opts.noTest ?? false, diff: "", reverted: false };
   if (applicable.length === 0) return base;
 
   if (dryRun) {
@@ -167,6 +169,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   }
 
   const command = opts.noTest ? undefined : (opts.test ?? (await detectTestCommand(root)));
+  if (!command && !opts.noTest && (await hasPytestSetup(root))) base.testsNote = "found a pytest setup but no python3 or python on PATH";
   if (opts.pr) return pullRequests(root, applicable, base, command, opts);
 
   const snap = await snapshotOf(root, [...new Set(applicable.flatMap((grp) => grp.files))]);
@@ -234,7 +237,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
       committed = true;
       await g.push(root, branch);
-      const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body: prBody(grp.record, changed, tests, opts.version ?? "dev", result.remaining) });
+      const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body: prBody(grp.record, changed, tests, opts.version ?? "dev", result.remaining, base.testsNote) });
       result.pr = { state: "opened", url, tests };
       opened = true;
     } catch (err) {
@@ -255,7 +258,14 @@ const plain = (text: string) => {
   return t ? `\`${t}\`` : "";
 };
 
-export function prBody(record: ChangeRecord, files: readonly string[], tests: TestOutcome | undefined, version: string, remaining: readonly Site[] = []): string {
+export function prBody(
+  record: ChangeRecord,
+  files: readonly string[],
+  tests: TestOutcome | undefined,
+  version: string,
+  remaining: readonly Site[] = [],
+  testsNote?: string,
+): string {
   const source = record.sources[0]!;
   return [
     plain(record.notes?.migration ?? title(record)),
@@ -268,7 +278,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], tests: Te
     ...files.map((f) => `- \`${f}\``),
     "",
     "## Verified",
-    tests ? `- [${tests.passed ? "x" : " "}] \`${tests.command}\` ${tests.passed ? "passed" : "failed"}` : "- [ ] no test command found in this repository",
+    tests ? `- [${tests.passed ? "x" : " "}] \`${tests.command}\` ${tests.passed ? "passed" : "failed"}` : `- [ ] ${testsNote ? `tests not run: ${testsNote}` : "no test command found in this repository"}`,
     ...(tests?.output ? ["", "<details><summary>test output</summary>", "", "```", tests.output, "```", "", "</details>"] : []),
     "",
     ...(remaining.length > 0
@@ -317,7 +327,13 @@ export function renderSummary(result: FixResult): string {
   } else if (result.tests) {
     lines.push(testLine(result.tests));
   } else if (applied) {
-    lines.push(result.testsSkipped ? "tests: skipped" : "tests: none found (no test script or pytest setup)");
+    lines.push(
+      result.testsSkipped
+        ? "tests: skipped"
+        : result.testsNote
+          ? `tests: none run (${result.testsNote})`
+          : "tests: none found (no test script or pytest setup)",
+    );
   }
   return lines.join("\n");
 }
@@ -337,6 +353,7 @@ export function toJson(result: FixResult): object {
     })),
     tests: tests(result.tests),
     testsSkipped: result.testsSkipped,
+    testsNote: result.testsNote ?? null,
     dryRun: result.dryRun,
     reverted: result.reverted,
     diff: result.diff,
