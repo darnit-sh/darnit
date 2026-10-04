@@ -33,6 +33,50 @@ async function tree(dir: string): Promise<Record<string, string>> {
   return out;
 }
 
+// OpenAI over raw HTTP: check finds max_tokens by the endpoint, but the rewrite rules only cover SDK calls.
+const RAW_FETCH = `export const ask = (prompt) =>
+  fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    body: JSON.stringify({ model: "x", messages: [{ role: "user", content: prompt }], max_tokens: 100 }),
+  });
+`;
+const SDK_CALL = `import OpenAI from "openai";
+export const r = new OpenAI().chat.completions.create({ model: "x", messages: [], max_tokens: 5 });
+`;
+
+async function repoWith(files: Record<string, string>): Promise<string> {
+  const src = await mkdtemp(join(tmpdir(), "darnit-src-"));
+  tempDirs.push(src);
+  for (const [name, text] of Object.entries(files)) await writeFile(join(src, name), text);
+  return repoFrom(src);
+}
+
+describe("fix verifies its own rewrites", () => {
+  it("does not claim a rewrite it did not make", async () => {
+    const dir = await repoWith({ "client.js": RAW_FETCH });
+    for (const dryRun of [true, false]) {
+      const result = await fix(dir, { noTest: true, dryRun });
+      expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "found, but the rewrite rules don't cover this call shape yet"]]);
+      expect(result.diff).toBe("");
+      expect(renderSummary(result)).not.toContain("✓");
+      expect(await tree(dir)).toEqual({ "client.js": RAW_FETCH });
+    }
+  });
+
+  it("reports the call sites a partial rewrite left behind", async () => {
+    const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });
+    for (const dryRun of [true, false]) {
+      const result = await fix(dir, { noTest: true, dryRun });
+      expect(result.records[0]).toMatchObject({ applied: true, sites: 2, remaining: [{ file: "client.js", line: 4 }] });
+      const summary = renderSummary(result);
+      expect(summary).toContain("1 of 2 call sites rewritten");
+      expect(summary).toContain("needs a human: client.js:4");
+      expect(result.diff).toContain("+export const r = new OpenAI().chat.completions.create({ model: \"x\", messages: [], max_completion_tokens: 5 });");
+      expect(result.diff).not.toContain("client.js");
+    }
+  });
+});
+
 describe("fix", () => {
   it("turns every pack's before/ into its after/, touching only reported files", async () => {
     for (const { record, packDir } of await loadRecords()) {
@@ -112,8 +156,8 @@ describe("fix --pr", () => {
   const BEFORE = join(PACKS, "openai", "2024-09-12-max-tokens-to-max-completion-tokens", "fixtures", "basic", "before");
   const BRANCH = "darnit/openai-max-tokens-to-max-completion-tokens";
 
-  async function repoWithOrigin(): Promise<{ dir: string; bare: string; branch: string }> {
-    const dir = await repoFrom(BEFORE);
+  async function repoWithOrigin(dir?: string): Promise<{ dir: string; bare: string; branch: string }> {
+    dir ??= await repoFrom(BEFORE);
     const bare = await mkdtemp(join(tmpdir(), "darnit-origin-"));
     tempDirs.push(bare);
     await git(bare, ["init", "-q", "--bare"]);
@@ -155,6 +199,30 @@ describe("fix --pr", () => {
     expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
     expect(await tree(dir)).toEqual(await tree(BEFORE));
     expect(renderSummary(result)).toContain("pull request opened https://github.com/o/r/pull/1");
+  });
+
+  it("opens no pull request when the rules changed nothing", async () => {
+    const { dir, bare, branch } = await repoWithOrigin(await repoWith({ "client.js": RAW_FETCH }));
+    const posts = stubGitHub(branch);
+    const result = await fix(dir, { pr: true, noTest: true, repo: "o/r" });
+    expect(result.records[0]).toMatchObject({ applied: false, reason: "found, but the rewrite rules don't cover this call shape yet" });
+    expect(result.records[0]?.pr).toBeUndefined();
+    expect(posts).toEqual([]);
+    expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+  });
+
+  it("lists what a partial rewrite left behind in the pull request", async () => {
+    const { dir, bare, branch } = await repoWithOrigin(await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL }));
+    const posts = stubGitHub(branch);
+    await fix(dir, { pr: true, noTest: true, repo: "o/r" });
+    const body = String(posts[0]?.body);
+    expect(body).toContain("## Needs a human");
+    expect(body).toContain("- `client.js:4`");
+    expect(body).toContain("- `sdk.js`");
+    expect(body).not.toContain("- `client.js`\n");
+    expect((await git(bare, ["show", `${BRANCH}:client.js`])).toString()).toBe(RAW_FETCH);
   });
 
   it("finds an already open pull request instead of opening another", async () => {
