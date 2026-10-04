@@ -64,6 +64,37 @@ describe("fix checks package versions before rewriting", () => {
     expect(await readFile(join(dir, "app.py"), "utf8")).toBe(PY_CALL);
   });
 
+  it("is not blocked by a stale side requirements file when the main pin is new enough", async () => {
+    const dir = await repoWith({ "app.py": PY_CALL, "requirements.txt": "openai==1.50.0\n", "requirements-legacy.txt": "openai==0.28.1\n" });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true });
+    expect(await readFile(join(dir, "app.py"), "utf8")).toContain("max_completion_tokens=5");
+  });
+
+  it("checks the SDK the file actually uses in a monorepo, not an old hoisted copy", async () => {
+    const dir = await repoWith({
+      "apps/web/sdk.js": SDK_CALL,
+      "apps/web/node_modules/openai/package.json": JSON.stringify({ version: "4.70.0" }),
+      "node_modules/openai/package.json": JSON.stringify({ version: "4.20.0" }),
+    });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true });
+    expect(result.records[0]?.unconfirmed).toBeUndefined();
+  });
+
+  it("blocks when requirements.txt is too old even if a side file pins a newer version", async () => {
+    const dir = await repoWith({ "app.py": PY_CALL, "requirements.txt": "openai==1.40.0\n", "requirements-dev.txt": "openai==1.50.0\n" });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]?.reason).toBe("needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first");
+  });
+
+  it("cannot confirm when the lock file holds both an old and a new version", async () => {
+    const block = (v: string) => `[[package]]\nname = "openai"\nversion = "${v}"\n`;
+    const dir = await repoWith({ "app.py": PY_CALL, "uv.lock": block("1.30.0") + block("1.52.0") });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true, unconfirmed: ["openai >= 1.45.0 (PyPI)"] });
+  });
+
   it("rewrites when the installed SDK is new enough", async () => {
     const dir = await repoWith({ "sdk.js": SDK_CALL, "node_modules/openai/package.json": JSON.stringify({ version: "4.70.0" }) });
     const result = await fix(dir, { noTest: true });
@@ -75,10 +106,10 @@ describe("fix checks package versions before rewriting", () => {
   it("rewrites but says so when it cannot tell the SDK version", async () => {
     const dir = await repoWith({ "sdk.js": SDK_CALL });
     const result = await fix(dir, { noTest: true });
-    expect(result.records[0]).toMatchObject({ applied: true, unconfirmed: ["openai >= 4.60.0"] });
-    expect(renderSummary(result)).toContain("could not confirm openai >= 4.60.0");
+    expect(result.records[0]).toMatchObject({ applied: true, unconfirmed: ["openai >= 4.60.0 (npm)"] });
+    expect(renderSummary(result)).toContain("could not confirm openai >= 4.60.0 (npm)");
     const body = prBody(result.records[0]!.record, ["sdk.js"], "t", { unconfirmed: result.records[0]!.unconfirmed });
-    expect(body).toContain("- This change needs openai >= 4.60.0; darnit could not find the version this repository uses.");
+    expect(body).toContain("- This change needs openai >= 4.60.0 (npm); darnit could not find the version this repository uses.");
   });
 });
 
