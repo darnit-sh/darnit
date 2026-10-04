@@ -8,7 +8,7 @@ import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun } from "./tests.js";
-import { atLeast, installedVersion, type Ecosystem } from "./versions.js";
+import { atLeast, npmVersionFor, pypiVersions, type Found } from "./versions.js";
 
 export type FixOptions = {
   dryRun?: boolean;
@@ -126,19 +126,32 @@ export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> 
 /**
  * Checks the repo uses package versions new enough for the rewritten code.
  * Returns why the rewrite must not run, or the requirements nobody could confirm.
+ * Node: the install nearest each JavaScript or TypeScript file, as Node resolves it.
+ * Python: the most authoritative pin or lock; blocks when all its entries are too old, and
+ * cannot confirm when they disagree.
  */
 async function versionGate(root: string, grp: Group): Promise<{ blocked?: string; unconfirmed: string[] }> {
   const requires = grp.record.fix?.requires ?? {};
-  const ecosystems = new Set<Ecosystem>(grp.files.map((f) => (f.endsWith(".py") ? "pypi" : "npm")));
+  const js = grp.files.filter((f) => !f.endsWith(".py"));
+  const py = grp.files.length > js.length;
   const unconfirmed: string[] = [];
-  for (const eco of ecosystems) {
-    for (const [pkg, min] of Object.entries(requires[eco] ?? {})) {
-      const found = await installedVersion(root, eco, pkg);
-      if (!found) unconfirmed.push(`${pkg} >= ${min}`);
-      else if (!atLeast(found.version, min)) {
-        return { blocked: `needs ${pkg} >= ${min}, this repo has ${found.version} (${found.from}); upgrade it first`, unconfirmed };
-      }
+  const tooOld = (pkg: string, min: string, found: Found) =>
+    `needs ${pkg} >= ${min}, this repo has ${found.version} (${found.from}); upgrade it first`;
+
+  for (const [pkg, min] of js.length > 0 ? Object.entries(requires.npm ?? {}) : []) {
+    let unknown = false;
+    for (const file of js) {
+      const found = await npmVersionFor(root, pkg, file).catch(() => undefined);
+      if (!found) unknown = true;
+      else if (!atLeast(found.version, min)) return { blocked: tooOld(pkg, min, found), unconfirmed };
     }
+    if (unknown) unconfirmed.push(`${pkg} >= ${min} (npm)`);
+  }
+  for (const [pkg, min] of py ? Object.entries(requires.pypi ?? {}) : []) {
+    const found = await pypiVersions(root, pkg);
+    const ok = found.filter((f) => atLeast(f.version, min));
+    if (found.length > 0 && ok.length === 0) return { blocked: tooOld(pkg, min, found[0]!), unconfirmed };
+    if (ok.length < found.length || found.length === 0) unconfirmed.push(`${pkg} >= ${min} (PyPI)`);
   }
   return { unconfirmed };
 }
