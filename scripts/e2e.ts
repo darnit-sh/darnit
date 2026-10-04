@@ -80,7 +80,12 @@ const EXPECT: Record<string, Expect> = {
   },
   "10-ts-old-sdk": {
     check: { exit: 1, has: ["src/draft.ts:9:5  max_tokens: 512"] },
-    fix: { exit: 1, has: ["build: npm run typecheck failed; files put back. The change broke your build."] },
+    fix: { exit: 1, has: ["could not confirm openai >= 4.60.0 (npm)", "build: npm run typecheck failed; files put back. The change broke your build."] },
+    changed: [],
+  },
+  "12-js-old-lock": {
+    check: { exit: 1, has: ["src/summarize.js:5:5  max_tokens: 256"] },
+    fix: { exit: 0, has: ["needs openai >= 4.60.0, this repo has 4.20.0 (package-lock.json); upgrade it first"] },
     changed: [],
   },
   "11-py-old-sdk": {
