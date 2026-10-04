@@ -23,6 +23,8 @@ $ npx darnit fix
 -  max_tokens: 256,
 +  max_completion_tokens: 256,
  });
+ 
+ export const reply = await anthropic.messages.create({
 ✓ Rename max_tokens to max_completion_tokens on chat completions: 1 file
 tests: npm test passed
 ```
@@ -42,10 +44,10 @@ Or skip the install: `npx darnit check`. Needs Node 22.12 or newer.
 
 ```
 vendor changes its API   →  a change record: what changed, cited, reviewed by a person
-change record            →  the exact call sites in your repo, inside that vendor's calls only
+change record            →  the exact call sites in your repo, inside that vendor's SDK methods
 call sites               →  rewrite rules, proven against before/after examples in CI
 rewrite                  →  checked: your SDK version first, then your build and your tests
-all green                →  one pull request per change, with the evidence in the body
+nothing broke            →  one pull request per change, with the evidence and anything unchecked in the body
 ```
 
 No guessing anywhere in that chain. Every rewrite is a rule that was tested
@@ -59,7 +61,7 @@ Small on purpose. A change gets a rewrite only when the rewrite is proven.
 |---|---|---|
 | OpenAI: `max_tokens` → `max_completion_tokens` on chat completions | reports | rewrites |
 | OpenAI: chat completions `functions` → `tools` | reports | reports only: code that reads the response needs changes a rule can't make safely |
-| OpenAI: `style` and `response_format` on image generation, found by the weekly spec check | reports, marked unreviewed | no: waiting for review |
+| OpenAI: `style` and `response_format` on image generation and edits, found by the weekly spec check | reports, marked unreviewed | no: waiting for review |
 
 | Vendor | Status |
 |---|---|
@@ -93,7 +95,7 @@ Without `--force`, existing files are left untouched.
 ### `darnit check`
 
 Lists every call site affected by a known change: file, line, and the vendor's
-own announcement. Changes still waiting for review are marked
+own announcement or API spec. Changes still waiting for review are marked
 `(unreviewed change, detection only)` and never fail the check on their own.
 
 | Flag | |
@@ -104,24 +106,27 @@ own announcement. Changes still waiting for review are marked
 |---|---|
 | 0 | nothing affected, or only unreviewed changes |
 | 1 | affected call sites found for a reviewed change |
-| 2 | darnit itself failed |
+| 2 | darnit itself failed, or a mistyped command or flag |
 
 ### `darnit fix`
 
 Rewrites the affected code, runs your build and tests, and shows the diff. It only runs
-inside a git repository, so everything it does can be undone. It touches only
-the files `check` reported.
+inside a git repository, so everything it does can be undone with git. Commit
+first if those files have changes of your own. It touches only the files `check`
+reported.
 
 It finds your checks on its own: a `typecheck` or `build` script (or the
 repo's own TypeScript compiler), then your tests (`npm test`, `pnpm test`,
 `yarn test` or pytest). If either fails, darnit puts your files back and runs
 it once more, so it can tell you whether the change broke it or it was already
 failing. A build that was already failing can't judge the change, so darnit
-keeps the change and says the build could not check it. The build check only
-runs when JavaScript or TypeScript changed.
+keeps the change and says the build could not check it. Tests that were already
+failing still put the files back: fix them first, or use `--no-test`. The build
+check only runs when JavaScript or TypeScript changed.
 
-Before rewriting, darnit checks the SDK version your repo uses (from what is
-installed or locked). If it is too old for the new code, darnit leaves the files
+Before rewriting, darnit checks the SDK version your repo uses: for JavaScript,
+`node_modules` or `package-lock.json`; for Python, exact `==` pins in
+requirements files, `poetry.lock` or `uv.lock`. If it is too old for the new code, darnit leaves the files
 alone and tells you which version to upgrade to. If it can't tell, it rewrites
 and says so.
 
@@ -145,9 +150,9 @@ fully make. Both still show up in `check`.
 
 | Exit | |
 |---|---|
-| 0 | done, or nothing to do (call sites listed as `needs a human` still exit 0) |
+| 0 | done, or nothing to do (including changes left alone because the SDK is too old, and call sites listed as `needs a human`) |
 | 1 | the build or tests failed after the change (files put back, nothing pushed) |
-| 2 | darnit refused or failed |
+| 2 | darnit refused or failed, or a mistyped command or flag |
 
 #### `--pr`
 
@@ -229,23 +234,27 @@ about it. With no file, or an empty list, `check` reports every vendor it knows.
 ## Where change records come from
 
 Every change darnit knows lives in `packs/`, one folder per vendor per change:
-the record (what changed, with a link to the vendor's announcement), the rewrite
+the record (what changed, with a link to its source), the rewrite
 rules, and before/after examples. CI applies the rules to the examples and fails
 on any difference. A rule that quietly changes nothing fails the build too.
 
-New records come from the vendors' own API specs. Once a week a workflow
+Records are written by hand from vendor announcements. New candidates also
+come from the vendors' own API specs: once a week a workflow
 compares each spec in `vendors.yml` with the last saved copy (using
 [oasdiff](https://github.com/oasdiff/oasdiff)) and turns deprecated or removed
 fields and endpoints into candidate records. Candidates arrive as a pull request, and a
 person reviews each one before `fix` will touch it.
 
-To watch another vendor, add its spec URL and its SDK calls to `vendors.yml`.
+To add a vendor, open a pull request adding its spec URL and SDK calls to
+`vendors.yml`.
 
 ## Limits
 
 - Request options built somewhere else and passed in as a variable are not
   followed. `check` reminds you at the end of every report, clean or not.
 - Only changes with a record are found. No record, no report.
+- Matching is by SDK method name, so clients that copy OpenAI's API (Groq's SDK,
+  or the OpenAI SDK pointed at another provider) are treated as OpenAI calls.
 - `fix` runs in your working tree, not a sandbox. Your test command runs as you.
 - Tested on macOS and Linux with Node 22 and 24. Windows is not supported yet.
 
