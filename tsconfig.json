@@ -17,5 +17,5 @@
     "noEmit": true
   },
   "include": ["src", "test", "scripts", "eslint.config.js", "vitest.config.ts"],
-  "exclude": ["test/samples"]
+  "exclude": ["test/samples", "test/e2e"]
 }

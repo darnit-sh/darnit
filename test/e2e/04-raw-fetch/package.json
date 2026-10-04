@@ -1,0 +1,9 @@
+{
+  "name": "04-raw-fetch",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "echo no tests"
+  },
+  "dependencies": {}
+}

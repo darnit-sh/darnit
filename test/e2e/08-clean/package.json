@@ -1,0 +1,11 @@
+{
+  "name": "08-clean",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "echo no tests"
+  },
+  "dependencies": {
+    "openai": "*"
+  }
+}

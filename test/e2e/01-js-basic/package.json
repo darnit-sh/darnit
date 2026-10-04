@@ -1,0 +1,11 @@
+{
+  "name": "01-js-basic",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "openai": "*"
+  }
+}

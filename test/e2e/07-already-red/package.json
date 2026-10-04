@@ -1,0 +1,11 @@
+{
+  "name": "07-already-red",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "openai": "*"
+  }
+}
