@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 
 export type TestRun = { command: string; passed: boolean; output: string; timedOut: boolean };
@@ -30,9 +30,12 @@ export async function detectTestCommand(root: string, path = process.env.PATH ??
 }
 
 export async function hasPytestSetup(root: string): Promise<boolean> {
-  for (const marker of ["pytest.ini", "tox.ini", "conftest.py", "tests"]) {
+  for (const marker of ["pytest.ini", "tox.ini", "conftest.py"]) {
     if (await exists(join(root, marker))) return true;
   }
+  // A tests/ folder is common in JavaScript repos too; it only means pytest when it holds Python.
+  const tests = await readdir(join(root, "tests"), { recursive: true }).catch(() => []);
+  if (tests.some((f) => f.endsWith(".py"))) return true;
   const pyproject = await readFile(join(root, "pyproject.toml"), "utf8").catch(() => "");
   const setupCfg = await readFile(join(root, "setup.cfg"), "utf8").catch(() => "");
   return pyproject.includes("[tool.pytest") || setupCfg.includes("[tool:pytest]");
