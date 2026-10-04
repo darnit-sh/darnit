@@ -112,6 +112,10 @@ It finds your test command on its own (`npm test`, `pnpm test`, `yarn test`
 or pytest). If the tests fail, darnit puts your files back and runs them once
 more, so it can tell you whether the change broke them or they were already failing.
 
+After rewriting, darnit checks its own work: it scans the files again, and any
+call site still there is listed as `needs a human: file:line` (also in the pull
+request). If the rules changed nothing, it says so instead of claiming a fix.
+
 `fix` skips changes that are not yet reviewed, and changes that a rule can't
 fully make. Both still show up in `check`.
 
