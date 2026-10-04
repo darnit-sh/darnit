@@ -428,7 +428,7 @@ function testLine(t: TestOutcome): string {
         : "It already fails without the change."
       : t.attributed === "change"
         ? "The change broke your tests."
-        : "They already fail without the change. Fix them first, or rerun with --no-test to apply it unchecked.";
+        : "They already fail without the change. Fix them first, or rerun with --no-test to apply it without the tests or the build check.";
   return `${t.kind}: ${t.command} failed; files put back. ${why}${t.output ? `\n${t.output}` : ""}`;
 }
 
@@ -446,7 +446,9 @@ export function renderSummary(result: FixResult): string {
     else if (r.pr.state === "exists") lines.push(`= ${r.title}: pull request already open ${r.pr.url}`);
     else if (r.pr.state === "skipped") lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
-    if (r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${s.file}:${s.line}`);
+    // Once put back, every call site is unfixed again, not only the ones the rules missed.
+    const putBack = !r.pr && result.reverted;
+    if (r.applied && !putBack) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${s.file}:${s.line}`);
     if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
   if (lines.length === 0) lines.push("Nothing to fix.");
