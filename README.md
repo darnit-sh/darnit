@@ -12,6 +12,9 @@ openai 2024-09-12: Rename max_tokens to max_completion_tokens on chat completion
   1 call site in 1 file
   https://developers.openai.com/api/docs/api-reference/chat/create
 
+Scanned 1 JavaScript, TypeScript or Python file against 4 change records.
+Not checked: request options built elsewhere and passed in as a variable.
+
 $ npx darnit fix
 @@ -7,7 +7,7 @@ const anthropic = new Anthropic();
  export const summary = await openai.chat.completions.create({
@@ -41,8 +44,8 @@ Or skip the install: `npx darnit check`. Needs Node 22.12 or newer.
 vendor changes its API   →  a change record: what changed, cited, reviewed by a person
 change record            →  the exact call sites in your repo, inside that vendor's calls only
 call sites               →  rewrite rules, proven against before/after examples in CI
-rewrite                  →  your own tests, run before anything is pushed
-tests pass               →  one pull request per change, with the evidence in the body
+rewrite                  →  checked: your SDK version first, then your build and your tests
+all green                →  one pull request per change, with the evidence in the body
 ```
 
 No guessing anywhere in that chain. Every rewrite is a rule that was tested
@@ -56,6 +59,7 @@ Small on purpose. A change gets a rewrite only when the rewrite is proven.
 |---|---|---|
 | OpenAI: `max_tokens` → `max_completion_tokens` on chat completions | reports | rewrites |
 | OpenAI: chat completions `functions` → `tools` | reports | reports only: code that reads the response needs changes a rule can't make safely |
+| OpenAI: `style` and `response_format` on image generation, found by the weekly spec check | reports, marked unreviewed | no: waiting for review |
 
 | Vendor | Status |
 |---|---|
@@ -104,7 +108,7 @@ own announcement. Changes still waiting for review are marked
 
 ### `darnit fix`
 
-Rewrites the affected code, runs your tests, and shows the diff. It only runs
+Rewrites the affected code, runs your build and tests, and shows the diff. It only runs
 inside a git repository, so everything it does can be undone. It touches only
 the files `check` reported.
 
@@ -112,7 +116,9 @@ It finds your checks on its own: a `typecheck` or `build` script (or the
 repo's own TypeScript compiler), then your tests (`npm test`, `pnpm test`,
 `yarn test` or pytest). If either fails, darnit puts your files back and runs
 it once more, so it can tell you whether the change broke it or it was already
-failing.
+failing. A build that was already failing can't judge the change, so darnit
+keeps the change and says the build could not check it. The build check only
+runs when JavaScript or TypeScript changed.
 
 Before rewriting, darnit checks the SDK version your repo uses (from what is
 installed or locked). If it is too old for the new code, darnit leaves the files
@@ -129,7 +135,7 @@ fully make. Both still show up in `check`.
 | Flag | |
 |---|---|
 | `--dry-run` | show the diff, write nothing (works outside git too) |
-| `--pr` | one branch, one test run and one pull request per change |
+| `--pr` | one branch, one build and test run, and one pull request per change |
 | `--only <id>` | just this change, by its id from `check --json` (repeatable) |
 | `--test <command>` | run this instead of the detected test command |
 | `--no-test` | skip tests and the build check |
@@ -152,7 +158,8 @@ and never pushes to the default branch. Run it again and it finds the open pull
 request instead of opening a second one.
 
 The pull request says what changed and why, links the vendor's announcement,
-shows the test result, and lists what was not verified.
+shows the build and test results, lists any call site that still needs a human,
+and lists what was not verified.
 
 ## The scheduled check
 
