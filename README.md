@@ -33,7 +33,7 @@ darnit leaves it alone. That one is correct.
 npm install -g darnit
 ```
 
-Or skip the install: `npx darnit check`. Needs Node 20.12 or newer.
+Or skip the install: `npx darnit check`. Needs Node 22.12 or newer.
 
 ## How it works
 
@@ -233,7 +233,7 @@ To watch another vendor, add its spec URL and its SDK calls to `vendors.yml`.
   followed. `check` reminds you at the end of every report, clean or not.
 - Only changes with a record are found. No record, no report.
 - `fix` runs in your working tree, not a sandbox. Your test command runs as you.
-- Tested on macOS and Linux with Node 20 and 22. Windows is not supported yet.
+- Tested on macOS and Linux with Node 22 and 24. Windows is not supported yet.
 
 ## License
 
