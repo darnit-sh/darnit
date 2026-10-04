@@ -8,6 +8,7 @@ import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { detectTestCommand, hasPytestSetup, runTests, type TestRun } from "./tests.js";
+import { atLeast, installedVersion, type Ecosystem } from "./versions.js";
 
 export type FixOptions = {
   dryRun?: boolean;
@@ -45,6 +46,8 @@ export type RecordResult = {
   reason?: string;
   /** Call sites still detected after the rewrite: they need a human. */
   remaining?: Site[];
+  /** Package versions the rewrite needs that darnit could not find in the repo, e.g. "openai >= 1.45.0". */
+  unconfirmed?: string[];
   pr?: PrResult;
 };
 
@@ -111,6 +114,26 @@ export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> 
   return { changed, remaining };
 }
 
+/**
+ * Checks the repo uses package versions new enough for the rewritten code.
+ * Returns why the rewrite must not run, or the requirements nobody could confirm.
+ */
+async function versionGate(root: string, grp: Group): Promise<{ blocked?: string; unconfirmed: string[] }> {
+  const requires = grp.record.fix?.requires ?? {};
+  const ecosystems = new Set<Ecosystem>(grp.files.map((f) => (f.endsWith(".py") ? "pypi" : "npm")));
+  const unconfirmed: string[] = [];
+  for (const eco of ecosystems) {
+    for (const [pkg, min] of Object.entries(requires[eco] ?? {})) {
+      const found = await installedVersion(root, eco, pkg);
+      if (!found) unconfirmed.push(`${pkg} >= ${min}`);
+      else if (!atLeast(found.version, min)) {
+        return { blocked: `needs ${pkg} >= ${min}, this repo has ${found.version} (${found.from}); upgrade it first`, unconfirmed };
+      }
+    }
+  }
+  return { unconfirmed };
+}
+
 /** Records the verified outcome on the record's result. Returns the files actually rewritten. */
 function settle(result: RecordResult, outcome: Outcome): string[] {
   if (outcome.changed.length === 0) {
@@ -145,13 +168,25 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   for (const grp of groups) {
     const reviewed = grp.record.status === "reviewed";
     const mechanical = grp.record.classification === "mechanical";
-    const applied = reviewed && mechanical && (await hasRules(grp.packDir));
+    const ready = reviewed && mechanical && (await hasRules(grp.packDir));
+    const gate = ready ? await versionGate(root, grp) : { unconfirmed: [] };
+    const applied = ready && !gate.blocked;
     const reason = !reviewed
       ? "unreviewed change record"
       : !mechanical
         ? "migration not yet automated; see the record notes"
-        : "no rewrite rules yet";
-    records.push({ record: grp.record, title: title(grp.record), files: grp.files, sites: grp.sites, applied, ...(applied ? {} : { reason }) });
+        : !ready
+          ? "no rewrite rules yet"
+          : gate.blocked;
+    records.push({
+      record: grp.record,
+      title: title(grp.record),
+      files: grp.files,
+      sites: grp.sites,
+      applied,
+      ...(applied ? {} : { reason }),
+      ...(applied && gate.unconfirmed.length > 0 ? { unconfirmed: gate.unconfirmed } : {}),
+    });
     if (applied) applicable.push(grp);
   }
   const resultOf = (grp: Group) => records.find((r) => r.record.id === grp.record.id)!;
@@ -242,7 +277,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
       committed = true;
       await g.push(root, branch);
-      const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body: prBody(grp.record, changed, tests, opts.version ?? "dev", result.remaining, base.testsNote) });
+      const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body: prBody(grp.record, changed, tests, opts.version ?? "dev", result.remaining, base.testsNote, result.unconfirmed) });
       result.pr = { state: "opened", url, tests };
       opened = true;
     } catch (err) {
@@ -270,6 +305,7 @@ export function prBody(
   version: string,
   remaining: readonly Site[] = [],
   testsNote?: string,
+  unconfirmed: readonly string[] = [],
 ): string {
   const source = record.sources[0]!;
   return [
@@ -290,6 +326,7 @@ export function prBody(
       ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- \`${r.file}:${r.line}\``), ""]
       : []),
     "## Not verified",
+    ...unconfirmed.map((u) => `- This change needs ${u}; darnit could not find the version this repository uses.`),
     "- No generated regression tests yet; the checks above are the repository's own.",
     "- Options objects built in one place and passed by name are not covered.",
     ...(record.notes?.edgeCases ?? []).map((e) => `- ${plain(e)}`),
@@ -322,6 +359,7 @@ export function renderSummary(result: FixResult): string {
     else if (r.pr.state === "skipped") lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.tests)}`);
     if (r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${s.file}:${s.line}`);
+    if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
   if (lines.length === 0) lines.push("Nothing to fix.");
   const applied = result.records.some((r) => r.applied);
@@ -354,6 +392,7 @@ export function toJson(result: FixResult): object {
       reason: r.reason,
       sites: r.sites,
       remaining: r.remaining ?? [],
+      unconfirmed: r.unconfirmed ?? [],
       pr: r.pr ? { ...r.pr, ...("tests" in r.pr ? { tests: tests(r.pr.tests) } : {}) } : null,
     })),
     tests: tests(result.tests),

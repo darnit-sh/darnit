@@ -48,6 +48,14 @@
     }
   },
   "fix": {
-    "rulePackPath": "packs/openai/2024-09-12-max-tokens-to-max-completion-tokens/"
+    "rulePackPath": "packs/openai/2024-09-12-max-tokens-to-max-completion-tokens/",
+    "requires": {
+      "npm": {
+        "openai": "4.60.0"
+      },
+      "pypi": {
+        "openai": "1.45.0"
+      }
+    }
   }
 }
