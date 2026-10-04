@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { check, checkReport, render, toJson, type Hit } from "../src/check.js";
+import { check, checkReport, exitCodeForCheck, render, toJson, type Hit } from "../src/check.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -100,6 +100,13 @@ describe("check", () => {
 
     const candidate = { ...hits[0]!, record: { ...hits[0]!.record, status: "candidate" as const } };
     expect(render([candidate])).toContain("(unreviewed change, detection only)");
+    expect(render([candidate])).toContain("Unreviewed changes are reported but do not fail the check.");
+    expect(render(hits)).not.toContain("do not fail the check");
+
+    // Only a reviewed change fails the check; a candidate alone never turns a scheduled run red.
+    expect(exitCodeForCheck([candidate])).toBe(0);
+    expect(exitCodeForCheck([candidate, hits[0]!])).toBe(1);
+    expect(exitCodeForCheck([])).toBe(0);
 
     expect(toJson(hits)).toEqual([
       {

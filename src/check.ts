@@ -90,6 +90,9 @@ export function toJson(hits: Hit[]): object[] {
 
 const NOT_CHECKED = "Not checked: request options built elsewhere and passed in as a variable.";
 
+/** 1 only for call sites of a reviewed change: a machine-written candidate nobody has read should not fail anyone's build. */
+export const exitCodeForCheck = (hits: readonly Hit[]): 0 | 1 => (hits.some((h) => h.record.status === "reviewed") ? 1 : 0);
+
 /** Terminal report, grouped by vendor change. Always ends by saying what was and was not covered. */
 export function render(hits: Hit[], coverage?: Coverage): string {
   const footer = [
@@ -113,6 +116,7 @@ export function render(hits: Hit[], coverage?: Coverage): string {
     for (const source of record.sources) out.push(`  ${source.url}`);
     out.push("");
   }
+  if (exitCodeForCheck(hits) === 0) out.push("Unreviewed changes are reported but do not fail the check.");
   out.push(...footer);
   return out.join("\n");
 }

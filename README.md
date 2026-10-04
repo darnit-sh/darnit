@@ -90,7 +90,7 @@ Without `--force`, existing files are left untouched.
 
 Lists every call site affected by a known change: file, line, and the vendor's
 own announcement. Changes still waiting for review are marked
-`(unreviewed change, detection only)`.
+`(unreviewed change, detection only)` and never fail the check on their own.
 
 | Flag | |
 |---|---|
@@ -98,8 +98,8 @@ own announcement. Changes still waiting for review are marked
 
 | Exit | |
 |---|---|
-| 0 | nothing affected |
-| 1 | affected call sites found |
+| 0 | nothing affected, or only unreviewed changes |
+| 1 | affected call sites found for a reviewed change |
 | 2 | darnit itself failed |
 
 ### `darnit fix`
@@ -174,7 +174,7 @@ jobs:
       - run: npx darnit check
 ```
 
-Once a day it runs `check`. The day a change hits your code, the run fails and
+Once a day it runs `check`. The day a reviewed change hits your code, the run fails and
 GitHub tells you, like any failed workflow. Scheduled workflows only run from
 the default branch, so commit this file there.
 
