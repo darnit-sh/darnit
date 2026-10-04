@@ -10,33 +10,48 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCENARIOS = join(ROOT, "test", "e2e");
 
+type Run = { exit: number; has: string[]; lacks?: string[] };
+
 type Expect = {
-  check: { exit: number; has: string[]; lacks?: string[] };
-  fix: { exit: number; has: string[] };
+  check: Run;
+  fix: Run;
   /** Files `fix` should leave modified; every other file must be untouched. */
   changed: string[];
-  /** Text that must still be in a file after fix. */
-  keeps?: [file: string, text: string];
+  /** Text that must be in a file after fix. */
+  keeps?: [file: string, text: string][];
+  /** Text that must be gone from a file after fix. */
+  drops?: [file: string, text: string][];
 };
+
+// A rewrite that claims success but left a call site behind is a failure here.
+const CLEAN_FIX = ["needs a human", "0 of"];
 
 const NOT_COVERED = "found, but the rewrite rules don't cover this call shape yet";
 
 const EXPECT: Record<string, Expect> = {
   "01-js-basic": {
     check: { exit: 1, has: ["src/summarize.js:5:5  max_tokens: 256"] },
-    fix: { exit: 0, has: ["✓ Rename max_tokens", "tests: npm test passed"] },
+    fix: { exit: 0, has: ["✓ Rename max_tokens", "tests: npm test passed"], lacks: CLEAN_FIX },
     changed: ["src/summarize.js"],
+    keeps: [["src/summarize.js", "max_completion_tokens: 256,"]],
+    drops: [["src/summarize.js", "max_tokens"]],
   },
   "02-ts-mixed": {
     check: { exit: 1, has: ["src/llm.ts:11:5  max_tokens: 512"], lacks: ["src/llm.ts:19"] },
-    fix: { exit: 0, has: ["✓ Rename max_tokens"] },
+    fix: { exit: 0, has: ["✓ Rename max_tokens"], lacks: CLEAN_FIX },
     changed: ["src/llm.ts"],
-    keeps: ["src/llm.ts", "max_tokens: 1024"],
+    keeps: [
+      ["src/llm.ts", "max_completion_tokens: 512,"],
+      ["src/llm.ts", "max_tokens: 1024,"],
+    ],
+    drops: [["src/llm.ts", "max_tokens: 512"]],
   },
   "03-py-pytest": {
     check: { exit: 1, has: ["app/summarize.py:5:9  max_tokens=256"] },
-    fix: { exit: 0, has: ["✓ Rename max_tokens", "-m pytest -q passed"] },
+    fix: { exit: 0, has: ["✓ Rename max_tokens", "-m pytest -q passed"], lacks: CLEAN_FIX },
     changed: ["app/summarize.py"],
+    keeps: [["app/summarize.py", "max_completion_tokens=256,"]],
+    drops: [["app/summarize.py", "max_tokens"]],
   },
   "04-raw-fetch": {
     check: { exit: 1, has: ["client.js:8:7  max_tokens: 100"] },
@@ -71,7 +86,8 @@ const EXPECT: Record<string, Expect> = {
 };
 
 function run(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env) {
-  const r = spawnSync(cmd, args, { cwd, env, encoding: "utf8" });
+  const r = spawnSync(cmd, args, { cwd, env, encoding: "utf8", timeout: 5 * 60 * 1000 });
+  if (r.error) return { exit: -1, out: `${cmd} did not finish: ${r.error.message}` };
   return { exit: r.status ?? -1, out: `${r.stdout}${r.stderr}` };
 }
 
@@ -115,7 +131,7 @@ try {
     git("commit", "-qm", "start");
 
     const problems: string[] = [];
-    const expectRun = (label: string, r: { exit: number; out: string }, exp: { exit: number; has: string[]; lacks?: string[] }) => {
+    const expectRun = (label: string, r: { exit: number; out: string }, exp: Run) => {
       if (r.exit !== exp.exit) problems.push(`${label} exited ${r.exit}, expected ${exp.exit}`);
       for (const s of exp.has) if (!r.out.includes(s)) problems.push(`${label} output lacks: ${s}`);
       for (const s of exp.lacks ?? []) if (r.out.includes(s)) problems.push(`${label} output should not contain: ${s}`);
@@ -133,8 +149,11 @@ try {
     if (JSON.stringify(changed) !== JSON.stringify([...want.changed].sort())) {
       problems.push(`fix changed [${changed.join(", ")}], expected [${want.changed.join(", ")}]`);
     }
-    if (want.keeps && !readFileSync(join(dir, want.keeps[0]), "utf8").includes(want.keeps[1])) {
-      problems.push(`${want.keeps[0]} lost: ${want.keeps[1]}`);
+    for (const [file, text] of want.keeps ?? []) {
+      if (!readFileSync(join(dir, file), "utf8").includes(text)) problems.push(`${file} should contain: ${text}`);
+    }
+    for (const [file, text] of want.drops ?? []) {
+      if (readFileSync(join(dir, file), "utf8").includes(text)) problems.push(`${file} should no longer contain: ${text}`);
     }
 
     if (problems.length === 0) console.log(`✓ ${name}`);

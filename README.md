@@ -132,7 +132,7 @@ fully make. Both still show up in `check`.
 
 | Exit | |
 |---|---|
-| 0 | done, or nothing to do |
+| 0 | done, or nothing to do (call sites listed as `needs a human` still exit 0) |
 | 1 | tests failed after the change (files put back, nothing pushed) |
 | 2 | darnit refused or failed |
 
