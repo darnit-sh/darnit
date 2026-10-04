@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
-import { Command } from "commander";
+import { Command, CommanderError } from "commander";
 import { checkReport, exitCodeForCheck, render, toJson } from "./check.js";
 import { exitCodeFor, fix, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
@@ -10,10 +10,13 @@ const { version } = createRequire(import.meta.url)("../package.json") as { versi
 // Exit codes: 0 nothing to act on, 1 call sites of a reviewed change found, 2 darnit itself failed.
 // process.exitCode (not process.exit) so a long report is fully flushed through a pipe.
 
+// exitOverride throws instead of exiting, so a mistyped flag exits 2 like any other darnit failure
+// instead of commander's 1, which would read as "affected call sites found".
 const program = new Command()
   .name("darnit")
   .description("Your API integrations, invisibly mended.")
-  .version(version);
+  .version(version)
+  .exitOverride();
 
 program
   .command("init")
@@ -69,6 +72,11 @@ program
 try {
   await program.parseAsync();
 } catch (err) {
-  console.error(`darnit: ${err instanceof Error ? err.message : String(err)}`);
-  process.exitCode = 2;
+  if (err instanceof CommanderError) {
+    // commander has already printed its message; --help and --version are not failures.
+    process.exitCode = err.exitCode === 0 ? 0 : 2;
+  } else {
+    console.error(`darnit: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 2;
+  }
 }
