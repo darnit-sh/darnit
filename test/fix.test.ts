@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyAndVerify, fix, prBody, Refusal, renderSummary } from "../src/fix.js";
+import { applyAndVerify, exitCodeFor, fix, prBody, Refusal, renderSummary } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords } from "../src/records/load.js";
 
@@ -77,8 +77,35 @@ describe("fix checks package versions before rewriting", () => {
     const result = await fix(dir, { noTest: true });
     expect(result.records[0]).toMatchObject({ applied: true, unconfirmed: ["openai >= 4.60.0"] });
     expect(renderSummary(result)).toContain("could not confirm openai >= 4.60.0");
-    const body = prBody(result.records[0]!.record, ["sdk.js"], undefined, "t", [], undefined, result.records[0]!.unconfirmed);
+    const body = prBody(result.records[0]!.record, ["sdk.js"], "t", { unconfirmed: result.records[0]!.unconfirmed });
     expect(body).toContain("- This change needs openai >= 4.60.0; darnit could not find the version this repository uses.");
+  });
+});
+
+// Stands in for a typecheck that rejects the new key, as TypeScript does on an SDK older than 4.60.0.
+const STRICT_TYPECHECK = JSON.stringify({
+  scripts: { typecheck: "node -e \"process.exit(require('fs').readFileSync('sdk.js','utf8').includes('max_completion_tokens') ? 1 : 0)\"" },
+});
+
+describe("fix runs the repo's build check", () => {
+  it("puts the files back when the change breaks the build, and skips the tests", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "package.json": STRICT_TYPECHECK });
+    const result = await fix(dir);
+    expect(result.build).toMatchObject({ kind: "build", command: "npm run typecheck", passed: false, attributed: "change" });
+    expect(result.tests).toBeUndefined();
+    expect(result.reverted).toBe(true);
+    expect(exitCodeFor(result)).toBe(1);
+    expect(renderSummary(result)).toContain("build: npm run typecheck failed; files put back. The change broke your build.");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
+
+  it("reports a passing build alongside the tests", async () => {
+    const pkg = JSON.stringify({ scripts: { typecheck: "node -e 0", test: "node -e 0" } });
+    const result = await fix(await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg }));
+    const summary = renderSummary(result);
+    expect(summary).toContain("build: npm run typecheck passed");
+    expect(summary).toContain("tests: npm test passed");
+    expect(exitCodeFor(result)).toBe(0);
   });
 });
 
@@ -293,6 +320,17 @@ describe("fix --pr", () => {
     expect((await git(bare, ["show", `${BRANCH}:client.js`])).toString()).toBe(RAW_FETCH);
   });
 
+  it("opens no pull request when the change breaks the build", async () => {
+    const { dir, branch } = await repoWithOrigin(await repoWith({ "sdk.js": SDK_CALL, "package.json": STRICT_TYPECHECK }));
+    const posts = stubGitHub(branch);
+    const result = await fix(dir, { pr: true, repo: "o/r" });
+    expect(result.records[0]?.pr).toMatchObject({ state: "build-failed", build: { attributed: "change" } });
+    expect(posts).toEqual([]);
+    expect(exitCodeFor(result)).toBe(1);
+    expect(renderSummary(result)).toContain("The change broke your build.");
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+  });
+
   it("finds an already open pull request instead of opening another", async () => {
     const { dir, branch } = await repoWithOrigin();
     const posts = stubGitHub(branch, [{ html_url: "https://github.com/o/r/pull/7" }]);
@@ -367,7 +405,6 @@ describe("prBody", () => {
     const body = prBody(
       { ...record, sources: [{ url: "https://example.com/changelog", quoteId: hostile }], notes: { migration: hostile, edgeCases: [hostile] } },
       ["app.js"],
-      undefined,
       "test",
     );
     const span = "`Use tools. # Heading <img src=x onerror=alert(1)> [click](https://evil.example) ![](https://pixel.example) @octocat`";
@@ -375,6 +412,6 @@ describe("prBody", () => {
     expect(lines[0]).toBe(span);
     expect(lines).toContain(`> ${span}`);
     expect(lines).toContain(`- ${span}`);
-    expect(prBody({ ...record, notes: { migration: "a `b` c" } }, [], undefined, "test").split("\n")[0]).toBe("`a 'b' c`");
+    expect(prBody({ ...record, notes: { migration: "a `b` c" } }, [], "test").split("\n")[0]).toBe("`a 'b' c`");
   });
 });

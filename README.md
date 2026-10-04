@@ -108,9 +108,11 @@ Rewrites the affected code, runs your tests, and shows the diff. It only runs
 inside a git repository, so everything it does can be undone. It touches only
 the files `check` reported.
 
-It finds your test command on its own (`npm test`, `pnpm test`, `yarn test`
-or pytest). If the tests fail, darnit puts your files back and runs them once
-more, so it can tell you whether the change broke them or they were already failing.
+It finds your checks on its own: a `typecheck` or `build` script (or the
+repo's own TypeScript compiler), then your tests (`npm test`, `pnpm test`,
+`yarn test` or pytest). If either fails, darnit puts your files back and runs
+it once more, so it can tell you whether the change broke it or it was already
+failing.
 
 Before rewriting, darnit checks the SDK version your repo uses (from what is
 installed or locked). If it is too old for the new code, darnit leaves the files
@@ -130,7 +132,7 @@ fully make. Both still show up in `check`.
 | `--pr` | one branch, one test run and one pull request per change |
 | `--only <id>` | just this change, by its id from `check --json` (repeatable) |
 | `--test <command>` | run this instead of the detected test command |
-| `--no-test` | skip tests |
+| `--no-test` | skip tests and the build check |
 | `--allow-dirty` | let `--pr` run with uncommitted changes elsewhere in the tree |
 | `--repo <owner/name>` | the GitHub repository, when `origin` is not a GitHub URL |
 | `--json` | machine-readable output |
@@ -138,7 +140,7 @@ fully make. Both still show up in `check`.
 | Exit | |
 |---|---|
 | 0 | done, or nothing to do (call sites listed as `needs a human` still exit 0) |
-| 1 | tests failed after the change (files put back, nothing pushed) |
+| 1 | the build or tests failed after the change (files put back, nothing pushed) |
 | 2 | darnit refused or failed |
 
 #### `--pr`
