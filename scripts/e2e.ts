@@ -133,6 +133,12 @@ try {
   must("npm", ["install", "--silent", tarball], install);
   const darnit = join(install, "node_modules", ".bin", "darnit");
   console.log(`darnit ${must(darnit, ["--version"], install).trim()} from ${tarball}\n`);
+  // A mistyped flag is darnit failing (2), never "call sites found" (1), which would turn a scheduled run red.
+  const usage = run(darnit, ["check", "--no-such-flag"], install);
+  if (usage.exit !== 2) {
+    failures++;
+    console.log(`✗ usage error exited ${usage.exit}, expected 2\n${usage.out}`);
+  } else console.log("✓ usage error exits 2");
 
   for (const [name, want] of Object.entries(EXPECT).sort(([a], [b]) => a.localeCompare(b))) {
     const dir = join(work, name);
