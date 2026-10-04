@@ -1,6 +1,6 @@
 import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyAndVerify, fix, prBody, Refusal, renderSummary } from "../src/fix.js";
@@ -47,9 +47,40 @@ export const r = new OpenAI().chat.completions.create({ model: "x", messages: []
 async function repoWith(files: Record<string, string>): Promise<string> {
   const src = await mkdtemp(join(tmpdir(), "darnit-src-"));
   tempDirs.push(src);
-  for (const [name, text] of Object.entries(files)) await writeFile(join(src, name), text);
+  for (const [name, text] of Object.entries(files)) {
+    await mkdir(dirname(join(src, name)), { recursive: true });
+    await writeFile(join(src, name), text);
+  }
   return repoFrom(src);
 }
+
+describe("fix checks package versions before rewriting", () => {
+  const PY_CALL = "from openai import OpenAI\nr = OpenAI().chat.completions.create(model='x', messages=[], max_tokens=5)\n";
+
+  it("refuses when the repo pins an SDK too old for the new parameter", async () => {
+    const dir = await repoWith({ "app.py": PY_CALL, "requirements.txt": "openai==1.40.0\n" });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first"]]);
+    expect(await readFile(join(dir, "app.py"), "utf8")).toBe(PY_CALL);
+  });
+
+  it("rewrites when the installed SDK is new enough", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "node_modules/openai/package.json": JSON.stringify({ version: "4.70.0" }) });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true });
+    expect(result.records[0]?.unconfirmed).toBeUndefined();
+    expect(renderSummary(result)).not.toContain("could not confirm");
+  });
+
+  it("rewrites but says so when it cannot tell the SDK version", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true, unconfirmed: ["openai >= 4.60.0"] });
+    expect(renderSummary(result)).toContain("could not confirm openai >= 4.60.0");
+    const body = prBody(result.records[0]!.record, ["sdk.js"], undefined, "t", [], undefined, result.records[0]!.unconfirmed);
+    expect(body).toContain("- This change needs openai >= 4.60.0; darnit could not find the version this repository uses.");
+  });
+});
 
 describe("fix verifies its own rewrites", () => {
   it("does not claim a rewrite it did not make", async () => {
