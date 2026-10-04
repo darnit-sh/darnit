@@ -44,7 +44,7 @@ program
   .option("--repo <owner/name>", "GitHub repository, when origin is not a GitHub URL")
   .option("--only <id>", "restrict to one change record (repeatable)", (id: string, all: string[] = []) => [...all, id])
   .option("--test <command>", "run this instead of the detected test command")
-  .option("--no-test", "skip tests")
+  .option("--no-test", "skip tests and the build check")
   .option("--json", "machine-readable output")
   .action(async (flags: FixFlags) => {
     const result = await fix(process.cwd(), {

@@ -15,11 +15,7 @@ export async function detectTestCommand(root: string, path = process.env.PATH ??
     try {
       const pkg = JSON.parse(pkgText) as { scripts?: { test?: string } };
       const script = pkg.scripts?.test;
-      if (script && !NPM_PLACEHOLDER.test(script)) {
-        if (await exists(join(root, "pnpm-lock.yaml"))) return "pnpm test";
-        if (await exists(join(root, "yarn.lock"))) return "yarn test";
-        return "npm test";
-      }
+      if (script && !NPM_PLACEHOLDER.test(script)) return `${await packageManager(root)} test`;
     } catch {
       // Not JSON; fall through to Python.
     }
@@ -27,6 +23,33 @@ export async function detectTestCommand(root: string, path = process.env.PATH ??
   if (!(await hasPytestSetup(root))) return undefined;
   const python = await pythonOnPath(path);
   return python && `${python} -m pytest -q`;
+}
+
+async function packageManager(root: string): Promise<"pnpm" | "yarn" | "npm"> {
+  if (await exists(join(root, "pnpm-lock.yaml"))) return "pnpm";
+  if (await exists(join(root, "yarn.lock"))) return "yarn";
+  return "npm";
+}
+
+/**
+ * A command that proves the code still compiles: the repo's typecheck script, else its build
+ * script, else its own TypeScript compiler when it has a tsconfig. Undefined when there is none.
+ */
+export async function detectBuildCommand(root: string): Promise<string | undefined> {
+  const pkgText = await readFile(join(root, "package.json"), "utf8").catch(() => undefined);
+  let scripts: Record<string, string> = {};
+  try {
+    scripts = (JSON.parse(pkgText ?? "{}") as { scripts?: Record<string, string> }).scripts ?? {};
+  } catch {
+    // Not JSON; no scripts to run.
+  }
+  for (const name of ["typecheck", "build"]) {
+    if (scripts[name]) return `${await packageManager(root)} run ${name}`;
+  }
+  if ((await exists(join(root, "tsconfig.json"))) && (await exists(join(root, "node_modules", ".bin", "tsc")))) {
+    return "node_modules/.bin/tsc --noEmit";
+  }
+  return undefined;
 }
 
 export async function hasPytestSetup(root: string): Promise<boolean> {
