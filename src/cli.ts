@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { Command } from "commander";
-import { checkReport, render, toJson } from "./check.js";
+import { checkReport, exitCodeForCheck, render, toJson } from "./check.js";
 import { exitCodeFor, fix, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-// Exit codes: 0 nothing to report, 1 affected call sites found, 2 darnit itself failed.
+// Exit codes: 0 nothing to act on, 1 call sites of a reviewed change found, 2 darnit itself failed.
 // process.exitCode (not process.exit) so a long report is fully flushed through a pipe.
 
 const program = new Command()
@@ -30,7 +30,7 @@ program
   .action(async ({ json }: { json?: boolean }) => {
     const { hits, coverage } = await checkReport(process.cwd());
     console.log(json ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits) }, null, 2) : render(hits, coverage));
-    if (hits.length > 0) process.exitCode = 1;
+    process.exitCode = exitCodeForCheck(hits);
   });
 
 type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean };
