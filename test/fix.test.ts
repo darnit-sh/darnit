@@ -127,6 +127,7 @@ describe("fix runs the repo's build check", () => {
     expect(result.reverted).toBe(true);
     expect(exitCodeFor(result)).toBe(1);
     expect(renderSummary(result)).toContain("build: npm run typecheck failed; files put back. The change broke your build.");
+    expect(renderSummary(result)).not.toContain("✓");
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
@@ -185,9 +186,11 @@ describe("fix verifies its own rewrites", () => {
     const dir = await repoWith({ "client.js": RAW_FETCH });
     for (const dryRun of [true, false]) {
       const result = await fix(dir, { noTest: true, dryRun });
-      expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "found, but the rewrite rules don't cover this call shape yet"]]);
+      expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "the rewrite rules don't cover this call shape yet"]]);
       expect(result.diff).toBe("");
-      expect(renderSummary(result)).not.toContain("✓");
+      expect(renderSummary(result)).toBe(
+        "- Rename max_tokens to max_completion_tokens on chat completions: found in 1 file, not rewritten: the rewrite rules don't cover this call shape yet",
+      );
       expect(await tree(dir)).toEqual({ "client.js": RAW_FETCH });
     }
   });
@@ -303,7 +306,11 @@ describe("fix", () => {
     const result = await fix(dir, { test: "node -e \"process.exit(1)\"" });
     expect(result.reverted).toBe(true);
     expect(result.tests?.attributed).toBe("baseline");
-    expect(renderSummary(result)).toContain("already fail without the change");
+    const summary = renderSummary(result);
+    expect(summary).toContain("already fail without the change. Fix them first, or rerun with --no-test to apply it unchecked.");
+    // A rewrite that was put back is never shown with a check mark.
+    expect(summary).toContain("✗ Rename max_tokens to max_completion_tokens on chat completions: rewritten, then put back");
+    expect(summary).not.toContain("✓");
   });
 
   it("runs the detected npm test script and reports it", async () => {
@@ -371,7 +378,7 @@ describe("fix --pr", () => {
     const { dir, bare, branch } = await repoWithOrigin(await repoWith({ "client.js": RAW_FETCH }));
     const posts = stubGitHub(branch);
     const result = await fix(dir, { pr: true, noTest: true, repo: "o/r" });
-    expect(result.records[0]).toMatchObject({ applied: false, reason: "found, but the rewrite rules don't cover this call shape yet" });
+    expect(result.records[0]).toMatchObject({ applied: false, reason: "the rewrite rules don't cover this call shape yet" });
     expect(result.records[0]?.pr).toBeUndefined();
     expect(posts).toEqual([]);
     expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
