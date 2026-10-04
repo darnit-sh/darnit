@@ -63,7 +63,7 @@ export type FixResult = {
 /** Thrown when darnit declines to act; the message says what to change. */
 export class Refusal extends Error {}
 
-type Group = { record: ChangeRecord; packDir: string; files: string[]; sites: number };
+export type Group = { record: ChangeRecord; packDir: string; files: string[]; sites: number };
 
 const NOT_COVERED = "found, but the rewrite rules don't cover this call shape yet";
 
@@ -94,16 +94,21 @@ async function restore(root: string, snap: Map<string, string>): Promise<void> {
 /**
  * Applies a group's rules under `dir`, then checks the result instead of trusting it:
  * whether any file changed, and which of the record's call sites are still detected.
+ * A rewrite that changed bytes but removed no call site is no rewrite: the files are put back.
  */
 type Outcome = { changed: string[]; remaining: Site[] };
 
-async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> {
+export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> {
   const before = await snapshotOf(dir, grp.files);
   await applyRules(grp.packDir, grp.files.map((f) => join(dir, f)));
   const changed: string[] = [];
   for (const [f, text] of before) if ((await readFile(join(dir, f), "utf8")) !== text) changed.push(f);
-  const { hits } = await scan(dir, grp.files, [grp.record]);
-  return { changed, remaining: hits.map((h) => ({ file: h.file, line: h.line })) };
+  const remaining = (await scan(dir, grp.files, [grp.record])).hits.map((h) => ({ file: h.file, line: h.line }));
+  if (changed.length > 0 && remaining.length >= grp.sites) {
+    await restore(dir, before);
+    return { changed: [], remaining };
+  }
+  return { changed, remaining };
 }
 
 /** Records the verified outcome on the record's result. Returns the files actually rewritten. */
