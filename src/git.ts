@@ -42,6 +42,14 @@ export async function position(root: string): Promise<{ ref: string; detached: b
 export const dirtyAmong = async (root: string, files: readonly string[]) =>
   (await git(root, ["status", "--porcelain", "--", ...files])).trim() !== "";
 
+/** Tracked files under `root` with changes, staged or not, relative to `root`. */
+export const modified = async (root: string) => (await git(root, ["diff", "--name-only", "--relative", "HEAD"])).split("\n").filter(Boolean);
+
+/** Puts tracked files back to their committed contents. */
+export const discard = async (root: string, files: readonly string[]) => {
+  if (files.length > 0) await git(root, ["checkout", "--", ...files]);
+};
+
 export const deleteBranch = (root: string, name: string) => git(root, ["branch", "-q", "-D", name]);
 
 export const add = (root: string, files: readonly string[]) => git(root, ["add", "--", ...files]);
