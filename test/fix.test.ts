@@ -99,6 +99,35 @@ describe("fix runs the repo's build check", () => {
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
+  it("keeps the change when the build was already failing, and says the build could not check it", async () => {
+    const broken = JSON.stringify({ scripts: { build: "node -e \"process.exit(1)\"" } });
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "package.json": broken });
+    const result = await fix(dir);
+    expect(result.build).toMatchObject({ passed: false, attributed: "baseline", notChecked: true });
+    expect(result.reverted).toBe(false);
+    expect(exitCodeFor(result)).toBe(0);
+    expect(renderSummary(result)).toContain("build: npm run build already fails without the change, so it could not check it; change kept");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toContain("max_completion_tokens: 5");
+    const body = prBody(result.records[0]!.record, ["sdk.js"], "t", { build: result.build });
+    expect(body).toContain("- [ ] `npm run build` already fails without this change, so it could not check it");
+  });
+
+  it("does not run a JavaScript build for a Python-only change", async () => {
+    const pkg = JSON.stringify({ scripts: { build: "node -e \"process.exit(1)\"" } });
+    const dir = await repoWith({ "app.py": "r = c.chat.completions.create(model='x', max_tokens=5)\n", "package.json": pkg });
+    const result = await fix(dir, { test: "node -e 0" });
+    expect(result.build).toBeUndefined();
+    expect(result.tests).toMatchObject({ passed: true });
+    expect(await readFile(join(dir, "app.py"), "utf8")).toContain("max_completion_tokens=5");
+  });
+
+  it("still says no tests were found when only the build ran", async () => {
+    const pkg = JSON.stringify({ scripts: { typecheck: "node -e 0" } });
+    const summary = renderSummary(await fix(await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg })));
+    expect(summary).toContain("build: npm run typecheck passed");
+    expect(summary).toContain("tests: none found");
+  });
+
   it("reports a passing build alongside the tests", async () => {
     const pkg = JSON.stringify({ scripts: { typecheck: "node -e 0", test: "node -e 0" } });
     const result = await fix(await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg }));

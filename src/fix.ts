@@ -28,7 +28,12 @@ export type TestOutcome = TestRun & {
   kind: "build" | "tests";
   /** "change": passed before, failed after. "baseline": already failing before. */
   attributed?: "change" | "baseline";
+  /** A build that already failed before the change says nothing about it: the change is kept and this is reported instead. */
+  notChecked?: boolean;
 };
+
+/** A check that failed because of the change, or (for tests) failed at all. A build that was already broken is not one. */
+const failed = (c: TestOutcome | undefined): boolean => c !== undefined && !c.passed && !c.notChecked;
 
 export type PrResult =
   | { state: "opened"; url: string; build?: TestOutcome | undefined; tests?: TestOutcome | undefined }
@@ -153,18 +158,31 @@ function settle(result: RecordResult, outcome: Outcome): string[] {
 async function testAndAttribute(root: string, command: string, snap: Map<string, string>, kind: TestOutcome["kind"]): Promise<TestOutcome> {
   const outcome: TestOutcome = { ...(await runTests(root, command)), kind };
   if (!outcome.passed) {
+    const changed = await snapshotOf(root, [...snap.keys()]);
     await restore(root, snap);
     outcome.attributed = (await runTests(root, command)).passed ? "change" : "baseline";
+    // A build that fails without the change too (missing dependencies, secrets, an unrelated error)
+    // cannot judge it. Put the change back and say so, rather than blocking a fix the build never saw.
+    if (kind === "build" && outcome.attributed === "baseline") {
+      await restore(root, changed);
+      outcome.notChecked = true;
+    }
   }
   return outcome;
 }
 
 type Commands = { build?: string | undefined; tests?: string | undefined };
 
-/** The build check first, then the tests; stops at the first failure, which has already put the files back. */
+const COMPILED = /\.(m?[jt]sx?|c[jt]s)$/;
+
+/**
+ * The build check first, then the tests; stops at the first failure, which has already put the files back.
+ * The build only runs when JavaScript or TypeScript changed: it says nothing about a Python fix.
+ */
 async function runChecks(root: string, commands: Commands, snap: Map<string, string>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
-  const build = commands.build ? await testAndAttribute(root, commands.build, snap, "build") : undefined;
-  if (build && !build.passed) return { build };
+  const compiled = [...snap.keys()].some((f) => COMPILED.test(f));
+  const build = commands.build && compiled ? await testAndAttribute(root, commands.build, snap, "build") : undefined;
+  if (failed(build)) return { build: build! };
   const tests = commands.tests ? await testAndAttribute(root, commands.tests, snap, "tests") : undefined;
   return { ...(build ? { build } : {}), ...(tests ? { tests } : {}) };
 }
@@ -238,7 +256,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   }
   if (touched.length === 0) return base;
   const { build, tests } = await runChecks(root, commands, snap);
-  const reverted = [build, tests].some((c) => c && !c.passed);
+  const reverted = failed(build) || failed(tests);
   return { ...base, build, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
 }
 
@@ -282,7 +300,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       const changed = settle(result, await applyAndVerify(root, grp));
       if (changed.length === 0) continue;
       const { build, tests } = await runChecks(root, commands, snap);
-      if (build && !build.passed) {
+      if (build && failed(build)) {
         result.pr = { state: "build-failed", build };
         anyFailed = true;
         continue;
@@ -346,7 +364,13 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     ...files.map((f) => `- \`${f}\``),
     "",
     "## Verified",
-    ...(build ? [`- [${build.passed ? "x" : " "}] \`${build.command}\` ${build.passed ? "passed" : "failed"}`] : []),
+    ...(build
+      ? [
+          build.notChecked
+            ? `- [ ] \`${build.command}\` already fails without this change, so it could not check it`
+            : `- [${build.passed ? "x" : " "}] \`${build.command}\` ${build.passed ? "passed" : "failed"}`,
+        ]
+      : []),
     tests ? `- [${tests.passed ? "x" : " "}] \`${tests.command}\` ${tests.passed ? "passed" : "failed"}` : `- [ ] ${testsNote ? `tests not run: ${testsNote}` : "no test command found in this repository"}`,
     ...(tests?.output ? ["", "<details><summary>test output</summary>", "", "```", tests.output, "```", "", "</details>"] : []),
     "",
@@ -366,12 +390,13 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
 }
 
 export function exitCodeFor(result: FixResult): 0 | 1 {
-  if ([result.build, result.tests].some((c) => c && !c.passed)) return 1;
+  if (failed(result.build) || failed(result.tests)) return 1;
   return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed") ? 1 : 0;
 }
 
 function testLine(t: TestOutcome): string {
   if (t.passed) return `${t.kind}: ${t.command} passed`;
+  if (t.notChecked) return `${t.kind}: ${t.command} already fails without the change, so it could not check it; change kept`;
   const why =
     t.kind === "build"
       ? t.attributed === "change"
@@ -405,16 +430,18 @@ export function renderSummary(result: FixResult): string {
     if (applied) lines.push("dry run: nothing written");
   } else if (result.pr) {
     // Per-record lines already carry the test result.
-  } else if (result.build || result.tests) {
-    for (const c of [result.build, result.tests]) if (c) lines.push(testLine(c));
   } else if (applied) {
-    lines.push(
-      result.testsSkipped
-        ? "tests: skipped"
-        : result.testsNote
-          ? `tests: none run (${result.testsNote})`
-          : "tests: none found (no test script or pytest setup)",
-    );
+    if (result.build) lines.push(testLine(result.build));
+    if (result.tests) lines.push(testLine(result.tests));
+    else if (!failed(result.build)) {
+      lines.push(
+        result.testsSkipped
+          ? "tests: skipped"
+          : result.testsNote
+            ? `tests: none run (${result.testsNote})`
+            : "tests: none found (no test script or pytest setup)",
+      );
+    }
   }
   return lines.join("\n");
 }
