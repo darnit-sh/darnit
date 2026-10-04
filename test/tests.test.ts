@@ -42,7 +42,7 @@ describe("detectTestCommand", () => {
   it("recognises pytest setups", async () => {
     const path = await pathWith("python3");
     expect(await detectTestCommand(await dirWith({ "pytest.ini": "" }), path)).toBe("python3 -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "tests/": "" }), path)).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(await dirWith({ "tests/": "", "tests/test_app.py": "" }), path)).toBe("python3 -m pytest -q");
     expect(await detectTestCommand(await dirWith({ "pyproject.toml": "[tool.pytest.ini_options]\n" }), path)).toBe("python3 -m pytest -q");
     expect(await detectTestCommand(await dirWith({ "setup.cfg": "[tool:pytest]\n" }), path)).toBe("python3 -m pytest -q");
   });
@@ -52,6 +52,10 @@ describe("detectTestCommand", () => {
     expect(await detectTestCommand(project, await pathWith("python"))).toBe("python -m pytest -q");
     expect(await detectTestCommand(project, await pathWith("python", "python3"))).toBe("python3 -m pytest -q");
     expect(await detectTestCommand(project, await pathWith())).toBeUndefined();
+  });
+
+  it("does not mistake a JavaScript tests/ folder for pytest", async () => {
+    expect(await detectTestCommand(await dirWith({ "tests/": "", "tests/app.test.js": "" }), await pathWith("python3"))).toBeUndefined();
   });
 
   it("finds nothing in an empty project", async () => {
