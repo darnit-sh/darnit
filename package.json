@@ -27,6 +27,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:fixtures": "tsx scripts/fixtures.ts",
+    "test:e2e": "npm run build && tsx scripts/e2e.ts",
     "corpus": "tsx scripts/corpus.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:fixtures",
     "prepare": "git config core.hooksPath .githooks || true"

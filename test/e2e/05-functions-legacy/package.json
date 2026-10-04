@@ -1,0 +1,11 @@
+{
+  "name": "05-functions-legacy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "echo no tests"
+  },
+  "dependencies": {
+    "openai": "*"
+  }
+}
