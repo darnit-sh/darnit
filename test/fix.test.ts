@@ -211,6 +211,14 @@ describe("fix verifies its own rewrites", () => {
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
+  it("does not list leftovers under a partial rewrite that was put back", async () => {
+    const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });
+    const result = await fix(dir, { test: "node -e \"process.exit(1)\"" });
+    const summary = renderSummary(result);
+    expect(summary).toContain("rewritten, then put back");
+    expect(summary).not.toContain("needs a human");
+  });
+
   it("reports the call sites a partial rewrite left behind", async () => {
     const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });
     for (const dryRun of [true, false]) {
@@ -307,7 +315,7 @@ describe("fix", () => {
     expect(result.reverted).toBe(true);
     expect(result.tests?.attributed).toBe("baseline");
     const summary = renderSummary(result);
-    expect(summary).toContain("already fail without the change. Fix them first, or rerun with --no-test to apply it unchecked.");
+    expect(summary).toContain("already fail without the change. Fix them first, or rerun with --no-test to apply it without the tests or the build check.");
     // A rewrite that was put back is never shown with a check mark.
     expect(summary).toContain("✗ Rename max_tokens to max_completion_tokens on chat completions: rewritten, then put back");
     expect(summary).not.toContain("✓");
