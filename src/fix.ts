@@ -404,7 +404,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     "## Not verified",
     ...unconfirmed.map((u) => `- This change needs ${u}; darnit could not find the version this repository uses.`),
     "- No generated regression tests yet; the checks above are the repository's own.",
-    "- Options objects built in one place and passed by name are not covered.",
+    "- Request options built elsewhere and passed in as a variable are not followed.",
     ...(record.notes?.edgeCases ?? []).map((e) => `- ${plain(e)}`),
     "",
     "---",
