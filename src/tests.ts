@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
+import { constants } from "node:fs";
 import { access, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 export type TestRun = { command: string; passed: boolean; output: string; timedOut: boolean };
 
@@ -8,7 +9,7 @@ const exists = (path: string) => access(path).then(() => true, () => false);
 
 const NPM_PLACEHOLDER = /no test specified/;
 
-export async function detectTestCommand(root: string): Promise<string | undefined> {
+export async function detectTestCommand(root: string, path = process.env.PATH ?? ""): Promise<string | undefined> {
   const pkgText = await readFile(join(root, "package.json"), "utf8").catch(() => undefined);
   if (pkgText !== undefined) {
     try {
@@ -23,12 +24,27 @@ export async function detectTestCommand(root: string): Promise<string | undefine
       // Not JSON; fall through to Python.
     }
   }
+  if (!(await hasPytestSetup(root))) return undefined;
+  const python = await pythonOnPath(path);
+  return python && `${python} -m pytest -q`;
+}
+
+export async function hasPytestSetup(root: string): Promise<boolean> {
   for (const marker of ["pytest.ini", "tox.ini", "conftest.py", "tests"]) {
-    if (await exists(join(root, marker))) return "python -m pytest -q";
+    if (await exists(join(root, marker))) return true;
   }
   const pyproject = await readFile(join(root, "pyproject.toml"), "utf8").catch(() => "");
   const setupCfg = await readFile(join(root, "setup.cfg"), "utf8").catch(() => "");
-  if (pyproject.includes("[tool.pytest") || setupCfg.includes("[tool:pytest]")) return "python -m pytest -q";
+  return pyproject.includes("[tool.pytest") || setupCfg.includes("[tool:pytest]");
+}
+
+/** python3 first: stock macOS and most Linux distributions have no plain `python`. An active virtualenv provides both. */
+async function pythonOnPath(path: string): Promise<string | undefined> {
+  for (const name of ["python3", "python"]) {
+    for (const dir of path.split(delimiter)) {
+      if (dir && (await access(join(dir, name), constants.X_OK).then(() => true, () => false))) return name;
+    }
+  }
   return undefined;
 }
 

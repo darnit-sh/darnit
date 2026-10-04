@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -19,6 +19,13 @@ async function dirWith(files: Record<string, string>): Promise<string> {
   return dir;
 }
 
+/** A PATH made of one directory holding executable stand-ins for `names`. */
+async function pathWith(...names: string[]): Promise<string> {
+  const bin = await dirWith(Object.fromEntries(names.map((n) => [n, "#!/bin/sh\n"])));
+  for (const n of names) await chmod(join(bin, n), 0o755);
+  return bin;
+}
+
 describe("detectTestCommand", () => {
   it("picks the package manager from the lockfile", async () => {
     const pkg = JSON.stringify({ scripts: { test: "vitest" } });
@@ -33,10 +40,18 @@ describe("detectTestCommand", () => {
   });
 
   it("recognises pytest setups", async () => {
-    expect(await detectTestCommand(await dirWith({ "pytest.ini": "" }))).toBe("python -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "tests/": "" }))).toBe("python -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "pyproject.toml": "[tool.pytest.ini_options]\n" }))).toBe("python -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "setup.cfg": "[tool:pytest]\n" }))).toBe("python -m pytest -q");
+    const path = await pathWith("python3");
+    expect(await detectTestCommand(await dirWith({ "pytest.ini": "" }), path)).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(await dirWith({ "tests/": "" }), path)).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(await dirWith({ "pyproject.toml": "[tool.pytest.ini_options]\n" }), path)).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(await dirWith({ "setup.cfg": "[tool:pytest]\n" }), path)).toBe("python3 -m pytest -q");
+  });
+
+  it("runs pytest with whichever Python is installed, python3 first", async () => {
+    const project = await dirWith({ "pytest.ini": "" });
+    expect(await detectTestCommand(project, await pathWith("python"))).toBe("python -m pytest -q");
+    expect(await detectTestCommand(project, await pathWith("python", "python3"))).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(project, await pathWith())).toBeUndefined();
   });
 
   it("finds nothing in an empty project", async () => {
