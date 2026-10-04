@@ -193,6 +193,17 @@ const COMPILED = /\.(m?[jt]sx?|c[jt]s)$/;
  * The build only runs when JavaScript or TypeScript changed: it says nothing about a Python fix.
  */
 async function runChecks(root: string, commands: Commands, snap: Map<string, string>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
+  // Builds and tests can write tracked files (a committed dist/, generated types). Put back anything
+  // they touched that was clean before, so the tree only differs by the rewrite.
+  const dirtyBefore = new Set(await g.modified(root));
+  try {
+    return await runChecksIn(root, commands, snap);
+  } finally {
+    await g.discard(root, (await g.modified(root)).filter((f) => !dirtyBefore.has(f) && !snap.has(f)));
+  }
+}
+
+async function runChecksIn(root: string, commands: Commands, snap: Map<string, string>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
   const compiled = [...snap.keys()].some((f) => COMPILED.test(f));
   const build = commands.build && compiled ? await testAndAttribute(root, commands.build, snap, "build") : undefined;
   if (failed(build)) return { build: build! };
