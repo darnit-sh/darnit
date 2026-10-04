@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { Command } from "commander";
-import { check, render, toJson } from "./check.js";
+import { checkReport, render, toJson } from "./check.js";
 import { exitCodeFor, fix, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 
@@ -28,8 +28,8 @@ program
   .description("report vendor API changes that affect this repo's call sites")
   .option("--json", "machine-readable output")
   .action(async ({ json }: { json?: boolean }) => {
-    const hits = await check(process.cwd());
-    console.log(json ? JSON.stringify({ version, hits: toJson(hits) }, null, 2) : render(hits));
+    const { hits, coverage } = await checkReport(process.cwd());
+    console.log(json ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits) }, null, 2) : render(hits, coverage));
     if (hits.length > 0) process.exitCode = 1;
   });
 

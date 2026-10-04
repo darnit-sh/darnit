@@ -21,25 +21,41 @@ async function configuredVendors(root: string): Promise<Set<string> | undefined>
   }
 }
 
-/** Every call site in `root` affected by a known vendor change. */
-export async function check(root: string): Promise<Hit[]> {
-  const only = await configuredVendors(root);
-  const records = (await loadRecords()).filter(({ record }) => !only || only.has(record.vendor));
+/** What a check covered, so a clean result can say what it was clean against. */
+export type Coverage = { files: number; records: number };
+
+/** Hits for `records` in `files` (relative to `root`). Files darnit cannot parse are skipped. */
+export async function scan(root: string, files: readonly string[], records: readonly ChangeRecord[]): Promise<{ hits: Hit[]; scanned: number }> {
   const hits: Hit[] = [];
+  let scanned = 0;
   // Known limit: each file is parsed once per record. Fine for a handful of records; index them by vendor as the corpus grows.
-  for (const file of await listFiles(root)) {
+  for (const file of files) {
     const grammar = grammarFor(file);
     if (!grammar) continue;
     const text = await readFile(join(root, file), "utf8").catch(() => undefined);
     if (text === undefined) continue;
-    for (const { record } of records) {
+    scanned++;
+    for (const record of records) {
       const patterns = record.detection.astGrepPatterns[grammar.lang];
       if (!patterns) continue;
       const { sdkSymbols: symbols, endpoints } = record.surface;
       for (const match of findMatches(text, grammar.grammar, patterns, { symbols, endpoints })) hits.push({ ...match, record, file });
     }
   }
-  return hits;
+  return { hits, scanned };
+}
+
+/** Every call site in `root` affected by a known vendor change, and what was covered. */
+export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage }> {
+  const only = await configuredVendors(root);
+  const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
+  const { hits, scanned } = await scan(root, await listFiles(root), records);
+  return { hits, coverage: { files: scanned, records: records.length } };
+}
+
+/** Every call site in `root` affected by a known vendor change. */
+export async function check(root: string): Promise<Hit[]> {
+  return (await checkReport(root)).hits;
 }
 
 /** The record's own title, or one derived from its data for records without one. */
@@ -72,9 +88,17 @@ export function toJson(hits: Hit[]): object[] {
   }));
 }
 
-/** Terminal report, grouped by vendor change. */
-export function render(hits: Hit[]): string {
-  if (hits.length === 0) return "No known vendor changes affect this repository.";
+const NOT_CHECKED = "Not checked: request options built elsewhere and passed in as a variable.";
+
+/** Terminal report, grouped by vendor change. Always ends by saying what was and was not covered. */
+export function render(hits: Hit[], coverage?: Coverage): string {
+  const footer = [
+    ...(coverage
+      ? [`Scanned ${plural(coverage.files, "JavaScript, TypeScript or Python file")} against ${plural(coverage.records, "change record")}.`]
+      : []),
+    NOT_CHECKED,
+  ];
+  if (hits.length === 0) return ["No known vendor changes affect this repository.", "", ...footer].join("\n");
   const groups = new Map<string, Hit[]>();
   for (const hit of hits) groups.set(hit.record.id, [...(groups.get(hit.record.id) ?? []), hit]);
 
@@ -89,6 +113,6 @@ export function render(hits: Hit[]): string {
     for (const source of record.sources) out.push(`  ${source.url}`);
     out.push("");
   }
-  out.push("Not checked: options objects built in one place and passed by name.");
+  out.push(...footer);
   return out.join("\n");
 }

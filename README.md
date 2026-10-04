@@ -226,7 +226,7 @@ To watch another vendor, add its spec URL and its SDK calls to `vendors.yml`.
 ## Limits
 
 - Request options built somewhere else and passed in as a variable are not
-  followed. `check` reminds you at the end of every report that finds something.
+  followed. `check` reminds you at the end of every report, clean or not.
 - Only changes with a record are found. No record, no report.
 - `fix` runs in your working tree, not a sandbox. Your test command runs as you.
 
