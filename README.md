@@ -33,7 +33,7 @@ darnit leaves it alone. That one is correct.
 npm install -g darnit
 ```
 
-Or skip the install: `npx darnit check`. Needs Node 20.12 or newer.
+Or skip the install: `npx darnit check`. Needs Node 22.12 or newer.
 
 ## How it works
 
@@ -90,7 +90,7 @@ Without `--force`, existing files are left untouched.
 
 Lists every call site affected by a known change: file, line, and the vendor's
 own announcement. Changes still waiting for review are marked
-`(unreviewed change, detection only)`.
+`(unreviewed change, detection only)` and never fail the check on their own.
 
 | Flag | |
 |---|---|
@@ -98,8 +98,8 @@ own announcement. Changes still waiting for review are marked
 
 | Exit | |
 |---|---|
-| 0 | nothing affected |
-| 1 | affected call sites found |
+| 0 | nothing affected, or only unreviewed changes |
+| 1 | affected call sites found for a reviewed change |
 | 2 | darnit itself failed |
 
 ### `darnit fix`
@@ -108,9 +108,20 @@ Rewrites the affected code, runs your tests, and shows the diff. It only runs
 inside a git repository, so everything it does can be undone. It touches only
 the files `check` reported.
 
-It finds your test command on its own (`npm test`, `pnpm test`, `yarn test`
-or pytest). If the tests fail, darnit puts your files back and runs them once
-more, so it can tell you whether the change broke them or they were already failing.
+It finds your checks on its own: a `typecheck` or `build` script (or the
+repo's own TypeScript compiler), then your tests (`npm test`, `pnpm test`,
+`yarn test` or pytest). If either fails, darnit puts your files back and runs
+it once more, so it can tell you whether the change broke it or it was already
+failing.
+
+Before rewriting, darnit checks the SDK version your repo uses (from what is
+installed or locked). If it is too old for the new code, darnit leaves the files
+alone and tells you which version to upgrade to. If it can't tell, it rewrites
+and says so.
+
+After rewriting, darnit checks its own work: it scans the files again, and any
+call site still there is listed as `needs a human: file:line` (also in the pull
+request). If the rules changed nothing, it says so instead of claiming a fix.
 
 `fix` skips changes that are not yet reviewed, and changes that a rule can't
 fully make. Both still show up in `check`.
@@ -121,15 +132,15 @@ fully make. Both still show up in `check`.
 | `--pr` | one branch, one test run and one pull request per change |
 | `--only <id>` | just this change, by its id from `check --json` (repeatable) |
 | `--test <command>` | run this instead of the detected test command |
-| `--no-test` | skip tests |
+| `--no-test` | skip tests and the build check |
 | `--allow-dirty` | let `--pr` run with uncommitted changes elsewhere in the tree |
 | `--repo <owner/name>` | the GitHub repository, when `origin` is not a GitHub URL |
 | `--json` | machine-readable output |
 
 | Exit | |
 |---|---|
-| 0 | done, or nothing to do |
-| 1 | tests failed after the change (files put back, nothing pushed) |
+| 0 | done, or nothing to do (call sites listed as `needs a human` still exit 0) |
+| 1 | the build or tests failed after the change (files put back, nothing pushed) |
 | 2 | darnit refused or failed |
 
 #### `--pr`
@@ -170,7 +181,7 @@ jobs:
       - run: npx darnit check
 ```
 
-Once a day it runs `check`. The day a change hits your code, the run fails and
+Once a day it runs `check`. The day a reviewed change hits your code, the run fails and
 GitHub tells you, like any failed workflow. Scheduled workflows only run from
 the default branch, so commit this file there.
 
@@ -226,9 +237,10 @@ To watch another vendor, add its spec URL and its SDK calls to `vendors.yml`.
 ## Limits
 
 - Request options built somewhere else and passed in as a variable are not
-  followed. `check` reminds you at the end of every report that finds something.
+  followed. `check` reminds you at the end of every report, clean or not.
 - Only changes with a record are found. No record, no report.
 - `fix` runs in your working tree, not a sandbox. Your test command runs as you.
+- Tested on macOS and Linux with Node 22 and 24. Windows is not supported yet.
 
 ## License
 

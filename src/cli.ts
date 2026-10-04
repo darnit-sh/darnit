@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { Command } from "commander";
-import { check, render, toJson } from "./check.js";
+import { checkReport, exitCodeForCheck, render, toJson } from "./check.js";
 import { exitCodeFor, fix, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-// Exit codes: 0 nothing to report, 1 affected call sites found, 2 darnit itself failed.
+// Exit codes: 0 nothing to act on, 1 call sites of a reviewed change found, 2 darnit itself failed.
 // process.exitCode (not process.exit) so a long report is fully flushed through a pipe.
 
 const program = new Command()
@@ -28,9 +28,9 @@ program
   .description("report vendor API changes that affect this repo's call sites")
   .option("--json", "machine-readable output")
   .action(async ({ json }: { json?: boolean }) => {
-    const hits = await check(process.cwd());
-    console.log(json ? JSON.stringify({ version, hits: toJson(hits) }, null, 2) : render(hits));
-    if (hits.length > 0) process.exitCode = 1;
+    const { hits, coverage } = await checkReport(process.cwd());
+    console.log(json ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits) }, null, 2) : render(hits, coverage));
+    process.exitCode = exitCodeForCheck(hits);
   });
 
 type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean };
@@ -44,7 +44,7 @@ program
   .option("--repo <owner/name>", "GitHub repository, when origin is not a GitHub URL")
   .option("--only <id>", "restrict to one change record (repeatable)", (id: string, all: string[] = []) => [...all, id])
   .option("--test <command>", "run this instead of the detected test command")
-  .option("--no-test", "skip tests")
+  .option("--no-test", "skip tests and the build check")
   .option("--json", "machine-readable output")
   .action(async (flags: FixFlags) => {
     const result = await fix(process.cwd(), {

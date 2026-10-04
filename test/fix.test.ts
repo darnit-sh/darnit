@@ -1,9 +1,9 @@
-import { appendFile, cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fix, prBody, Refusal, renderSummary } from "../src/fix.js";
+import { applyAndVerify, exitCodeFor, fix, prBody, Refusal, renderSummary } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords } from "../src/records/load.js";
 
@@ -33,7 +33,217 @@ async function tree(dir: string): Promise<Record<string, string>> {
   return out;
 }
 
+// OpenAI over raw HTTP: check finds max_tokens by the endpoint, but the rewrite rules only cover SDK calls.
+const RAW_FETCH = `export const ask = (prompt) =>
+  fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    body: JSON.stringify({ model: "x", messages: [{ role: "user", content: prompt }], max_tokens: 100 }),
+  });
+`;
+const SDK_CALL = `import OpenAI from "openai";
+export const r = new OpenAI().chat.completions.create({ model: "x", messages: [], max_tokens: 5 });
+`;
+
+async function repoWith(files: Record<string, string>): Promise<string> {
+  const src = await mkdtemp(join(tmpdir(), "darnit-src-"));
+  tempDirs.push(src);
+  for (const [name, text] of Object.entries(files)) {
+    await mkdir(dirname(join(src, name)), { recursive: true });
+    await writeFile(join(src, name), text);
+  }
+  return repoFrom(src);
+}
+
+describe("fix checks package versions before rewriting", () => {
+  const PY_CALL = "from openai import OpenAI\nr = OpenAI().chat.completions.create(model='x', messages=[], max_tokens=5)\n";
+
+  it("refuses when the repo pins an SDK too old for the new parameter", async () => {
+    const dir = await repoWith({ "app.py": PY_CALL, "requirements.txt": "openai==1.40.0\n" });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first"]]);
+    expect(await readFile(join(dir, "app.py"), "utf8")).toBe(PY_CALL);
+  });
+
+  it("is not blocked by a stale side requirements file when the main pin is new enough", async () => {
+    const dir = await repoWith({ "app.py": PY_CALL, "requirements.txt": "openai==1.50.0\n", "requirements-legacy.txt": "openai==0.28.1\n" });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true });
+    expect(await readFile(join(dir, "app.py"), "utf8")).toContain("max_completion_tokens=5");
+  });
+
+  it("checks the SDK the file actually uses in a monorepo, not an old hoisted copy", async () => {
+    const dir = await repoWith({
+      "apps/web/sdk.js": SDK_CALL,
+      "apps/web/node_modules/openai/package.json": JSON.stringify({ version: "4.70.0" }),
+      "node_modules/openai/package.json": JSON.stringify({ version: "4.20.0" }),
+    });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true });
+    expect(result.records[0]?.unconfirmed).toBeUndefined();
+  });
+
+  it("blocks when requirements.txt is too old even if a side file pins a newer version", async () => {
+    const dir = await repoWith({ "app.py": PY_CALL, "requirements.txt": "openai==1.40.0\n", "requirements-dev.txt": "openai==1.50.0\n" });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]?.reason).toBe("needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first");
+  });
+
+  it("cannot confirm when the lock file holds both an old and a new version", async () => {
+    const block = (v: string) => `[[package]]\nname = "openai"\nversion = "${v}"\n`;
+    const dir = await repoWith({ "app.py": PY_CALL, "uv.lock": block("1.30.0") + block("1.52.0") });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true, unconfirmed: ["openai >= 1.45.0 (PyPI)"] });
+  });
+
+  it("rewrites when the installed SDK is new enough", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "node_modules/openai/package.json": JSON.stringify({ version: "4.70.0" }) });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true });
+    expect(result.records[0]?.unconfirmed).toBeUndefined();
+    expect(renderSummary(result)).not.toContain("could not confirm");
+  });
+
+  it("rewrites but says so when it cannot tell the SDK version", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true, unconfirmed: ["openai >= 4.60.0 (npm)"] });
+    expect(renderSummary(result)).toContain("could not confirm openai >= 4.60.0 (npm)");
+    const body = prBody(result.records[0]!.record, ["sdk.js"], "t", { unconfirmed: result.records[0]!.unconfirmed });
+    expect(body).toContain("- This change needs openai >= 4.60.0 (npm); darnit could not find the version this repository uses.");
+  });
+});
+
+// Stands in for a typecheck that rejects the new key, as TypeScript does on an SDK older than 4.60.0.
+const STRICT_TYPECHECK = JSON.stringify({
+  scripts: { typecheck: "node -e \"process.exit(require('fs').readFileSync('sdk.js','utf8').includes('max_completion_tokens') ? 1 : 0)\"" },
+});
+
+describe("fix runs the repo's build check", () => {
+  it("puts the files back when the change breaks the build, and skips the tests", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "package.json": STRICT_TYPECHECK });
+    const result = await fix(dir);
+    expect(result.build).toMatchObject({ kind: "build", command: "npm run typecheck", passed: false, attributed: "change" });
+    expect(result.tests).toBeUndefined();
+    expect(result.reverted).toBe(true);
+    expect(exitCodeFor(result)).toBe(1);
+    expect(renderSummary(result)).toContain("build: npm run typecheck failed; files put back. The change broke your build.");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
+
+  it("keeps the change when the build was already failing, and says the build could not check it", async () => {
+    const broken = JSON.stringify({ scripts: { build: "node -e \"process.exit(1)\"" } });
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "package.json": broken });
+    const result = await fix(dir);
+    expect(result.build).toMatchObject({ passed: false, attributed: "baseline", notChecked: true });
+    expect(result.reverted).toBe(false);
+    expect(exitCodeFor(result)).toBe(0);
+    expect(renderSummary(result)).toContain("build: npm run build already fails without the change, so it could not check it; change kept");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toContain("max_completion_tokens: 5");
+    const body = prBody(result.records[0]!.record, ["sdk.js"], "t", { build: result.build });
+    expect(body).toContain("- [ ] `npm run build` already fails without this change, so it could not check it");
+  });
+
+  it("does not run a JavaScript build for a Python-only change", async () => {
+    const pkg = JSON.stringify({ scripts: { build: "node -e \"process.exit(1)\"" } });
+    const dir = await repoWith({ "app.py": "r = c.chat.completions.create(model='x', max_tokens=5)\n", "package.json": pkg });
+    const result = await fix(dir, { test: "node -e 0" });
+    expect(result.build).toBeUndefined();
+    expect(result.tests).toMatchObject({ passed: true });
+    expect(await readFile(join(dir, "app.py"), "utf8")).toContain("max_completion_tokens=5");
+  });
+
+  it("still says no tests were found when only the build ran", async () => {
+    const pkg = JSON.stringify({ scripts: { typecheck: "node -e 0" } });
+    const summary = renderSummary(await fix(await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg })));
+    expect(summary).toContain("build: npm run typecheck passed");
+    expect(summary).toContain("tests: none found");
+  });
+
+  it("puts back tracked files the build wrote, but never the user's own edits", async () => {
+    const pkg = JSON.stringify({ scripts: { build: "node -e \"require('fs').writeFileSync('dist/out.js', 'rebuilt')\"" } });
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg, "dist/out.js": "committed", "notes.md": "committed" });
+    await writeFile(join(dir, "notes.md"), "my uncommitted notes");
+    const result = await fix(dir);
+    expect(result.build).toMatchObject({ passed: true });
+    expect(await readFile(join(dir, "dist/out.js"), "utf8")).toBe("committed");
+    expect(await readFile(join(dir, "notes.md"), "utf8")).toBe("my uncommitted notes");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toContain("max_completion_tokens: 5");
+  });
+
+  it("reports a passing build alongside the tests", async () => {
+    const pkg = JSON.stringify({ scripts: { typecheck: "node -e 0", test: "node -e 0" } });
+    const result = await fix(await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg }));
+    const summary = renderSummary(result);
+    expect(summary).toContain("build: npm run typecheck passed");
+    expect(summary).toContain("tests: npm test passed");
+    expect(exitCodeFor(result)).toBe(0);
+  });
+});
+
+describe("fix verifies its own rewrites", () => {
+  it("does not claim a rewrite it did not make", async () => {
+    const dir = await repoWith({ "client.js": RAW_FETCH });
+    for (const dryRun of [true, false]) {
+      const result = await fix(dir, { noTest: true, dryRun });
+      expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "found, but the rewrite rules don't cover this call shape yet"]]);
+      expect(result.diff).toBe("");
+      expect(renderSummary(result)).not.toContain("✓");
+      expect(await tree(dir)).toEqual({ "client.js": RAW_FETCH });
+    }
+  });
+
+  it("puts files back when a rewrite changed bytes but removed no call site", async () => {
+    // A broken pack: its rule edits a neighbouring key and never touches max_tokens.
+    const pack = await mkdtemp(join(tmpdir(), "darnit-pack-"));
+    tempDirs.push(pack);
+    await mkdir(join(pack, "rules", "js"), { recursive: true });
+    await writeFile(
+      join(pack, "rules", "js", "01-wrong.yml"),
+      "id: wrong\nlanguage: javascript\nrule:\n  pattern:\n    context: '({ model: $M })'\n    selector: pair\nfix: 'engine: $M'\n",
+    );
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    const record = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!.record;
+    const outcome = await applyAndVerify(dir, { record, packDir: pack, files: ["sdk.js"], sites: 1 });
+    expect(outcome).toEqual({ changed: [], remaining: [{ file: "sdk.js", line: 2 }] });
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
+
+  it("reports the call sites a partial rewrite left behind", async () => {
+    const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });
+    for (const dryRun of [true, false]) {
+      const result = await fix(dir, { noTest: true, dryRun });
+      expect(result.records[0]).toMatchObject({ applied: true, sites: 2, remaining: [{ file: "client.js", line: 4 }] });
+      const summary = renderSummary(result);
+      expect(summary).toContain("1 of 2 call sites rewritten");
+      expect(summary).toContain("needs a human: client.js:4");
+      expect(result.diff).toContain("+export const r = new OpenAI().chat.completions.create({ model: \"x\", messages: [], max_completion_tokens: 5 });");
+      expect(result.diff).not.toContain("client.js");
+    }
+  });
+});
+
 describe("fix", () => {
+  it("says why tests did not run when a pytest setup has no Python to run it", async () => {
+    const dir = await repoWith({ "pytest.ini": "", "app.py": "c.chat.completions.create(model='x', max_tokens=5)\n" });
+    // A PATH with git and nothing else, so no python3 or python is found.
+    const bin = await mkdtemp(join(tmpdir(), "darnit-bin-"));
+    tempDirs.push(bin);
+    for (const d of (process.env.PATH ?? "").split(delimiter)) {
+      if (await access(join(d, "git")).then(() => true, () => false)) {
+        await symlink(join(d, "git"), join(bin, "git"));
+        break;
+      }
+    }
+    vi.stubEnv("PATH", bin);
+    try {
+      const result = await fix(dir);
+      expect(result.testsNote).toBe("found a pytest setup but no python3 or python on PATH");
+      expect(renderSummary(result)).toContain("tests: none run (found a pytest setup but no python3 or python on PATH)");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("turns every pack's before/ into its after/, touching only reported files", async () => {
     for (const { record, packDir } of await loadRecords()) {
       if (record.status !== "reviewed" || record.classification !== "mechanical") continue;
@@ -112,8 +322,8 @@ describe("fix --pr", () => {
   const BEFORE = join(PACKS, "openai", "2024-09-12-max-tokens-to-max-completion-tokens", "fixtures", "basic", "before");
   const BRANCH = "darnit/openai-max-tokens-to-max-completion-tokens";
 
-  async function repoWithOrigin(): Promise<{ dir: string; bare: string; branch: string }> {
-    const dir = await repoFrom(BEFORE);
+  async function repoWithOrigin(dir?: string): Promise<{ dir: string; bare: string; branch: string }> {
+    dir ??= await repoFrom(BEFORE);
     const bare = await mkdtemp(join(tmpdir(), "darnit-origin-"));
     tempDirs.push(bare);
     await git(bare, ["init", "-q", "--bare"]);
@@ -155,6 +365,51 @@ describe("fix --pr", () => {
     expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
     expect(await tree(dir)).toEqual(await tree(BEFORE));
     expect(renderSummary(result)).toContain("pull request opened https://github.com/o/r/pull/1");
+  });
+
+  it("opens no pull request when the rules changed nothing", async () => {
+    const { dir, bare, branch } = await repoWithOrigin(await repoWith({ "client.js": RAW_FETCH }));
+    const posts = stubGitHub(branch);
+    const result = await fix(dir, { pr: true, noTest: true, repo: "o/r" });
+    expect(result.records[0]).toMatchObject({ applied: false, reason: "found, but the rewrite rules don't cover this call shape yet" });
+    expect(result.records[0]?.pr).toBeUndefined();
+    expect(posts).toEqual([]);
+    expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+  });
+
+  it("lists what a partial rewrite left behind in the pull request", async () => {
+    const { dir, bare, branch } = await repoWithOrigin(await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL }));
+    const posts = stubGitHub(branch);
+    await fix(dir, { pr: true, noTest: true, repo: "o/r" });
+    const body = String(posts[0]?.body);
+    expect(body).toContain("## Needs a human");
+    expect(body).toContain("- `client.js:4`");
+    expect(body).toContain("- `sdk.js`");
+    expect(body).not.toContain("- `client.js`\n");
+    expect((await git(bare, ["show", `${BRANCH}:client.js`])).toString()).toBe(RAW_FETCH);
+  });
+
+  it("leaves the tree clean after --pr even when the build writes tracked files", async () => {
+    const pkg = JSON.stringify({ scripts: { build: "node -e \"require('fs').writeFileSync('dist/out.js', 'rebuilt')\"" } });
+    const { dir, bare, branch } = await repoWithOrigin(await repoWith({ "sdk.js": SDK_CALL, "package.json": pkg, "dist/out.js": "committed" }));
+    stubGitHub(branch);
+    const result = await fix(dir, { pr: true, repo: "o/r" });
+    expect(result.records[0]?.pr).toMatchObject({ state: "opened", build: { passed: true } });
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+    expect((await git(bare, ["show", `${BRANCH}:dist/out.js`])).toString()).toBe("committed");
+  });
+
+  it("opens no pull request when the change breaks the build", async () => {
+    const { dir, branch } = await repoWithOrigin(await repoWith({ "sdk.js": SDK_CALL, "package.json": STRICT_TYPECHECK }));
+    const posts = stubGitHub(branch);
+    const result = await fix(dir, { pr: true, repo: "o/r" });
+    expect(result.records[0]?.pr).toMatchObject({ state: "build-failed", build: { attributed: "change" } });
+    expect(posts).toEqual([]);
+    expect(exitCodeFor(result)).toBe(1);
+    expect(renderSummary(result)).toContain("The change broke your build.");
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
   });
 
   it("finds an already open pull request instead of opening another", async () => {
@@ -231,7 +486,6 @@ describe("prBody", () => {
     const body = prBody(
       { ...record, sources: [{ url: "https://example.com/changelog", quoteId: hostile }], notes: { migration: hostile, edgeCases: [hostile] } },
       ["app.js"],
-      undefined,
       "test",
     );
     const span = "`Use tools. # Heading <img src=x onerror=alert(1)> [click](https://evil.example) ![](https://pixel.example) @octocat`";
@@ -239,6 +493,6 @@ describe("prBody", () => {
     expect(lines[0]).toBe(span);
     expect(lines).toContain(`> ${span}`);
     expect(lines).toContain(`- ${span}`);
-    expect(prBody({ ...record, notes: { migration: "a `b` c" } }, [], undefined, "test").split("\n")[0]).toBe("`a 'b' c`");
+    expect(prBody({ ...record, notes: { migration: "a `b` c" } }, [], "test").split("\n")[0]).toBe("`a 'b' c`");
   });
 });

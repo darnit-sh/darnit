@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { detectTestCommand, runTests } from "../src/tests.js";
+import { detectBuildCommand, detectTestCommand, runTests } from "../src/tests.js";
 
 const tempDirs: string[] = [];
 afterEach(async () => {
@@ -19,6 +19,32 @@ async function dirWith(files: Record<string, string>): Promise<string> {
   return dir;
 }
 
+/** A PATH made of one directory holding executable stand-ins for `names`. */
+async function pathWith(...names: string[]): Promise<string> {
+  const bin = await dirWith(Object.fromEntries(names.map((n) => [n, "#!/bin/sh\n"])));
+  for (const n of names) await chmod(join(bin, n), 0o755);
+  return bin;
+}
+
+describe("detectBuildCommand", () => {
+  it("prefers a typecheck script, then a build script, with the lockfile's package manager", async () => {
+    const both = JSON.stringify({ scripts: { typecheck: "tsc --noEmit", build: "tsc" } });
+    expect(await detectBuildCommand(await dirWith({ "package.json": both }))).toBe("npm run typecheck");
+    expect(await detectBuildCommand(await dirWith({ "package.json": JSON.stringify({ scripts: { build: "tsc" } }), "pnpm-lock.yaml": "" }))).toBe("pnpm run build");
+  });
+
+  it("falls back to the repo's own TypeScript compiler", async () => {
+    const dir = await dirWith({ "tsconfig.json": "{}", "node_modules/": "", "node_modules/.bin/": "", "node_modules/.bin/tsc": "" });
+    expect(await detectBuildCommand(dir)).toBe("node_modules/.bin/tsc --noEmit");
+    expect(await detectBuildCommand(await dirWith({ "tsconfig.json": "{}" }))).toBeUndefined();
+  });
+
+  it("finds nothing in a plain project", async () => {
+    expect(await detectBuildCommand(await dirWith({ "package.json": JSON.stringify({ scripts: { test: "x" } }) }))).toBeUndefined();
+    expect(await detectBuildCommand(await dirWith({}))).toBeUndefined();
+  });
+});
+
 describe("detectTestCommand", () => {
   it("picks the package manager from the lockfile", async () => {
     const pkg = JSON.stringify({ scripts: { test: "vitest" } });
@@ -33,10 +59,22 @@ describe("detectTestCommand", () => {
   });
 
   it("recognises pytest setups", async () => {
-    expect(await detectTestCommand(await dirWith({ "pytest.ini": "" }))).toBe("python -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "tests/": "" }))).toBe("python -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "pyproject.toml": "[tool.pytest.ini_options]\n" }))).toBe("python -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "setup.cfg": "[tool:pytest]\n" }))).toBe("python -m pytest -q");
+    const path = await pathWith("python3");
+    expect(await detectTestCommand(await dirWith({ "pytest.ini": "" }), path)).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(await dirWith({ "tests/": "", "tests/test_app.py": "" }), path)).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(await dirWith({ "pyproject.toml": "[tool.pytest.ini_options]\n" }), path)).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(await dirWith({ "setup.cfg": "[tool:pytest]\n" }), path)).toBe("python3 -m pytest -q");
+  });
+
+  it("runs pytest with whichever Python is installed, python3 first", async () => {
+    const project = await dirWith({ "pytest.ini": "" });
+    expect(await detectTestCommand(project, await pathWith("python"))).toBe("python -m pytest -q");
+    expect(await detectTestCommand(project, await pathWith("python", "python3"))).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(project, await pathWith())).toBeUndefined();
+  });
+
+  it("does not mistake a JavaScript tests/ folder for pytest", async () => {
+    expect(await detectTestCommand(await dirWith({ "tests/": "", "tests/app.test.js": "" }), await pathWith("python3"))).toBeUndefined();
   });
 
   it("finds nothing in an empty project", async () => {

@@ -18,6 +18,7 @@ export const AstGrepPatternSchema = z
 export type AstGrepPattern = z.infer<typeof AstGrepPatternSchema>;
 
 const IsoDate = z.iso.date();
+const Version = z.string().regex(/^\d+\.\d+\.\d+$/, "versions are x.y.z");
 
 export const ChangeRecordSchema = z
   .object({
@@ -65,6 +66,14 @@ export const ChangeRecordSchema = z
       .object({
         rulePackPath: z.string().min(1).optional(),
         agentBriefPath: z.string().min(1).optional(),
+        /** Oldest package version the rewritten code works with, per ecosystem. */
+        requires: z
+          .object({
+            npm: z.record(z.string().min(1), Version).optional(),
+            pypi: z.record(z.string().min(1), Version).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

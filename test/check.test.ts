@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { check, render, toJson, type Hit } from "../src/check.js";
+import { check, checkReport, exitCodeForCheck, render, toJson, type Hit } from "../src/check.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -25,6 +25,14 @@ async function scratch(files: Record<string, string>): Promise<string> {
 const locations = (hits: Hit[]) => hits.map((h) => `${h.file}:${h.line}`);
 
 describe("check", () => {
+  it("reports what it covered, counting only files it can parse", async () => {
+    const dir = await scratch({ "a.js": "export const x = 1;\n", "b.py": "x = 1\n", "notes.md": "# hi\n" });
+    const { hits, coverage } = await checkReport(dir);
+    expect(hits).toEqual([]);
+    expect(coverage.files).toBe(2);
+    expect(coverage.records).toBeGreaterThanOrEqual(2);
+  });
+
   it("reports OpenAI call sites and ignores other vendors' max_tokens and nested calls", async () => {
     const hits = await check(MAX_TOKENS_FIXTURE);
     expect(locations(hits)).toEqual(["app.js:12", "app.js:22", "app.py:10", "app.ts:9"]);
@@ -50,7 +58,10 @@ describe("check", () => {
   it("does not report an options object passed by name", async () => {
     const dir = await scratch({ "detached.js": 'import OpenAI from "openai";\nconst opts = { max_tokens: 5 };\nnew OpenAI().chat.completions.create(opts);\n' });
     expect(await check(dir)).toEqual([]);
-    expect(render([])).toBe("No known vendor changes affect this repository.");
+    const clean = render([], { files: 1, records: 2 });
+    expect(clean).toContain("No known vendor changes affect this repository.");
+    expect(clean).toContain("Scanned 1 JavaScript, TypeScript or Python file against 2 change records.");
+    expect(clean).toContain("Not checked: request options built elsewhere");
   });
 
   it("keeps another vendor's max_tokens out of the report even next to a raw OpenAI fetch", async () => {
@@ -85,9 +96,17 @@ describe("check", () => {
     expect(text).toContain("1 call site in 1 file");
     expect(text).toContain("https://developers.openai.com/api/docs/api-reference/chat/create");
     expect(text).toContain("Not checked:");
+    expect(render(hits, { files: 3, records: 4 })).toContain("Scanned 3 JavaScript, TypeScript or Python files against 4 change records.");
 
     const candidate = { ...hits[0]!, record: { ...hits[0]!.record, status: "candidate" as const } };
     expect(render([candidate])).toContain("(unreviewed change, detection only)");
+    expect(render([candidate])).toContain("Unreviewed changes are reported but do not fail the check.");
+    expect(render(hits)).not.toContain("do not fail the check");
+
+    // Only a reviewed change fails the check; a candidate alone never turns a scheduled run red.
+    expect(exitCodeForCheck([candidate])).toBe(0);
+    expect(exitCodeForCheck([candidate, hits[0]!])).toBe(1);
+    expect(exitCodeForCheck([])).toBe(0);
 
     expect(toJson(hits)).toEqual([
       {
