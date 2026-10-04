@@ -112,6 +112,11 @@ It finds your test command on its own (`npm test`, `pnpm test`, `yarn test`
 or pytest). If the tests fail, darnit puts your files back and runs them once
 more, so it can tell you whether the change broke them or they were already failing.
 
+Before rewriting, darnit checks the SDK version your repo uses (from what is
+installed or locked). If it is too old for the new code, darnit leaves the files
+alone and tells you which version to upgrade to. If it can't tell, it rewrites
+and says so.
+
 After rewriting, darnit checks its own work: it scans the files again, and any
 call site still there is listed as `needs a human: file:line` (also in the pull
 request). If the rules changed nothing, it says so instead of claiming a fix.
