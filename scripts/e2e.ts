@@ -26,7 +26,7 @@ type Expect = {
 // A rewrite that claims success but left a call site behind is a failure here.
 const CLEAN_FIX = ["needs a human", "0 of"];
 
-const NOT_COVERED = "found, but the rewrite rules don't cover this call shape yet";
+const NOT_COVERED = "found in 1 file, not rewritten: the rewrite rules don't cover this call shape yet";
 
 const EXPECT: Record<string, Expect> = {
   "01-js-basic": {
@@ -60,17 +60,17 @@ const EXPECT: Record<string, Expect> = {
   },
   "05-functions-legacy": {
     check: { exit: 1, has: ["weather.js:9:5", "weather.js:10:5"] },
-    fix: { exit: 0, has: ["migration not yet automated; see the record notes"] },
+    fix: { exit: 0, has: ["found in 1 file, not rewritten: migration not yet automated; see the record notes"] },
     changed: [],
   },
   "06-test-breaks": {
     check: { exit: 1, has: ["src/summarize.js:5:5"] },
-    fix: { exit: 1, has: ["The change broke your tests."] },
+    fix: { exit: 1, has: ["✗ Rename max_tokens", "rewritten, then put back", "The change broke your tests."], lacks: ["✓"] },
     changed: [],
   },
   "07-already-red": {
     check: { exit: 1, has: ["src/summarize.js:5:5"] },
-    fix: { exit: 1, has: ["They already fail without the change."] },
+    fix: { exit: 1, has: ["✗ Rename max_tokens", "They already fail without the change.", "rerun with --no-test"], lacks: ["✓"] },
     changed: [],
   },
   "08-clean": {
@@ -80,17 +80,21 @@ const EXPECT: Record<string, Expect> = {
   },
   "10-ts-old-sdk": {
     check: { exit: 1, has: ["src/draft.ts:9:5  max_tokens: 512"] },
-    fix: { exit: 1, has: ["could not confirm openai >= 4.60.0 (npm)", "build: npm run typecheck failed; files put back. The change broke your build."] },
+    fix: {
+      exit: 1,
+      has: ["✗ Rename max_tokens", "could not confirm openai >= 4.60.0 (npm)", "build: npm run typecheck failed; files put back. The change broke your build."],
+      lacks: ["✓"],
+    },
     changed: [],
   },
   "12-js-old-lock": {
     check: { exit: 1, has: ["src/summarize.js:5:5  max_tokens: 256"] },
-    fix: { exit: 0, has: ["needs openai >= 4.60.0, this repo has 4.20.0 (package-lock.json); upgrade it first"] },
+    fix: { exit: 0, has: ["found in 1 file, not rewritten: needs openai >= 4.60.0, this repo has 4.20.0 (package-lock.json); upgrade it first"] },
     changed: [],
   },
   "11-py-old-sdk": {
     check: { exit: 1, has: ["app/summarize.py:5:9  max_tokens=256"] },
-    fix: { exit: 0, has: ["needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first"] },
+    fix: { exit: 0, has: ["found in 1 file, not rewritten: needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first"] },
     changed: [],
   },
   "09-options-elsewhere": {

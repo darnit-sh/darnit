@@ -77,7 +77,7 @@ export class Refusal extends Error {}
 
 export type Group = { record: ChangeRecord; packDir: string; files: string[]; sites: number };
 
-const NOT_COVERED = "found, but the rewrite rules don't cover this call shape yet";
+const NOT_COVERED = "the rewrite rules don't cover this call shape yet";
 
 async function groupHits(root: string, only: string[] | undefined): Promise<Group[]> {
   const packs = new Map((await loadRecords()).map((l) => [l.record.id, l.packDir]));
@@ -428,7 +428,7 @@ function testLine(t: TestOutcome): string {
         : "It already fails without the change."
       : t.attributed === "change"
         ? "The change broke your tests."
-        : "They already fail without the change.";
+        : "They already fail without the change. Fix them first, or rerun with --no-test to apply it unchecked.";
   return `${t.kind}: ${t.command} failed; files put back. ${why}${t.output ? `\n${t.output}` : ""}`;
 }
 
@@ -436,7 +436,8 @@ export function renderSummary(result: FixResult): string {
   const lines: string[] = [];
   for (const r of result.records) {
     const where = `${r.files.length} file${r.files.length === 1 ? "" : "s"}`;
-    if (!r.applied) lines.push(`- ${r.title}: ${where} reported, ${r.reason}`);
+    if (!r.applied) lines.push(`- ${r.title}: found in ${where}, not rewritten: ${r.reason}`);
+    else if (!r.pr && result.reverted) lines.push(`✗ ${r.title}: rewritten, then put back`);
     else if (!r.pr) lines.push(`✓ ${r.title}: ${r.remaining ? `${r.sites - r.remaining.length} of ${r.sites} call sites rewritten` : where}`);
     else if (r.pr.state === "opened") {
       lines.push(`✓ ${r.title}: pull request opened ${r.pr.url}`);
