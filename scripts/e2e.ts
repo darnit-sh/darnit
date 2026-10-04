@@ -78,6 +78,16 @@ const EXPECT: Record<string, Expect> = {
     fix: { exit: 0, has: ["Nothing to fix."] },
     changed: [],
   },
+  "10-ts-old-sdk": {
+    check: { exit: 1, has: ["src/draft.ts:9:5  max_tokens: 512"] },
+    fix: { exit: 1, has: ["build: npm run typecheck failed; files put back. The change broke your build."] },
+    changed: [],
+  },
+  "11-py-old-sdk": {
+    check: { exit: 1, has: ["app/summarize.py:5:9  max_tokens=256"] },
+    fix: { exit: 0, has: ["needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first"] },
+    changed: [],
+  },
   "09-options-elsewhere": {
     check: { exit: 0, has: ["No known vendor changes affect this repository.", "Not checked: request options built elsewhere"] },
     fix: { exit: 0, has: ["Nothing to fix."] },
@@ -115,11 +125,13 @@ try {
   const darnit = join(install, "node_modules", ".bin", "darnit");
   console.log(`darnit ${must(darnit, ["--version"], install).trim()} from ${tarball}\n`);
 
-  for (const [name, want] of Object.entries(EXPECT)) {
+  for (const [name, want] of Object.entries(EXPECT).sort(([a], [b]) => a.localeCompare(b))) {
     const dir = join(work, name);
     cpSync(join(SCENARIOS, name), dir, { recursive: true });
     let env = process.env;
-    if (readdirSync(dir).includes("requirements.txt")) {
+    // Scenarios that list pytest get a virtualenv with it, so their suite can run.
+    const requirements = readdirSync(dir).includes("requirements.txt") ? readFileSync(join(dir, "requirements.txt"), "utf8") : "";
+    if (requirements.includes("pytest")) {
       must("python3", ["-m", "venv", ".venv"], dir);
       must(join(dir, ".venv", "bin", "python"), ["-m", "pip", "install", "--quiet", "pytest"], dir);
       env = { ...process.env, PATH: `${join(dir, ".venv", "bin")}${delimiter}${process.env.PATH ?? ""}` };

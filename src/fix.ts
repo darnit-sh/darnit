@@ -7,7 +7,7 @@ import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlu
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
-import { detectTestCommand, hasPytestSetup, runTests, type TestRun } from "./tests.js";
+import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun } from "./tests.js";
 import { atLeast, installedVersion, type Ecosystem } from "./versions.js";
 
 export type FixOptions = {
@@ -24,15 +24,18 @@ export type FixOptions = {
 };
 
 export type TestOutcome = TestRun & {
+  /** What was run: the repo's build or typecheck, or its tests. */
+  kind: "build" | "tests";
   /** "change": passed before, failed after. "baseline": already failing before. */
   attributed?: "change" | "baseline";
 };
 
 export type PrResult =
-  | { state: "opened"; url: string; tests?: TestOutcome | undefined }
+  | { state: "opened"; url: string; build?: TestOutcome | undefined; tests?: TestOutcome | undefined }
   | { state: "exists"; url: string }
   | { state: "skipped"; reason: string }
-  | { state: "tests-failed"; tests: TestOutcome };
+  | { state: "tests-failed"; tests: TestOutcome }
+  | { state: "build-failed"; build: TestOutcome };
 
 export type Site = { file: string; line: number };
 
@@ -55,6 +58,7 @@ export type FixResult = {
   records: RecordResult[];
   dryRun: boolean;
   pr: boolean;
+  build?: TestOutcome | undefined;
   tests?: TestOutcome | undefined;
   testsSkipped: boolean;
   /** Why no tests ran, when darnit found a test setup it could not run. */
@@ -145,14 +149,24 @@ function settle(result: RecordResult, outcome: Outcome): string[] {
   return outcome.changed;
 }
 
-/** Runs tests; on failure puts the files back and runs again to say whether the change was the cause. */
-async function testAndAttribute(root: string, command: string, snap: Map<string, string>): Promise<TestOutcome> {
-  const tests: TestOutcome = await runTests(root, command);
-  if (!tests.passed) {
+/** Runs a check; on failure puts the files back and runs it again to say whether the change was the cause. */
+async function testAndAttribute(root: string, command: string, snap: Map<string, string>, kind: TestOutcome["kind"]): Promise<TestOutcome> {
+  const outcome: TestOutcome = { ...(await runTests(root, command)), kind };
+  if (!outcome.passed) {
     await restore(root, snap);
-    tests.attributed = (await runTests(root, command)).passed ? "change" : "baseline";
+    outcome.attributed = (await runTests(root, command)).passed ? "change" : "baseline";
   }
-  return tests;
+  return outcome;
+}
+
+type Commands = { build?: string | undefined; tests?: string | undefined };
+
+/** The build check first, then the tests; stops at the first failure, which has already put the files back. */
+async function runChecks(root: string, commands: Commands, snap: Map<string, string>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
+  const build = commands.build ? await testAndAttribute(root, commands.build, snap, "build") : undefined;
+  if (build && !build.passed) return { build };
+  const tests = commands.tests ? await testAndAttribute(root, commands.tests, snap, "tests") : undefined;
+  return { ...(build ? { build } : {}), ...(tests ? { tests } : {}) };
 }
 
 export async function fix(root: string, opts: FixOptions = {}): Promise<FixResult> {
@@ -208,9 +222,9 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     }
   }
 
-  const command = opts.noTest ? undefined : (opts.test ?? (await detectTestCommand(root)));
-  if (!command && !opts.noTest && (await hasPytestSetup(root))) base.testsNote = "found a pytest setup but no python3 or python on PATH";
-  if (opts.pr) return pullRequests(root, applicable, base, command, opts);
+  const commands: Commands = opts.noTest ? {} : { build: await detectBuildCommand(root), tests: opts.test ?? (await detectTestCommand(root)) };
+  if (!commands.tests && !opts.noTest && (await hasPytestSetup(root))) base.testsNote = "found a pytest setup but no python3 or python on PATH";
+  if (opts.pr) return pullRequests(root, applicable, base, commands, opts);
 
   const snap = await snapshotOf(root, [...new Set(applicable.flatMap((grp) => grp.files))]);
   const touched: string[] = [];
@@ -223,14 +237,14 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     throw err;
   }
   if (touched.length === 0) return base;
-  const tests = command ? await testAndAttribute(root, command, snap) : undefined;
-  const reverted = tests !== undefined && !tests.passed;
-  return { ...base, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
+  const { build, tests } = await runChecks(root, commands, snap);
+  const reverted = [build, tests].some((c) => c && !c.passed);
+  return { ...base, build, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
 }
 
 // One branch, one test run and one pull request per change. The working tree is
 // left exactly as it was found, on the branch it was found on.
-async function pullRequests(root: string, groups: Group[], base: FixResult, command: string | undefined, opts: FixOptions): Promise<FixResult> {
+async function pullRequests(root: string, groups: Group[], base: FixResult, commands: Commands, opts: FixOptions): Promise<FixResult> {
   if (!opts.allowDirty && !(await g.isClean(root))) {
     throw new Refusal("uncommitted changes in the working tree; commit or stash them, or pass --allow-dirty");
   }
@@ -267,7 +281,12 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
     try {
       const changed = settle(result, await applyAndVerify(root, grp));
       if (changed.length === 0) continue;
-      const tests = command ? await testAndAttribute(root, command, snap) : undefined;
+      const { build, tests } = await runChecks(root, commands, snap);
+      if (build && !build.passed) {
+        result.pr = { state: "build-failed", build };
+        anyFailed = true;
+        continue;
+      }
       if (tests && !tests.passed) {
         result.pr = { state: "tests-failed", tests };
         anyFailed = true;
@@ -277,8 +296,15 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
       committed = true;
       await g.push(root, branch);
-      const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body: prBody(grp.record, changed, tests, opts.version ?? "dev", result.remaining, base.testsNote, result.unconfirmed) });
-      result.pr = { state: "opened", url, tests };
+      const body = prBody(grp.record, changed, opts.version ?? "dev", {
+        build,
+        tests,
+        remaining: result.remaining,
+        testsNote: base.testsNote,
+        unconfirmed: result.unconfirmed,
+      });
+      const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
+      result.pr = { state: "opened", url, build, tests };
       opened = true;
     } catch (err) {
       // Once committed, the tree already matches the branch; restoring would only block the switch back.
@@ -298,15 +324,16 @@ const plain = (text: string) => {
   return t ? `\`${t}\`` : "";
 };
 
-export function prBody(
-  record: ChangeRecord,
-  files: readonly string[],
-  tests: TestOutcome | undefined,
-  version: string,
-  remaining: readonly Site[] = [],
-  testsNote?: string,
-  unconfirmed: readonly string[] = [],
-): string {
+export type PrEvidence = {
+  build?: TestOutcome | undefined;
+  tests?: TestOutcome | undefined;
+  remaining?: readonly Site[] | undefined;
+  testsNote?: string | undefined;
+  unconfirmed?: readonly string[] | undefined;
+};
+
+export function prBody(record: ChangeRecord, files: readonly string[], version: string, evidence: PrEvidence = {}): string {
+  const { build, tests, remaining = [], testsNote, unconfirmed = [] } = evidence;
   const source = record.sources[0]!;
   return [
     plain(record.notes?.migration ?? title(record)),
@@ -319,6 +346,7 @@ export function prBody(
     ...files.map((f) => `- \`${f}\``),
     "",
     "## Verified",
+    ...(build ? [`- [${build.passed ? "x" : " "}] \`${build.command}\` ${build.passed ? "passed" : "failed"}`] : []),
     tests ? `- [${tests.passed ? "x" : " "}] \`${tests.command}\` ${tests.passed ? "passed" : "failed"}` : `- [ ] ${testsNote ? `tests not run: ${testsNote}` : "no test command found in this repository"}`,
     ...(tests?.output ? ["", "<details><summary>test output</summary>", "", "```", tests.output, "```", "", "</details>"] : []),
     "",
@@ -338,14 +366,21 @@ export function prBody(
 }
 
 export function exitCodeFor(result: FixResult): 0 | 1 {
-  if (result.tests && !result.tests.passed) return 1;
-  return result.records.some((r) => r.pr?.state === "tests-failed") ? 1 : 0;
+  if ([result.build, result.tests].some((c) => c && !c.passed)) return 1;
+  return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed") ? 1 : 0;
 }
 
 function testLine(t: TestOutcome): string {
-  if (t.passed) return `tests: ${t.command} passed`;
-  const why = t.attributed === "change" ? "The change broke your tests." : "They already fail without the change.";
-  return `tests: ${t.command} failed; files put back. ${why}${t.output ? `\n${t.output}` : ""}`;
+  if (t.passed) return `${t.kind}: ${t.command} passed`;
+  const why =
+    t.kind === "build"
+      ? t.attributed === "change"
+        ? "The change broke your build."
+        : "It already fails without the change."
+      : t.attributed === "change"
+        ? "The change broke your tests."
+        : "They already fail without the change.";
+  return `${t.kind}: ${t.command} failed; files put back. ${why}${t.output ? `\n${t.output}` : ""}`;
 }
 
 export function renderSummary(result: FixResult): string {
@@ -354,10 +389,13 @@ export function renderSummary(result: FixResult): string {
     const where = `${r.files.length} file${r.files.length === 1 ? "" : "s"}`;
     if (!r.applied) lines.push(`- ${r.title}: ${where} reported, ${r.reason}`);
     else if (!r.pr) lines.push(`✓ ${r.title}: ${r.remaining ? `${r.sites - r.remaining.length} of ${r.sites} call sites rewritten` : where}`);
-    else if (r.pr.state === "opened") lines.push(`✓ ${r.title}: pull request opened ${r.pr.url}${r.pr.tests ? `\n  ${testLine(r.pr.tests)}` : ""}`);
+    else if (r.pr.state === "opened") {
+      lines.push(`✓ ${r.title}: pull request opened ${r.pr.url}`);
+      for (const c of [r.pr.build, r.pr.tests]) if (c) lines.push(`  ${testLine(c)}`);
+    }
     else if (r.pr.state === "exists") lines.push(`= ${r.title}: pull request already open ${r.pr.url}`);
     else if (r.pr.state === "skipped") lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
-    else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.tests)}`);
+    else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
     if (r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${s.file}:${s.line}`);
     if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
@@ -367,8 +405,8 @@ export function renderSummary(result: FixResult): string {
     if (applied) lines.push("dry run: nothing written");
   } else if (result.pr) {
     // Per-record lines already carry the test result.
-  } else if (result.tests) {
-    lines.push(testLine(result.tests));
+  } else if (result.build || result.tests) {
+    for (const c of [result.build, result.tests]) if (c) lines.push(testLine(c));
   } else if (applied) {
     lines.push(
       result.testsSkipped
@@ -382,7 +420,7 @@ export function renderSummary(result: FixResult): string {
 }
 
 export function toJson(result: FixResult): object {
-  const tests = (t: TestOutcome | undefined) => (t ? { command: t.command, passed: t.passed, attributed: t.attributed, output: t.output } : null);
+  const outcome = (t: TestOutcome | undefined) => (t ? { command: t.command, passed: t.passed, attributed: t.attributed, output: t.output } : null);
   return {
     records: result.records.map((r) => ({
       id: r.record.id,
@@ -393,9 +431,12 @@ export function toJson(result: FixResult): object {
       sites: r.sites,
       remaining: r.remaining ?? [],
       unconfirmed: r.unconfirmed ?? [],
-      pr: r.pr ? { ...r.pr, ...("tests" in r.pr ? { tests: tests(r.pr.tests) } : {}) } : null,
+      pr: r.pr
+        ? { ...r.pr, ...("tests" in r.pr ? { tests: outcome(r.pr.tests) } : {}), ...("build" in r.pr ? { build: outcome(r.pr.build) } : {}) }
+        : null,
     })),
-    tests: tests(result.tests),
+    build: outcome(result.build),
+    tests: outcome(result.tests),
     testsSkipped: result.testsSkipped,
     testsNote: result.testsNote ?? null,
     dryRun: result.dryRun,
