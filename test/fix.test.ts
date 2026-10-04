@@ -1,9 +1,9 @@
-import { access, appendFile, cp, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fix, prBody, Refusal, renderSummary } from "../src/fix.js";
+import { applyAndVerify, fix, prBody, Refusal, renderSummary } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords } from "../src/records/load.js";
 
@@ -61,6 +61,22 @@ describe("fix verifies its own rewrites", () => {
       expect(renderSummary(result)).not.toContain("✓");
       expect(await tree(dir)).toEqual({ "client.js": RAW_FETCH });
     }
+  });
+
+  it("puts files back when a rewrite changed bytes but removed no call site", async () => {
+    // A broken pack: its rule edits a neighbouring key and never touches max_tokens.
+    const pack = await mkdtemp(join(tmpdir(), "darnit-pack-"));
+    tempDirs.push(pack);
+    await mkdir(join(pack, "rules", "js"), { recursive: true });
+    await writeFile(
+      join(pack, "rules", "js", "01-wrong.yml"),
+      "id: wrong\nlanguage: javascript\nrule:\n  pattern:\n    context: '({ model: $M })'\n    selector: pair\nfix: 'engine: $M'\n",
+    );
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    const record = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!.record;
+    const outcome = await applyAndVerify(dir, { record, packDir: pack, files: ["sdk.js"], sites: 1 });
+    expect(outcome).toEqual({ changed: [], remaining: [{ file: "sdk.js", line: 2 }] });
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
   it("reports the call sites a partial rewrite left behind", async () => {
