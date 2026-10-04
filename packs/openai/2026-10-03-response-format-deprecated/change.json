@@ -1,0 +1,48 @@
+{
+  "id": "openai:2026-10-03:response-format-deprecated",
+  "title": "response_format is deprecated on images.edit, images.generate",
+  "status": "candidate",
+  "vendor": "openai",
+  "announcedAt": "2026-10-03",
+  "kind": "deprecation",
+  "surface": {
+    "endpoints": [
+      "/images/edits",
+      "/images/generations"
+    ],
+    "sdkSymbols": [
+      "images.edit",
+      "images.generate"
+    ],
+    "fields": [
+      "response_format"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/openai/openai-openapi/main/openapi.yaml",
+      "quoteId": "POST /images/edits response_format: request property `response_format` deprecated (media type: multipart/form-data)"
+    }
+  ],
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "({ response_format: $V })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(response_format=$V)",
+          "selector": "keyword_argument"
+        }
+      ]
+    }
+  },
+  "notes": {
+    "migration": "response_format is deprecated on images.edit, images.generate.",
+    "citationQuality": "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it."
+  }
+}
