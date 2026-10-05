@@ -18,5 +18,5 @@ rule:
         kind: call_expression
         has:
           field: function
-          regex: 'chat\.completions\.(create|parse|stream|runTools|runFunctions)$'
+          regex: 'chat\s*\??\.\s*completions\s*\??\.\s*(create|parse|stream|runTools|runFunctions)$'
 fix: 'max_completion_tokens: $N'

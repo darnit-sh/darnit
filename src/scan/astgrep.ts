@@ -2,7 +2,7 @@ import { extname } from "node:path";
 import python from "@ast-grep/lang-python";
 import { Lang as NapiLang, parse, registerDynamicLanguage, type SgNode } from "@ast-grep/napi";
 import type { AstGrepPattern, Lang } from "../records/schema.js";
-import { clientOrigin, urlOrigin, type VendorClients } from "./clients.js";
+import { clientOrigin, stringText, urlOrigin, type VendorClients } from "./clients.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
 type Grammar = Parameters<typeof parse>[0];
@@ -65,14 +65,16 @@ function enclosingCall(node: SgNode): SgNode | undefined {
   return undefined;
 }
 
-/** The first argument of a call (a fetch's URL), without its quotes. Never the request body. */
-const firstArgument = (call: SgNode) =>
-  call
-    .field("arguments")
-    ?.children()
-    .find((c) => c.isNamed())
-    ?.text()
-    .replace(/^[`'"]/, "") ?? "";
+/** A request's URL: its first argument, or a `url=` keyword. Never the request body. */
+function requestUrl(call: SgNode): string {
+  const args = call.field("arguments")?.children().filter((c) => c.isNamed()) ?? [];
+  const url = args.find((a) => a.is("keyword_argument") && a.field("name")?.text() === "url")?.field("value") ?? args[0];
+  if (!url) return "";
+  return stringText(url) ?? url.text().replace(/^[fFrRbBuU]*[`'"]/, "");
+}
+
+/** Callee text as written, minus line breaks and optional chaining, so `chat?.completions\n .create` still matches. */
+const normalized = (callee: string) => callee.replace(/\s+/g, "").replace(/\?\./g, ".");
 
 /** The enclosing call whose text names one of the endpoints (the fetch/request carrying the URL). */
 function endpointCall(node: SgNode, endpoints: readonly string[]): SgNode | undefined {
@@ -91,13 +93,14 @@ export function findMatches(source: string, grammar: Grammar, patterns: readonly
       let foreign = false;
       if (symbols.length > 0 || endpoints.length > 0) {
         const call = enclosingCall(node);
-        const callee = call?.field("function")?.text();
+        const raw = call?.field("function")?.text();
+        const callee = raw === undefined ? undefined : normalized(raw);
         const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s)).sort((a, b) => b.length - a.length)[0];
         const viaEndpoint = symbol === undefined && endpoints.length > 0 ? endpointCall(node, endpoints) : undefined;
         if (symbol === undefined && !viaEndpoint) continue;
         if (gate?.vendor) {
           const origin =
-            symbol !== undefined ? clientOrigin(root, call!, callee!, symbol, gate.vendor) : urlOrigin(firstArgument(viaEndpoint!), gate.vendor);
+            symbol !== undefined ? clientOrigin(root, call!, symbol, gate.vendor) : urlOrigin(requestUrl(viaEndpoint!), gate.vendor);
           foreign = origin === "foreign";
         }
       }

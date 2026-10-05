@@ -98,7 +98,7 @@ Lists every call site affected by a known change: file, line, and the vendor's
 own announcement or API spec. Changes still waiting for review are marked
 `(unreviewed change, detection only)` and never fail the check on their own.
 Calls made through another provider's look-alike client are left out, and the
-report says how many.
+report names each one.
 
 | Flag | |
 |---|---|
