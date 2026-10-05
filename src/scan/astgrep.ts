@@ -2,6 +2,7 @@ import { extname } from "node:path";
 import python from "@ast-grep/lang-python";
 import { Lang as NapiLang, parse, registerDynamicLanguage, type SgNode } from "@ast-grep/napi";
 import type { AstGrepPattern, Lang } from "../records/schema.js";
+import { clientOrigin, urlOrigin, type VendorClients } from "./clients.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
 type Grammar = Parameters<typeof parse>[0];
@@ -35,6 +36,8 @@ export type Match = {
   /** 1-based column of the match start. */
   column: number;
   text: string;
+  /** The file shows this call goes to another provider through the same methods (only set with a vendor gate). */
+  foreign?: true;
 };
 
 /**
@@ -44,7 +47,12 @@ export type Match = {
  * (raw HTTP users). A parameter name like `max_tokens` exists on other vendors'
  * APIs too, where it is correct; without this gate those would be reported.
  */
-export type Gate = { symbols?: readonly string[] | undefined; endpoints?: readonly string[] | undefined };
+export type Gate = {
+  symbols?: readonly string[] | undefined;
+  endpoints?: readonly string[] | undefined;
+  /** When given, each match is traced to its client and flagged foreign if it belongs to another provider. */
+  vendor?: VendorClients | undefined;
+};
 
 const isCall = (n: SgNode) => n.is("call_expression") || n.is("call");
 
@@ -57,9 +65,9 @@ function enclosingCallee(node: SgNode): string | undefined {
   return undefined;
 }
 
-/** True if some enclosing call's text names one of the endpoints (the fetch/request carrying the URL). */
-function insideEndpointCall(node: SgNode, endpoints: readonly string[]): boolean {
-  return node.ancestors().some((a) => isCall(a) && endpoints.some((e) => a.text().includes(e)));
+/** The enclosing call whose text names one of the endpoints (the fetch/request carrying the URL). */
+function endpointCall(node: SgNode, endpoints: readonly string[]): SgNode | undefined {
+  return node.ancestors().find((a) => isCall(a) && endpoints.some((e) => a.text().includes(e)));
 }
 
 /** Every node in `source` matching any of `patterns`, optionally gated. */
@@ -70,13 +78,19 @@ export function findMatches(source: string, grammar: Grammar, patterns: readonly
   const matches: Match[] = [];
   for (const { context, selector } of patterns) {
     for (const node of root.findAll({ rule: { pattern: { context, selector } } })) {
+      const { start } = node.range();
+      let foreign = false;
       if (symbols.length > 0 || endpoints.length > 0) {
         const callee = enclosingCallee(node);
-        const viaSymbol = callee !== undefined && symbols.some((s) => callee.endsWith(s));
-        if (!viaSymbol && !(endpoints.length > 0 && insideEndpointCall(node, endpoints))) continue;
+        const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s)).sort((a, b) => b.length - a.length)[0];
+        const viaEndpoint = symbol === undefined && endpoints.length > 0 ? endpointCall(node, endpoints) : undefined;
+        if (symbol === undefined && !viaEndpoint) continue;
+        if (gate?.vendor) {
+          const origin = symbol !== undefined ? clientOrigin(root, callee!, symbol, start.line, gate.vendor) : urlOrigin(viaEndpoint!.text(), gate.vendor);
+          foreign = origin === "foreign";
+        }
       }
-      const { start } = node.range();
-      matches.push({ line: start.line + 1, column: start.column + 1, text: node.text() });
+      matches.push({ line: start.line + 1, column: start.column + 1, text: node.text(), ...(foreign ? { foreign: true as const } : {}) });
     }
   }
   return matches.sort((a, b) => a.line - b.line || a.column - b.column);

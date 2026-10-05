@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { listFiles } from "./detect.js";
+import { listFiles, vendorClients } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, type Match } from "./scan/astgrep.js";
@@ -22,11 +22,17 @@ async function configuredVendors(root: string): Promise<Set<string> | undefined>
 }
 
 /** What a check covered, so a clean result can say what it was clean against. */
-export type Coverage = { files: number; records: number };
+export type Coverage = { files: number; records: number; foreign?: number };
 
 /** Hits for `records` in `files` (relative to `root`). Files darnit cannot parse are skipped. */
-export async function scan(root: string, files: readonly string[], records: readonly ChangeRecord[]): Promise<{ hits: Hit[]; scanned: number }> {
+export async function scan(
+  root: string,
+  files: readonly string[],
+  records: readonly ChangeRecord[],
+): Promise<{ hits: Hit[]; scanned: number; foreign: Hit[] }> {
   const hits: Hit[] = [];
+  // Calls through another provider's client (Groq's SDK, the vendor's SDK pointed elsewhere): never reported.
+  const foreign: Hit[] = [];
   let scanned = 0;
   // Known limit: each file is parsed once per record. Fine for a handful of records; index them by vendor as the corpus grows.
   for (const file of files) {
@@ -39,18 +45,21 @@ export async function scan(root: string, files: readonly string[], records: read
       const patterns = record.detection.astGrepPatterns[grammar.lang];
       if (!patterns) continue;
       const { sdkSymbols: symbols, endpoints } = record.surface;
-      for (const match of findMatches(text, grammar.grammar, patterns, { symbols, endpoints })) hits.push({ ...match, record, file });
+      const vendor = vendorClients(record.vendor);
+      for (const match of findMatches(text, grammar.grammar, patterns, { symbols, endpoints, vendor })) {
+        (match.foreign ? foreign : hits).push({ ...match, record, file });
+      }
     }
   }
-  return { hits, scanned };
+  return { hits, scanned, foreign };
 }
 
 /** Every call site in `root` affected by a known vendor change, and what was covered. */
 export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage }> {
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
-  const { hits, scanned } = await scan(root, await listFiles(root), records);
-  return { hits, coverage: { files: scanned, records: records.length } };
+  const { hits, scanned, foreign } = await scan(root, await listFiles(root), records);
+  return { hits, coverage: { files: scanned, records: records.length, ...(foreign.length > 0 ? { foreign: foreign.length } : {}) } };
 }
 
 /** Every call site in `root` affected by a known vendor change. */
@@ -98,6 +107,9 @@ export function render(hits: Hit[], coverage?: Coverage): string {
   const footer = [
     ...(coverage
       ? [`Scanned ${plural(coverage.files, "JavaScript, TypeScript or Python file")} against ${plural(coverage.records, "change record")}.`]
+      : []),
+    ...(coverage?.foreign
+      ? [`Left out ${plural(coverage.foreign, "call")} made through another provider's client with the same methods.`]
       : []),
     NOT_CHECKED,
   ];
