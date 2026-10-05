@@ -4,13 +4,22 @@ import { basename, join } from "node:path";
 // Known vendors. "supported" = a rule pack exists in packs/; "recognized" = named
 // in config only. Extend by adding a row.
 export const VENDORS = {
-  openai: { npm: ["openai"], pypi: ["openai"], hosts: ["api.openai.com"], tier: "supported" },
-  anthropic: { npm: ["@anthropic-ai/sdk"], pypi: ["anthropic"], hosts: ["api.anthropic.com"], tier: "recognized" },
-  stripe: { npm: ["stripe"], pypi: ["stripe"], hosts: ["api.stripe.com"], tier: "recognized" },
-  twilio: { npm: ["twilio"], pypi: ["twilio"], hosts: ["api.twilio.com"], tier: "recognized" },
+  openai: { name: "OpenAI", npm: ["openai"], pypi: ["openai"], hosts: ["api.openai.com", "openai.azure.com"], tier: "supported" },
+  anthropic: { name: "Anthropic", npm: ["@anthropic-ai/sdk"], pypi: ["anthropic"], hosts: ["api.anthropic.com"], tier: "recognized" },
+  stripe: { name: "Stripe", npm: ["stripe"], pypi: ["stripe"], hosts: ["api.stripe.com"], tier: "recognized" },
+  twilio: { name: "Twilio", npm: ["twilio"], pypi: ["twilio"], hosts: ["api.twilio.com"], tier: "recognized" },
 } as const;
 
 export type Vendor = keyof typeof VENDORS;
+
+/** A vendor's display name, e.g. "OpenAI" for openai; the id itself for vendors not in the table. */
+export const vendorName = (id: string) => (VENDORS as Partial<Record<string, { name: string }>>)[id]?.name ?? id;
+
+/** The packages and hosts that identify a vendor's own clients, for telling them apart from look-alikes. */
+export function vendorClients(id: string): { packages: string[]; hosts: string[] } | undefined {
+  const v = (VENDORS as Partial<Record<string, (typeof VENDORS)[Vendor]>>)[id];
+  return v ? { packages: [...v.npm, ...v.pypi], hosts: [...v.hosts] } : undefined;
+}
 
 export type Detection = {
   vendor: Vendor;
