@@ -24,6 +24,63 @@ async function scratch(files: Record<string, string>): Promise<string> {
 
 const locations = (hits: Hit[]) => hits.map((h) => `${h.file}:${h.line}`);
 
+describe("check tells OpenAI apart from look-alike clients", () => {
+  const maxTokens = (hits: Hit[]) => locations(hits.filter((h) => h.record.id.includes("max-tokens")));
+
+  it("leaves out other SDKs that copy OpenAI's methods, however the client is created", async () => {
+    const dir = await scratch({
+      "groq.ts": 'import Groq from "groq-sdk";\nconst groq = new Groq();\nexport const r = groq.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "inline.js": 'import { Together } from "together-ai";\nexport const r = new Together().chat.completions.create({ model: "x", max_tokens: 5 });\n',
+      "required.js": 'const Groq = require("groq-sdk");\nconst g = new Groq();\nexports.r = g.chat.completions.create({ model: "x", max_tokens: 5 });\n',
+      "field.ts":
+        'import Groq from "groq-sdk";\nclass Bot {\n  client = new Groq();\n  run() {\n    return this.client.chat.completions.create({ model: "x", max_tokens: 5 });\n  }\n}\nexport { Bot };\n',
+      "groq.py": "from groq import Groq\n\nclient = Groq()\nr = client.chat.completions.create(model='x', max_tokens=5)\n",
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(maxTokens(hits)).toEqual([]);
+    expect(coverage.foreign).toBe(5);
+    expect(render(hits, coverage)).toContain("Left out 5 calls made through another provider's client with the same methods.");
+  });
+
+  it("leaves out OpenAI's own SDK when a written-out address points at another provider", async () => {
+    const dir = await scratch({
+      "router.ts":
+        'import OpenAI from "openai";\nconst client = new OpenAI({ baseURL: "https://openrouter.ai/api/v1", apiKey: "k" });\nexport const r = client.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "deepseek.py":
+        'from openai import OpenAI\n\nclient = OpenAI(api_key="k", base_url="https://api.deepseek.com")\nr = client.chat.completions.create(model="x", messages=[], max_tokens=5)\n',
+      "fetch.js":
+        'export const r = fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "x", max_tokens: 5 }) });\n',
+    });
+    expect(maxTokens(await check(dir))).toEqual([]);
+  });
+
+  it("still reports OpenAI, Azure OpenAI, and clients it cannot trace", async () => {
+    const dir = await scratch({
+      "plain.ts": 'import OpenAI from "openai";\nconst openai = new OpenAI();\nexport const r = openai.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "azure.ts":
+        'import { AzureOpenAI } from "openai";\nconst az = new AzureOpenAI({ baseURL: "https://acme.openai.azure.com/openai" });\nexport const r = az.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "env.ts":
+        'import OpenAI from "openai";\nconst c = new OpenAI({ baseURL: process.env.LLM_URL });\nexport const r = c.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "param.js": "export const ask = (client) => client.chat.completions.create({ model: 'x', max_tokens: 5 });\n",
+      "self.py":
+        "import openai\n\nclass Bot:\n    def __init__(self):\n        self.client = openai.OpenAI()\n\n    def run(self):\n        return self.client.chat.completions.create(model='x', max_tokens=5)\n",
+      "fetch.js":
+        'export const r = fetch("https://api.openai.com/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "x", max_tokens: 5 }) });\n',
+    });
+    expect(maxTokens(await check(dir))).toEqual(["azure.ts:3", "env.ts:3", "fetch.js:1", "param.js:1", "plain.ts:3", "self.py:8"]);
+  });
+
+  it("reports only the OpenAI call in a file that also uses a look-alike", async () => {
+    const dir = await scratch({
+      "both.ts":
+        'import OpenAI from "openai";\nimport Groq from "groq-sdk";\nconst openai = new OpenAI();\nconst groq = new Groq();\nexport const a = openai.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\nexport const b = groq.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(maxTokens(hits)).toEqual(["both.ts:5"]);
+    expect(coverage.foreign).toBe(1);
+  });
+});
+
 describe("check", () => {
   it("reports what it covered, counting only files it can parse", async () => {
     const dir = await scratch({ "a.js": "export const x = 1;\n", "b.py": "x = 1\n", "notes.md": "# hi\n" });
