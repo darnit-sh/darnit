@@ -175,6 +175,7 @@ function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = 
   if (outcome.changed.length === 0) {
     result.applied = false;
     result.reason = NOT_COVERED;
+    if (held.length > 0) result.remaining = [...held];
   } else if (outcome.remaining.length + held.length > 0) {
     result.remaining = [...outcome.remaining, ...held];
   }
@@ -247,7 +248,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
       : !mechanical
         ? "migration not yet automated; see the record notes"
         : !clean
-          ? `${MIXED}, so the rewrite would change those calls too`
+          ? `${new Set(grp.held?.map((h) => h.file)).size === 1 ? "this file" : "each of these files"} also calls another provider through the same methods, so the rewrite would change those calls too`
           : !ready
             ? "no rewrite rules yet"
             : gate.blocked;
@@ -258,6 +259,8 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
       sites: grp.sites + (grp.held?.length ?? 0),
       applied,
       ...(applied ? {} : { reason }),
+      // Held sites are known before any rewrite; list them even when nothing else is applied.
+      ...(!clean && grp.held?.length ? { remaining: grp.held } : {}),
       ...(applied && gate.unconfirmed.length > 0 ? { unconfirmed: gate.unconfirmed } : {}),
     });
     if (applied) applicable.push(grp);
@@ -465,7 +468,7 @@ export function renderSummary(result: FixResult): string {
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;
-    if (r.applied && !putBack) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${s.file}:${s.line}${s.note ? ` (${s.note})` : ""}`);
+    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${s.file}:${s.line}${s.note ? ` (${s.note})` : ""}`);
     if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
   if (lines.length === 0) lines.push("Nothing to fix.");

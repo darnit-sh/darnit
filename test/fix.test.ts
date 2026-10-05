@@ -201,6 +201,15 @@ describe("fix never rewrites another provider's calls", () => {
     expect(await readFile(join(dir, "both.ts"), "utf8")).toBe(MIXED_CLIENTS);
   });
 
+  it("names every held line when all the files are mixed", async () => {
+    const dir = await repoWith({ "a.ts": MIXED_CLIENTS, "b.ts": MIXED_CLIENTS });
+    const result = await fix(dir, { noTest: true, dryRun: true });
+    const summary = renderSummary(result);
+    expect(summary).toContain("found in 2 files, not rewritten: each of these files also calls another provider");
+    expect(summary).toContain("needs a human: a.ts:5 (this file also calls another provider through the same methods)");
+    expect(summary).toContain("needs a human: b.ts:5 (this file also calls another provider through the same methods)");
+  });
+
   it("rewrites clean files and hands the mixed file to a human", async () => {
     const dir = await repoWith({ "both.ts": MIXED_CLIENTS, "sdk.js": SDK_CALL });
     const result = await fix(dir, { noTest: true });

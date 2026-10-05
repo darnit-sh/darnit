@@ -255,10 +255,12 @@ To add a vendor, open a pull request adding its spec URL and SDK calls to
 - Request options built somewhere else and passed in as a variable are not
   followed. `check` reminds you at the end of every report, clean or not.
 - Only changes with a record are found. No record, no report.
-- Clients that copy OpenAI's methods are left out when the same file shows it:
-  another SDK (Groq, Together, ...) or OpenAI's SDK with a written-out address of
-  another provider (OpenRouter, DeepSeek, ...). A client passed in from elsewhere,
-  or with its address read from configuration, is assumed to be OpenAI.
+- Clients that copy OpenAI's methods are left out when the same file shows a
+  known look-alike: the Groq, Together, Cerebras or Fireworks SDKs, or OpenAI's
+  SDK pointed at OpenRouter, DeepSeek, Groq, Together, Fireworks, Cerebras, xAI,
+  Mistral, Perplexity or Gemini. Every other client counts as OpenAI, including
+  wrappers, proxies, a client passed in from elsewhere, and an address read from
+  configuration.
 - `fix` runs in your working tree, not a sandbox. Your test command runs as you.
 - Tested on macOS and Linux with Node 22 and 24. Windows is not supported yet.
 
