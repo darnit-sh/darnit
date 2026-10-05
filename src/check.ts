@@ -55,11 +55,11 @@ export async function scan(
 }
 
 /** Every call site in `root` affected by a known vendor change, and what was covered. */
-export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage }> {
+export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage; foreign: Hit[] }> {
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
   const { hits, scanned, foreign } = await scan(root, await listFiles(root), records);
-  return { hits, coverage: { files: scanned, records: records.length, ...(foreign.length > 0 ? { foreign: foreign.length } : {}) } };
+  return { hits, foreign, coverage: { files: scanned, records: records.length, ...(foreign.length > 0 ? { foreign: foreign.length } : {}) } };
 }
 
 /** Every call site in `root` affected by a known vendor change. */
