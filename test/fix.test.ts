@@ -181,6 +181,41 @@ describe("fix runs the repo's build check", () => {
   });
 });
 
+// One file calling OpenAI and Groq through the same method: the rename rule would rewrite both.
+const MIXED_CLIENTS = `import OpenAI from "openai";
+import Groq from "groq-sdk";
+const openai = new OpenAI();
+const groq = new Groq();
+export const a = openai.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });
+export const b = groq.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });
+`;
+
+describe("fix never rewrites another provider's calls", () => {
+  it("leaves a file alone when it also calls a look-alike client", async () => {
+    const dir = await repoWith({ "both.ts": MIXED_CLIENTS });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({
+      applied: false,
+      reason: "this file also calls another provider through the same methods, so the rewrite would change those calls too",
+    });
+    expect(await readFile(join(dir, "both.ts"), "utf8")).toBe(MIXED_CLIENTS);
+  });
+
+  it("rewrites clean files and hands the mixed file to a human", async () => {
+    const dir = await repoWith({ "both.ts": MIXED_CLIENTS, "sdk.js": SDK_CALL });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true, sites: 2 });
+    const summary = renderSummary(result);
+    expect(summary).toContain("1 of 2 call sites rewritten");
+    expect(summary).toContain("needs a human: both.ts:5 (this file also calls another provider through the same methods)");
+    expect(await readFile(join(dir, "both.ts"), "utf8")).toBe(MIXED_CLIENTS);
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toContain("max_completion_tokens: 5");
+    const body = prBody(result.records[0]!.record, ["sdk.js"], "t", { remaining: result.records[0]!.remaining });
+    expect(body).toContain("- `both.ts:5`: this file also calls another provider through the same methods");
+    expect(body).toContain("OpenAI announced this change on 2024-09-12");
+  });
+});
+
 describe("fix verifies its own rewrites", () => {
   it("does not claim a rewrite it did not make", async () => {
     const dir = await repoWith({ "client.js": RAW_FETCH });
