@@ -93,7 +93,7 @@ const EXPECT: Record<string, Expect> = {
     changed: [],
   },
   "13-groq-sdk": {
-    check: { exit: 0, has: ["No known vendor changes affect this repository.", "Left out 1 call made through another provider's client"] },
+    check: { exit: 0, has: ["No known vendor changes affect this repository.", "Left out 1 call made through another provider's client with the same methods: src/chat.js:9."] },
     fix: { exit: 0, has: ["Nothing to fix."] },
     changed: [],
   },
@@ -103,7 +103,7 @@ const EXPECT: Record<string, Expect> = {
     changed: [],
   },
   "15-mixed-clients": {
-    check: { exit: 1, has: ["src/chat.js:8:", "Left out 1 call made through another provider's client"], lacks: ["src/chat.js:11"] },
+    check: { exit: 1, has: ["src/chat.js:8:", "Left out 1 call made through another provider's client"], lacks: ["src/chat.js:11:"] },
     fix: { exit: 0, has: ["found in 1 file, not rewritten: this file also calls another provider through the same methods"] },
     changed: [],
   },
