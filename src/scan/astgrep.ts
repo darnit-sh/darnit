@@ -56,14 +56,23 @@ export type Gate = {
 
 const isCall = (n: SgNode) => n.is("call_expression") || n.is("call");
 
-/** Callee text of the nearest enclosing call. Bounded so a detached object literal never inherits a distant call. */
-function enclosingCallee(node: SgNode): string | undefined {
+/** The nearest enclosing call. Bounded so a detached object literal never inherits a distant call. */
+function enclosingCall(node: SgNode): SgNode | undefined {
   let n: SgNode | null = node;
   for (let i = 0; i < 8 && (n = n.parent()); i++) {
-    if (isCall(n)) return n.field("function")?.text();
+    if (isCall(n)) return n;
   }
   return undefined;
 }
+
+/** The first argument of a call (a fetch's URL), without its quotes. Never the request body. */
+const firstArgument = (call: SgNode) =>
+  call
+    .field("arguments")
+    ?.children()
+    .find((c) => c.isNamed())
+    ?.text()
+    .replace(/^[`'"]/, "") ?? "";
 
 /** The enclosing call whose text names one of the endpoints (the fetch/request carrying the URL). */
 function endpointCall(node: SgNode, endpoints: readonly string[]): SgNode | undefined {
@@ -81,12 +90,14 @@ export function findMatches(source: string, grammar: Grammar, patterns: readonly
       const { start } = node.range();
       let foreign = false;
       if (symbols.length > 0 || endpoints.length > 0) {
-        const callee = enclosingCallee(node);
+        const call = enclosingCall(node);
+        const callee = call?.field("function")?.text();
         const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s)).sort((a, b) => b.length - a.length)[0];
         const viaEndpoint = symbol === undefined && endpoints.length > 0 ? endpointCall(node, endpoints) : undefined;
         if (symbol === undefined && !viaEndpoint) continue;
         if (gate?.vendor) {
-          const origin = symbol !== undefined ? clientOrigin(root, callee!, symbol, start.line, gate.vendor) : urlOrigin(viaEndpoint!.text(), gate.vendor);
+          const origin =
+            symbol !== undefined ? clientOrigin(root, call!, callee!, symbol, gate.vendor) : urlOrigin(firstArgument(viaEndpoint!), gate.vendor);
           foreign = origin === "foreign";
         }
       }

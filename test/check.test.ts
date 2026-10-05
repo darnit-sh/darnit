@@ -70,6 +70,64 @@ describe("check tells OpenAI apart from look-alike clients", () => {
     expect(maxTokens(await check(dir))).toEqual(["azure.ts:3", "env.ts:3", "fetch.js:1", "param.js:1", "plain.ts:3", "self.py:8"]);
   });
 
+  it("never drops a real OpenAI call behind a wrapper, a local factory or a proxy", async () => {
+    const call = 'client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });';
+    const dir = await scratch({
+      "factory.ts": `import { makeClient } from "./client";\nconst client = makeClient();\nexport const r = ${call}\n`,
+      "local.ts": `import { OpenAIClient } from "./openai";\nconst client = new OpenAIClient();\nexport const r = ${call}\n`,
+      "langsmith.ts": `import OpenAI from "openai";\nimport { wrapOpenAI } from "langsmith/wrappers";\nconst client = wrapOpenAI(new OpenAI());\nexport const r = ${call}\n`,
+      "port.ts": `import OpenAI from "openai";\nconst client = new OpenAI({ baseURL: "https://api.openai.com:443/v1" });\nexport const r = ${call}\n`,
+      "helicone.ts": `import OpenAI from "openai";\nconst client = new OpenAI({ baseURL: "https://oai.helicone.ai/v1" });\nexport const r = ${call}\n`,
+      "gateway.ts": `import OpenAI from "openai";\nconst client = new OpenAI({ baseURL: "https://gateway.ai.cloudflare.com/v1/acct/gw/openai" });\nexport const r = ${call}\n`,
+      "localhost.ts": `import OpenAI from "openai";\nconst client = new OpenAI({ baseURL: "http://localhost:8080/v1" });\nexport const r = ${call}\n`,
+      "instructor.py": "import instructor\nfrom openai import OpenAI\n\nclient = instructor.from_openai(OpenAI())\nr = client.chat.completions.create(model='m', max_tokens=5)\n",
+      "langfuse.py": "from langfuse.openai import OpenAI\n\nclient = OpenAI()\nr = client.chat.completions.create(model='m', max_tokens=5)\n",
+      "image.js":
+        'export const r = fetch("https://api.openai.com/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gpt-4o", max_tokens: 5, messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "https://example.com/cat.png" } }] }] }) });\n',
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(maxTokens(hits)).toEqual([
+      "factory.ts:3",
+      "gateway.ts:3",
+      "helicone.ts:3",
+      "image.js:1",
+      "instructor.py:5",
+      "langfuse.py:4",
+      "langsmith.ts:4",
+      "local.ts:3",
+      "localhost.ts:3",
+      "port.ts:3",
+    ]);
+    expect(coverage.foreign).toBeUndefined();
+  });
+
+  it("only sees assignments the call can reach: same scope, or same class for this/self", async () => {
+    const dir = await scratch({
+      "scopes.ts":
+        'import OpenAI from "openai";\nimport Groq from "groq-sdk";\nconst client = new OpenAI();\nfunction helper() {\n  const client = new Groq();\n  return client;\n}\nexport function main() {\n  return client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });\n}\nexport { helper };\n',
+      "field.ts":
+        'import OpenAI from "openai";\nimport Groq from "groq-sdk";\nconst client = new OpenAI();\nclass G {\n  client = new Groq();\n}\nexport const r = client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });\nexport { G };\n',
+      "scopes.py":
+        "from openai import OpenAI\nfrom groq import Groq\n\nclient = OpenAI()\n\ndef helper():\n    client = Groq()\n    return client\n\ndef main():\n    return client.chat.completions.create(model='m', max_tokens=5)\n",
+    });
+    expect(maxTokens(await check(dir))).toEqual(["field.ts:7", "scopes.py:11", "scopes.ts:9"]);
+  });
+
+  it("still catches look-alikes written in less common ways", async () => {
+    const dir = await scratch({
+      "multiline.py": "from groq import (\n    Groq,\n)\n\nc = Groq()\nr = c.chat.completions.create(model='m', max_tokens=5)\n",
+      "fstring.py": 'from openai import OpenAI\n\nc = OpenAI(base_url=f"https://api.groq.com/openai/v1")\nr = c.chat.completions.create(model="m", max_tokens=5)\n',
+      "modules.py": "import os, groq\n\nc = groq.Groq()\nr = c.chat.completions.create(model='m', max_tokens=5)\n",
+      "constant.ts":
+        'import OpenAI from "openai";\nconst BASE = "https://api.groq.com/openai/v1";\nconst c = new OpenAI({ baseURL: BASE });\nexport const r = c.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });\n',
+      "shorthand.ts":
+        'import OpenAI from "openai";\nconst baseURL = "https://openrouter.ai/api/v1";\nconst c = new OpenAI({ baseURL });\nexport const r = c.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });\n',
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(maxTokens(hits)).toEqual([]);
+    expect(coverage.foreign).toBe(5);
+  });
+
   it("reports only the OpenAI call in a file that also uses a look-alike", async () => {
     const dir = await scratch({
       "both.ts":
