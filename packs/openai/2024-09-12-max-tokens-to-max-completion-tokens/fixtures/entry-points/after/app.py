@@ -11,3 +11,7 @@ beta = client.beta.chat.completions.parse(model="gpt-4o", messages=[], max_compl
 
 # Legacy completions keep max_tokens; it is not deprecated there.
 legacy = client.completions.create(model="gpt-3.5-turbo-instruct", prompt="hi", max_tokens=100)
+
+# A chain broken across lines is the same call.
+multiline = (client.chat.completions
+    .create(model="gpt-4o", messages=[], max_completion_tokens=100))

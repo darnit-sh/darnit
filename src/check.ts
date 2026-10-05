@@ -22,7 +22,7 @@ async function configuredVendors(root: string): Promise<Set<string> | undefined>
 }
 
 /** What a check covered, so a clean result can say what it was clean against. */
-export type Coverage = { files: number; records: number; foreign?: number };
+export type Coverage = { files: number; records: number; foreign?: number; foreignAt?: string[] };
 
 /** Hits for `records` in `files` (relative to `root`). Files darnit cannot parse are skipped. */
 export async function scan(
@@ -59,7 +59,8 @@ export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
   const { hits, scanned, foreign } = await scan(root, await listFiles(root), records);
-  return { hits, foreign, coverage: { files: scanned, records: records.length, ...(foreign.length > 0 ? { foreign: foreign.length } : {}) } };
+  const leftOut = foreign.length > 0 ? { foreign: foreign.length, foreignAt: foreign.map((h) => `${h.file}:${h.line}`) } : {};
+  return { hits, foreign, coverage: { files: scanned, records: records.length, ...leftOut } };
 }
 
 /** Every call site in `root` affected by a known vendor change. */
@@ -109,7 +110,11 @@ export function render(hits: Hit[], coverage?: Coverage): string {
       ? [`Scanned ${plural(coverage.files, "JavaScript, TypeScript or Python file")} against ${plural(coverage.records, "change record")}.`]
       : []),
     ...(coverage?.foreign
-      ? [`Left out ${plural(coverage.foreign, "call")} made through another provider's client with the same methods.`]
+      ? [
+          `Left out ${plural(coverage.foreign, "call")} made through another provider's client with the same methods: ${(coverage.foreignAt ?? []).slice(0, 5).join(", ")}${
+            (coverage.foreignAt?.length ?? 0) > 5 ? ` and ${coverage.foreignAt!.length - 5} more` : ""
+          }.`,
+        ]
       : []),
     NOT_CHECKED,
   ];

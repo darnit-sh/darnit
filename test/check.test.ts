@@ -39,7 +39,9 @@ describe("check tells OpenAI apart from look-alike clients", () => {
     const { hits, coverage } = await checkReport(dir);
     expect(maxTokens(hits)).toEqual([]);
     expect(coverage.foreign).toBe(5);
-    expect(render(hits, coverage)).toContain("Left out 5 calls made through another provider's client with the same methods.");
+    expect(render(hits, coverage)).toContain(
+      "Left out 5 calls made through another provider's client with the same methods: field.ts:5, groq.py:4, groq.ts:3, inline.js:2, required.js:3.",
+    );
   });
 
   it("leaves out OpenAI's own SDK when a written-out address points at another provider", async () => {
@@ -113,6 +115,54 @@ describe("check tells OpenAI apart from look-alike clients", () => {
     expect(maxTokens(await check(dir))).toEqual(["field.ts:7", "scopes.py:11", "scopes.ts:9"]);
   });
 
+  it("only calls a client foreign when the syntax leaves no doubt", async () => {
+    const call = 'client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });';
+    const dir = await scratch({
+      // A commented-out look-alike address is not the address.
+      "comment.ts": `import OpenAI from "openai";\nconst client = new OpenAI({\n  // baseURL: "https://openrouter.ai/api/v1",\n  apiKey: process.env.KEY,\n});\nexport const r = ${call}\n`,
+      "comment.py":
+        'from openai import OpenAI\n\nclient = OpenAI(\n    # base_url="https://api.deepseek.com",\n    api_key="k",\n)\nr = client.chat.completions.create(model="m", max_tokens=5)\n',
+      // Either branch could run: not certainly a look-alike.
+      "branch.ts": `import OpenAI from "openai";\nimport Groq from "groq-sdk";\nlet client;\nif (process.env.P === "openai") client = new OpenAI(); else client = new Groq();\nexport const r = ${call}\n`,
+      "tryimport.py":
+        "try:\n    from openai import OpenAI as Client\nexcept ImportError:\n    from groq import Groq as Client\n\nclient = Client()\nr = client.chat.completions.create(model='m', max_tokens=5)\n",
+      // A parameter shadows the module-level look-alike.
+      "param.ts": `import OpenAI from "openai";\nimport Groq from "groq-sdk";\nconst client = new Groq();\nexport async function ask(client: OpenAI) {\n  return ${call}\n}\n`,
+      "block.ts": `import OpenAI from "openai";\nimport Groq from "groq-sdk";\nconst client = new OpenAI();\n{\n  const client = new Groq();\n}\nexport const r = ${call}\n`,
+      // Imports in comments, strings and docstrings are not imports.
+      "fakeimport.ts": `import OpenAI from "openai";\n// import OpenAI from "groq-sdk";\nconst s = \`import OpenAI from "groq-sdk"\`;\nconst client = new OpenAI();\nexport const r = ${call}\n`,
+      "docstring.py":
+        'from openai import OpenAI\n\n"""\nfrom groq import Groq as OpenAI\n"""\nclient = OpenAI()\nr = client.chat.completions.create(model="m", max_tokens=5)\n',
+      // Python scoping: class attributes aren't bare names; global assignments are module-level.
+      "classattr.py":
+        "from openai import OpenAI\nfrom groq import Groq\n\nclient = OpenAI()\n\nclass A:\n    client = Groq()\n\n    def run(self):\n        return client.chat.completions.create(model='m', max_tokens=5)\n",
+      "global.py":
+        "from openai import OpenAI\nfrom groq import Groq\n\nclient = Groq()\n\ndef init():\n    global client\n    client = OpenAI()\n\ndef run():\n    return client.chat.completions.create(model='m', max_tokens=5)\n",
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(maxTokens(hits)).toEqual([
+      "block.ts:7",
+      "branch.ts:5",
+      "classattr.py:10",
+      "comment.py:7",
+      "comment.ts:6",
+      "docstring.py:7",
+      "fakeimport.ts:5",
+      "global.py:11",
+      "param.ts:5",
+      "tryimport.py:7",
+    ]);
+    expect(coverage.foreign).toBeUndefined();
+  });
+
+  it("does not crash on deeply nested files", async () => {
+    const deep = `export const s = ${Array.from({ length: 12000 }, (_, i) => `"p${i}"`).join(" + ")};\n`;
+    const dir = await scratch({
+      "deep.js": `import OpenAI from "openai";\nconst client = new OpenAI();\n${deep}export const r = client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });\n`,
+    });
+    expect(maxTokens(await check(dir))).toEqual(["deep.js:4"]);
+  });
+
   it("still catches look-alikes written in less common ways", async () => {
     const dir = await scratch({
       "multiline.py": "from groq import (\n    Groq,\n)\n\nc = Groq()\nr = c.chat.completions.create(model='m', max_tokens=5)\n",
@@ -120,12 +170,20 @@ describe("check tells OpenAI apart from look-alike clients", () => {
       "modules.py": "import os, groq\n\nc = groq.Groq()\nr = c.chat.completions.create(model='m', max_tokens=5)\n",
       "constant.ts":
         'import OpenAI from "openai";\nconst BASE = "https://api.groq.com/openai/v1";\nconst c = new OpenAI({ baseURL: BASE });\nexport const r = c.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });\n',
+      "classattr_self.py":
+        "from groq import Groq\n\nclass B:\n    client = Groq()\n\n    def run(self):\n        return self.client.chat.completions.create(model='m', max_tokens=5)\n",
+      "optional.ts":
+        'import Groq from "groq-sdk";\nconst client = new Groq();\nexport const r = client?.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });\n',
+      "paren.ts":
+        'import OpenAI from "openai";\nexport const r = (new OpenAI({ baseURL: "https://openrouter.ai/api/v1" })).chat.completions.create({ model: "m", messages: [], max_tokens: 5 });\n',
+      "requests.py":
+        'import requests\n\nr = requests.post(f"https://openrouter.ai/api/v1/chat/completions", json=dict(model="m", max_tokens=5))\n',
       "shorthand.ts":
         'import OpenAI from "openai";\nconst baseURL = "https://openrouter.ai/api/v1";\nconst c = new OpenAI({ baseURL });\nexport const r = c.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });\n',
     });
     const { hits, coverage } = await checkReport(dir);
     expect(maxTokens(hits)).toEqual([]);
-    expect(coverage.foreign).toBe(5);
+    expect(coverage.foreign).toBe(9);
   });
 
   it("reports only the OpenAI call in a file that also uses a look-alike", async () => {
@@ -173,7 +231,21 @@ describe("check", () => {
   it("finds every chat completions entry point in both SDKs, but not legacy completions", async () => {
     const dir = fileURLToPath(new URL("../packs/openai/2024-09-12-max-tokens-to-max-completion-tokens/fixtures/entry-points/before/", import.meta.url));
     const hits = (await check(dir)).filter((h) => h.record.id.includes("max-tokens"));
-    expect(locations(hits)).toEqual(["app.js:6", "app.js:7", "app.js:8", "app.js:9", "app.js:10", "app.py:6", "app.py:7", "app.py:8", "app.py:9", "app.py:10"]);
+    expect(locations(hits)).toEqual([
+      "app.js:6",
+      "app.js:7",
+      "app.js:8",
+      "app.js:9",
+      "app.js:10",
+      "app.js:17",
+      "app.js:18",
+      "app.py:6",
+      "app.py:7",
+      "app.py:8",
+      "app.py:9",
+      "app.py:10",
+      "app.py:17",
+    ]);
   });
 
   it("does not report an options object passed by name", async () => {

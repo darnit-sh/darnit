@@ -1,7 +1,7 @@
 {
   "note": "Every chat completions entry point in both SDKs (parse, stream, runTools, runFunctions, the beta forms, Python's with_raw_response and with_streaming_response wrappers) gets the rename. Legacy completions.create keeps max_tokens: detection counts it, the rules must leave it alone.",
   "matches": {
-    "before/app.js": 6,
-    "before/app.py": 6
+    "before/app.js": 8,
+    "before/app.py": 7
   }
 }
