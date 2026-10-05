@@ -55,6 +55,12 @@ describe("check", () => {
     expect(locations(await check(dir))).toEqual(["cast.ts:3", "wrapped.js:2"]);
   });
 
+  it("finds every chat completions entry point in both SDKs, but not legacy completions", async () => {
+    const dir = fileURLToPath(new URL("../packs/openai/2024-09-12-max-tokens-to-max-completion-tokens/fixtures/entry-points/before/", import.meta.url));
+    const hits = (await check(dir)).filter((h) => h.record.id.includes("max-tokens"));
+    expect(locations(hits)).toEqual(["app.js:6", "app.js:7", "app.js:8", "app.js:9", "app.js:10", "app.py:6", "app.py:7", "app.py:8", "app.py:9", "app.py:10"]);
+  });
+
   it("does not report an options object passed by name", async () => {
     const dir = await scratch({ "detached.js": 'import OpenAI from "openai";\nconst opts = { max_tokens: 5 };\nnew OpenAI().chat.completions.create(opts);\n' });
     expect(await check(dir)).toEqual([]);

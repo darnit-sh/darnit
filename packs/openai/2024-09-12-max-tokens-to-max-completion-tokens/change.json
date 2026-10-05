@@ -10,7 +10,13 @@
       "/v1/chat/completions"
     ],
     "sdkSymbols": [
-      "chat.completions.create"
+      "chat.completions.create",
+      "chat.completions.parse",
+      "chat.completions.stream",
+      "chat.completions.runTools",
+      "chat.completions.runFunctions",
+      "chat.completions.with_raw_response.create",
+      "chat.completions.with_streaming_response.create"
     ],
     "fields": [
       "max_tokens"
