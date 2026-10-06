@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { check, checkReport, exitCodeForCheck, render, toJson, type Hit } from "../src/check.js";
+import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit } from "../src/check.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -194,6 +194,16 @@ describe("check tells OpenAI apart from look-alike clients", () => {
     const { hits, coverage } = await checkReport(dir);
     expect(maxTokens(hits)).toEqual(["both.ts:5"]);
     expect(coverage.foreign).toBe(1);
+  });
+});
+
+describe("snippet", () => {
+  it("marks code that was cut off, by length or by line, and leaves short code alone", () => {
+    expect(snippet("max_tokens: 256")).toBe("max_tokens: 256");
+    const long = 'functions: [{ name: "get_weather", parameters: { type: "object", properties: {} } }]';
+    expect(snippet(long)).toBe('functions: [{ name: "get_weather", parameters: { type: "obj…');
+    expect(snippet(long)).toHaveLength(60);
+    expect(snippet("functions: [\n  { name: \"x\" },\n]")).toBe("functions: […");
   });
 });
 
