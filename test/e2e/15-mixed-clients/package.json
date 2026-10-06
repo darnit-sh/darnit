@@ -1,9 +1,0 @@
-{
-  "name": "15-mixed-clients",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "openai": "*",
-    "groq-sdk": "*"
-  }
-}

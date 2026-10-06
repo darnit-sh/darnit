@@ -1,7 +1,0 @@
-{
-  "note": "Generated from the vendor's OpenAPI specification.",
-  "matches": {
-    "before/app.js": 1,
-    "before/app.py": 1
-  }
-}

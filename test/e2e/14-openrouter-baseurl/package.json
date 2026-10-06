@@ -1,8 +1,0 @@
-{
-  "name": "14-openrouter-baseurl",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "openai": "*"
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "name": "12-js-old-lock",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "openai": "^4.20.0"
-  }
-}
