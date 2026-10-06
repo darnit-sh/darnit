@@ -376,11 +376,42 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
   return { ...base, reverted: anyFailed };
 }
 
-/** Record text can come from vendor specs: GitHub renders a code span as literal text, so no links, HTML or mentions. */
+/** Verbatim vendor text: GitHub renders a code span as literal text, so no links, HTML or mentions. */
 const plain = (text: string) => {
   const t = text.replaceAll("`", "'").replace(/\s+/g, " ").trim();
   return t ? `\`${t}\`` : "";
 };
+
+const ZW = "​";
+
+/**
+ * Reviewed record text as readable prose that GitHub cannot turn into anything live: one line,
+ * Markdown and HTML escaped, and an invisible break after every character GitHub uses to start a
+ * mention, reference, autolink, emoji, math or commit link. Existing `code` spans are kept.
+ * Each rule was checked against GitHub's own renderer.
+ */
+export function prose(text: string): string {
+  return text
+    .replace(/[‪-‮⁦-⁩]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(`[^`]+`)/g)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part
+            .replace(/[\\`*_[\]()<>#!|~{}&]/g, (c) => `\\${c}`)
+            .replace(/\$/g, `${ZW}\\$${ZW}`)
+            .replace(/[@#/]/g, (c) => c + ZW)
+            .replace(/:(?=\S)/g, `:${ZW}`)
+            .replace(/w(?=ww\.)/gi, (w) => w + ZW)
+            .replace(/-(?=\d)/g, `-${ZW}`)
+            .replace(/([0-9a-f]{6})(?=[0-9a-f])/gi, `$1${ZW}`)
+            .replace(/^(\d+)([.)])/, "$1\\$2")
+            .replace(/^([-+=])/, "\\$1"),
+    )
+    .join("");
+}
 
 export type PrEvidence = {
   build?: TestOutcome | undefined;
@@ -394,7 +425,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
   const { build, tests, remaining = [], testsNote, unconfirmed = [] } = evidence;
   const source = record.sources[0]!;
   return [
-    plain(record.notes?.migration ?? title(record)),
+    prose(record.notes?.migration ?? title(record)),
     "",
     "## Why",
     `${vendorName(record.vendor)} announced this change on ${record.announcedAt}: ${source.url}`,
@@ -421,7 +452,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     ...unconfirmed.map((u) => `- This change needs ${u}; darnit could not find the version this repository uses.`),
     "- No generated regression tests yet; the checks above are the repository's own.",
     "- Request options built elsewhere and passed in as a variable are not followed.",
-    ...(record.notes?.edgeCases ?? []).map((e) => `- ${plain(e)}`),
+    ...(record.notes?.edgeCases ?? []).map((e) => `- ${prose(e)}`),
     "",
     "---",
     `darnit ${version}, change record \`${record.id}\``,
