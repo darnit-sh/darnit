@@ -555,38 +555,51 @@ describe("prBody", () => {
 });
 
 describe("prose", () => {
-  // Strip the invisible breaks to see what a reader sees.
-  const shown = (s: string) => s.replaceAll("\u200B", "");
+  // What GitHub would read as Markdown: everything outside code spans.
+  const outside = (s: string) => s.replace(/`[^`]*`/g, " ");
+  const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\u061C\uFEFF]/;
 
   it("reads like the original text", () => {
     const note = "Request-side rename: max_tokens: N becomes max_completion_tokens: N on chat.completions.create calls.";
-    expect(shown(prose(note)).replace(/\\(.)/g, "$1")).toBe(note);
-    expect(prose("Use `max_completion_tokens` instead")).toContain("`max_completion_tokens`");
+    expect(prose(note).replace(/\\(.)/g, "$1")).toBe(note);
+    expect(prose("Use `max_completion_tokens` instead")).toBe("Use `max_completion_tokens` instead");
+  });
+
+  it("shows words GitHub could make live as code, which copies exactly", () => {
+    expect(prose("see https://platform.openai.com/docs, then ping @octocat.")).toBe("see `https://platform.openai.com/docs`, then ping `@octocat`.");
   });
 
   // Every input that GitHub would otherwise turn into a link, ping, reference, image, HTML, block,
   // emoji or math. Each was confirmed live on GitHub's renderer before the matching rule existed.
   it.each([
-    ["mention", "ping @octocat", /@(?!\u200B)/],
-    ["issue reference", "see #12", /#(?!\u200B)/],
-    ["cross-repo path", "cli/cli/pull/1", /\/(?!\u200B)/],
-    ["URL", "https://evil.example", /:(?!\u200B)/],
-    ["www after underscore", "_www.evil.example", /www\./i],
+    ["mention", "ping @octocat", /@/],
+    ["issue reference", "see #12", /(?<!\\)#/],
+    ["cross-repo path", "cli/cli/pull/1", /\//],
+    ["URL", "https://evil.example", /:\//],
+    ["www", "www.evil.example and _www.x and See www. for", /www/i],
     ["commit SHA", "fixed in 17142e08db2e", /[0-9a-f]{7}/i],
-    ["GH reference", "see GH-1", /-(?!\u200B)\d/],
-    ["custom reference", "see JIRA-123", /-(?!\u200B)\d/],
-    ["math", "costs $5 to $10", /(?<!\u200B\\)\$/],
-    ["emoji", "done :white_check_mark: ok", /:(?!\u200B)\S/],
+    ["GH reference", "see GH-1", /-\d/],
+    ["custom reference", "see JIRA-123", /-\d/],
+    ["math", "costs $5 to $10", /(?<!\\)\$/],
+    ["emoji", "done :white_check_mark: ok", /:\S/],
     ["HTML", "<img src=x onerror=alert(1)>", /(?<!\\)</],
     ["link", "[click](javascript:alert(1))", /(?<!\\)\[/],
     ["setext heading", "---", /^-/],
     ["ordered list", "1. item", /^1\./],
     ["entity", "&#64;octocat", /(?<!\\)&/],
   ])("defuses %s", (_name, input, live) => {
-    expect(prose(input)).not.toMatch(live);
+    const out = prose(input);
+    expect(outside(out)).not.toMatch(live);
+    expect(out).not.toMatch(INVISIBLE);
   });
 
-  it("drops characters that reverse how text reads", () => {
-    expect(prose("safe\u202Eevil")).toBe("safeevil");
+  it("removes invisible and direction-changing characters from its input", () => {
+    expect(prose("a\u200Bb\u202Ec\uFEFFd")).toBe("abcd");
+  });
+
+  it("stays fast on hostile input", () => {
+    const started = Date.now();
+    prose(`${".".repeat(50000)}a`);
+    expect(Date.now() - started).toBeLessThan(500);
   });
 });
