@@ -44,7 +44,7 @@ Or skip the install: `npx darnit check`. Needs Node 22.12 or newer.
 
 ```
 vendor changes its API   →  a change record: what changed, cited, reviewed by a person
-change record            →  the exact call sites in your repo, inside that vendor's SDK methods
+change record            →  the exact call sites in your repo, made through that vendor's own client
 call sites               →  rewrite rules, proven against before/after examples in CI
 rewrite                  →  checked: your SDK version first, then your build and your tests
 nothing broke            →  one pull request per change, with the evidence and anything unchecked in the body
@@ -97,6 +97,8 @@ Without `--force`, existing files are left untouched.
 Lists every call site affected by a known change: file, line, and the vendor's
 own announcement or API spec. Changes still waiting for review are marked
 `(unreviewed change, detection only)` and never fail the check on their own.
+Calls made through another provider's look-alike client are left out, and the
+report names each one.
 
 | Flag | |
 |---|---|
@@ -253,8 +255,12 @@ To add a vendor, open a pull request adding its spec URL and SDK calls to
 - Request options built somewhere else and passed in as a variable are not
   followed. `check` reminds you at the end of every report, clean or not.
 - Only changes with a record are found. No record, no report.
-- Matching is by SDK method name, so clients that copy OpenAI's API (Groq's SDK,
-  or the OpenAI SDK pointed at another provider) are treated as OpenAI calls.
+- Clients that copy OpenAI's methods are left out when the same file shows a
+  known look-alike: the Groq, Together, Cerebras or Fireworks SDKs, or OpenAI's
+  SDK pointed at OpenRouter, DeepSeek, Groq, Together, Fireworks, Cerebras, xAI,
+  Mistral, Perplexity or Gemini. Every other client counts as OpenAI, including
+  wrappers, proxies, a client passed in from elsewhere, and an address read from
+  configuration.
 - `fix` runs in your working tree, not a sandbox. Your test command runs as you.
 - Tested on macOS and Linux with Node 22 and 24. Windows is not supported yet.
 

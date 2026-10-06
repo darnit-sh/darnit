@@ -1,7 +1,8 @@
 id: openai-max-tokens-to-max-completion-tokens-py
 language: python
-# Same scoping as the JS rule: a direct keyword argument of a
-# chat.completions.create(...) call, not one nested in another call.
+# Same scoping as the JS rule: a direct keyword argument of a chat completions
+# call (create, parse, stream, and the with_raw_response / with_streaming_response
+# wrappers), not one nested in another call.
 rule:
   pattern:
     context: 'f(max_tokens=$N)'
@@ -12,5 +13,5 @@ rule:
       kind: call
       has:
         field: function
-        regex: 'chat\.completions\.create$'
+        regex: 'chat\s*\.\s*completions\s*\.\s*(create|parse|stream|with_raw_response\s*\.\s*create|with_streaming_response\s*\.\s*create)$'
 fix: 'max_completion_tokens=$N'

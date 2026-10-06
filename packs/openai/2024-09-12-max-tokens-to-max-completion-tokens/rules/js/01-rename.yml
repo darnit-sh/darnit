@@ -1,8 +1,9 @@
 id: openai-max-tokens-to-max-completion-tokens-js
 language: javascript
-# Only a direct property of the options object passed to
-# chat.completions.create(...): `max_tokens` is a live, correct parameter on
-# other APIs (Anthropic messages.create), and on calls nested inside the
+# Only a direct property of the options object passed to a chat completions
+# call (create, parse, stream, runTools, runFunctions, beta forms included):
+# `max_tokens` is a live, correct parameter on other APIs (Anthropic
+# messages.create, legacy completions.create), and on calls nested inside the
 # options. Call sites that pass a config object built elsewhere are not
 # matched; see change.json edgeCases. check notes this limit in every report.
 rule:
@@ -17,5 +18,5 @@ rule:
         kind: call_expression
         has:
           field: function
-          regex: 'chat\.completions\.create$'
+          regex: 'chat\s*\??\.\s*completions\s*\??\.\s*(create|parse|stream|runTools|runFunctions)$'
 fix: 'max_completion_tokens: $N'

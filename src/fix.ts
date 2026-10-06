@@ -1,8 +1,9 @@
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { check, scan, title } from "./check.js";
+import { checkReport, scan, title } from "./check.js";
 import * as g from "./git.js";
+import { vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
@@ -42,7 +43,7 @@ export type PrResult =
   | { state: "tests-failed"; tests: TestOutcome }
   | { state: "build-failed"; build: TestOutcome };
 
-export type Site = { file: string; line: number };
+export type Site = { file: string; line: number; note?: string };
 
 export type RecordResult = {
   record: ChangeRecord;
@@ -75,19 +76,32 @@ export type FixResult = {
 /** Thrown when darnit declines to act; the message says what to change. */
 export class Refusal extends Error {}
 
-export type Group = { record: ChangeRecord; packDir: string; files: string[]; sites: number };
+/**
+ * One record's call sites. `files` and `sites` are what the rules may rewrite; `held` are the
+ * record's sites in files that also call another provider through the same methods. The rules
+ * would rewrite those foreign calls too, so such files are left alone and their sites go to a human.
+ */
+export type Group = { record: ChangeRecord; packDir: string; files: string[]; sites: number; held?: Site[] };
+
+const MIXED = "this file also calls another provider through the same methods";
 
 const NOT_COVERED = "the rewrite rules don't cover this call shape yet";
 
 async function groupHits(root: string, only: string[] | undefined): Promise<Group[]> {
   const packs = new Map((await loadRecords()).map((l) => [l.record.id, l.packDir]));
   for (const id of only ?? []) if (!packs.has(id)) throw new Refusal(`unknown change record: ${id}`);
+  const { hits, foreign } = await checkReport(root);
+  const mixed = new Set(foreign.map((h) => `${h.record.id}\0${h.file}`));
   const byId = new Map<string, Group>();
-  for (const hit of await check(root)) {
+  for (const hit of hits) {
     if (only && !only.includes(hit.record.id)) continue;
     const group = byId.get(hit.record.id) ?? { record: hit.record, packDir: packs.get(hit.record.id)!, files: [], sites: 0 };
-    if (!group.files.includes(hit.file)) group.files.push(hit.file);
-    group.sites++;
+    if (mixed.has(`${hit.record.id}\0${hit.file}`)) {
+      (group.held ??= []).push({ file: hit.file, line: hit.line, note: MIXED });
+    } else {
+      if (!group.files.includes(hit.file)) group.files.push(hit.file);
+      group.sites++;
+    }
     byId.set(hit.record.id, group);
   }
   return [...byId.values()];
@@ -157,12 +171,13 @@ async function versionGate(root: string, grp: Group): Promise<{ blocked?: string
 }
 
 /** Records the verified outcome on the record's result. Returns the files actually rewritten. */
-function settle(result: RecordResult, outcome: Outcome): string[] {
+function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = []): string[] {
   if (outcome.changed.length === 0) {
     result.applied = false;
     result.reason = NOT_COVERED;
-  } else if (outcome.remaining.length > 0) {
-    result.remaining = outcome.remaining;
+    if (held.length > 0) result.remaining = [...held];
+  } else if (outcome.remaining.length + held.length > 0) {
+    result.remaining = [...outcome.remaining, ...held];
   }
   return outcome.changed;
 }
@@ -224,23 +239,28 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   for (const grp of groups) {
     const reviewed = grp.record.status === "reviewed";
     const mechanical = grp.record.classification === "mechanical";
-    const ready = reviewed && mechanical && (await hasRules(grp.packDir));
+    const clean = grp.files.length > 0;
+    const ready = reviewed && mechanical && clean && (await hasRules(grp.packDir));
     const gate = ready ? await versionGate(root, grp) : { unconfirmed: [] };
     const applied = ready && !gate.blocked;
     const reason = !reviewed
       ? "unreviewed change record"
       : !mechanical
         ? "migration not yet automated; see the record notes"
-        : !ready
-          ? "no rewrite rules yet"
-          : gate.blocked;
+        : !clean
+          ? `${new Set(grp.held?.map((h) => h.file)).size === 1 ? "this file" : "each of these files"} also calls another provider through the same methods, so the rewrite would change those calls too`
+          : !ready
+            ? "no rewrite rules yet"
+            : gate.blocked;
     records.push({
       record: grp.record,
       title: title(grp.record),
-      files: grp.files,
-      sites: grp.sites,
+      files: [...new Set([...grp.files, ...(grp.held ?? []).map((h) => h.file)])],
+      sites: grp.sites + (grp.held?.length ?? 0),
       applied,
       ...(applied ? {} : { reason }),
+      // Held sites are known before any rewrite; list them even when nothing else is applied.
+      ...(!clean && grp.held?.length ? { remaining: grp.held } : {}),
       ...(applied && gate.unconfirmed.length > 0 ? { unconfirmed: gate.unconfirmed } : {}),
     });
     if (applied) applicable.push(grp);
@@ -256,7 +276,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
         await cp(join(root, f), join(tmp, "before", f));
         await cp(join(root, f), join(tmp, "after", f));
       }
-      for (const grp of applicable) settle(resultOf(grp), await applyAndVerify(join(tmp, "after"), grp));
+      for (const grp of applicable) settle(resultOf(grp), await applyAndVerify(join(tmp, "after"), grp), grp.held);
       const out = (await g.diffDirs(tmp, "before", "after", color)).replaceAll("a/before/", "a/").replaceAll("b/after/", "b/");
       return { ...base, diff: out };
     } finally {
@@ -272,7 +292,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   const touched: string[] = [];
   try {
     for (const grp of applicable) {
-      for (const f of settle(resultOf(grp), await applyAndVerify(root, grp))) if (!touched.includes(f)) touched.push(f);
+      for (const f of settle(resultOf(grp), await applyAndVerify(root, grp), grp.held)) if (!touched.includes(f)) touched.push(f);
     }
   } catch (err) {
     await restore(root, snap);
@@ -321,7 +341,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
     let committed = false;
     let opened = false;
     try {
-      const changed = settle(result, await applyAndVerify(root, grp));
+      const changed = settle(result, await applyAndVerify(root, grp), grp.held);
       if (changed.length === 0) continue;
       const { build, tests } = await runChecks(root, commands, snap);
       if (build && failed(build)) {
@@ -381,7 +401,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     plain(record.notes?.migration ?? title(record)),
     "",
     "## Why",
-    `${record.vendor} announced this change on ${record.announcedAt}: ${source.url}`,
+    `${vendorName(record.vendor)} announced this change on ${record.announcedAt}: ${source.url}`,
     ...(source.quoteId ? [`> ${plain(source.quoteId)}`] : []),
     "",
     "## What changed",
@@ -399,7 +419,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     ...(tests?.output ? ["", "<details><summary>test output</summary>", "", "```", tests.output, "```", "", "</details>"] : []),
     "",
     ...(remaining.length > 0
-      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- \`${r.file}:${r.line}\``), ""]
+      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- \`${r.file}:${r.line}\`${r.note ? `: ${r.note}` : ""}`), ""]
       : []),
     "## Not verified",
     ...unconfirmed.map((u) => `- This change needs ${u}; darnit could not find the version this repository uses.`),
@@ -448,7 +468,7 @@ export function renderSummary(result: FixResult): string {
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;
-    if (r.applied && !putBack) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${s.file}:${s.line}`);
+    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${s.file}:${s.line}${s.note ? ` (${s.note})` : ""}`);
     if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
   if (lines.length === 0) lines.push("Nothing to fix.");

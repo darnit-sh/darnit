@@ -92,6 +92,21 @@ const EXPECT: Record<string, Expect> = {
     fix: { exit: 0, has: ["found in 1 file, not rewritten: needs openai >= 4.60.0, this repo has 4.20.0 (package-lock.json); upgrade it first"] },
     changed: [],
   },
+  "13-groq-sdk": {
+    check: { exit: 0, has: ["No known vendor changes affect this repository.", "Left out 1 call made through another provider's client with the same methods: src/chat.js:9."] },
+    fix: { exit: 0, has: ["Nothing to fix."] },
+    changed: [],
+  },
+  "14-openrouter-baseurl": {
+    check: { exit: 0, has: ["No known vendor changes affect this repository.", "Left out 1 call made through another provider's client"] },
+    fix: { exit: 0, has: ["Nothing to fix."] },
+    changed: [],
+  },
+  "15-mixed-clients": {
+    check: { exit: 1, has: ["src/chat.js:8:", "Left out 1 call made through another provider's client"], lacks: ["src/chat.js:11:"] },
+    fix: { exit: 0, has: ["found in 1 file, not rewritten: this file also calls another provider through the same methods"] },
+    changed: [],
+  },
   "11-py-old-sdk": {
     check: { exit: 1, has: ["app/summarize.py:5:9  max_tokens=256"] },
     fix: { exit: 0, has: ["found in 1 file, not rewritten: needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first"] },
