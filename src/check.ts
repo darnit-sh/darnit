@@ -98,6 +98,13 @@ export function toJson(hits: Hit[]): object[] {
   }));
 }
 
+/** The matched code on one line, at most 60 characters; "…" marks anything cut off. */
+export function snippet(text: string, width = 60): string {
+  const line = text.split("\n")[0]!;
+  const cut = line.length > width || line.length < text.length;
+  return cut ? `${line.slice(0, width - 1).trimEnd()}…` : line;
+}
+
 const NOT_CHECKED = "Not checked: request options built elsewhere and passed in as a variable.";
 
 /** 1 only for call sites of a reviewed change: a machine-written candidate nobody has read should not fail anyone's build. */
@@ -128,7 +135,7 @@ export function render(hits: Hit[], coverage?: Coverage): string {
     const locations = group.map((h) => `${h.file}:${h.line}:${h.column}`);
     const width = Math.max(...locations.map((l) => l.length)) + 2;
     out.push(heading(record));
-    group.forEach((h, i) => out.push(`  ${locations[i]!.padEnd(width)}${h.text.split("\n")[0]!.slice(0, 60)}`));
+    group.forEach((h, i) => out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}`));
     out.push(`  ${plural(group.length, "call site")} in ${plural(new Set(group.map((h) => h.file)).size, "file")}`);
     for (const source of record.sources) out.push(`  ${source.url}`);
     out.push("");
