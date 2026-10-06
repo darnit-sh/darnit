@@ -64,7 +64,7 @@ export async function applyRules(packDir: string, targets: readonly string[]): P
             await execFileAsync(bin, ["scan", "--rule", variant, "--update-all", ...targets]);
           } catch (err) {
             const { stderr } = err as { stderr?: string };
-            throw new Error(`ast-grep failed on ${relative(packDir, rule)} (${grammar}): ${(stderr ?? String(err)).trim()}`);
+            throw new Error(`ast-grep failed on ${relative(packDir, rule)} (${grammar}): ${(stderr ?? String(err)).trim()}`, { cause: err });
           }
         }
       }
