@@ -14,6 +14,10 @@ updates:
       tooling:
         dependency-type: development
         update-types: [minor, patch]
+    ignore:
+      # Types must match the oldest Node we support, not the newest.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
