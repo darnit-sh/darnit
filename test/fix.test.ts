@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyAndVerify, exitCodeFor, fix, prBody, Refusal, renderSummary } from "../src/fix.js";
+import { applyAndVerify, exitCodeFor, fix, prBody, prose, Refusal, renderSummary } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords } from "../src/records/load.js";
 
@@ -539,19 +539,54 @@ describe("fix --pr", () => {
 });
 
 describe("prBody", () => {
-  it("renders hostile record text as inert plain text", async () => {
+  it("shows reviewed notes as readable prose and keeps the vendor quote verbatim as code", async () => {
     const record = (await loadRecords())[0]!.record;
-    const hostile = "Use tools.\n# Heading <img src=x onerror=alert(1)> [click](https://evil.example) ![](https://pixel.example) @octocat";
+    const hostile = "Use tools.\n# Heading <img src=x onerror=alert(1)> [click](https://evil.example) @octocat";
     const body = prBody(
       { ...record, sources: [{ url: "https://example.com/changelog", quoteId: hostile }], notes: { migration: hostile, edgeCases: [hostile] } },
       ["app.js"],
       "test",
     );
-    const span = "`Use tools. # Heading <img src=x onerror=alert(1)> [click](https://evil.example) ![](https://pixel.example) @octocat`";
     const lines = body.split("\n");
-    expect(lines[0]).toBe(span);
-    expect(lines).toContain(`> ${span}`);
-    expect(lines).toContain(`- ${span}`);
-    expect(prBody({ ...record, notes: { migration: "a `b` c" } }, [], "test").split("\n")[0]).toBe("`a 'b' c`");
+    expect(lines[0]).toBe(prose(hostile));
+    expect(lines).toContain(`- ${prose(hostile)}`);
+    expect(lines).toContain("> `Use tools. # Heading <img src=x onerror=alert(1)> [click](https://evil.example) @octocat`");
+  });
+});
+
+describe("prose", () => {
+  // Strip the invisible breaks to see what a reader sees.
+  const shown = (s: string) => s.replaceAll("\u200B", "");
+
+  it("reads like the original text", () => {
+    const note = "Request-side rename: max_tokens: N becomes max_completion_tokens: N on chat.completions.create calls.";
+    expect(shown(prose(note)).replace(/\\(.)/g, "$1")).toBe(note);
+    expect(prose("Use `max_completion_tokens` instead")).toContain("`max_completion_tokens`");
+  });
+
+  // Every input that GitHub would otherwise turn into a link, ping, reference, image, HTML, block,
+  // emoji or math. Each was confirmed live on GitHub's renderer before the matching rule existed.
+  it.each([
+    ["mention", "ping @octocat", /@(?!\u200B)/],
+    ["issue reference", "see #12", /#(?!\u200B)/],
+    ["cross-repo path", "cli/cli/pull/1", /\/(?!\u200B)/],
+    ["URL", "https://evil.example", /:(?!\u200B)/],
+    ["www after underscore", "_www.evil.example", /www\./i],
+    ["commit SHA", "fixed in 17142e08db2e", /[0-9a-f]{7}/i],
+    ["GH reference", "see GH-1", /-(?!\u200B)\d/],
+    ["custom reference", "see JIRA-123", /-(?!\u200B)\d/],
+    ["math", "costs $5 to $10", /(?<!\u200B\\)\$/],
+    ["emoji", "done :white_check_mark: ok", /:(?!\u200B)\S/],
+    ["HTML", "<img src=x onerror=alert(1)>", /(?<!\\)</],
+    ["link", "[click](javascript:alert(1))", /(?<!\\)\[/],
+    ["setext heading", "---", /^-/],
+    ["ordered list", "1. item", /^1\./],
+    ["entity", "&#64;octocat", /(?<!\\)&/],
+  ])("defuses %s", (_name, input, live) => {
+    expect(prose(input)).not.toMatch(live);
+  });
+
+  it("drops characters that reverse how text reads", () => {
+    expect(prose("safe\u202Eevil")).toBe("safeevil");
   });
 });
