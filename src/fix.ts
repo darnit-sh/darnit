@@ -382,35 +382,39 @@ const plain = (text: string) => {
   return t ? `\`${t}\`` : "";
 };
 
-const ZW = "​";
+// Characters GitHub can turn into something live: mentions, references, URLs, emoji, math,
+// commit links, custom references like ABC-123, HTML and entities.
+const RISKY = /[@#/$]|:\S|www[.)\]]?$|www\.|[0-9a-f]{7}|[A-Za-z]+-\d|^[<&]/i;
+const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\u061C\uFEFF]/g;
+const escapeMarkdown = (s: string) => s.replace(/[\\`*_[\]()<>!|~{}&#$]/g, (c) => `\\${c}`);
 
 /**
- * Reviewed record text as readable prose that GitHub cannot turn into anything live: one line,
- * Markdown and HTML escaped, and an invisible break after every character GitHub uses to start a
- * mention, reference, autolink, emoji, math or commit link. Existing `code` spans are kept.
+ * Reviewed record text as readable prose that GitHub cannot turn into anything live. Plain words
+ * get Markdown escaped; a word GitHub could link, ping, reference or render shows as a small code
+ * span instead, which GitHub never touches and which copies exactly. Existing `code` is kept.
  * Each rule was checked against GitHub's own renderer.
  */
 export function prose(text: string): string {
-  return text
-    .replace(/[‪-‮⁦-⁩]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
+  const clean = text.replace(INVISIBLE, "").replace(/\s+/g, " ").trim();
+  // A cap keeps every pattern below fast on any input; real notes are a few sentences.
+  const capped = clean.length > 2000 ? `${clean.slice(0, 2000)}…` : clean;
+  return capped
     .split(/(`[^`]+`)/g)
     .map((part, i) =>
       i % 2 === 1
         ? part
         : part
-            .replace(/[\\`*_[\]()<>#!|~{}&]/g, (c) => `\\${c}`)
-            .replace(/\$/g, `${ZW}\\$${ZW}`)
-            .replace(/[@#/]/g, (c) => c + ZW)
-            .replace(/:(?=\S)/g, `:${ZW}`)
-            .replace(/w(?=ww\.)/gi, (w) => w + ZW)
-            .replace(/-(?=\d)/g, `-${ZW}`)
-            .replace(/([0-9a-f]{6})(?=[0-9a-f])/gi, `$1${ZW}`)
-            .replace(/^(\d+)([.)])/, "$1\\$2")
-            .replace(/^([-+=])/, "\\$1"),
+            .split(" ")
+            .map((word) => {
+              const [, lead = "", core = "", trail = ""] = /^([("'[]*)(.*?)([.,;:!?)"'\]]*)$/.exec(word) ?? [];
+              if (!RISKY.test(word) || !core) return escapeMarkdown(word);
+              return `${escapeMarkdown(lead)}\`${core.replaceAll("`", "")}\`${escapeMarkdown(trail)}`;
+            })
+            .join(" "),
     )
-    .join("");
+    .join("")
+    .replace(/^(\d+)([.)])/, "$1\\$2")
+    .replace(/^([-+=])/, "\\$1");
 }
 
 export type PrEvidence = {
