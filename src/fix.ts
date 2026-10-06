@@ -212,18 +212,14 @@ async function runChecks(root: string, commands: Commands, snap: Map<string, str
   // they touched that was clean before, so the tree only differs by the rewrite.
   const dirtyBefore = new Set(await g.modified(root));
   try {
-    return await runChecksIn(root, commands, snap);
+    const compiled = [...snap.keys()].some((f) => COMPILED.test(f));
+    const build = commands.build && compiled ? await testAndAttribute(root, commands.build, snap, "build") : undefined;
+    if (failed(build)) return { build: build! };
+    const tests = commands.tests ? await testAndAttribute(root, commands.tests, snap, "tests") : undefined;
+    return { ...(build ? { build } : {}), ...(tests ? { tests } : {}) };
   } finally {
     await g.discard(root, (await g.modified(root)).filter((f) => !dirtyBefore.has(f) && !snap.has(f)));
   }
-}
-
-async function runChecksIn(root: string, commands: Commands, snap: Map<string, string>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
-  const compiled = [...snap.keys()].some((f) => COMPILED.test(f));
-  const build = commands.build && compiled ? await testAndAttribute(root, commands.build, snap, "build") : undefined;
-  if (failed(build)) return { build: build! };
-  const tests = commands.tests ? await testAndAttribute(root, commands.tests, snap, "tests") : undefined;
-  return { ...(build ? { build } : {}), ...(tests ? { tests } : {}) };
 }
 
 export async function fix(root: string, opts: FixOptions = {}): Promise<FixResult> {

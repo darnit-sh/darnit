@@ -16,7 +16,7 @@ export const isRepo = (root: string) =>
 
 export const isClean = async (root: string) => (await git(root, ["status", "--porcelain"])).trim() === "";
 
-export const currentBranch = async (root: string) => (await git(root, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+const currentBranch = async (root: string) => (await git(root, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
 
 export const localBranchExists = (root: string, name: string) =>
   git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).then(

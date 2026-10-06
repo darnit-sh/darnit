@@ -1,8 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-export type Ecosystem = "npm" | "pypi";
-
 /** A package version found in the repo, and the file that said so. */
 export type Found = { version: string; from: string };
 
