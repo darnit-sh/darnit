@@ -2,6 +2,10 @@
 
 *Your API integrations, invisibly mended.*
 
+Your dependencies didn't change. The API did.
+
+[darnit.sh](https://darnit.sh)
+
 Vendors change their APIs. Your code keeps calling them the old way.
 darnit finds the exact lines, rewrites them, runs your tests, and opens the pull request.
 

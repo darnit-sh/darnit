@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit } from "../src/check.js";
+import { findMatches, grammarFor } from "../src/scan/astgrep.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -357,5 +358,22 @@ describe("model shutdowns", () => {
     expect(text).toContain("openai 2026-04-22: o1, gpt-4, o1-pro, o3-mini, o4-mini, gpt-4-0613 and 17 more shut down on 2026-10-23");
     expect(text).toContain("openai 2026-10-01: gpt-5.1, gpt-5.4-nano and gpt-5.3-codex shut down on 2027-04-01");
     expect(text).toContain("openai 2026-10-01: tts-1, tts-1-hd, gpt-4o-mini-tts-2025-03-20 and 1 more shut down on 2027-01-06");
+  });
+});
+
+describe("findMatches", () => {
+  const pattern = [{ context: '({ model: "gpt-4" })', selector: "pair" }];
+  const ts = grammarFor("a.ts")!.grammar;
+
+  it("matches quoted text in either quote style, and skips files that do not contain it", () => {
+    expect(findMatches("f({ model: 'gpt-4' });\nf({ model: \"gpt-4\" });\n", ts, pattern).map((m) => m.line)).toEqual([2]);
+    expect(findMatches('f({ model: "gpt-4o" });\nf({ model: "gpt-3.5-turbo" });\n', ts, pattern)).toEqual([]);
+    expect(findMatches("f({ max_tokens: 5 });\n", ts, [{ context: "({ max_tokens: $N })", selector: "pair" }])).toHaveLength(1);
+  });
+
+  it("never skips a pattern whose quoted text is a placeholder", () => {
+    expect(findMatches('f({ model: "gpt-4" });\n', ts, [{ context: '({ model: "$M" })', selector: "pair" }])).toHaveLength(1);
+    const py = grammarFor("a.py")!.grammar;
+    expect(findMatches('f(model="gpt-4")\n', py, [{ context: 'f(model="$M")', selector: "keyword_argument" }])).toHaveLength(1);
   });
 });
