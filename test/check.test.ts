@@ -190,6 +190,69 @@ describe("check tells OpenAI apart from look-alike clients", () => {
     expect(coverage.foreign).toBe(9);
   });
 
+  it("follows the client declared in the nearest block, a require with .default, and Volcengine's host", async () => {
+    const dir = await scratch({
+      "blocks.ts": [
+        'import Anthropic from "@anthropic-ai/sdk";',
+        'import Groq from "groq-sdk";',
+        'import OpenAI from "openai";',
+        "export async function ask(provider: string) {",
+        '  if (provider === "openai") {',
+        "    const client = new OpenAI();",
+        '    return client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });',
+        "  }",
+        '  if (provider === "groq") {',
+        "    const client = new Groq();",
+        '    return client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });',
+        "  }",
+        "  const client = new Anthropic();",
+        '  return client.messages.create({ model: "m", messages: [], max_tokens: 5 });',
+        "}",
+        "",
+      ].join("\n"),
+      "lazy.ts": [
+        "let Groq: any;",
+        "try {",
+        '  Groq = require("groq-sdk").default;',
+        "} catch {}",
+        "export class Provider {",
+        "  private client: any = null;",
+        "  constructor() {",
+        "    this.client = new Groq();",
+        "  }",
+        "  run() {",
+        '    return this.client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });',
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+      "hoisted.js": [
+        'import Groq from "groq-sdk";',
+        'import OpenAI from "openai";',
+        "export function a(xs) {",
+        "  var client = new OpenAI();",
+        "  for (const x of xs) {",
+        '    client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });',
+        "    var client = new Groq();",
+        "  }",
+        "}",
+        "export function b(x) {",
+        "  var client = new Groq();",
+        "  if (x) {",
+        "    var client = new OpenAI();",
+        "  }",
+        '  return client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });',
+        "}",
+        "",
+      ].join("\n"),
+      "ark.js":
+        'export const r = fetch("https://ark.cn-beijing.volces.com/api/v3/images/generations", { method: "POST", body: JSON.stringify({ model: "m", response_format: "url" }) });\n',
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(locations(hits)).toEqual(["blocks.ts:7", "hoisted.js:6", "hoisted.js:15"]);
+    expect(coverage.foreignAt).toEqual(["ark.js:1", "blocks.ts:11", "lazy.ts:11"]);
+  });
+
   it("reports only the OpenAI call in a file that also uses a look-alike", async () => {
     const dir = await scratch({
       "both.ts":
