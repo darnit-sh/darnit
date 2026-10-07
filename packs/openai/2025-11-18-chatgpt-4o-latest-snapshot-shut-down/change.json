@@ -1,7 +1,7 @@
 {
   "id": "openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down",
   "title": "chatgpt-4o-latest shut down on 2026-02-17",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2025-11-18",
   "effectiveAt": "2026-02-17",

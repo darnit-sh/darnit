@@ -76,8 +76,13 @@ export function title(r: ChangeRecord): string {
   return `${r.kind}: ${fields}${on}`;
 }
 
-const heading = (r: ChangeRecord) =>
-  `${r.vendor} ${r.announcedAt}: ${title(r)}${r.status === "candidate" ? " (unreviewed change, detection only)" : ""}`;
+const LABELS: Record<ChangeRecord["status"], string> = {
+  candidate: " (unreviewed change, detection only)",
+  "parser-verified": " (parser-verified, not read by a person)",
+  reviewed: "",
+};
+
+const heading = (r: ChangeRecord) => `${r.vendor} ${r.announcedAt}: ${title(r)}${LABELS[r.status]}`;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -107,8 +112,8 @@ export function snippet(text: string, width = 60): string {
 
 const NOT_CHECKED = "Not checked: request options built elsewhere and passed in as a variable.";
 
-/** 1 only for call sites of a reviewed change: a machine-written candidate nobody has read should not fail anyone's build. */
-export const exitCodeForCheck = (hits: readonly Hit[]): 0 | 1 => (hits.some((h) => h.record.status === "reviewed") ? 1 : 0);
+/** 1 for call sites of any change but a candidate: a machine-written candidate nobody has checked should not fail anyone's build. */
+export const exitCodeForCheck = (hits: readonly Hit[]): 0 | 1 => (hits.some((h) => h.record.status !== "candidate") ? 1 : 0);
 
 /** Terminal report, grouped by vendor change. Always ends by saying what was and was not covered. */
 export function render(hits: Hit[], coverage?: Coverage): string {

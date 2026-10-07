@@ -7,7 +7,7 @@ import { init } from "./init.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-// Exit codes: 0 nothing to act on, 1 call sites of a reviewed change found, 2 darnit itself failed.
+// Exit codes: 0 nothing to act on, 1 call sites of a reviewed or parser-verified change found, 2 darnit itself failed.
 // process.exitCode (not process.exit) so a long report is fully flushed through a pipe.
 
 // exitOverride throws instead of exiting, so a mistyped flag exits 2 like any other darnit failure

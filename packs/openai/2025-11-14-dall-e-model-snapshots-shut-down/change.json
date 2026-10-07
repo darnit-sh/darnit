@@ -1,7 +1,7 @@
 {
   "id": "openai:2025-11-14:dall-e-model-snapshots-shut-down",
   "title": "dall-e-2 and dall-e-3 shut down on 2026-05-12",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2025-11-14",
   "effectiveAt": "2026-05-12",

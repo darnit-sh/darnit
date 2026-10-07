@@ -1,7 +1,7 @@
 {
   "id": "openai:2025-04-28:text-moderation-shut-down",
   "title": "text-moderation-007, text-moderation-latest and 1 more shut down on 2025-10-27",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2025-04-28",
   "effectiveAt": "2025-10-27",
