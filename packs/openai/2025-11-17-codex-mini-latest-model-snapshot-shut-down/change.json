@@ -1,7 +1,7 @@
 {
   "id": "openai:2025-11-17:codex-mini-latest-model-snapshot-shut-down",
   "title": "codex-mini-latest shut down on 2026-02-12",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2025-11-17",
   "effectiveAt": "2026-02-12",

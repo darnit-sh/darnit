@@ -1,7 +1,7 @@
 {
   "id": "openai:2026-09-11:gpt-5-4-cyber-shut-down",
   "title": "gpt-5.4-cyber shut down on 2026-10-01",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2026-09-11",
   "effectiveAt": "2026-10-01",

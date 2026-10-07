@@ -1,7 +1,7 @@
 {
   "id": "openai:2025-09-26:legacy-gpt-model-snapshots-shut-down",
   "title": "babbage-002, davinci-002, gpt-3.5-turbo-1106 and 1 more shut down on 2026-09-28",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2025-09-26",
   "effectiveAt": "2026-09-28",

@@ -47,7 +47,7 @@ Or skip the install: `npx darnit check`. Needs Node 22.12 or newer.
 ## How it works
 
 ```
-vendor changes its API   →  a change record: what changed, cited, reviewed by a person
+vendor changes its API   →  a change record: what changed, cited, checked by a person or against the vendor's own page
 change record            →  the exact call sites in your repo, made through that vendor's own client
 call sites               →  rewrite rules, proven against before/after examples in CI
 rewrite                  →  checked: your SDK version first, then your build and your tests
@@ -66,6 +66,7 @@ Small on purpose. A change gets a rewrite only when the rewrite is proven.
 | OpenAI: `max_tokens` → `max_completion_tokens` on chat completions | reports | rewrites |
 | OpenAI: chat completions `functions` → `tools` | reports | reports only: code that reads the response needs changes a rule can't make safely |
 | OpenAI: `style` and `response_format` on image generation and edits, found by the weekly spec check | reports, marked unreviewed | no: waiting for review |
+| OpenAI: 143 retiring models listed on the deprecations page | reports, marked parser-verified | reports only: a newer model can answer differently |
 
 | Vendor | Status |
 |---|---|
@@ -101,6 +102,8 @@ Without `--force`, existing files are left untouched.
 Lists every call site affected by a known change: file, line, and the vendor's
 own announcement or API spec. Changes still waiting for review are marked
 `(unreviewed change, detection only)` and never fail the check on their own.
+Changes read from a vendor's page by a script and confirmed by a second, separate
+parser are marked `(parser-verified, not read by a person)` and do fail the check.
 Calls made through another provider's look-alike client are left out, and the
 report names each one.
 
@@ -111,7 +114,7 @@ report names each one.
 | Exit | |
 |---|---|
 | 0 | nothing affected, or only unreviewed changes |
-| 1 | affected call sites found for a reviewed change |
+| 1 | affected call sites found for a reviewed or parser-verified change |
 | 2 | darnit itself failed, or a mistyped command or flag |
 
 ### `darnit fix`
@@ -199,7 +202,7 @@ jobs:
       - run: npx darnit check
 ```
 
-Once a day it runs `check`. The day a reviewed change hits your code, the run fails and
+Once a day it runs `check`. The day a reviewed or parser-verified change hits your code, the run fails and
 GitHub tells you, like any failed workflow. Scheduled workflows only run from
 the default branch, so commit this file there.
 
@@ -244,7 +247,9 @@ the record (what changed, with a link to its source), the rewrite
 rules, and before/after examples. CI applies the rules to the examples and fails
 on any difference. A rule that quietly changes nothing fails the build too.
 
-Records are written by hand from vendor announcements. New candidates also
+Records are written by hand from vendor announcements, except model shutdowns:
+those are read from OpenAI's deprecations page by a script, confirmed by a second,
+separate parser, and stay parser-verified until a person reviews them. New candidates also
 come from the vendors' own API specs: once a week a workflow
 compares each spec in `vendors.yml` with the last saved copy (using
 [oasdiff](https://github.com/oasdiff/oasdiff)) and turns deprecated or removed

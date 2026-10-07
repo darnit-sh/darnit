@@ -1,7 +1,7 @@
 {
   "id": "openai:2026-06-02:gpt-image-model-deprecations-shut-down",
   "title": "gpt-image-1.5, gpt-image-1-mini and 1 more shut down on 2026-12-01",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2026-06-02",
   "effectiveAt": "2026-12-01",

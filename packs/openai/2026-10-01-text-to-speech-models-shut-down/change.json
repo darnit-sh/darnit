@@ -1,7 +1,7 @@
 {
   "id": "openai:2026-10-01:text-to-speech-models-shut-down",
   "title": "tts-1, tts-1-hd, gpt-4o-mini-tts-2025-03-20 and 1 more shut down on 2027-01-06",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2026-10-01",
   "effectiveAt": "2027-01-06",

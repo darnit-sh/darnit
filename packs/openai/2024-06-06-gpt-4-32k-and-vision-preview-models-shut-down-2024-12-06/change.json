@@ -1,7 +1,7 @@
 {
   "id": "openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2024-12-06",
   "title": "gpt-4-vision-preview and gpt-4-1106-vision-preview shut down on 2024-12-06",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2024-06-06",
   "effectiveAt": "2024-12-06",

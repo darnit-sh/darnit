@@ -1,7 +1,7 @@
 {
   "id": "openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down",
   "title": "sora-2, sora-2-pro, sora-2-2025-10-06 and 2 more shut down on 2026-09-24",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2026-03-24",
   "effectiveAt": "2026-09-24",

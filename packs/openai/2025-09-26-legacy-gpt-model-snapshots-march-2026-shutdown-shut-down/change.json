@@ -1,7 +1,7 @@
 {
   "id": "openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down",
   "title": "gpt-4-0314, gpt-4-0125-preview, gpt-4-turbo-preview and 1 more shut down on 2026-03-26",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2025-09-26",
   "effectiveAt": "2026-03-26",

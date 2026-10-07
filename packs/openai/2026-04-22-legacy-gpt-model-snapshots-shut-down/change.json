@@ -1,7 +1,7 @@
 {
   "id": "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down",
   "title": "o1, gpt-4, o1-pro, o3-mini, o4-mini, gpt-4-0613 and 17 more shut down on 2026-10-23",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2026-04-22",
   "effectiveAt": "2026-10-23",
