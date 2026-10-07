@@ -1,2 +1,5 @@
 #!/bin/sh
+# Git sets GIT_DIR, GIT_INDEX_FILE and similar for hooks; the tests create
+# their own repositories and must not inherit them.
+unset $(git rev-parse --local-env-vars)
 npm run check
