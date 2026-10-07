@@ -1,7 +1,7 @@
 {
   "id": "openai:2025-06-10:gpt-4o-audio-preview-2024-10-01-shut-down",
   "title": "gpt-4o-audio-preview-2024-10-01 shut down on 2025-10-10",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2025-06-10",
   "effectiveAt": "2025-10-10",

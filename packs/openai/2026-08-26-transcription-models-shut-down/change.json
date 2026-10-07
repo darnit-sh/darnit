@@ -1,7 +1,7 @@
 {
   "id": "openai:2026-08-26:transcription-models-shut-down",
   "title": "whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe and 1 more shut down on 2027-02-26",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2026-08-26",
   "effectiveAt": "2027-02-26",

@@ -1,7 +1,7 @@
 {
   "id": "openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down",
   "title": "gpt-audio, gpt-4o-audio, gpt-realtime and 6 more shut down on 2027-01-20",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2026-07-20",
   "effectiveAt": "2027-01-20",

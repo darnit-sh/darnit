@@ -1,7 +1,7 @@
 {
   "id": "openai:2023-03-20:codex-models-shut-down",
   "title": "code-cushman-001, code-cushman-002 and code-davinci-001 shut down on 2023-03-23",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2023-03-20",
   "effectiveAt": "2023-03-23",

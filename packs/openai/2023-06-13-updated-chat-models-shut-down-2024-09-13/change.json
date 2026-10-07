@@ -1,7 +1,7 @@
 {
   "id": "openai:2023-06-13:updated-chat-models-shut-down-2024-09-13",
   "title": "gpt-3.5-turbo-0301 shut down on 2024-09-13",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2023-06-13",
   "effectiveAt": "2024-09-13",

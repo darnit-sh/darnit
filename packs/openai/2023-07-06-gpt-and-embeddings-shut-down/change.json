@@ -1,7 +1,7 @@
 {
   "id": "openai:2023-07-06:gpt-and-embeddings-shut-down",
   "title": "ada, curie, babbage, davinci, text-ada-001 and 24 more shut down on 2024-01-04",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2023-07-06",
   "effectiveAt": "2024-01-04",

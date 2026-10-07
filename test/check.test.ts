@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit } from "../src/check.js";
+import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
@@ -478,9 +479,14 @@ describe("check", () => {
     expect(render([candidate])).toContain("Unreviewed changes are reported but do not fail the check.");
     expect(render(hits)).not.toContain("do not fail the check");
 
-    // Only a reviewed change fails the check; a candidate alone never turns a scheduled run red.
+    const parsed = { ...hits[0]!, record: { ...hits[0]!.record, status: "parser-verified" as const } };
+    expect(render([parsed])).toContain("(parser-verified, not read by a person)");
+    expect(render(hits)).not.toContain("parser-verified");
+
+    // A reviewed or parser-verified change fails the check; a candidate alone never turns a scheduled run red.
     expect(exitCodeForCheck([candidate])).toBe(0);
     expect(exitCodeForCheck([candidate, hits[0]!])).toBe(1);
+    expect(exitCodeForCheck([candidate, parsed])).toBe(1);
     expect(exitCodeForCheck([])).toBe(0);
 
     expect(toJson(hits)).toEqual([
@@ -503,6 +509,12 @@ describe("check", () => {
 
 describe("model shutdowns", () => {
   const shutdowns = (hits: Hit[]) => hits.filter((h) => h.record.id.includes("shut-down"));
+
+  it("marks every shutdown record as parser-verified until a person reviews it", async () => {
+    const records = (await loadRecords()).map((l) => l.record).filter((r) => r.id.includes("shut-down"));
+    expect(records).toHaveLength(29);
+    expect(records.filter((r) => r.status !== "parser-verified").map((r) => r.id)).toEqual([]);
+  });
 
   it("reports a retiring model only inside OpenAI calls that take a model, with the date", async () => {
     const dir = await scratch({

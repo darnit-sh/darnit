@@ -1,7 +1,7 @@
 {
   "id": "openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down",
   "title": "gpt-4o-audio-preview, gpt-4o-realtime-preview and 4 more shut down on 2026-05-07",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2025-09-15",
   "effectiveAt": "2026-05-07",

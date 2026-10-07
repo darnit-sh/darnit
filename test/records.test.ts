@@ -27,6 +27,11 @@ describe("ChangeRecord schema", () => {
     expect(() => parseChangeRecord(noStatus, "x.json")).toThrow(/status/);
   });
 
+  it("accepts each review status: candidate, parser-verified and reviewed", () => {
+    for (const status of ["candidate", "parser-verified", "reviewed"]) expect(parseChangeRecord({ ...valid, status }, "x.json").status).toBe(status);
+    expect(() => parseChangeRecord({ ...valid, status: "approved" }, "x.json")).toThrow(/status/);
+  });
+
   it("rejects a record with no sources (every record is cited)", () => {
     expect(() => parseChangeRecord({ ...valid, sources: [] }, "x.json")).toThrow(ChangeRecordError);
   });

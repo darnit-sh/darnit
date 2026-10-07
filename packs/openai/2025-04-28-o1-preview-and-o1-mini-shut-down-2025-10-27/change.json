@@ -1,7 +1,7 @@
 {
   "id": "openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27",
   "title": "o1-mini shut down on 2025-10-27",
-  "status": "reviewed",
+  "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2025-04-28",
   "effectiveAt": "2025-10-27",

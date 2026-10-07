@@ -239,15 +239,18 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     const ready = reviewed && mechanical && clean && (await hasRules(grp.packDir));
     const gate = ready ? await versionGate(root, grp) : { unconfirmed: [] };
     const applied = ready && !gate.blocked;
-    const reason = !reviewed
-      ? "unreviewed change record"
-      : !mechanical
-        ? "migration not yet automated; see the record notes"
-        : !clean
-          ? `${new Set(grp.held?.map((h) => h.file)).size === 1 ? "this file" : "each of these files"} also calls another provider through the same methods, so the rewrite would change those calls too`
-          : !ready
-            ? "no rewrite rules yet"
-            : gate.blocked;
+    const reason =
+      grp.record.status === "candidate"
+        ? "unreviewed change record"
+        : !mechanical
+          ? "migration not yet automated; see the record notes"
+          : !reviewed
+            ? "checked by a parser, not yet read by a person"
+            : !clean
+              ? `${new Set(grp.held?.map((h) => h.file)).size === 1 ? "this file" : "each of these files"} also calls another provider through the same methods, so the rewrite would change those calls too`
+              : !ready
+                ? "no rewrite rules yet"
+                : gate.blocked;
     records.push({
       record: grp.record,
       title: title(grp.record),
