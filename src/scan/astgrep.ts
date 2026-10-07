@@ -2,7 +2,7 @@ import { extname } from "node:path";
 import python from "@ast-grep/lang-python";
 import { Lang as NapiLang, parse, registerDynamicLanguage, type SgNode } from "@ast-grep/napi";
 import type { AstGrepPattern, Lang } from "../records/schema.js";
-import { clientOrigin, stringText, urlOrigin, type VendorClients } from "./clients.js";
+import { clientOrigin, FUNCTIONS, stringText, unwrap, urlOrigin, type VendorClients } from "./clients.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
 type Grammar = Parameters<typeof parse>[0];
@@ -43,9 +43,9 @@ export type Match = {
 /**
  * Keeps a match only when it belongs to the vendor's own API surface: the
  * nearest enclosing call must be one of `symbols` (e.g. `chat.completions.create`),
- * or the match must sit inside a call that names one of the vendor's `endpoints`
- * (raw HTTP users). A parameter name like `max_tokens` exists on other vendors'
- * APIs too, where it is correct; without this gate those would be reported.
+ * or the match must sit inside a request call whose URL argument names one of the
+ * vendor's `endpoints` (raw HTTP users). A parameter name like `max_tokens` exists on
+ * other vendors' APIs too, where it is correct; without this gate those would be reported.
  */
 export type Gate = {
   symbols?: readonly string[] | undefined;
@@ -65,20 +65,56 @@ function enclosingCall(node: SgNode): SgNode | undefined {
   return undefined;
 }
 
-/** A request's URL: its first argument, or a `url=` keyword. Never the request body. */
-function requestUrl(call: SgNode): string {
-  const args = call.field("arguments")?.children().filter((c) => c.isNamed()) ?? [];
-  const url = args.find((a) => a.is("keyword_argument") && a.field("name")?.text() === "url")?.field("value") ?? args[0];
-  if (!url) return "";
-  return stringText(url) ?? url.text().replace(/^[fFrRbBuU]*[`'"]/, "");
-}
-
 /** Callee text as written, minus line breaks and optional chaining, so `chat?.completions\n .create` still matches. */
 const normalized = (callee: string) => callee.replace(/\s+/g, "").replace(/\?\./g, ".");
 
-/** The enclosing call whose text names one of the endpoints (the fetch/request carrying the URL). */
-function endpointCall(node: SgNode, endpoints: readonly string[]): SgNode | undefined {
-  return node.ancestors().find((a) => isCall(a) && endpoints.some((e) => a.text().includes(e)));
+// Code inside a URL (an interpolation, a helper call) is not URL text.
+const OPAQUE = new Set(["template_substitution", "interpolation", "call_expression", "call"]);
+const URL_KINDS = new Set(["string", "template_string", "concatenated_string", "binary_expression", "binary_operator", "ternary_expression", "conditional_expression"]);
+
+/** Arguments that could be a request's URL: positional ones, `url=`, and `url:` in an options object. */
+function urlCandidates(call: SgNode): SgNode[] {
+  const out: SgNode[] = [];
+  for (const arg of call.field("arguments")?.children().filter((c) => c.isNamed()) ?? []) {
+    if (arg.is("keyword_argument")) {
+      if (arg.field("name")?.text() === "url") out.push(arg.field("value")!);
+    } else if (arg.is("object")) {
+      const url = arg.children().find((p) => p.is("pair") && /^["']?url["']?$/.test(p.field("key")?.text() ?? ""));
+      if (url) out.push(url.field("value")!);
+    } else out.push(arg);
+  }
+  return out.flatMap((arg) => {
+    const n = unwrap(arg);
+    if (n?.is("new_expression") && n.field("constructor")?.text() === "URL") return n.field("arguments")?.children().find((c) => c.isNamed()) ?? [];
+    return n ?? [];
+  });
+}
+
+/** Literal text pieces of a string (between interpolations) and of each part of a concatenation. */
+const pieces = (n: SgNode): SgNode[] =>
+  n.is("string_fragment") || n.is("string_content") ? [n] : OPAQUE.has(String(n.kind())) ? [] : n.children().flatMap(pieces);
+
+/** A string piece holds the endpoint as a URL or path would: with nothing but URL text before it. */
+const namesEndpoint = (url: SgNode, endpoints: readonly string[]) =>
+  URL_KINDS.has(String(url.kind())) &&
+  pieces(url).some((piece) => {
+    const text = piece.text();
+    return endpoints.some((e) => text.includes(e) && !/\s/.test(text.slice(0, text.indexOf(e))));
+  });
+
+/**
+ * The raw HTTP request a match belongs to, with its URL text: the nearest enclosing call that has
+ * an endpoint URL as an argument. Stops at a function, so a route handler, mock or test body
+ * never borrows the URL of the call it is passed to.
+ */
+function endpointCall(node: SgNode, endpoints: readonly string[]): string | undefined {
+  for (const a of node.ancestors()) {
+    if (FUNCTIONS.has(String(a.kind()))) return undefined;
+    if (!isCall(a)) continue;
+    const url = urlCandidates(a).find((u) => namesEndpoint(u, endpoints));
+    if (url) return stringText(url) ?? url.text().replace(/^[fFrRbBuU]*[`'"]/, "");
+  }
+  return undefined;
 }
 
 /**
@@ -108,10 +144,10 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
         const callee = raw === undefined ? undefined : normalized(raw);
         const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s)).sort((a, b) => b.length - a.length)[0];
         const viaEndpoint = symbol === undefined && endpoints.length > 0 ? endpointCall(node, endpoints) : undefined;
-        if (symbol === undefined && !viaEndpoint) continue;
+        if (symbol === undefined && viaEndpoint === undefined) continue;
         if (gate?.vendor) {
           const origin =
-            symbol !== undefined ? clientOrigin(root, call!, symbol, gate.vendor) : urlOrigin(requestUrl(viaEndpoint!), gate.vendor);
+            symbol !== undefined ? clientOrigin(root, call!, symbol, gate.vendor) : urlOrigin(viaEndpoint!, gate.vendor);
           foreign = origin === "foreign";
         }
       }
