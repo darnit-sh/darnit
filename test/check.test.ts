@@ -339,4 +339,10 @@ describe("findMatches", () => {
     expect(findMatches('f({ model: "gpt-4o" });\nf({ model: "gpt-3.5-turbo" });\n', ts, pattern)).toEqual([]);
     expect(findMatches("f({ max_tokens: 5 });\n", ts, [{ context: "({ max_tokens: $N })", selector: "pair" }])).toHaveLength(1);
   });
+
+  it("never skips a pattern whose quoted text is a placeholder", () => {
+    expect(findMatches('f({ model: "gpt-4" });\n', ts, [{ context: '({ model: "$M" })', selector: "pair" }])).toHaveLength(1);
+    const py = grammarFor("a.py")!.grammar;
+    expect(findMatches('f(model="gpt-4")\n', py, [{ context: 'f(model="$M")', selector: "keyword_argument" }])).toHaveLength(1);
+  });
 });

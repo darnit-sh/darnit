@@ -81,8 +81,13 @@ function endpointCall(node: SgNode, endpoints: readonly string[]): SgNode | unde
   return node.ancestors().find((a) => isCall(a) && endpoints.some((e) => a.text().includes(e)));
 }
 
-/** Quoted text in a pattern, such as a model name: code without that text cannot match it. */
-const literals = (context: string) => [...context.matchAll(/(["'])((?:(?!\1)[^\\])+)\1/g)].map((m) => m[2]!);
+/**
+ * Quoted plain names in a pattern, such as a model name: code without that text cannot match it.
+ * Anything else in quotes (a $VAR, spaces, escapes) is left to the parser. Assumes quoted text
+ * sits inside the selected node, as in every record today; the fixtures would catch one that
+ * does not.
+ */
+const literals = (context: string) => [...context.matchAll(/(["'])([\w.:/-]+)\1/g)].map((m) => m[2]!);
 
 /** Every node in `source` matching any of `patterns`, optionally gated. */
 export function findMatches(source: string, grammar: Grammar, allPatterns: readonly AstGrepPattern[], gate?: Gate): Match[] {
