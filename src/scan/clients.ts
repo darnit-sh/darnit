@@ -53,7 +53,7 @@ const FIELDS = new Set(["public_field_definition", "field_definition"]);
 const ASSIGNMENTS = new Set(["variable_declarator", "assignment_expression", "public_field_definition", "field_definition", "assignment"]);
 const IMPORTS = new Set(["import_statement", "import_from_statement"]);
 
-type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; declared: boolean };
+type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; blockScoped: boolean };
 type FileIndex = { imports: Map<string, Set<string>>; assignments: Assignment[] };
 
 /** Local name → every package it is imported from, read from import statements only (never comments or strings). */
@@ -123,10 +123,12 @@ function indexOf(root: SgNode): FileIndex {
       const target = (node.field("name") ?? node.field("left") ?? node.field("property"))?.text();
       const value = node.field("value") ?? node.field("right");
       if (target && value) {
-        if (value.is("call_expression") && /^require\s*\(/.test(value.text())) importTexts.push(node.text());
+        if ((value.is("call_expression") || value.is("member_expression")) && /^require\s*\(/.test(value.text())) importTexts.push(node.text());
         // A Python class-body assignment is a class attribute: reached as self.x, not as a bare name.
         const field = FIELDS.has(kind) || (kind === "assignment" && isClass(scopeKinds(node)));
-        assignments.push({ target, value, node, field, declared: kind === "variable_declarator" });
+        // let and const live in their block; var and plain assignments live in the whole function.
+        const blockScoped = kind === "variable_declarator" && node.parent()?.is("lexical_declaration") === true;
+        assignments.push({ target, value, node, field, blockScoped });
       }
     }
     for (const child of node.children()) stack.push(child);
@@ -156,21 +158,36 @@ function parameters(fn: SgNode): string[] {
 /** True if a Python function declares `global name`, which makes its assignments module-level. */
 const declaresGlobal = (fn: SgNode, name: string) => new RegExp(`(^|\\n)\\s*global\\s+[\\w\\s,]*\\b${name}\\b`).test(fn.text());
 
+const blockOf = (a: Assignment) => a.node.ancestors().find((x) => x.is("statement_block") || FUNCTIONS.has(String(x.kind())));
+
 /** Every assignment to `target` that could be the value the call sees. */
 function visibleAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] {
+  const visible = reachingAssignments(index, target, call);
+  // A let or const in an inner block hides one of the same name in a block around it.
+  const blocks = visible.filter((a) => a.blockScoped).map(blockOf);
+  return visible.filter((a) => {
+    const block = a.blockScoped ? blockOf(a) : undefined;
+    return !block || !blocks.some((b) => b && b.range().start.index !== block.range().start.index && contains(block, b));
+  });
+}
+
+/** Assignments to `target` whose scope reaches the call, before any shadowing. */
+function reachingAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] {
   const member = /^(?:this|self)\.([\w$#]+)$/.exec(target)?.[1];
   const callClass = call.ancestors().find((a) => CLASSES.has(String(a.kind())));
   const callFunctions = call.ancestors().filter((a) => FUNCTIONS.has(String(a.kind())));
   return index.assignments.filter((a) => {
+    // A placeholder such as `client = null` is not a client.
+    if (/^(null|undefined|None)$/.test(a.value.text())) return false;
     if (member !== undefined) {
       if (a.target !== target && !(a.field && a.target === member)) return false;
       const cls = a.node.ancestors().find((x) => CLASSES.has(String(x.kind())));
       return cls !== undefined && callClass !== undefined && cls.range().start.index === callClass.range().start.index;
     }
     if (a.field || a.target !== target) return false;
-    // A declaration (const/let/var) is only visible inside the block or function that holds it.
-    if (a.declared) {
-      const block = a.node.ancestors().find((x) => x.is("statement_block") || FUNCTIONS.has(String(x.kind())));
+    // A let or const is only visible inside the block that holds it.
+    if (a.blockScoped) {
+      const block = blockOf(a);
       if (block && !contains(block, call)) return false;
     }
     const scope = scopeKinds(a.node);

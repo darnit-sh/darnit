@@ -44,6 +44,7 @@ const LOOKALIKES: Partial<Record<Vendor, { packages: string[]; hosts: string[] }
       "api.mistral.ai",
       "api.perplexity.ai",
       "generativelanguage.googleapis.com",
+      "volces.com",
     ],
   },
 };
