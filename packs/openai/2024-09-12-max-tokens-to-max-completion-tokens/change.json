@@ -30,7 +30,7 @@
     }
   ],
   "notes": {
-    "migration": "Request-side rename: max_tokens: N becomes max_completion_tokens: N on chat.completions.create calls. Semantics caveat: on reasoning models max_completion_tokens counts reasoning + visible output tokens, so an unchanged N may yield shorter visible output; the rename is behavior-preserving on non-reasoning models.",
+    "migration": "Renames max_tokens to max_completion_tokens. OpenAI deprecated max_tokens on chat completions, and it doesn't work with o-series models. On reasoning models the new limit also counts reasoning tokens, so the same number can give a shorter visible answer.",
     "removalDate": "None announced as of 2026-08-03; max_tokens still accepted on non-o-series models. Urgency: requests sending max_tokens to o-series/reasoning models fail TODAY: this is live breakage on model upgrade, not hygiene.",
     "edgeCases": [
       "Repos passing max_tokens through a shared config/options object need the rename at the config source, not the call site"
