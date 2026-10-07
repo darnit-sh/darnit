@@ -1,0 +1,7 @@
+{
+  "note": "Report only: there are no rules, so after/ matches before/. Every listed model appears in both quote styles; the near miss at the end must not match.",
+  "matches": {
+    "before/app.js": 34,
+    "before/app.py": 34
+  }
+}

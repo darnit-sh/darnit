@@ -1,0 +1,130 @@
+{
+  "id": "openai:2025-11-17:codex-mini-latest-model-snapshot-shut-down",
+  "title": "codex-mini-latest shut down on 2026-02-12",
+  "status": "reviewed",
+  "vendor": "openai",
+  "announcedAt": "2025-11-17",
+  "effectiveAt": "2026-02-12",
+  "kind": "breaking",
+  "surface": {
+    "endpoints": [
+      "/v1/chat/completions",
+      "/v1/responses",
+      "/v1/completions",
+      "/v1/embeddings",
+      "/v1/images/",
+      "/v1/audio/",
+      "/v1/moderations",
+      "/v1/fine_tuning/jobs",
+      "/v1/videos",
+      "/v1/assistants",
+      "/v1/threads",
+      "/v1/realtime"
+    ],
+    "sdkSymbols": [
+      "chat.completions.create",
+      "chat.completions.with_raw_response.create",
+      "chat.completions.with_streaming_response.create",
+      "responses.create",
+      "responses.with_raw_response.create",
+      "responses.with_streaming_response.create",
+      "completions.create",
+      "completions.with_raw_response.create",
+      "completions.with_streaming_response.create",
+      "embeddings.create",
+      "embeddings.with_raw_response.create",
+      "embeddings.with_streaming_response.create",
+      "images.generate",
+      "images.with_raw_response.generate",
+      "images.with_streaming_response.generate",
+      "images.edit",
+      "images.with_raw_response.edit",
+      "images.with_streaming_response.edit",
+      "audio.speech.create",
+      "audio.speech.with_raw_response.create",
+      "audio.speech.with_streaming_response.create",
+      "audio.transcriptions.create",
+      "audio.transcriptions.with_raw_response.create",
+      "audio.transcriptions.with_streaming_response.create",
+      "audio.translations.create",
+      "audio.translations.with_raw_response.create",
+      "audio.translations.with_streaming_response.create",
+      "moderations.create",
+      "moderations.with_raw_response.create",
+      "moderations.with_streaming_response.create",
+      "fine_tuning.jobs.create",
+      "fine_tuning.jobs.with_raw_response.create",
+      "fine_tuning.jobs.with_streaming_response.create",
+      "videos.create",
+      "videos.with_raw_response.create",
+      "videos.with_streaming_response.create",
+      "beta.assistants.create",
+      "beta.assistants.with_raw_response.create",
+      "beta.assistants.with_streaming_response.create",
+      "beta.assistants.update",
+      "beta.assistants.with_raw_response.update",
+      "beta.assistants.with_streaming_response.update",
+      "beta.threads.runs.create",
+      "beta.threads.runs.with_raw_response.create",
+      "beta.threads.runs.with_streaming_response.create",
+      "beta.threads.create_and_run",
+      "beta.threads.with_raw_response.create_and_run",
+      "beta.threads.with_streaming_response.create_and_run",
+      "chat.completions.parse",
+      "chat.completions.stream",
+      "chat.completions.runTools",
+      "responses.parse",
+      "responses.stream",
+      "responses.compact",
+      "images.create_variation",
+      "images.createVariation",
+      "fineTuning.jobs.create",
+      "beta.threads.createAndRun",
+      "beta.threads.runs.stream",
+      "realtime.connect",
+      "beta.realtime.connect"
+    ],
+    "fields": [
+      "model"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://developers.openai.com/api/docs/deprecations",
+      "quoteId": "2025-11-17: 'On November 17th, 2025, we notified developers using codex-mini-latest model of its deprecation and removal from the API on February 12, 2026.' (verified 2026-10-06)"
+    }
+  ],
+  "notes": {
+    "migration": "OpenAI removes these models from the API on 2026-02-12: codex-mini-latest. Calls that name them fail after that date. Recommended replacements: codex-mini-latest to gpt-5-codex-mini. A newer model can answer differently, so test the switch rather than only renaming.",
+    "edgeCases": [
+      "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
+      "A mocked API response that names the model, such as an msw or nock handler for the endpoint, is reported too.",
+      "Azure OpenAI calls are reported too, though Azure names deployments its own way and sets its own retirement dates."
+    ]
+  },
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "({ model: \"codex-mini-latest\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'codex-mini-latest' })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(model=\"codex-mini-latest\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='codex-mini-latest')",
+          "selector": "keyword_argument"
+        }
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "id": "openai:2026-08-26:transcription-models-shut-down",
-  "title": "whisper-1 and the gpt-4o transcribe models shut down on 2027-02-26",
+  "title": "whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe and 1 more shut down on 2027-02-26",
   "status": "reviewed",
   "vendor": "openai",
   "announcedAt": "2026-08-26",
@@ -8,16 +8,81 @@
   "kind": "deprecation",
   "surface": {
     "endpoints": [
-      "/v1/audio/transcriptions",
-      "/v1/audio/translations"
+      "/v1/chat/completions",
+      "/v1/responses",
+      "/v1/completions",
+      "/v1/embeddings",
+      "/v1/images/",
+      "/v1/audio/",
+      "/v1/moderations",
+      "/v1/fine_tuning/jobs",
+      "/v1/videos",
+      "/v1/assistants",
+      "/v1/threads",
+      "/v1/realtime"
     ],
     "sdkSymbols": [
+      "chat.completions.create",
+      "chat.completions.with_raw_response.create",
+      "chat.completions.with_streaming_response.create",
+      "responses.create",
+      "responses.with_raw_response.create",
+      "responses.with_streaming_response.create",
+      "completions.create",
+      "completions.with_raw_response.create",
+      "completions.with_streaming_response.create",
+      "embeddings.create",
+      "embeddings.with_raw_response.create",
+      "embeddings.with_streaming_response.create",
+      "images.generate",
+      "images.with_raw_response.generate",
+      "images.with_streaming_response.generate",
+      "images.edit",
+      "images.with_raw_response.edit",
+      "images.with_streaming_response.edit",
+      "audio.speech.create",
+      "audio.speech.with_raw_response.create",
+      "audio.speech.with_streaming_response.create",
       "audio.transcriptions.create",
       "audio.transcriptions.with_raw_response.create",
       "audio.transcriptions.with_streaming_response.create",
       "audio.translations.create",
       "audio.translations.with_raw_response.create",
-      "audio.translations.with_streaming_response.create"
+      "audio.translations.with_streaming_response.create",
+      "moderations.create",
+      "moderations.with_raw_response.create",
+      "moderations.with_streaming_response.create",
+      "fine_tuning.jobs.create",
+      "fine_tuning.jobs.with_raw_response.create",
+      "fine_tuning.jobs.with_streaming_response.create",
+      "videos.create",
+      "videos.with_raw_response.create",
+      "videos.with_streaming_response.create",
+      "beta.assistants.create",
+      "beta.assistants.with_raw_response.create",
+      "beta.assistants.with_streaming_response.create",
+      "beta.assistants.update",
+      "beta.assistants.with_raw_response.update",
+      "beta.assistants.with_streaming_response.update",
+      "beta.threads.runs.create",
+      "beta.threads.runs.with_raw_response.create",
+      "beta.threads.runs.with_streaming_response.create",
+      "beta.threads.create_and_run",
+      "beta.threads.with_raw_response.create_and_run",
+      "beta.threads.with_streaming_response.create_and_run",
+      "chat.completions.parse",
+      "chat.completions.stream",
+      "chat.completions.runTools",
+      "responses.parse",
+      "responses.stream",
+      "responses.compact",
+      "images.create_variation",
+      "images.createVariation",
+      "fineTuning.jobs.create",
+      "beta.threads.createAndRun",
+      "beta.threads.runs.stream",
+      "realtime.connect",
+      "beta.realtime.connect"
     ],
     "fields": [
       "model"
@@ -27,15 +92,13 @@
   "sources": [
     {
       "url": "https://developers.openai.com/api/docs/deprecations",
-      "quoteId": "2026-08-26: 'On August 26, 2026, we notified developers using whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe, and gpt-4o-transcribe-diarize of their deprecation and removal from the API on February 26, 2027.' (recommended replacement gpt-live-transcribe or gpt-transcribe) (verified 2026-10-06)"
+      "quoteId": "2026-08-26: 'On August 26, 2026, we notified developers using whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe, and gpt-4o-transcribe-diarize of their deprecation and removal from the API on February 26, 2027.' (verified 2026-10-06)"
     }
   ],
   "notes": {
-    "migration": "OpenAI shuts down whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe and gpt-4o-transcribe-diarize on 2027-02-26. After that date these calls fail. OpenAI recommends gpt-live-transcribe or gpt-transcribe. Check that the output format your code reads is still supported before switching.",
+    "migration": "OpenAI removes these models from the API on 2027-02-26: whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe, gpt-4o-transcribe-diarize. Calls that name them fail after that date. Recommended replacements: whisper-1 to gpt-live-transcribe or gpt-transcribe; gpt-4o-transcribe to gpt-live-transcribe or gpt-transcribe; gpt-4o-mini-transcribe to gpt-live-transcribe or gpt-transcribe; gpt-4o-transcribe-diarize to gpt-live-transcribe or gpt-transcribe. A newer model can answer differently, so test the switch rather than only renaming.",
     "edgeCases": [
       "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
-      "The dated gpt-4o-mini-transcribe-2025-03-20 snapshot is a separate notice with an earlier date and is not matched here.",
-      "Realtime sessions that set a transcription model in their session settings are not found.",
       "A mocked API response that names the model, such as an msw or nock handler for the endpoint, is reported too.",
       "Azure OpenAI calls are reported too, though Azure names deployments its own way and sets its own retirement dates."
     ]

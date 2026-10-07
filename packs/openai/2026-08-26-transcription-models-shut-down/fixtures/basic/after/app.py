@@ -2,15 +2,14 @@ from openai import OpenAI
 
 client = OpenAI()
 
-r1 = client.audio.transcriptions.create(model="whisper-1", file=f)
-r2 = client.audio.transcriptions.create(model='whisper-1', file=f)
-r3 = client.audio.transcriptions.create(model="gpt-4o-transcribe", file=f)
-r4 = client.audio.transcriptions.create(model='gpt-4o-transcribe', file=f)
-r5 = client.audio.transcriptions.create(model="gpt-4o-mini-transcribe", file=f)
-r6 = client.audio.transcriptions.create(model='gpt-4o-mini-transcribe', file=f)
-r7 = client.audio.transcriptions.create(model="gpt-4o-transcribe-diarize", file=f)
-r8 = client.audio.transcriptions.create(model='gpt-4o-transcribe-diarize', file=f)
+a0 = client.chat.completions.create(model="whisper-1", messages=messages)
+b0 = client.chat.completions.create(model='whisper-1', messages=messages)
+a1 = client.chat.completions.create(model="gpt-4o-transcribe", messages=messages)
+b1 = client.chat.completions.create(model='gpt-4o-transcribe', messages=messages)
+a2 = client.chat.completions.create(model="gpt-4o-mini-transcribe", messages=messages)
+b2 = client.chat.completions.create(model='gpt-4o-mini-transcribe', messages=messages)
+a3 = client.chat.completions.create(model="gpt-4o-transcribe-diarize", messages=messages)
+b3 = client.chat.completions.create(model='gpt-4o-transcribe-diarize', messages=messages)
 
-# Near misses: other names, not part of this shutdown.
-near1 = client.audio.transcriptions.create(model="gpt-4o-mini-transcribe-2025-12-15", file=f)
-near2 = client.audio.transcriptions.create(model="gpt-transcribe", file=f)
+# Near miss: a longer name is a different model.
+near = client.chat.completions.create(model="whisper-1-x", messages=messages)
