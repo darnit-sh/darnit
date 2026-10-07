@@ -38,7 +38,7 @@ export const stringText = (node: SgNode): string | undefined =>
 /** "openai/resources" → "openai", "@scope/pkg/x" → "@scope/pkg", "cerebras.cloud.sdk" → "cerebras". */
 const rootPackage = (pkg: string) => (pkg.startsWith("@") ? pkg.split("/").slice(0, 2).join("/") : pkg.split(/[/.]/)[0]!);
 
-const FUNCTIONS = new Set([
+export const FUNCTIONS = new Set([
   "function_declaration",
   "function_expression",
   "arrow_function",
@@ -225,6 +225,13 @@ function constructed(node: SgNode, index: FileIndex, call: SgNode, v: VendorClie
 
 const WRAPPERS = new Set(["parenthesized_expression", "as_expression", "non_null_expression", "satisfies_expression", "await_expression"]);
 
+/** `x` from `(x)`, `x as T`, `x!`, `await x` and the like; undefined for a wrapper with nothing inside. */
+export function unwrap(node: SgNode): SgNode | undefined {
+  let n: SgNode | undefined = node;
+  while (n && WRAPPERS.has(String(n.kind()))) n = n.children().find((c) => c.isNamed() && !c.is("comment"));
+  return n;
+}
+
 /** The client expression an SDK call hangs off: `x` in `x.beta.chat.completions.create`. */
 function clientNode(callee: SgNode, symbol: string): SgNode | undefined {
   let node: SgNode | null = callee;
@@ -232,8 +239,7 @@ function clientNode(callee: SgNode, symbol: string): SgNode | undefined {
   if (node && (node.is("member_expression") || node.is("attribute")) && (node.field("property") ?? node.field("attribute"))?.text() === "beta") {
     node = node.field("object");
   }
-  while (node && WRAPPERS.has(String(node.kind()))) node = node.children().find((c) => c.isNamed()) ?? null;
-  return node ?? undefined;
+  return node ? unwrap(node) : undefined;
 }
 
 /**
