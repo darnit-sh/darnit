@@ -1,0 +1,53 @@
+import OpenAI from "openai";
+
+const openai = new OpenAI();
+
+export const a0 = await openai.chat.completions.create({ model: "gpt-3.5-turbo-0125", messages });
+export const b0 = await openai.chat.completions.create({ model: 'gpt-3.5-turbo-0125', messages });
+export const a1 = await openai.chat.completions.create({ model: "gpt-3.5-turbo", messages });
+export const b1 = await openai.chat.completions.create({ model: 'gpt-3.5-turbo', messages });
+export const a2 = await openai.chat.completions.create({ model: "gpt-3.5-turbo-completions", messages });
+export const b2 = await openai.chat.completions.create({ model: 'gpt-3.5-turbo-completions', messages });
+export const a3 = await openai.chat.completions.create({ model: "gpt-4-0613", messages });
+export const b3 = await openai.chat.completions.create({ model: 'gpt-4-0613', messages });
+export const a4 = await openai.chat.completions.create({ model: "gpt-4", messages });
+export const b4 = await openai.chat.completions.create({ model: 'gpt-4', messages });
+export const a5 = await openai.chat.completions.create({ model: "gpt-4-0613-completions", messages });
+export const b5 = await openai.chat.completions.create({ model: 'gpt-4-0613-completions', messages });
+export const a6 = await openai.chat.completions.create({ model: "gpt-4-completions", messages });
+export const b6 = await openai.chat.completions.create({ model: 'gpt-4-completions', messages });
+export const a7 = await openai.chat.completions.create({ model: "gpt-4-1106-preview", messages });
+export const b7 = await openai.chat.completions.create({ model: 'gpt-4-1106-preview', messages });
+export const a8 = await openai.chat.completions.create({ model: "gpt-4-turbo", messages });
+export const b8 = await openai.chat.completions.create({ model: 'gpt-4-turbo', messages });
+export const a9 = await openai.chat.completions.create({ model: "gpt-4-turbo-2024-04-09", messages });
+export const b9 = await openai.chat.completions.create({ model: 'gpt-4-turbo-2024-04-09', messages });
+export const a10 = await openai.chat.completions.create({ model: "gpt-4-turbo-completions", messages });
+export const b10 = await openai.chat.completions.create({ model: 'gpt-4-turbo-completions', messages });
+export const a11 = await openai.chat.completions.create({ model: "gpt-4.1-nano", messages });
+export const b11 = await openai.chat.completions.create({ model: 'gpt-4.1-nano', messages });
+export const a12 = await openai.chat.completions.create({ model: "gpt-4.1-nano-2025-04-14", messages });
+export const b12 = await openai.chat.completions.create({ model: 'gpt-4.1-nano-2025-04-14', messages });
+export const a13 = await openai.chat.completions.create({ model: "gpt-4o-2024-05-13", messages });
+export const b13 = await openai.chat.completions.create({ model: 'gpt-4o-2024-05-13', messages });
+export const a14 = await openai.chat.completions.create({ model: "gpt-image-1", messages });
+export const b14 = await openai.chat.completions.create({ model: 'gpt-image-1', messages });
+export const a15 = await openai.chat.completions.create({ model: "o1-2024-12-17", messages });
+export const b15 = await openai.chat.completions.create({ model: 'o1-2024-12-17', messages });
+export const a16 = await openai.chat.completions.create({ model: "o1", messages });
+export const b16 = await openai.chat.completions.create({ model: 'o1', messages });
+export const a17 = await openai.chat.completions.create({ model: "o1-pro-2025-03-19", messages });
+export const b17 = await openai.chat.completions.create({ model: 'o1-pro-2025-03-19', messages });
+export const a18 = await openai.chat.completions.create({ model: "o1-pro", messages });
+export const b18 = await openai.chat.completions.create({ model: 'o1-pro', messages });
+export const a19 = await openai.chat.completions.create({ model: "o3-mini-2025-01-31", messages });
+export const b19 = await openai.chat.completions.create({ model: 'o3-mini-2025-01-31', messages });
+export const a20 = await openai.chat.completions.create({ model: "o3-mini", messages });
+export const b20 = await openai.chat.completions.create({ model: 'o3-mini', messages });
+export const a21 = await openai.chat.completions.create({ model: "o4-mini-2025-04-16", messages });
+export const b21 = await openai.chat.completions.create({ model: 'o4-mini-2025-04-16', messages });
+export const a22 = await openai.chat.completions.create({ model: "o4-mini", messages });
+export const b22 = await openai.chat.completions.create({ model: 'o4-mini', messages });
+
+// Near miss: a longer name is a different model.
+export const near = await openai.chat.completions.create({ model: "gpt-3.5-turbo-0125-x", messages });

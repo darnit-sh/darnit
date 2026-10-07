@@ -330,6 +330,37 @@ describe("check", () => {
   });
 });
 
+describe("model shutdowns", () => {
+  const shutdowns = (hits: Hit[]) => hits.filter((h) => h.record.id.includes("shut-down"));
+
+  it("reports a retiring model only inside OpenAI calls that take a model, with the date", async () => {
+    const dir = await scratch({
+      "app.ts": [
+        'import OpenAI from "openai";',
+        'import Groq from "groq-sdk";',
+        "const openai = new OpenAI();",
+        "const groq = new Groq();",
+        'export const a = await openai.audio.transcriptions.create({ model: "whisper-1", file });',
+        'export const b = await groq.audio.transcriptions.create({ model: "whisper-1", file });',
+        'export const c = await openai.chat.completions.create({ model: "gpt-4", messages });',
+        'log({ model: "gpt-5.1" });',
+        'export const d = await openai.responses.create({ model: "gpt-5.1", input });',
+        "",
+      ].join("\n"),
+      "speak.py": 'from openai import OpenAI\n\nclient = OpenAI()\nwith client.audio.speech.with_streaming_response.create(model="tts-1", voice="alloy", input="hi") as r:\n    pass\n',
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(locations(shutdowns(hits)).sort()).toEqual(["app.ts:5", "app.ts:7", "app.ts:9", "speak.py:4"]);
+    expect(coverage.foreignAt).toEqual(["app.ts:6"]);
+    expect(exitCodeForCheck(hits)).toBe(1);
+    const text = render(hits, coverage);
+    expect(text).toContain("openai 2026-08-26: whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe and 1 more shut down on 2027-02-26");
+    expect(text).toContain("openai 2026-04-22: o1, gpt-4, o1-pro, o3-mini, o4-mini, gpt-4-0613 and 17 more shut down on 2026-10-23");
+    expect(text).toContain("openai 2026-10-01: gpt-5.1, gpt-5.4-nano and gpt-5.3-codex shut down on 2027-04-01");
+    expect(text).toContain("openai 2026-10-01: tts-1, tts-1-hd, gpt-4o-mini-tts-2025-03-20 and 1 more shut down on 2027-01-06");
+  });
+});
+
 describe("findMatches", () => {
   const pattern = [{ context: '({ model: "gpt-4" })', selector: "pair" }];
   const ts = grammarFor("a.ts")!.grammar;
