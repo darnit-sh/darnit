@@ -1,6 +1,6 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit } from "../src/check.js";
@@ -19,7 +19,10 @@ afterEach(async () => {
 async function scratch(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "darnit-check-"));
   tempDirs.push(dir);
-  for (const [name, text] of Object.entries(files)) await writeFile(join(dir, name), text);
+  for (const [name, text] of Object.entries(files)) {
+    await mkdir(dirname(join(dir, name)), { recursive: true });
+    await writeFile(join(dir, name), text);
+  }
   return dir;
 }
 
@@ -295,6 +298,31 @@ describe("check", () => {
     expect(hits).toEqual([]);
     expect(coverage.files).toBe(2);
     expect(coverage.records).toBeGreaterThanOrEqual(2);
+  });
+
+  it("skips a copy of OpenAI's Python library bundled inside the project", async () => {
+    const call = "def create(self, *, max_tokens=None, functions=None):\n    return self._post(max_tokens=max_tokens)\n";
+    const dir = await scratch({
+      "app.py": "from openai import OpenAI\n\nr = OpenAI().chat.completions.create(model='m', max_tokens=5)\n",
+      "lib/adapted_openai/_base_client.py": "class SyncAPIClient: ...\n",
+      "lib/adapted_openai/_client.py": "class OpenAI: ...\n",
+      "lib/adapted_openai/_exceptions.py": "class APIError(Exception): ...\n",
+      "lib/adapted_openai/resources/chat/completions.py": `from openai import OpenAI\n\nclient = OpenAI()\nr = client.chat.completions.create(model='m', max_tokens=5)\n${call}`,
+      "lib/other/_client.py": "from openai import OpenAI\n\nr = OpenAI().chat.completions.create(model='m', max_tokens=5)\n",
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(locations(hits.filter((h) => h.record.id.includes("max-tokens")))).toEqual(["app.py:3", "lib/other/_client.py:3"]);
+    expect(coverage.files).toBe(2);
+  });
+
+  it("still scans a generated SDK when it is the folder being checked", async () => {
+    const dir = await scratch({
+      "_base_client.py": "class SyncAPIClient: ...\n",
+      "_client.py": "class OpenAI: ...\n",
+      "_exceptions.py": "class APIError(Exception): ...\n",
+      "example.py": "from openai import OpenAI\n\nr = OpenAI().chat.completions.create(model='m', max_tokens=5)\n",
+    });
+    expect(locations(await check(dir))).toEqual(["example.py:3"]);
   });
 
   it("reports OpenAI call sites and ignores other vendors' max_tokens and nested calls", async () => {
