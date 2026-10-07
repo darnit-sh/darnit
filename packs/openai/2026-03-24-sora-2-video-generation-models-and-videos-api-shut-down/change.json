@@ -99,6 +99,8 @@
     "migration": "OpenAI removes these models from the API on 2026-09-24: sora-2, sora-2-pro, sora-2-2025-10-06, sora-2-2025-12-08, sora-2-pro-2025-10-06. Calls that name them fail after that date. OpenAI names no replacement. A newer model can answer differently, so test the switch rather than only renaming.",
     "edgeCases": [
       "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
+      "A model key nested inside another option of the call, such as metadata, is reported too.",
+      "Not found: a quoted \"model\" key, template strings, Python f-strings or **kwargs, and calls made through other libraries such as LangChain or Vercel's SDK.",
       "A mocked API response that names the model, such as an msw or nock handler for the endpoint, is reported too.",
       "Azure OpenAI calls are reported too, though Azure names deployments its own way and sets its own retirement dates."
     ]

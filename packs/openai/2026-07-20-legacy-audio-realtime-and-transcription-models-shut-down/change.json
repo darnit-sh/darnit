@@ -100,6 +100,8 @@
     "edgeCases": [
       "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
       "Some entries are model families; dated snapshots in a family are matched only when listed here by name.",
+      "A model key nested inside another option of the call, such as metadata, is reported too.",
+      "Not found: a quoted \"model\" key, template strings, Python f-strings or **kwargs, and calls made through other libraries such as LangChain or Vercel's SDK.",
       "A mocked API response that names the model, such as an msw or nock handler for the endpoint, is reported too.",
       "Azure OpenAI calls are reported too, though Azure names deployments its own way and sets its own retirement dates."
     ]
