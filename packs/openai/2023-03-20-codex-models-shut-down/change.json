@@ -1,0 +1,164 @@
+{
+  "id": "openai:2023-03-20:codex-models-shut-down",
+  "title": "code-cushman-001, code-cushman-002 and code-davinci-001 shut down on 2023-03-23",
+  "status": "reviewed",
+  "vendor": "openai",
+  "announcedAt": "2023-03-20",
+  "effectiveAt": "2023-03-23",
+  "kind": "breaking",
+  "surface": {
+    "endpoints": [
+      "/v1/chat/completions",
+      "/v1/responses",
+      "/v1/completions",
+      "/v1/embeddings",
+      "/v1/images/",
+      "/v1/audio/",
+      "/v1/moderations",
+      "/v1/fine_tuning/jobs",
+      "/v1/videos",
+      "/v1/assistants",
+      "/v1/threads",
+      "/v1/realtime"
+    ],
+    "sdkSymbols": [
+      "chat.completions.create",
+      "chat.completions.with_raw_response.create",
+      "chat.completions.with_streaming_response.create",
+      "responses.create",
+      "responses.with_raw_response.create",
+      "responses.with_streaming_response.create",
+      "completions.create",
+      "completions.with_raw_response.create",
+      "completions.with_streaming_response.create",
+      "embeddings.create",
+      "embeddings.with_raw_response.create",
+      "embeddings.with_streaming_response.create",
+      "images.generate",
+      "images.with_raw_response.generate",
+      "images.with_streaming_response.generate",
+      "images.edit",
+      "images.with_raw_response.edit",
+      "images.with_streaming_response.edit",
+      "audio.speech.create",
+      "audio.speech.with_raw_response.create",
+      "audio.speech.with_streaming_response.create",
+      "audio.transcriptions.create",
+      "audio.transcriptions.with_raw_response.create",
+      "audio.transcriptions.with_streaming_response.create",
+      "audio.translations.create",
+      "audio.translations.with_raw_response.create",
+      "audio.translations.with_streaming_response.create",
+      "moderations.create",
+      "moderations.with_raw_response.create",
+      "moderations.with_streaming_response.create",
+      "fine_tuning.jobs.create",
+      "fine_tuning.jobs.with_raw_response.create",
+      "fine_tuning.jobs.with_streaming_response.create",
+      "videos.create",
+      "videos.with_raw_response.create",
+      "videos.with_streaming_response.create",
+      "beta.assistants.create",
+      "beta.assistants.with_raw_response.create",
+      "beta.assistants.with_streaming_response.create",
+      "beta.assistants.update",
+      "beta.assistants.with_raw_response.update",
+      "beta.assistants.with_streaming_response.update",
+      "beta.threads.runs.create",
+      "beta.threads.runs.with_raw_response.create",
+      "beta.threads.runs.with_streaming_response.create",
+      "beta.threads.create_and_run",
+      "beta.threads.with_raw_response.create_and_run",
+      "beta.threads.with_streaming_response.create_and_run",
+      "chat.completions.parse",
+      "chat.completions.stream",
+      "chat.completions.runTools",
+      "responses.parse",
+      "responses.stream",
+      "responses.compact",
+      "images.create_variation",
+      "images.createVariation",
+      "fineTuning.jobs.create",
+      "beta.threads.createAndRun",
+      "beta.threads.runs.stream",
+      "realtime.connect",
+      "beta.realtime.connect"
+    ],
+    "fields": [
+      "model"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://developers.openai.com/api/docs/deprecations",
+      "quoteId": "2023-03-20: notice 'Codex models' has no text; its table lists code-davinci-001, code-cushman-002, code-cushman-001 with shutdown date 2023-03-23 (verified 2026-10-06)"
+    }
+  ],
+  "notes": {
+    "migration": "OpenAI removes these models from the API on 2023-03-23: code-davinci-001, code-cushman-002, code-cushman-001. Calls that name them fail after that date. Recommended replacements: code-davinci-001 to gpt-4o; code-cushman-002 to gpt-4o; code-cushman-001 to gpt-4o. A newer model can answer differently, so test the switch rather than only renaming.",
+    "edgeCases": [
+      "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
+      "A model key nested inside another option of the call, such as metadata, is reported too.",
+      "Not found: a quoted \"model\" key, template strings, Python f-strings or **kwargs, and calls made through other libraries such as LangChain or Vercel's SDK.",
+      "A mocked API response that names the model, such as an msw or nock handler for the endpoint, is reported too.",
+      "Azure OpenAI calls are reported too, though Azure names deployments its own way and sets its own retirement dates."
+    ]
+  },
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "({ model: \"code-davinci-001\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'code-davinci-001' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"code-cushman-002\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'code-cushman-002' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"code-cushman-001\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'code-cushman-001' })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(model=\"code-davinci-001\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='code-davinci-001')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"code-cushman-002\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='code-cushman-002')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"code-cushman-001\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='code-cushman-001')",
+          "selector": "keyword_argument"
+        }
+      ]
+    }
+  }
+}

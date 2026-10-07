@@ -314,7 +314,11 @@ describe("fix", () => {
     const before = join(PACKS, "openai", "2023-11-06-chat-functions-to-tools", "fixtures", "basic", "before");
     const dir = await repoFrom(before);
     const result = await fix(dir, { noTest: true });
-    expect(result.records.map((r) => [r.applied, r.reason])).toEqual([[false, "migration not yet automated; see the record notes"]]);
+    // The sample also names gpt-4, which is shutting down: a second report-only change.
+    expect(result.records.map((r) => [r.applied, r.reason])).toEqual([
+      [false, "migration not yet automated; see the record notes"],
+      [false, "migration not yet automated; see the record notes"],
+    ]);
     expect(await tree(dir)).toEqual(await tree(before));
   });
 

@@ -16,7 +16,7 @@ openai 2024-09-12: Rename max_tokens to max_completion_tokens on chat completion
   1 call site in 1 file
   https://developers.openai.com/api/docs/api-reference/chat/create
 
-Scanned 1 JavaScript, TypeScript or Python file against 4 change records.
+Scanned 1 JavaScript, TypeScript or Python file against 33 change records.
 Not checked: request options built elsewhere and passed in as a variable.
 
 $ npx darnit fix
