@@ -263,6 +263,12 @@ To add a vendor, open a pull request adding its spec URL and SDK calls to
 
 - Request options built somewhere else and passed in as a variable are not
   followed. `check` reminds you at the end of every report, clean or not.
+- Model names are found only when written in the call itself. A name read from
+  an environment variable, a config file or a variable set elsewhere is missed,
+  and so are a quoted `"model"` key, template strings, Python f-strings,
+  `**kwargs`, and calls made through LangChain or Vercel's AI SDK. In everyday
+  apps, indirect model names are the common case. A clean `check` does not mean
+  no retired model is in use.
 - Only changes with a record are found. No record, no report.
 - Clients that copy OpenAI's methods are left out when the same file shows a
   known look-alike: the Groq, Together, Cerebras or Fireworks SDKs, or OpenAI's
