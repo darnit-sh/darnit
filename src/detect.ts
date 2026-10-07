@@ -74,15 +74,19 @@ const PYTHON_MANIFEST = /^(requirements[^/]*\.txt|pyproject\.toml|setup\.py|setu
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** A generated Python SDK (OpenAI's and its siblings) keeps all of these at its package root. */
+const isBundledSdk = (names: Set<string>) => ["_base_client.py", "_client.py", "_exceptions.py"].every((n) => names.has(n));
+
 /**
  * Every regular file under root as a sorted, forward-slash relative path.
- * Vendored and build directories are pruned before they are entered; unreadable
- * directories and symlinks are skipped rather than fatal.
+ * Vendored and build directories, including SDK copies bundled into the project, are pruned
+ * before they are entered; unreadable directories and symlinks are skipped rather than fatal.
  */
 export async function listFiles(root: string): Promise<string[]> {
   const files: string[] = [];
   const walk = async (rel: string): Promise<void> => {
     const entries = await readdir(join(root, rel), { withFileTypes: true }).catch(() => []);
+    if (rel && isBundledSdk(new Set(entries.filter((e) => e.isFile()).map((e) => e.name)))) return;
     for (const entry of entries) {
       const path = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory() && !SKIP_DIRS.has(entry.name)) await walk(path);
