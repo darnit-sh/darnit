@@ -198,6 +198,86 @@ describe("check tells OpenAI apart from look-alike clients", () => {
   });
 });
 
+describe("check reads raw HTTP calls by their URL argument only", () => {
+  const maxTokens = (hits: Hit[]) => locations(hits.filter((h) => h.record.id.includes("max-tokens")));
+  const body = "{ method: \"POST\", body: JSON.stringify({ model: \"m\", max_tokens: 5 }) }";
+
+  it("still reports every common way of writing the URL", async () => {
+    const dir = await scratch({
+      "template.js": `const base = "https://api.openai.com";\nexport const r = fetch(\`\${base}/v1/chat/completions\`, ${body});\n`,
+      "concat.js": `const BASE = "https://api.openai.com";\nexport const r = fetch(BASE + "/v1/chat/completions", ${body});\n`,
+      "cast.ts": `const b = "https://api.openai.com";\nexport const r = fetch(\`\${b}/v1/chat/completions\` as string, ${body});\n`,
+      "newurl.ts": `const base = "https://api.openai.com";\nexport const r = fetch(new URL("/v1/chat/completions", base), ${body});\n`,
+      "inner.js": `export async function ask() {\n  return fetch("https://api.openai.com/v1/chat/completions", ${body});\n}\n`,
+      "axios.js": 'import axios from "axios";\nexport const r = axios({ url: "https://api.openai.com/v1/chat/completions", data: { max_tokens: 5 } });\n',
+      "axiospost.js": 'import axios from "axios";\nexport const r = axios.post("https://api.openai.com/v1/chat/completions", { max_tokens: 5 });\n',
+      "fstring.py": 'import requests\n\nbase = "https://api.openai.com"\nr = requests.post(f"{base}/v1/chat/completions", json=dict(max_tokens=5))\n',
+      "method.py": 'import requests\n\nr = requests.request("POST", "https://api.openai.com/v1/chat/completions", json=dict(max_tokens=5))\n',
+      "split.py": 'import requests\n\nr = requests.post(("https://api.openai.com"\n                   "/v1/chat/completions"), json=dict(max_tokens=5))\n',
+      "percent.py": 'import requests\n\nbase = "https://api.openai.com"\nr = requests.post("%s/v1/chat/completions" % base, json=dict(max_tokens=5))\n',
+      "keyword.py": 'import httpx\n\nr = httpx.post(url="https://api.openai.com/v1/chat/completions", json=dict(max_tokens=5))\n',
+      "ternary.js": `export const r = fetch(proxy ? proxy : "https://api.openai.com/v1/chat/completions", ${body});\n`,
+      "ternary.py": 'import requests\n\nr = requests.post(P if P else "https://api.openai.com/v1/chat/completions", json=dict(max_tokens=5))\n',
+      "comment.js": `export const r = fetch((/* main */ "https://api.openai.com/v1/chat/completions"), ${body});\n`,
+    });
+    expect(maxTokens(await check(dir))).toEqual([
+      "axios.js:2",
+      "axiospost.js:2",
+      "cast.ts:2",
+      "comment.js:1",
+      "concat.js:2",
+      "fstring.py:4",
+      "inner.js:2",
+      "keyword.py:3",
+      "method.py:3",
+      "newurl.ts:2",
+      "percent.py:4",
+      "split.py:4",
+      "template.js:2",
+      "ternary.js:1",
+      "ternary.py:3",
+    ]);
+  });
+
+  it("does not treat a call as a request because an endpoint appears somewhere around it", async () => {
+    const dir = await scratch({
+      "suite.test.ts": [
+        'describe("meta", () => {',
+        '  const url = "https://api.meta.ai/v1/chat/completions";',
+        "  it(\"rejects\", () => service.chat({ functions: [], max_tokens: 5 }));",
+        "});",
+        "",
+      ].join("\n"),
+      "bundle.js": '(function () {\n  const tts = { endpoint: "/v1/chat/completions", payload: { max_tokens: 5 } };\n  register(tts);\n})();\n',
+      "route.js": 'app.post("/v1/chat/completions", (req, res) => res.json({ model: "m", max_tokens: 5 }));\n',
+      "msw.ts": 'export const h = http.post("https://api.openai.com/v1/chat/completions", () => HttpResponse.json({ max_tokens: 5 }));\n',
+      "mock.test.ts": [
+        'it("posts", async () => {',
+        "  const f = vi.fn(async (input, init) => {",
+        '    expect(String(input)).toBe("https://api.openai.com/v1/chat/completions");',
+        "    expect(JSON.parse(init.body)).toMatchObject({ max_tokens: 5 });",
+        "  });",
+        "});",
+        "",
+      ].join("\n"),
+      "fixture.ts": 'writeFixture("mistral", { request: { url: "https://api.mistral.ai/v1/chat/completions", json: { max_tokens: 48 } } });\n',
+      "title.js": 'log("sending to /v1/chat/completions", { max_tokens: 5 });\n',
+      "helper.js": 'track(`${route("/v1/chat/completions")}`, { max_tokens: 5 });\n',
+      "registry.py": 'from functools import partial\n\nm = partial(api.GPT4V, model="o1", api_base="http://0.0.0.0:23333/v1/chat/completions", max_tokens=16384)\n',
+    });
+    expect(maxTokens(await check(dir))).toEqual([]);
+  });
+
+  it("judges the provider by the URL argument, wherever it sits", async () => {
+    const dir = await scratch({
+      "method.py": 'import requests\n\nr = requests.request("POST", "https://openrouter.ai/api/v1/chat/completions", json=dict(max_tokens=5))\n',
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(maxTokens(hits)).toEqual([]);
+    expect(coverage.foreign).toBe(1);
+  });
+});
+
 describe("snippet", () => {
   it("marks code that was cut off, by length or by line, and leaves short code alone", () => {
     expect(snippet("max_tokens: 256")).toBe("max_tokens: 256");
