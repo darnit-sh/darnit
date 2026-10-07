@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit } from "../src/check.js";
+import { findMatches, grammarFor } from "../src/scan/astgrep.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -326,5 +327,16 @@ describe("check", () => {
         sources: ["https://developers.openai.com/api/docs/api-reference/chat/create"],
       },
     ]);
+  });
+});
+
+describe("findMatches", () => {
+  const pattern = [{ context: '({ model: "gpt-4" })', selector: "pair" }];
+  const ts = grammarFor("a.ts")!.grammar;
+
+  it("matches quoted text in either quote style, and skips files that do not contain it", () => {
+    expect(findMatches("f({ model: 'gpt-4' });\nf({ model: \"gpt-4\" });\n", ts, pattern).map((m) => m.line)).toEqual([2]);
+    expect(findMatches('f({ model: "gpt-4o" });\nf({ model: "gpt-3.5-turbo" });\n', ts, pattern)).toEqual([]);
+    expect(findMatches("f({ max_tokens: 5 });\n", ts, [{ context: "({ max_tokens: $N })", selector: "pair" }])).toHaveLength(1);
   });
 });

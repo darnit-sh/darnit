@@ -81,8 +81,14 @@ function endpointCall(node: SgNode, endpoints: readonly string[]): SgNode | unde
   return node.ancestors().find((a) => isCall(a) && endpoints.some((e) => a.text().includes(e)));
 }
 
+/** Quoted text in a pattern, such as a model name: code without that text cannot match it. */
+const literals = (context: string) => [...context.matchAll(/(["'])((?:(?!\1)[^\\])+)\1/g)].map((m) => m[2]!);
+
 /** Every node in `source` matching any of `patterns`, optionally gated. */
-export function findMatches(source: string, grammar: Grammar, patterns: readonly AstGrepPattern[], gate?: Gate): Match[] {
+export function findMatches(source: string, grammar: Grammar, allPatterns: readonly AstGrepPattern[], gate?: Gate): Match[] {
+  // A plain text check before parsing: most files contain none of a pattern's quoted text.
+  const patterns = allPatterns.filter((p) => literals(p.context).every((l) => source.includes(l)));
+  if (patterns.length === 0) return [];
   const root = parse(grammar, source).root();
   const symbols = gate?.symbols ?? [];
   const endpoints = gate?.endpoints ?? [];
