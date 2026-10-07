@@ -30,7 +30,9 @@
     "migration": "OpenAI shuts down tts-1, tts-1-hd and two dated gpt-4o-mini-tts snapshots on 2027-01-06. After that date these calls fail. OpenAI recommends gpt-realtime-2.1-mini and points to its Realtime API guide for the move, so it may take more than changing the model name.",
     "edgeCases": [
       "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
-      "Only the two dated gpt-4o-mini-tts snapshots are listed; the undated gpt-4o-mini-tts name is not."
+      "Only the two dated gpt-4o-mini-tts snapshots are listed; the undated gpt-4o-mini-tts name is not.",
+      "A mocked API response that names the model, such as an msw or nock handler for the endpoint, is reported too.",
+      "Azure OpenAI calls are reported too, though Azure names deployments its own way and sets its own retirement dates."
     ]
   },
   "detection": {

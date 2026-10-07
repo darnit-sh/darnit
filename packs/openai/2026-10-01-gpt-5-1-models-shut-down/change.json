@@ -22,6 +22,7 @@
       "responses.create",
       "responses.parse",
       "responses.stream",
+      "responses.compact",
       "responses.with_raw_response.create",
       "responses.with_streaming_response.create"
     ],
@@ -40,7 +41,9 @@
     "migration": "OpenAI shuts down gpt-5.1, gpt-5.3-codex and gpt-5.4-nano on 2027-04-01. After that date these calls fail. OpenAI recommends gpt-6-sol for gpt-5.1 and gpt-5.3-codex, and gpt-6-luna for gpt-5.4-nano. A newer model can answer differently, so test the switch rather than only renaming.",
     "edgeCases": [
       "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
-      "Only these exact names are matched; names that extend them, such as gpt-5.1-codex, are separate notices."
+      "Only these exact names are matched; names that extend them, such as gpt-5.1-codex, are separate notices.",
+      "A mocked API response that names the model, such as an msw or nock handler for the endpoint, is reported too.",
+      "Azure OpenAI calls are reported too, though Azure names deployments its own way and sets its own retirement dates."
     ]
   },
   "detection": {
