@@ -328,3 +328,33 @@ describe("check", () => {
     ]);
   });
 });
+
+describe("model shutdowns", () => {
+  const shutdowns = (hits: Hit[]) => hits.filter((h) => h.record.id.includes("shut-down"));
+
+  it("reports a retiring model only inside that API's own OpenAI calls, with the date", async () => {
+    const dir = await scratch({
+      "app.ts": [
+        'import OpenAI from "openai";',
+        'import Groq from "groq-sdk";',
+        "const openai = new OpenAI();",
+        "const groq = new Groq();",
+        'export const a = await openai.audio.transcriptions.create({ model: "whisper-1", file });',
+        'export const b = await groq.audio.transcriptions.create({ model: "whisper-1", file });',
+        'export const c = await openai.chat.completions.create({ model: "whisper-1", messages });',
+        'log({ model: "gpt-5.1" });',
+        'export const d = await openai.responses.create({ model: "gpt-5.1", input });',
+        "",
+      ].join("\n"),
+      "speak.py": 'from openai import OpenAI\n\nclient = OpenAI()\nwith client.audio.speech.with_streaming_response.create(model="tts-1", voice="alloy", input="hi") as r:\n    pass\n',
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(locations(shutdowns(hits))).toEqual(["app.ts:5", "app.ts:9", "speak.py:4"]);
+    expect(coverage.foreignAt).toEqual(["app.ts:6"]);
+    expect(exitCodeForCheck(hits)).toBe(1);
+    const text = render(hits, coverage);
+    expect(text).toContain("openai 2026-08-26: whisper-1 and the gpt-4o transcribe models shut down on 2027-02-26");
+    expect(text).toContain("openai 2026-10-01: gpt-5.1, gpt-5.3-codex and gpt-5.4-nano shut down on 2027-04-01");
+    expect(text).toContain("openai 2026-10-01: tts-1 and the other listed text-to-speech models shut down on 2027-01-06");
+  });
+});

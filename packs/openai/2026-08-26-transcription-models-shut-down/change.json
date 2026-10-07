@@ -1,0 +1,112 @@
+{
+  "id": "openai:2026-08-26:transcription-models-shut-down",
+  "title": "whisper-1 and the gpt-4o transcribe models shut down on 2027-02-26",
+  "status": "reviewed",
+  "vendor": "openai",
+  "announcedAt": "2026-08-26",
+  "effectiveAt": "2027-02-26",
+  "kind": "deprecation",
+  "surface": {
+    "endpoints": [
+      "/v1/audio/transcriptions",
+      "/v1/audio/translations"
+    ],
+    "sdkSymbols": [
+      "audio.transcriptions.create",
+      "audio.transcriptions.with_raw_response.create",
+      "audio.transcriptions.with_streaming_response.create",
+      "audio.translations.create",
+      "audio.translations.with_raw_response.create",
+      "audio.translations.with_streaming_response.create"
+    ],
+    "fields": [
+      "model"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://developers.openai.com/api/docs/deprecations",
+      "quoteId": "2026-08-26: 'On August 26, 2026, we notified developers using whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe, and gpt-4o-transcribe-diarize of their deprecation and removal from the API on February 26, 2027.' (recommended replacement gpt-live-transcribe or gpt-transcribe) (verified 2026-10-06)"
+    }
+  ],
+  "notes": {
+    "migration": "OpenAI shuts down whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe and gpt-4o-transcribe-diarize on 2027-02-26. After that date these calls fail. OpenAI recommends gpt-live-transcribe or gpt-transcribe. Check that the output format your code reads is still supported before switching.",
+    "edgeCases": [
+      "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
+      "Dated gpt-4o-mini-transcribe snapshots are a separate notice with an earlier date and are not matched here."
+    ]
+  },
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "({ model: \"whisper-1\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'whisper-1' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-4o-transcribe\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-4o-transcribe' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-4o-mini-transcribe\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-4o-mini-transcribe' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-4o-transcribe-diarize\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-4o-transcribe-diarize' })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(model=\"whisper-1\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='whisper-1')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-4o-transcribe\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-4o-transcribe')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-4o-mini-transcribe\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-4o-mini-transcribe')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-4o-transcribe-diarize\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-4o-transcribe-diarize')",
+          "selector": "keyword_argument"
+        }
+      ]
+    }
+  }
+}

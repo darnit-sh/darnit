@@ -1,0 +1,102 @@
+{
+  "id": "openai:2026-10-01:gpt-5-1-models-shut-down",
+  "title": "gpt-5.1, gpt-5.3-codex and gpt-5.4-nano shut down on 2027-04-01",
+  "status": "reviewed",
+  "vendor": "openai",
+  "announcedAt": "2026-10-01",
+  "effectiveAt": "2027-04-01",
+  "kind": "deprecation",
+  "surface": {
+    "endpoints": [
+      "/v1/chat/completions",
+      "/v1/responses"
+    ],
+    "sdkSymbols": [
+      "chat.completions.create",
+      "chat.completions.parse",
+      "chat.completions.stream",
+      "chat.completions.runTools",
+      "chat.completions.runFunctions",
+      "chat.completions.with_raw_response.create",
+      "chat.completions.with_streaming_response.create",
+      "responses.create",
+      "responses.parse",
+      "responses.stream",
+      "responses.with_raw_response.create",
+      "responses.with_streaming_response.create"
+    ],
+    "fields": [
+      "model"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://developers.openai.com/api/docs/deprecations",
+      "quoteId": "2026-10-01: 'The following models are deprecated and will be removed from the API on April 1, 2027, with six months’ notice.' (gpt-5.3-codex and gpt-5.1 to gpt-6-sol, gpt-5.4-nano to gpt-6-luna) (verified 2026-10-06)"
+    }
+  ],
+  "notes": {
+    "migration": "OpenAI shuts down gpt-5.1, gpt-5.3-codex and gpt-5.4-nano on 2027-04-01. After that date these calls fail. OpenAI recommends gpt-6-sol for gpt-5.1 and gpt-5.3-codex, and gpt-6-luna for gpt-5.4-nano. A newer model can answer differently, so test the switch rather than only renaming.",
+    "edgeCases": [
+      "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
+      "Only these exact names are matched; names that extend them, such as gpt-5.1-codex, are separate notices."
+    ]
+  },
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "({ model: \"gpt-5.1\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-5.1' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-5.3-codex\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-5.3-codex' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-5.4-nano\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-5.4-nano' })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(model=\"gpt-5.1\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-5.1')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-5.3-codex\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-5.3-codex')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-5.4-nano\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-5.4-nano')",
+          "selector": "keyword_argument"
+        }
+      ]
+    }
+  }
+}

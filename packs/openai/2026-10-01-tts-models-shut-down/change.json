@@ -1,0 +1,108 @@
+{
+  "id": "openai:2026-10-01:tts-models-shut-down",
+  "title": "tts-1 and the other listed text-to-speech models shut down on 2027-01-06",
+  "status": "reviewed",
+  "vendor": "openai",
+  "announcedAt": "2026-10-01",
+  "effectiveAt": "2027-01-06",
+  "kind": "deprecation",
+  "surface": {
+    "endpoints": [
+      "/v1/audio/speech"
+    ],
+    "sdkSymbols": [
+      "audio.speech.create",
+      "audio.speech.with_raw_response.create",
+      "audio.speech.with_streaming_response.create"
+    ],
+    "fields": [
+      "model"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://developers.openai.com/api/docs/deprecations",
+      "quoteId": "2026-10-01: 'The following text-to-speech models are deprecated and will be removed from the API on January 6, 2027' (tts-1, tts-1-hd, gpt-4o-mini-tts-2025-03-20, gpt-4o-mini-tts-2025-12-15; recommended replacement gpt-realtime-2.1-mini) (verified 2026-10-06)"
+    }
+  ],
+  "notes": {
+    "migration": "OpenAI shuts down tts-1, tts-1-hd and two dated gpt-4o-mini-tts snapshots on 2027-01-06. After that date these calls fail. OpenAI recommends gpt-realtime-2.1-mini and points to its Realtime API guide for the move, so it may take more than changing the model name.",
+    "edgeCases": [
+      "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
+      "Only the two dated gpt-4o-mini-tts snapshots are listed; the undated gpt-4o-mini-tts name is not."
+    ]
+  },
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "({ model: \"tts-1\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'tts-1' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"tts-1-hd\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'tts-1-hd' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-4o-mini-tts-2025-03-20\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-4o-mini-tts-2025-03-20' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-4o-mini-tts-2025-12-15\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-4o-mini-tts-2025-12-15' })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(model=\"tts-1\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='tts-1')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"tts-1-hd\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='tts-1-hd')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-4o-mini-tts-2025-03-20\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-4o-mini-tts-2025-03-20')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-4o-mini-tts-2025-12-15\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-4o-mini-tts-2025-12-15')",
+          "selector": "keyword_argument"
+        }
+      ]
+    }
+  }
+}
