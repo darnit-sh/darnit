@@ -43,6 +43,10 @@
         {
           "context": "({ max_tokens: $N })",
           "selector": "pair"
+        },
+        {
+          "context": "({ max_tokens })",
+          "selector": "shorthand_property_identifier"
         }
       ],
       "py": [
