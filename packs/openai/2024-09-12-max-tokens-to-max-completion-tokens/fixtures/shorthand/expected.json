@@ -1,0 +1,7 @@
+{
+  "note": "Shorthand max_tokens. Detection counts every shorthand property named max_tokens in an object: the two OpenAI calls, the Anthropic call and the one nested in trim(). Destructuring (function parameters, const { max_tokens } = opts) is a different node and is not counted. The rules rename only the two direct options of chat completions calls, keeping the variable: max_completion_tokens: max_tokens.",
+  "matches": {
+    "before/app.js": 4,
+    "before/app.ts": 1
+  }
+}
