@@ -1,0 +1,19 @@
+id: openai-max-tokens-shorthand-to-max-completion-tokens-js
+language: javascript
+# The shorthand `{ max_tokens }`, with the same scope as 01-rename.yml. The
+# variable keeps its name; only the key changes. Destructuring such as
+# `const { max_tokens } = opts` is a different node and never matches.
+rule:
+  pattern:
+    context: '({ max_tokens })'
+    selector: shorthand_property_identifier
+  inside:
+    kind: object
+    inside:
+      kind: arguments
+      inside:
+        kind: call_expression
+        has:
+          field: function
+          regex: 'chat\s*\??\.\s*completions\s*\??\.\s*(create|parse|stream|runTools|runFunctions)$'
+fix: 'max_completion_tokens: max_tokens'

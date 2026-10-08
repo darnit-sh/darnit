@@ -431,6 +431,12 @@ describe("check", () => {
     ]);
   });
 
+  it("reports a shorthand max_tokens in OpenAI calls, not in other calls or destructuring", async () => {
+    const dir = fileURLToPath(new URL("../packs/openai/2024-09-12-max-tokens-to-max-completion-tokens/fixtures/shorthand/before/", import.meta.url));
+    const hits = (await check(dir)).filter((h) => h.record.id.includes("max-tokens"));
+    expect(locations(hits)).toEqual(["app.js:8", "app.js:16", "app.ts:6"]);
+  });
+
   it("does not report an options object passed by name", async () => {
     const dir = await scratch({ "detached.js": 'import OpenAI from "openai";\nconst opts = { max_tokens: 5 };\nnew OpenAI().chat.completions.create(opts);\n' });
     expect(await check(dir)).toEqual([]);
