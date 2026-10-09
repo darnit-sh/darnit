@@ -100,6 +100,7 @@ export function toJson(hits: Hit[]): object[] {
     column: h.column,
     text: h.text,
     sources: h.record.sources.map((s) => s.url),
+    ...(h.local ? { localAddress: h.local } : {}),
   }));
 }
 
@@ -140,7 +141,9 @@ export function render(hits: Hit[], coverage?: Coverage): string {
     const locations = group.map((h) => `${h.file}:${h.line}:${h.column}`);
     const width = Math.max(...locations.map((l) => l.length)) + 2;
     out.push(heading(record));
-    group.forEach((h, i) => out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}`));
+    group.forEach((h, i) =>
+      out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local}; skip if that server isn't OpenAI)` : ""}`),
+    );
     out.push(`  ${plural(group.length, "call site")} in ${plural(new Set(group.map((h) => h.file)).size, "file")}`);
     for (const source of record.sources) out.push(`  ${source.url}`);
     out.push("");
