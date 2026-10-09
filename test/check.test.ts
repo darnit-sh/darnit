@@ -77,6 +77,63 @@ describe("check tells OpenAI apart from look-alike clients", () => {
     expect(maxTokens(await check(dir))).toEqual(["azure.ts:3", "env.ts:3", "fetch.js:1", "param.js:1", "plain.ts:3", "self.py:8"]);
   });
 
+  it("notes calls sent to a local address written in the code, and only those", async () => {
+    const call = 'export const r = c.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });';
+    const client = (baseURL: string) => `import OpenAI from "openai";\nconst c = new OpenAI({ baseURL: ${baseURL} });\n${call}\n`;
+    const dir = await scratch({
+      "ollama.ts": client('"http://localhost:11434/v1"'),
+      "loopback.js": client('"http://127.0.0.1:8000/v1"'),
+      "ipv6.js": client('"http://[::1]:8080/v1"'),
+      "lan.py": 'from openai import OpenAI\n\nc = OpenAI(base_url="http://192.168.1.5:8080/v1")\nr = c.chat.completions.create(model="x", max_tokens=5)\n',
+      "fetch.js": 'export const r = fetch("http://localhost:1234/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "x", max_tokens: 5 }) });\n',
+      "openai.ts": client('"https://api.openai.com/v1"'),
+      "plain.ts": client("undefined"),
+      "env.ts": client("process.env.LLM_URL"),
+      "evil.ts": client('"https://localhost.evil.com/v1"'),
+      "nip.ts": client('"http://127.0.0.1.nip.io/v1"'),
+      "userinfo.ts": client('"http://10.0.0.1@api.openai.com/v1"'),
+      "public1.ts": client('"http://192.169.0.1/v1"'),
+      "public2.ts": client('"http://172.32.0.1/v1"'),
+      "compose.ts": client('"http://ollama:11434/v1"'),
+      "user.ts": client('"http://me@localhost:8080/v1"'),
+      "dot.ts": client('"http://localhost./v1"'),
+      "ula.ts": client('"http://[fd00::1]:8000/v1"'),
+      "mapped.ts": client('"http://[::ffff:127.0.0.1]:8000/v1"'),
+      "linklocal.ts": client('"http://169.254.1.1/v1"'),
+      "template.ts": client("`http://${host}/v1`"),
+      "either.ts": `import OpenAI from "openai";\nlet c = new OpenAI({ baseURL: "http://localhost:1/v1" });\nif (process.env.X) c = new OpenAI({ baseURL: "http://127.0.0.1:2/v1" });\n${call}\n`,
+    });
+    const { hits, coverage } = await checkReport(dir);
+    const local = Object.fromEntries(hits.map((h) => [`${h.file}:${h.line}`, h.local?.join(" or ") ?? null]));
+    expect(local).toEqual({
+      "ollama.ts:3": "localhost:11434",
+      "loopback.js:3": "127.0.0.1:8000",
+      "ipv6.js:3": "[::1]:8080",
+      "lan.py:4": "192.168.1.5:8080",
+      "fetch.js:1": "localhost:1234",
+      "openai.ts:3": null,
+      "plain.ts:3": null,
+      "env.ts:3": null,
+      "evil.ts:3": null,
+      "nip.ts:3": null,
+      "userinfo.ts:3": null,
+      "public1.ts:3": null,
+      "public2.ts:3": null,
+      "compose.ts:3": "ollama:11434",
+      "user.ts:3": "localhost:8080",
+      "dot.ts:3": "localhost.",
+      "ula.ts:3": "[fd00::1]:8000",
+      "mapped.ts:3": "[::ffff:127.0.0.1]:8000",
+      "linklocal.ts:3": "169.254.1.1",
+      "template.ts:3": null,
+      "either.ts:4": "127.0.0.1:2 or localhost:1",
+    });
+    expect(exitCodeForCheck(hits)).toBe(1);
+    expect(render(hits, coverage)).toMatch(/ollama\.ts:3:72 +max_tokens: 5 {2}\(sent to localhost:11434; ignore if that server isn't OpenAI\)\n/);
+    expect(toJson(hits).find((h) => (h as { file: string }).file === "ollama.ts")).toMatchObject({ localAddresses: ["localhost:11434"] });
+    expect(toJson(hits).find((h) => (h as { file: string }).file === "plain.ts")).not.toHaveProperty("localAddresses");
+  });
+
   it("never drops a real OpenAI call behind a wrapper, a local factory or a proxy", async () => {
     const call = 'client.chat.completions.create({ model: "m", messages: [], max_tokens: 5 });';
     const dir = await scratch({

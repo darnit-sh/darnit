@@ -1,7 +1,7 @@
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkReport, scan, title } from "./check.js";
+import { checkReport, scan, title, type Hit } from "./check.js";
 import * as g from "./git.js";
 import { vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
@@ -84,6 +84,17 @@ export class Refusal extends Error {}
 export type Group = { record: ChangeRecord; packDir: string; files: string[]; sites: number; held?: Site[] };
 
 const MIXED = "this file also calls another provider through the same methods";
+const LOCAL = "this file also sends calls to a private address";
+
+/** Why a record whose files were all held was not rewritten: a look-alike client, a private address, or both. */
+function heldReason(held: readonly Site[]): string {
+  const files = new Set(held.map((h) => h.file)).size === 1 ? "this file" : "each of these files";
+  const lookalike = held.some((h) => h.note === MIXED);
+  const local = held.some((h) => h.note !== MIXED);
+  if (lookalike && local) return `${files} also calls another provider or a private address, so the rewrite would change those calls too`;
+  if (local) return `${files} sends calls to a private address, which may not be OpenAI`;
+  return `${files} also calls another provider through the same methods, so the rewrite would change those calls too`;
+}
 
 const NOT_COVERED = "the rewrite rules don't cover this call shape yet";
 
@@ -91,13 +102,17 @@ async function groupHits(root: string, only: string[] | undefined): Promise<Grou
   const packs = new Map((await loadRecords()).map((l) => [l.record.id, l.packDir]));
   for (const id of only ?? []) if (!packs.has(id)) throw new Refusal(`unknown change record: ${id}`);
   const { hits, foreign } = await checkReport(root);
-  const mixed = new Set(foreign.map((h) => `${h.record.id}\0${h.file}`));
+  const key = (h: Hit) => `${h.record.id}\0${h.file}`;
+  const mixed = new Set(foreign.map(key));
+  // A server at a private address may not accept the new parameter, so its calls, and the rest of its file, go to a human.
+  const local = new Set(hits.filter((h) => h.local).map(key));
   const byId = new Map<string, Group>();
   for (const hit of hits) {
     if (only && !only.includes(hit.record.id)) continue;
     const group = byId.get(hit.record.id) ?? { record: hit.record, packDir: packs.get(hit.record.id)!, files: [], sites: 0 };
-    if (mixed.has(`${hit.record.id}\0${hit.file}`)) {
-      (group.held ??= []).push({ file: hit.file, line: hit.line, note: MIXED });
+    if (mixed.has(key(hit)) || local.has(key(hit))) {
+      const note = hit.local ? `sent to ${hit.local.join(" or ")}, which may not be OpenAI` : mixed.has(key(hit)) ? MIXED : LOCAL;
+      (group.held ??= []).push({ file: hit.file, line: hit.line, note });
     } else {
       if (!group.files.includes(hit.file)) group.files.push(hit.file);
       group.sites++;
@@ -247,7 +262,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
           : !reviewed
             ? "checked by a parser, not yet read by a person"
             : !clean
-              ? `${new Set(grp.held?.map((h) => h.file)).size === 1 ? "this file" : "each of these files"} also calls another provider through the same methods, so the rewrite would change those calls too`
+              ? heldReason(grp.held ?? [])
               : !ready
                 ? "no rewrite rules yet"
                 : gate.blocked;

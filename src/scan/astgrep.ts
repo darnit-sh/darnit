@@ -38,6 +38,8 @@ export type Match = {
   text: string;
   /** The file shows this call goes to another provider through the same methods (only set with a vendor gate). */
   foreign?: true;
+  /** The private addresses the file shows this call is sent to, such as "localhost:11434" (only set with a vendor gate). */
+  local?: string[];
 };
 
 /**
@@ -157,6 +159,7 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
     for (const node of root.findAll({ rule: ruleFor(context, selector) })) {
       const { start } = node.range();
       let foreign = false;
+      let local: string[] | undefined;
       if (symbols.length > 0 || endpoints.length > 0) {
         const call = enclosingCall(node);
         const raw = call?.field("function")?.text();
@@ -168,9 +171,10 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
           const origin =
             symbol !== undefined ? clientOrigin(root, call!, symbol, gate.vendor) : urlOrigin(viaEndpoint!, gate.vendor);
           foreign = origin === "foreign";
+          local = typeof origin === "object" ? origin.local : undefined;
         }
       }
-      matches.push({ line: start.line + 1, column: start.column + 1, text: node.text(), ...(foreign ? { foreign: true as const } : {}) });
+      matches.push({ line: start.line + 1, column: start.column + 1, text: node.text(), ...(foreign ? { foreign: true as const } : {}), ...(local ? { local } : {}) });
     }
   }
   return matches.sort((a, b) => a.line - b.line || a.column - b.column);
