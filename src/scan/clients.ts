@@ -18,7 +18,7 @@ export type VendorClients = {
  * a known look-alike. Anything less certain is "vendor" or "unknown", and both count as the vendor's:
  * dropping a real call is worse than rewriting a look-alike's.
  */
-export type Origin = "vendor" | "foreign" | "unknown" | { local: string };
+export type Origin = "vendor" | "foreign" | "unknown" | { local: string[] };
 
 const hostOf = (url: string) => /^[a-z][a-z0-9+.-]*:\/\/([^/\s"'`:]+)/i.exec(url)?.[1]?.toLowerCase();
 const onHost = (host: string, hosts: readonly string[]) => hosts.some((h) => host === h || host.endsWith(`.${h}`));
@@ -45,7 +45,7 @@ export function urlOrigin(url: string, v: VendorClients): Origin {
   if (onHost(host, v.hosts)) return "vendor";
   if (onHost(host, v.lookalikeHosts)) return "foreign";
   const local = localAddress(url);
-  return local ? { local } : "unknown";
+  return local ? { local: [local] } : "unknown";
 }
 
 /** The text of a string literal without prefix or quotes (`f"https://…"` → `https://…`). */
@@ -294,6 +294,6 @@ export function clientOrigin(root: SgNode, call: SgNode, symbol: string, v: Vend
   if (origins.length === 0) return "unknown";
   // Foreign only when every assignment the call could see is a look-alike; local only when every one is local.
   if (origins.every((o) => o === "foreign")) return "foreign";
-  if (origins.every((o) => typeof o === "object")) return { local: [...new Set(origins.map((o) => o.local))].sort().join(" or ") };
+  if (origins.every((o) => typeof o === "object")) return { local: [...new Set(origins.flatMap((o) => o.local))].sort() };
   return origins.includes("vendor") ? "vendor" : "unknown";
 }
