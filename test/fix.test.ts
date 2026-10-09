@@ -225,6 +225,34 @@ describe("fix never rewrites another provider's calls", () => {
   });
 });
 
+// OpenAI's SDK pointed at a local server, which may not accept the new parameter.
+const LOCAL_CALL = `import OpenAI from "openai";
+const ollama = new OpenAI({ baseURL: "http://localhost:11434/v1", apiKey: "ollama" });
+export const r = ollama.chat.completions.create({ model: "llama3", messages: [], max_tokens: 5 });
+`;
+
+describe("fix leaves calls sent to a local address to a human", () => {
+  it("rewrites the OpenAI call and holds the local one", async () => {
+    const dir = await repoWith({ "local.ts": LOCAL_CALL, "sdk.js": SDK_CALL });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true, sites: 2 });
+    expect(renderSummary(result)).toContain("needs a human: local.ts:3 (sent to localhost:11434, which may not be OpenAI)");
+    expect(await readFile(join(dir, "local.ts"), "utf8")).toBe(LOCAL_CALL);
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toContain("max_completion_tokens: 5");
+  });
+
+  it("holds a whole file that mixes a local call and an OpenAI call", async () => {
+    const both = `${LOCAL_CALL}const openai = new OpenAI();\nexport const s = openai.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n`;
+    const dir = await repoWith({ "both.ts": both });
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: false, reason: "this file also sends calls to a local server, so the rewrite would change those calls too" });
+    expect(await readFile(join(dir, "both.ts"), "utf8")).toBe(both);
+    const summary = renderSummary(result);
+    expect(summary).toContain("needs a human: both.ts:3 (sent to localhost:11434, which may not be OpenAI)");
+    expect(summary).toContain("needs a human: both.ts:5 (this file also sends calls to a local server)");
+  });
+});
+
 describe("fix verifies its own rewrites", () => {
   it("does not claim a rewrite it did not make", async () => {
     const dir = await repoWith({ "client.js": RAW_FETCH });
