@@ -548,6 +548,27 @@ describe("model shutdowns", () => {
     expect(text).toContain("openai 2026-10-01: gpt-5.1, gpt-5.4-nano and gpt-5.3-codex shut down on 2027-04-01");
     expect(text).toContain("openai 2026-10-01: tts-1, tts-1-hd, gpt-4o-mini-tts-2025-03-20 and 1 more shut down on 2027-01-06");
   });
+
+  it("reports a retiring model written as the fallback when no model is passed", async () => {
+    const dir = await scratch({
+      "stt.ts": [
+        'import OpenAI from "openai";',
+        'import Groq from "groq-sdk";',
+        "const openai = new OpenAI();",
+        "const groq = new Groq();",
+        "export const a = (o) => openai.audio.transcriptions.create({ file, model: o.model ?? 'whisper-1' });",
+        'export const b = (o) => openai.audio.transcriptions.create({ file, model: o.model || "whisper-1" });',
+        'export const c = (o) => openai.chat.completions.create({ messages, model: o.model ?? o.fallback ?? "gpt-4" });',
+        'export const d = (o) => groq.audio.transcriptions.create({ file, model: o.model ?? "whisper-1" });',
+        'export const e = (o) => openai.chat.completions.create({ messages, model: o.model ?? "gpt-4o" });',
+        "",
+      ].join("\n"),
+      "stt.py": 'from openai import OpenAI\n\nclient = OpenAI()\n\ndef run(opts):\n    return client.audio.transcriptions.create(file=f, model=opts.model or "whisper-1")\n',
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(locations(shutdowns(hits)).sort()).toEqual(["stt.py:6", "stt.ts:5", "stt.ts:6", "stt.ts:7"]);
+    expect(coverage.foreignAt).toEqual(["stt.ts:8"]);
+  });
 });
 
 describe("findMatches", () => {
