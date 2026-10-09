@@ -94,6 +94,14 @@ describe("check tells OpenAI apart from look-alike clients", () => {
       "userinfo.ts": client('"http://10.0.0.1@api.openai.com/v1"'),
       "public1.ts": client('"http://192.169.0.1/v1"'),
       "public2.ts": client('"http://172.32.0.1/v1"'),
+      "compose.ts": client('"http://ollama:11434/v1"'),
+      "user.ts": client('"http://me@localhost:8080/v1"'),
+      "dot.ts": client('"http://localhost./v1"'),
+      "ula.ts": client('"http://[fd00::1]:8000/v1"'),
+      "mapped.ts": client('"http://[::ffff:127.0.0.1]:8000/v1"'),
+      "linklocal.ts": client('"http://169.254.1.1/v1"'),
+      "template.ts": client("`http://${host}/v1`"),
+      "either.ts": `import OpenAI from "openai";\nlet c = new OpenAI({ baseURL: "http://localhost:1/v1" });\nif (process.env.X) c = new OpenAI({ baseURL: "http://127.0.0.1:2/v1" });\n${call}\n`,
     });
     const { hits, coverage } = await checkReport(dir);
     const local = Object.fromEntries(hits.map((h) => [`${h.file}:${h.line}`, h.local ?? null]));
@@ -111,6 +119,14 @@ describe("check tells OpenAI apart from look-alike clients", () => {
       "userinfo.ts:3": null,
       "public1.ts:3": null,
       "public2.ts:3": null,
+      "compose.ts:3": "ollama:11434",
+      "user.ts:3": "localhost:8080",
+      "dot.ts:3": "localhost.",
+      "ula.ts:3": "[fd00::1]:8000",
+      "mapped.ts:3": "[::ffff:127.0.0.1]:8000",
+      "linklocal.ts:3": "169.254.1.1",
+      "template.ts:3": null,
+      "either.ts:4": "127.0.0.1:2 or localhost:1",
     });
     expect(exitCodeForCheck(hits)).toBe(1);
     expect(render(hits, coverage)).toMatch(/ollama\.ts:3:72 +max_tokens: 5 {2}\(sent to localhost:11434; skip if that server isn't OpenAI\)\n/);

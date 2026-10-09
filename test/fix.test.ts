@@ -245,11 +245,17 @@ describe("fix leaves calls sent to a local address to a human", () => {
     const both = `${LOCAL_CALL}const openai = new OpenAI();\nexport const s = openai.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n`;
     const dir = await repoWith({ "both.ts": both });
     const result = await fix(dir, { noTest: true });
-    expect(result.records[0]).toMatchObject({ applied: false, reason: "this file also sends calls to a local server, so the rewrite would change those calls too" });
+    expect(result.records[0]).toMatchObject({ applied: false, reason: "this file sends calls to a local server, which may not be OpenAI" });
     expect(await readFile(join(dir, "both.ts"), "utf8")).toBe(both);
     const summary = renderSummary(result);
     expect(summary).toContain("needs a human: both.ts:3 (sent to localhost:11434, which may not be OpenAI)");
     expect(summary).toContain("needs a human: both.ts:5 (this file also sends calls to a local server)");
+  });
+
+  it("names both reasons when local files and look-alike files are held together", async () => {
+    const dir = await repoWith({ "local.ts": LOCAL_CALL, "groq.ts": MIXED_CLIENTS });
+    const result = await fix(dir, { noTest: true, dryRun: true });
+    expect(result.records[0]!.reason).toBe("each of these files also calls another provider or a local server, so the rewrite would change those calls too");
   });
 });
 
