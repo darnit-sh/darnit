@@ -1,0 +1,6 @@
+{
+  "note": "The second argument of a chat completions call holds request settings such as timeouts and headers, not API parameters. Detection counts all five max_tokens properties; the rules rename only the three in the first argument, including one with a comment before it, and leave the request settings alone.",
+  "matches": {
+    "before/app.js": 5
+  }
+}

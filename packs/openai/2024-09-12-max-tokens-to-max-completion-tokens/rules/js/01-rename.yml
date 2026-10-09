@@ -12,6 +12,9 @@ rule:
     selector: pair
   inside:
     kind: object
+    nthChild:
+      position: 1
+      ofRule: { not: { kind: comment } }
     inside:
       kind: arguments
       inside:
