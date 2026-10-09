@@ -477,9 +477,17 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     ...(record.notes?.edgeCases ?? []).map((e) => `- ${prose(e)}`),
     "",
     "---",
-    `darnit ${version}, change record \`${record.id}\``,
+    `darnit ${version}, change record [\`${record.id}\`](${recordUrl(record.id)})`,
     "",
   ].join("\n");
+}
+
+// Opened pull requests can't be edited later, so the footer links a darnit.sh path
+// that can be served by a real page one day. The record's folder is named from its id
+// (packs/<vendor>/<date>-<slug>), which records.test.ts enforces.
+function recordUrl(id: string): string {
+  const [vendor, date, slug] = id.split(":");
+  return `https://darnit.sh/changes/${vendor}/${date}-${slug}`;
 }
 
 export function exitCodeFor(result: FixResult): 0 | 1 {

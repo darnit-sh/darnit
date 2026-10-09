@@ -596,6 +596,14 @@ describe("prBody", () => {
     expect(lines).toContain(`- ${prose(hostile)}`);
     expect(lines).toContain("> `Use tools. # Heading <img src=x onerror=alert(1)> [click](https://evil.example) @octocat`");
   });
+
+  it("links every record in the footer to its page on darnit.sh", async () => {
+    for (const { record } of await loadRecords()) {
+      const [vendor, date, slug] = record.id.split(":");
+      const footer = prBody(record, ["app.js"], "1.2.3").trimEnd().split("\n").at(-1);
+      expect(footer).toBe(`darnit 1.2.3, change record [\`${record.id}\`](https://darnit.sh/changes/${vendor}/${date}-${slug})`);
+    }
+  });
 });
 
 describe("prose", () => {
