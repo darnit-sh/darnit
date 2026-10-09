@@ -1,11 +1,11 @@
 import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyAndVerify, exitCodeFor, fix, prBody, prose, Refusal, renderSummary } from "../src/fix.js";
 import { git } from "../src/git.js";
-import { loadRecords } from "../src/records/load.js";
+import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 
 const PACKS = fileURLToPath(new URL("../packs/", import.meta.url));
 
@@ -598,10 +598,12 @@ describe("prBody", () => {
   });
 
   it("links every record in the footer to its page on darnit.sh", async () => {
-    for (const { record } of await loadRecords()) {
-      const [vendor, date, slug] = record.id.split(":");
+    const loaded = await loadRecords();
+    expect(loaded.length).toBeGreaterThan(0);
+    for (const { record, packDir } of loaded) {
+      const folder = relative(PACKS_DIR, packDir).split(sep).join("/");
       const footer = prBody(record, ["app.js"], "1.2.3").trimEnd().split("\n").at(-1);
-      expect(footer).toBe(`darnit 1.2.3, change record [\`${record.id}\`](https://darnit.sh/changes/${vendor}/${date}-${slug})`);
+      expect(footer).toBe(`darnit 1.2.3, change record [\`${record.id}\`](https://darnit.sh/changes/${folder})`);
     }
   });
 });
