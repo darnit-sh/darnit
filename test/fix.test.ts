@@ -257,6 +257,12 @@ describe("fix leaves calls sent to a local address to a human", () => {
     const result = await fix(dir, { noTest: true, dryRun: true });
     expect(result.records[0]!.reason).toBe("each of these files also calls another provider or a local server, so the rewrite would change those calls too");
   });
+
+  it("says this file when one file holds both a look-alike call and a local call", async () => {
+    const dir = await repoWith({ "all.ts": `${MIXED_CLIENTS}const ollama = new OpenAI({ baseURL: "http://localhost:11434/v1" });\nexport const c = ollama.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n` });
+    const result = await fix(dir, { noTest: true, dryRun: true });
+    expect(result.records[0]!.reason).toBe("this file also calls another provider or a local server, so the rewrite would change those calls too");
+  });
 });
 
 describe("fix verifies its own rewrites", () => {
