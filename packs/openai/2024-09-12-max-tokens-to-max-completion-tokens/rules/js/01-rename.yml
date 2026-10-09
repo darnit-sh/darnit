@@ -12,6 +12,7 @@ rule:
     selector: pair
   inside:
     kind: object
+    nthChild: 1
     inside:
       kind: arguments
       inside:

@@ -9,6 +9,7 @@ rule:
     selector: shorthand_property_identifier
   inside:
     kind: object
+    nthChild: 1
     inside:
       kind: arguments
       inside:
