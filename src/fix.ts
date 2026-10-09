@@ -86,6 +86,16 @@ export type Group = { record: ChangeRecord; packDir: string; files: string[]; si
 const MIXED = "this file also calls another provider through the same methods";
 const LOCAL = "this file also sends calls to a local server";
 
+/** Why a record whose files were all held was not rewritten: a look-alike client, a local server, or both. */
+function heldReason(held: readonly Site[]): string {
+  const files = new Set(held.map((h) => h.file)).size === 1 ? "this file" : "each of these files";
+  const lookalike = held.some((h) => h.note === MIXED);
+  const local = held.some((h) => h.note !== MIXED);
+  if (lookalike && local) return "each of these files also calls another provider or a local server, so the rewrite would change those calls too";
+  if (local) return `${files} sends calls to a local server, which may not be OpenAI`;
+  return `${files} also calls another provider through the same methods, so the rewrite would change those calls too`;
+}
+
 const NOT_COVERED = "the rewrite rules don't cover this call shape yet";
 
 async function groupHits(root: string, only: string[] | undefined): Promise<Group[]> {
@@ -252,7 +262,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
           : !reviewed
             ? "checked by a parser, not yet read by a person"
             : !clean
-              ? `${new Set(grp.held?.map((h) => h.file)).size === 1 ? "this file" : "each of these files"} also ${grp.held?.every((h) => h.note !== MIXED) ? "sends calls to a local server" : "calls another provider through the same methods"}, so the rewrite would change those calls too`
+              ? heldReason(grp.held ?? [])
               : !ready
                 ? "no rewrite rules yet"
                 : gate.blocked;

@@ -23,16 +23,19 @@ export type Origin = "vendor" | "foreign" | "unknown" | { local: string };
 const hostOf = (url: string) => /^[a-z][a-z0-9+.-]*:\/\/([^/\s"'`:]+)/i.exec(url)?.[1]?.toLowerCase();
 const onHost = (host: string, hosts: readonly string[]) => hosts.some((h) => host === h || host.endsWith(`.${h}`));
 
-// This machine, a container's host, the local network, and private address ranges.
+// This machine, a container's host or a service name with no dot (docker compose), the local
+// network, and private and link-local address ranges, in IPv4 and IPv6.
 const LOCAL_HOST =
-  /^(?:localhost|.+\.localhost|host\.docker\.internal|.+\.local|0\.0\.0\.0|\[::1\]|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})$/i;
+  /^(?:[a-z0-9_-]+|.+\.localhost|host\.docker\.internal|.+\.local|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|\[::1\]|\[f[cd][0-9a-f]{0,2}:[0-9a-f:]*\]|\[fe[89ab][0-9a-f]:[0-9a-f:]*\])$/i;
 
-/** "localhost:11434" for a URL whose host is local; undefined otherwise, or when it names a user (`a@b`). */
+/** "localhost:11434" for a URL whose host is local; undefined otherwise. */
 function localAddress(url: string): string | undefined {
-  const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/\s"'`?#]+)/i.exec(url)?.[1];
-  if (!authority || authority.includes("@")) return undefined;
-  const host = authority.startsWith("[") ? authority.slice(0, authority.indexOf("]") + 1) : authority.split(":")[0]!;
-  return LOCAL_HOST.test(host) ? authority.toLowerCase() : undefined;
+  const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/\s"'`?#]+)/i.exec(url)?.[1]?.split("@").pop();
+  if (!authority) return undefined;
+  const host = (authority.startsWith("[") ? authority.slice(0, authority.indexOf("]") + 1) : authority.split(":")[0]!).replace(/\.$/, "");
+  // An IPv4 address written as IPv6, [::ffff:127.0.0.1], is judged as the IPv4 address.
+  const mapped = /^\[::ffff:([\d.]+)\]$/i.exec(host)?.[1];
+  return LOCAL_HOST.test(mapped ?? host) ? authority.toLowerCase() : undefined;
 }
 
 /** Origin of a written-out URL: foreign only for a known look-alike host, local for this machine or network. */
@@ -289,9 +292,8 @@ export function clientOrigin(root: SgNode, call: SgNode, symbol: string, v: Vend
     a.value.is("new_expression") || a.value.is("call_expression") || a.value.is("call") ? constructed(a.value, index, call, v) : "unknown",
   );
   if (origins.length === 0) return "unknown";
-  // Foreign only when every assignment the call could see is a look-alike; local only when all are the same local address.
+  // Foreign only when every assignment the call could see is a look-alike; local only when every one is local.
   if (origins.every((o) => o === "foreign")) return "foreign";
-  const locals = new Set(origins.map((o) => (typeof o === "object" ? o.local : undefined)));
-  if (locals.size === 1 && !locals.has(undefined)) return origins[0]!;
+  if (origins.every((o) => typeof o === "object")) return { local: [...new Set(origins.map((o) => o.local))].sort().join(" or ") };
   return origins.includes("vendor") ? "vendor" : "unknown";
 }
