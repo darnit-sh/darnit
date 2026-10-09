@@ -91,7 +91,7 @@ function heldReason(held: readonly Site[]): string {
   const files = new Set(held.map((h) => h.file)).size === 1 ? "this file" : "each of these files";
   const lookalike = held.some((h) => h.note === MIXED);
   const local = held.some((h) => h.note !== MIXED);
-  if (lookalike && local) return "each of these files also calls another provider or a local server, so the rewrite would change those calls too";
+  if (lookalike && local) return `${files} also calls another provider or a local server, so the rewrite would change those calls too`;
   if (local) return `${files} sends calls to a local server, which may not be OpenAI`;
   return `${files} also calls another provider through the same methods, so the rewrite would change those calls too`;
 }
