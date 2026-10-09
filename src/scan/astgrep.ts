@@ -125,6 +125,25 @@ function endpointCall(node: SgNode, endpoints: readonly string[]): string | unde
  */
 const literals = (context: string) => [...context.matchAll(/(["'])([\w.:/-]+)\1/g)].map((m) => m[2]!);
 
+const QUOTED = String.raw`("[^"]*"|'[^']*')`;
+const JS_VALUE = new RegExp(String.raw`^\(\{\s*(\w+):\s*${QUOTED}\s*\}\)$`);
+const PY_VALUE = new RegExp(String.raw`^f\((\w+)=${QUOTED}\)$`);
+
+/**
+ * A pattern whose value is one quoted string also matches that string as the last fallback:
+ * `model: opts.model ?? "gpt-4"` (or `||`, or Python's `or`) sends gpt-4 whenever no model is passed.
+ */
+function ruleFor(context: string, selector: string) {
+  const js = JS_VALUE.exec(context);
+  const py = PY_VALUE.exec(context);
+  const fallbacks = js
+    ? [`({ ${js[1]}: $_ ?? ${js[2]} })`, `({ ${js[1]}: $_ || ${js[2]} })`]
+    : py
+      ? [`f(${py[1]}=$_ or ${py[2]})`]
+      : [];
+  return { any: [context, ...fallbacks].map((c) => ({ pattern: { context: c, selector } })) };
+}
+
 /** Every node in `source` matching any of `patterns`, optionally gated. */
 export function findMatches(source: string, grammar: Grammar, allPatterns: readonly AstGrepPattern[], gate?: Gate): Match[] {
   // A plain text check before parsing: most files contain none of a pattern's quoted text.
@@ -135,7 +154,7 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
   const endpoints = gate?.endpoints ?? [];
   const matches: Match[] = [];
   for (const { context, selector } of patterns) {
-    for (const node of root.findAll({ rule: { pattern: { context, selector } } })) {
+    for (const node of root.findAll({ rule: ruleFor(context, selector) })) {
       const { start } = node.range();
       let foreign = false;
       if (symbols.length > 0 || endpoints.length > 0) {
