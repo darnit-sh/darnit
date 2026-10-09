@@ -12,3 +12,10 @@ export function reply(messages) {
 export function replyShorthand(messages, max_tokens) {
   return openai.chat.completions.create({ model: "gpt-4o", messages, max_completion_tokens: max_tokens }, { max_tokens });
 }
+
+export function replyWithComment(messages) {
+  return openai.chat.completions.create(
+    // the limit for summaries
+    { model: "gpt-4o", messages, max_completion_tokens: 512 },
+  );
+}
