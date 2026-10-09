@@ -104,7 +104,7 @@ describe("check tells OpenAI apart from look-alike clients", () => {
       "either.ts": `import OpenAI from "openai";\nlet c = new OpenAI({ baseURL: "http://localhost:1/v1" });\nif (process.env.X) c = new OpenAI({ baseURL: "http://127.0.0.1:2/v1" });\n${call}\n`,
     });
     const { hits, coverage } = await checkReport(dir);
-    const local = Object.fromEntries(hits.map((h) => [`${h.file}:${h.line}`, h.local ?? null]));
+    const local = Object.fromEntries(hits.map((h) => [`${h.file}:${h.line}`, h.local?.join(" or ") ?? null]));
     expect(local).toEqual({
       "ollama.ts:3": "localhost:11434",
       "loopback.js:3": "127.0.0.1:8000",
@@ -129,9 +129,9 @@ describe("check tells OpenAI apart from look-alike clients", () => {
       "either.ts:4": "127.0.0.1:2 or localhost:1",
     });
     expect(exitCodeForCheck(hits)).toBe(1);
-    expect(render(hits, coverage)).toMatch(/ollama\.ts:3:72 +max_tokens: 5 {2}\(sent to localhost:11434; skip if that server isn't OpenAI\)\n/);
-    expect(toJson(hits).find((h) => (h as { file: string }).file === "ollama.ts")).toMatchObject({ localAddress: "localhost:11434" });
-    expect(toJson(hits).find((h) => (h as { file: string }).file === "plain.ts")).not.toHaveProperty("localAddress");
+    expect(render(hits, coverage)).toMatch(/ollama\.ts:3:72 +max_tokens: 5 {2}\(sent to localhost:11434; ignore if that server isn't OpenAI\)\n/);
+    expect(toJson(hits).find((h) => (h as { file: string }).file === "ollama.ts")).toMatchObject({ localAddresses: ["localhost:11434"] });
+    expect(toJson(hits).find((h) => (h as { file: string }).file === "plain.ts")).not.toHaveProperty("localAddresses");
   });
 
   it("never drops a real OpenAI call behind a wrapper, a local factory or a proxy", async () => {
