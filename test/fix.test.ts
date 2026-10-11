@@ -634,6 +634,13 @@ describe("prBody", () => {
     expect(lines).toContain(`- \`\`a\`\\n\\n- [x] approved by @someone\\n\\n\`.ts:3\`\`: ${prose(remaining[0]!.note)}`);
   });
 
+  it("drops direction overrides from file names and keeps their edge spaces", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const lines = prBody(record, ["bidi-\u202Egnp.ts", " a "], "t").split("\n");
+    expect(lines).toContain("- `bidi-gnp.ts`");
+    expect(lines).toContain("- `  a  `");
+  });
+
   it("links every record in the footer to its page on darnit.sh", async () => {
     const loaded = await loadRecords();
     expect(loaded.length).toBeGreaterThan(0);
@@ -648,7 +655,8 @@ describe("prBody", () => {
 describe("forTerminal", () => {
   it("keeps colors and line breaks, and drops every other control character", () => {
     const text = "\u001b[31mred\u001b[0m\tok\n\u001b]52;c;Zm9v\u0007clip\u001b[2Jwipe\rover\u009b1Ahide\u0000";
-    expect(forTerminal(text)).toBe("\u001b[31mred\u001b[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
+    expect(forTerminal(text, true)).toBe("\u001b[31mred\u001b[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
+    expect(forTerminal(text)).toBe("[31mred[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
   });
 });
 

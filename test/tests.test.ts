@@ -98,6 +98,19 @@ describe("runTests", () => {
     expect(run.output.endsWith("\nend")).toBe(true);
   });
 
+  it("redacts a token cut in half by the output limit", async () => {
+    const dir = await dirWith({});
+    const saved = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = "ghp_testtoken1234567890";
+    try {
+      const run = await runTests(dir, `node -e "process.stdout.write('start\\n' + process.argv[1] + 'y'.repeat(16374))" ghp_testtoken1234567890`);
+      expect(run.output).not.toContain("1234567890");
+    } finally {
+      if (saved === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = saved;
+    }
+  });
+
   it("never hands darnit's GitHub token to the repository's commands, and never shows it", async () => {
     const dir = await dirWith({ "leak.txt": "ghp_testtoken1234567890" });
     const saved = { GITHUB_TOKEN: process.env.GITHUB_TOKEN, GH_TOKEN: process.env.GH_TOKEN };

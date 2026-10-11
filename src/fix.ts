@@ -402,16 +402,18 @@ const longestBacktickRun = (s: string) => Math.max(0, ...(s.match(/`+/g) ?? []).
  */
 function code(text: string): string {
   // eslint-disable-next-line no-control-regex
-  const t = text.replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => JSON.stringify(c).slice(1, -1));
+  const t = text.replace(INVISIBLE, "").replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => JSON.stringify(c).slice(1, -1));
   const fence = "`".repeat(longestBacktickRun(t) + 1);
-  const pad = t.startsWith("`") || t.endsWith("`") ? " " : "";
+  const pad = /^[` ]|[` ]$/.test(t) ? " " : "";
   return `${fence}${pad}${t}${pad}${fence}`;
 }
 
-/** Text from the repository on its way to a terminal: color codes stay, every other control character goes. */
-export const forTerminal = (text: string) =>
+/** Text from the repository on its way to a terminal: control characters go, and color codes too unless `color`. */
+export const forTerminal = (text: string, color = false) =>
   // eslint-disable-next-line no-control-regex
-  text.replace(/\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (m) => (m.length > 1 ? m : ""));
+  text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g : /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (m) =>
+    m.length > 1 ? m : "",
+  );
 
 /** Verbatim vendor text: GitHub renders a code span as literal text, so no links, HTML or mentions. */
 const plain = (text: string) => {

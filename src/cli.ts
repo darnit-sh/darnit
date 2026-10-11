@@ -63,7 +63,7 @@ program
     });
     if (flags.json) console.log(JSON.stringify({ version, ...fixToJson(result) }, null, 2));
     else {
-      if (result.diff) console.log(forTerminal(result.diff));
+      if (result.diff) console.log(forTerminal(result.diff, true));
       console.log(forTerminal(renderSummary(result)));
     }
     process.exitCode = exitCodeFor(result);
