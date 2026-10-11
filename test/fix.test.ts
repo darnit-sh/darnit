@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyAndVerify, exitCodeFor, fix, prBody, prose, Refusal, renderSummary } from "../src/fix.js";
+import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 
@@ -619,6 +619,28 @@ describe("prBody", () => {
     expect(lines).toContain("> `Use tools. # Heading <img src=x onerror=alert(1)> [click](https://evil.example) @octocat`");
   });
 
+  it("shows file names, commands and test output from the repository as literal text", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const file = "a`\n\n- [x] approved by @someone\n\n`.ts";
+    const output = "ok\n```\n# Injected\n```\n</details>";
+    const tests = { kind: "tests" as const, command: "sh `x`.sh", passed: true, output, timedOut: false };
+    const remaining = [{ file, line: 3, note: "sent to [x](https://evil.example)" }];
+    const body = prBody(record, [file], "t", { tests, remaining });
+    const lines = body.split("\n");
+    expect(lines).toContain("- ``a`\\n\\n- [x] approved by @someone\\n\\n`.ts``");
+    expect(lines.some((l) => l.startsWith("- [x] approved"))).toBe(false);
+    expect(lines).toContain("- [x] ``sh `x`.sh`` passed");
+    expect(body).toContain(`\n\`\`\`\`\n${output}\n\`\`\`\`\n`);
+    expect(lines).toContain(`- \`\`a\`\\n\\n- [x] approved by @someone\\n\\n\`.ts:3\`\`: ${prose(remaining[0]!.note)}`);
+  });
+
+  it("drops direction overrides from file names and keeps their edge spaces", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const lines = prBody(record, ["bidi-\u202Egnp.ts", " a "], "t").split("\n");
+    expect(lines).toContain("- `bidi-gnp.ts`");
+    expect(lines).toContain("- `  a  `");
+  });
+
   it("links every record in the footer to its page on darnit.sh", async () => {
     const loaded = await loadRecords();
     expect(loaded.length).toBeGreaterThan(0);
@@ -627,6 +649,14 @@ describe("prBody", () => {
       const footer = prBody(record, ["app.js"], "1.2.3").trimEnd().split("\n").at(-1);
       expect(footer).toBe(`darnit 1.2.3, change record [\`${record.id}\`](https://darnit.sh/changes/${folder})`);
     }
+  });
+});
+
+describe("forTerminal", () => {
+  it("keeps colors and line breaks, and drops every other control character", () => {
+    const text = "\u001b[31mred\u001b[0m\tok\n\u001b]52;c;Zm9v\u0007clip\u001b[2Jwipe\rover\u009b1Ahide\u0000";
+    expect(forTerminal(text, true)).toBe("\u001b[31mred\u001b[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
+    expect(forTerminal(text)).toBe("[31mred[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
   });
 });
 

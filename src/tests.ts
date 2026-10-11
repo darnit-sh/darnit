@@ -75,6 +75,10 @@ async function pythonOnPath(path: string): Promise<string | undefined> {
 }
 
 const TAIL_LINES = 40;
+// Output can be any size; only the end is kept, small enough for a pull request body (65536 characters).
+// A credential cut in two by the limit can't be redacted, so the margin it could sit in is dropped after redaction.
+const TAIL_CHARS = 16 * 1024;
+const CUT_MARGIN = 1024;
 
 // darnit's GitHub credentials open the pull request; the repository's own commands never get them.
 export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
@@ -94,6 +98,7 @@ export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 10
     for (const k of CREDENTIALS) delete env[k];
     const child = spawn(command, { cwd: root, shell: true, detached, env, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
+    let cut = false;
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -104,11 +109,16 @@ export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 10
         child.kill("SIGKILL");
       }
     }, timeoutMs);
-    child.stdout.on("data", (d: Buffer) => (output += d.toString()));
-    child.stderr.on("data", (d: Buffer) => (output += d.toString()));
+    const keep = (d: Buffer) => {
+      output += d.toString();
+      if (output.length > TAIL_CHARS + CUT_MARGIN) [output, cut] = [output.slice(-(TAIL_CHARS + CUT_MARGIN)), true];
+    };
+    child.stdout.on("data", keep);
+    child.stderr.on("data", keep);
     child.on("close", (code) => {
       clearTimeout(timer);
-      const tail = redact(output.trimEnd().split("\n").slice(-TAIL_LINES).join("\n"));
+      const text = cut ? redact(output).slice(CUT_MARGIN) : redact(output);
+      const tail = text.trimEnd().split("\n").slice(-TAIL_LINES).join("\n").slice(-TAIL_CHARS);
       resolve({ command, passed: code === 0 && !timedOut, output: tail, timedOut });
     });
   });
