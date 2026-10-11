@@ -76,11 +76,23 @@ async function pythonOnPath(path: string): Promise<string | undefined> {
 
 const TAIL_LINES = 40;
 
+// darnit's GitHub credentials open the pull request; the repository's own commands never get them.
+const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
+
+/** `text` with the value of every credential darnit holds replaced by `***`. */
+function redact(text: string): string {
+  return CREDENTIALS.map((k) => process.env[k])
+    .filter((v): v is string => !!v && v.length >= 8)
+    .reduce((t, secret) => t.replaceAll(secret, "***"), text);
+}
+
 export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 1000): Promise<TestRun> {
   return new Promise((resolve) => {
     // Detached = its own process group, so a timeout kills the command and not just the shell around it.
     const detached = process.platform !== "win32";
-    const child = spawn(command, { cwd: root, shell: true, detached, env: { ...process.env, CI: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+    const env: NodeJS.ProcessEnv = { ...process.env, CI: "1" };
+    for (const k of CREDENTIALS) delete env[k];
+    const child = spawn(command, { cwd: root, shell: true, detached, env, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -96,7 +108,7 @@ export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 10
     child.stderr.on("data", (d: Buffer) => (output += d.toString()));
     child.on("close", (code) => {
       clearTimeout(timer);
-      const tail = output.trimEnd().split("\n").slice(-TAIL_LINES).join("\n");
+      const tail = redact(output.trimEnd().split("\n").slice(-TAIL_LINES).join("\n"));
       resolve({ command, passed: code === 0 && !timedOut, output: tail, timedOut });
     });
   });
