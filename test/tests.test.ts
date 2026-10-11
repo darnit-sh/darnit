@@ -91,6 +91,26 @@ describe("runTests", () => {
     expect(bad).toMatchObject({ passed: false, output: "boom" });
   });
 
+  it("never hands darnit's GitHub token to the repository's commands, and never shows it", async () => {
+    const dir = await dirWith({ "leak.txt": "ghp_testtoken1234567890" });
+    const saved = { GITHUB_TOKEN: process.env.GITHUB_TOKEN, GH_TOKEN: process.env.GH_TOKEN };
+    process.env.GITHUB_TOKEN = "ghp_testtoken1234567890";
+    process.env.GH_TOKEN = "gho_othertoken0987654321";
+    try {
+      const env = await runTests(dir, `node -e "console.log(process.env.GITHUB_TOKEN ?? 'no-token', process.env.GH_TOKEN ?? 'no-token')"`);
+      expect(env.output).toBe("no-token no-token");
+      // A command that finds the token some other way still cannot get it into the output.
+      const file = await runTests(dir, "cat leak.txt");
+      expect(file.output).not.toContain("ghp_testtoken1234567890");
+      expect(file.output).toContain("***");
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
   it("kills a hung command after the timeout", async () => {
     const dir = await dirWith({});
     const run = await runTests(dir, "node -e \"setTimeout(() => {}, 60000)\"", 300);
