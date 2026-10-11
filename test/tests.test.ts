@@ -91,6 +91,13 @@ describe("runTests", () => {
     expect(bad).toMatchObject({ passed: false, output: "boom" });
   });
 
+  it("keeps a bounded tail of any amount of output", async () => {
+    const dir = await dirWith({});
+    const run = await runTests(dir, "node -e \"process.stdout.write('x'.repeat(5e6) + '\\nend')\"");
+    expect(run.output.length).toBeLessThanOrEqual(16 * 1024);
+    expect(run.output.endsWith("\nend")).toBe(true);
+  });
+
   it("never hands darnit's GitHub token to the repository's commands, and never shows it", async () => {
     const dir = await dirWith({ "leak.txt": "ghp_testtoken1234567890" });
     const saved = { GITHUB_TOKEN: process.env.GITHUB_TOKEN, GH_TOKEN: process.env.GH_TOKEN };

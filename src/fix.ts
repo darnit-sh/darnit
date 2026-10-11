@@ -394,6 +394,25 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
   return { ...base, reverted: anyFailed };
 }
 
+const longestBacktickRun = (s: string) => Math.max(0, ...(s.match(/`+/g) ?? []).map((r) => r.length));
+
+/**
+ * Text from the repository (a file name, a command) as one code span that GitHub shows literally:
+ * control characters are written out (a newline as \\n), and the fence is longer than any backtick run inside.
+ */
+function code(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  const t = text.replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => JSON.stringify(c).slice(1, -1));
+  const fence = "`".repeat(longestBacktickRun(t) + 1);
+  const pad = t.startsWith("`") || t.endsWith("`") ? " " : "";
+  return `${fence}${pad}${t}${pad}${fence}`;
+}
+
+/** Text from the repository on its way to a terminal: color codes stay, every other control character goes. */
+export const forTerminal = (text: string) =>
+  // eslint-disable-next-line no-control-regex
+  text.replace(/\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (m) => (m.length > 1 ? m : ""));
+
 /** Verbatim vendor text: GitHub renders a code span as literal text, so no links, HTML or mentions. */
 const plain = (text: string) => {
   const t = text.replaceAll("`", "'").replace(/\s+/g, " ").trim();
@@ -435,6 +454,9 @@ export function prose(text: string): string {
     .replace(/^([-+=])/, "\\$1");
 }
 
+/** A code block fence no line of `text` can close. */
+const fence = (text: string) => "`".repeat(Math.max(3, longestBacktickRun(text) + 1));
+
 export type PrEvidence = {
   build?: TestOutcome | undefined;
   tests?: TestOutcome | undefined;
@@ -454,21 +476,21 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     ...(source.quoteId ? [`> ${plain(source.quoteId)}`] : []),
     "",
     "## What changed",
-    ...files.map((f) => `- \`${f}\``),
+    ...files.map((f) => `- ${code(f)}`),
     "",
     "## Verified",
     ...(build
       ? [
           build.notChecked
-            ? `- [ ] \`${build.command}\` already fails without this change, so it could not check it`
-            : `- [${build.passed ? "x" : " "}] \`${build.command}\` ${build.passed ? "passed" : "failed"}`,
+            ? `- [ ] ${code(build.command)} already fails without this change, so it could not check it`
+            : `- [${build.passed ? "x" : " "}] ${code(build.command)} ${build.passed ? "passed" : "failed"}`,
         ]
       : []),
-    tests ? `- [${tests.passed ? "x" : " "}] \`${tests.command}\` ${tests.passed ? "passed" : "failed"}` : `- [ ] ${testsNote ? `tests not run: ${testsNote}` : "no test command found in this repository"}`,
-    ...(tests?.output ? ["", "<details><summary>test output</summary>", "", "```", tests.output, "```", "", "</details>"] : []),
+    tests ? `- [${tests.passed ? "x" : " "}] ${code(tests.command)} ${tests.passed ? "passed" : "failed"}` : `- [ ] ${testsNote ? `tests not run: ${testsNote}` : "no test command found in this repository"}`,
+    ...(tests?.output ? ["", "<details><summary>test output</summary>", "", fence(tests.output), tests.output, fence(tests.output), "", "</details>"] : []),
     "",
     ...(remaining.length > 0
-      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- \`${r.file}:${r.line}\`${r.note ? `: ${r.note}` : ""}`), ""]
+      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- ${code(`${r.file}:${r.line}`)}${r.note ? `: ${prose(r.note)}` : ""}`), ""]
       : []),
     "## Not verified",
     ...unconfirmed.map((u) => `- This change needs ${u}; darnit could not find the version this repository uses.`),

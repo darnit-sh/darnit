@@ -75,6 +75,8 @@ async function pythonOnPath(path: string): Promise<string | undefined> {
 }
 
 const TAIL_LINES = 40;
+// Output can be any size; only the end is kept, small enough for a pull request body (65536 characters).
+const TAIL_CHARS = 16 * 1024;
 
 // darnit's GitHub credentials open the pull request; the repository's own commands never get them.
 export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
@@ -104,8 +106,9 @@ export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 10
         child.kill("SIGKILL");
       }
     }, timeoutMs);
-    child.stdout.on("data", (d: Buffer) => (output += d.toString()));
-    child.stderr.on("data", (d: Buffer) => (output += d.toString()));
+    const keep = (d: Buffer) => (output = (output + d.toString()).slice(-TAIL_CHARS));
+    child.stdout.on("data", keep);
+    child.stderr.on("data", keep);
     child.on("close", (code) => {
       clearTimeout(timer);
       const tail = redact(output.trimEnd().split("\n").slice(-TAIL_LINES).join("\n"));

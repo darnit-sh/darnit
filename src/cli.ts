@@ -2,7 +2,7 @@
 import { createRequire } from "node:module";
 import { Command, CommanderError } from "commander";
 import { checkReport, exitCodeForCheck, render, toJson } from "./check.js";
-import { exitCodeFor, fix, renderSummary, toJson as fixToJson } from "./fix.js";
+import { exitCodeFor, fix, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
@@ -32,7 +32,7 @@ program
   .option("--json", "machine-readable output")
   .action(async ({ json }: { json?: boolean }) => {
     const { hits, coverage } = await checkReport(process.cwd());
-    console.log(json ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits) }, null, 2) : render(hits, coverage));
+    console.log(json ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits) }, null, 2) : forTerminal(render(hits, coverage)));
     process.exitCode = exitCodeForCheck(hits);
   });
 
@@ -63,8 +63,8 @@ program
     });
     if (flags.json) console.log(JSON.stringify({ version, ...fixToJson(result) }, null, 2));
     else {
-      if (result.diff) console.log(result.diff);
-      console.log(renderSummary(result));
+      if (result.diff) console.log(forTerminal(result.diff));
+      console.log(forTerminal(renderSummary(result)));
     }
     process.exitCode = exitCodeFor(result);
   });
@@ -76,7 +76,7 @@ try {
     // commander has already printed its message; --help and --version are not failures.
     process.exitCode = err.exitCode === 0 ? 0 : 2;
   } else {
-    console.error(`darnit: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(forTerminal(`darnit: ${err instanceof Error ? err.message : String(err)}`));
     process.exitCode = 2;
   }
 }
