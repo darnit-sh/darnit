@@ -77,7 +77,7 @@ async function pythonOnPath(path: string): Promise<string | undefined> {
 const TAIL_LINES = 40;
 
 // darnit's GitHub credentials open the pull request; the repository's own commands never get them.
-const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
+export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
 
 /** `text` with the value of every credential darnit holds replaced by `***`. */
 function redact(text: string): string {
