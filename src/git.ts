@@ -1,10 +1,17 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { CREDENTIALS } from "./tests.js";
 
 const exec = promisify(execFile);
 
+// The repo's own commands can write .git/config and .git/hooks, so git runs none of their hooks or
+// fsmonitor, never sees darnit's credentials, and takes file names literally, never as patterns.
+const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
+
 export async function git(root: string, args: string[]): Promise<string> {
-  const { stdout } = await exec("git", args, { cwd: root, maxBuffer: 64 * 1024 * 1024 });
+  const env: NodeJS.ProcessEnv = { ...process.env, GIT_LITERAL_PATHSPECS: "1" };
+  for (const k of CREDENTIALS) delete env[k];
+  const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...args], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
   return stdout;
 }
 
@@ -43,7 +50,7 @@ export const dirtyAmong = async (root: string, files: readonly string[]) =>
   (await git(root, ["status", "--porcelain", "--", ...files])).trim() !== "";
 
 /** Tracked files under `root` with changes, staged or not, relative to `root`. */
-export const modified = async (root: string) => (await git(root, ["diff", "--name-only", "--relative", "HEAD"])).split("\n").filter(Boolean);
+export const modified = async (root: string) => (await git(root, ["diff", "--name-only", "-z", "--relative", "HEAD"])).split("\0").filter(Boolean);
 
 /** Puts tracked files back to their committed contents. */
 export const discard = async (root: string, files: readonly string[]) => {
