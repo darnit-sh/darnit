@@ -61,7 +61,8 @@ export async function applyRules(packDir: string, targets: readonly string[]): P
           const variant = join(tmp, `${lang}-${i}-${grammar}.yml`);
           await writeFile(variant, toYaml({ ...doc, language: grammar }));
           try {
-            await execFileAsync(bin, ["scan", "--rule", variant, "--update-all", ...targets]);
+            // ast-grep reads sgconfig.yml from its working directory, and a repo's config can load native code.
+            await execFileAsync(bin, ["scan", "--rule", variant, "--update-all", ...targets], { cwd: tmp });
           } catch (err) {
             const { stderr } = err as { stderr?: string };
             throw new Error(`ast-grep failed on ${relative(packDir, rule)} (${grammar}): ${(stderr ?? String(err)).trim()}`, { cause: err });
