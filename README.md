@@ -166,7 +166,9 @@ fully make. Both still show up in `check`.
 #### `--pr`
 
 Needs a clean working tree and a GitHub token: `GITHUB_TOKEN`, `GH_TOKEN`, or a
-`gh auth login` session. Each change gets its own branch (`darnit/<vendor>-<change>`)
+`gh auth login` session. The token opens the pull request; the push uses git's
+own credentials, the same as your own `git push`, and your repository's git hooks
+don't run on darnit's commits. Each change gets its own branch (`darnit/<vendor>-<change>`)
 and its own pull request against your default branch. darnit never force-pushes
 and never pushes to the default branch. Run it again and it finds the open pull
 request instead of opening a second one.
