@@ -54,6 +54,10 @@ export async function applyRules(packDir: string, targets: readonly string[]): P
   const tmp = await mkdtemp(join(tmpdir(), "darnit-rules-"));
   try {
     const bin = astGrepBinary();
+    // Without --config, ast-grep reads sgconfig.yml from its working directory and every folder above it,
+    // and a custom language there loads a native library. An empty config of our own stops that search.
+    const config = join(tmp, "sgconfig.yml");
+    await writeFile(config, "ruleDirs: []\n");
     for (const lang of LANGS) {
       for (const [i, rule] of (await ruleFiles(packDir, lang)).entries()) {
         const doc = parseYaml(await readFile(rule, "utf8")) as { language: string };
@@ -61,7 +65,7 @@ export async function applyRules(packDir: string, targets: readonly string[]): P
           const variant = join(tmp, `${lang}-${i}-${grammar}.yml`);
           await writeFile(variant, toYaml({ ...doc, language: grammar }));
           try {
-            await execFileAsync(bin, ["scan", "--rule", variant, "--update-all", ...targets]);
+            await execFileAsync(bin, ["scan", "--config", config, "--rule", variant, "--update-all", ...targets], { cwd: tmp });
           } catch (err) {
             const { stderr } = err as { stderr?: string };
             throw new Error(`ast-grep failed on ${relative(packDir, rule)} (${grammar}): ${(stderr ?? String(err)).trim()}`, { cause: err });

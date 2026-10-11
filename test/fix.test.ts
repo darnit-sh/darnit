@@ -315,6 +315,28 @@ describe("fix verifies its own rewrites", () => {
       expect(result.diff).not.toContain("client.js");
     }
   });
+
+  it("never reads the repo's own ast-grep config", async () => {
+    // A custom language in sgconfig.yml makes ast-grep load a native library from the repo.
+    const sgconfig = "customLanguages:\n  evil:\n    libraryPath: evil.so\n    extensions: [evil]\n";
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "sgconfig.yml": sgconfig });
+    // ast-grep also looks in every folder above its working directory, so plant one above the temp folders too.
+    const parent = await mkdtemp(join(tmpdir(), "darnit-parent-"));
+    tempDirs.push(parent);
+    await writeFile(join(parent, "sgconfig.yml"), sgconfig);
+    const cwd = process.cwd();
+    const tmp = process.env.TMPDIR;
+    process.chdir(dir);
+    process.env.TMPDIR = parent;
+    try {
+      const result = await fix(dir, { noTest: true, dryRun: true });
+      expect(result.records.map((r) => r.applied)).toEqual([true]);
+    } finally {
+      process.chdir(cwd);
+      if (tmp === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = tmp;
+    }
+  });
 });
 
 describe("fix", () => {
