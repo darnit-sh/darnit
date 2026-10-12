@@ -1,12 +1,12 @@
 # Changelog
 
-Notable changes to darnit. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/). Before 1.0, a patch release (0.1.x) only adds to CLI flags, exit codes, report formats and JSON fields; anything else waits for a minor release (0.x.0).
+Notable changes to darnit. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/). Before 1.0, a patch release (0.1.x) can add CLI flags, exit codes, report formats and JSON fields but never changes or removes them; that waits for a minor release (0.x.0).
 
 ## [Unreleased]
 
 ### Added
 
-- `check` notes calls made with OpenAI's SDK pointed at a local address (localhost, 127.x, private 10.x, 172.16 to 172.31 and 192.168.x, `*.local`, `host.docker.internal`), and `--json` gets `localAddress`. The exit code is unchanged. `fix` lists these as `needs a human` instead of rewriting them, since a local server may not accept the new parameter. ([#39](https://github.com/darnit-sh/darnit/pull/39))
+- `check` notes calls made with OpenAI's SDK pointed at a local or private network address (such as localhost, 192.168.x or `*.local`), and `--json` gets `localAddress`. The exit code is unchanged. `fix` lists these as `needs a human` instead of rewriting them, since a local server may not accept the new parameter. ([#39](https://github.com/darnit-sh/darnit/pull/39))
 - The pull request footer links the change record on darnit.sh. ([#40](https://github.com/darnit-sh/darnit/pull/40))
 
 ### Changed
@@ -19,16 +19,18 @@ Notable changes to darnit. The format follows [Keep a Changelog](https://keepach
 - The shorthand `create({ model, messages, max_tokens })` is found and rewritten. ([#35](https://github.com/darnit-sh/darnit/pull/35))
 - A retiring model written as the fallback value is found: `?? "name"` and `|| "name"` in JavaScript and TypeScript, `or "name"` in Python. ([#36](https://github.com/darnit-sh/darnit/pull/36))
 - `fix` renames `max_tokens` only in a call's first argument, not in the request settings passed second. `check` still reports one written there, and `fix` leaves it to a human. ([#37](https://github.com/darnit-sh/darnit/pull/37))
-- npm no longer warns about the `darnit` command's path on install. ([#38](https://github.com/darnit-sh/darnit/pull/38))
-- `fix` no longer reads ast-grep settings from the repository, which could make it load a library the repository named, even with `--dry-run --no-test`. (#42)
-- File names, commands, test output and notes from the repository are shown literally in the pull request body and the terminal, so they cannot add live Markdown, mentions or links to the body, or send control sequences to the terminal. Only the last 16 KiB of test output is kept. ([#44](https://github.com/darnit-sh/darnit/pull/44))
+- `fix` no longer reads settings files (`sgconfig.yml`) from the repository, which could make it load a library the repository named, even with `--dry-run --no-test`. (#42)
+- The repository's tests can no longer plant git hooks or settings that darnit's own git commands then run with its token. File names are passed to git literally, so a file named `*.ts` no longer pulls other files into the commit. ([#43](https://github.com/darnit-sh/darnit/pull/43))
+- File names, commands, test output and notes from the repository are shown literally in the pull request body and the terminal, so they cannot add live Markdown, mentions or links to the body, or send control sequences to the terminal. Only the end of long test output is kept. ([#44](https://github.com/darnit-sh/darnit/pull/44))
 
 ## [0.1.0] - 2026-10-07
 
 First release.
 
+### Added
+
 - `darnit init` finds the APIs a repository uses and writes `darnit.yml` and a daily GitHub Actions workflow.
-- `darnit check` lists every call site affected by a known change, with the vendor's own source. `--json` for machine-readable output.
+- `darnit check` lists the call sites affected by a known change, with the vendor's own source. `--json` for machine-readable output.
 - `darnit fix` rewrites the calls a tested rule covers, checks the result against your SDK version, build and tests, and with `--pr` opens one pull request per change.
 - OpenAI supported, with 33 change records, including `max_tokens` to `max_completion_tokens` on chat completions (rewritten), `functions` to `tools` (reported), and retiring models from OpenAI's deprecations page (reported). Anthropic, Stripe and Twilio are recognized by `init`.
 - Reads JavaScript, TypeScript and Python.
