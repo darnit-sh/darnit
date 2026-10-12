@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Install scripts and tests run with whatever git config holds; it must hold no GitHub token.
+      - run: "! git config --name-only --get-regexp '^http\\..*\\.extraheader$'"
       - run: npm run corpus | tee "$RUNNER_TEMP/corpus.log"
       - id: changes
         run: echo "count=$(git status --porcelain | wc -l)" >> "$GITHUB_OUTPUT"
