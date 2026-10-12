@@ -17,8 +17,8 @@ export async function githubToken(): Promise<string | undefined> {
 }
 
 // Only characters GitHub allows in names, so a name can never change the API path.
-const NAME = String.raw`([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+)`;
-const REMOTE = new RegExp(String.raw`^(?:(?:https|ssh)://(?:[^@/]+@)?github\.com/|(?:[^@/]+@)?github\.com:)${NAME}/?$`, "i");
+const NAME = String.raw`([A-Za-z0-9_-]+)/([A-Za-z0-9_.-]+)`;
+const REMOTE = new RegExp(String.raw`^(?:(?:https|ssh)://(?:[^@/?#\\]+@)?github\.com/|(?:[^@/:]+@)?github\.com:)${NAME}/?$`, "i");
 const SLUG = new RegExp(`^${NAME}$`);
 
 function toRepo(m: RegExpExecArray | null): Repo | undefined {

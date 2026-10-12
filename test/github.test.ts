@@ -15,6 +15,8 @@ describe("parseRemote", () => {
     expect(parseSlug("nope")).toBeUndefined();
     expect(parseRemote("https://x-access-token:t@github.com/o/r.git")).toEqual({ owner: "o", repo: "r" });
     expect(parseRemote("ssh://git@GitHub.com/o/r.js")).toEqual({ owner: "o", repo: "r.js" });
+    expect(parseRemote("git@github.com:alice_acme/r.git.git")).toEqual({ owner: "alice_acme", repo: "r.git" });
+    expect(parseSlug("alice_acme/r")).toEqual({ owner: "alice_acme", repo: "r" });
   });
 
   it("refuses other hosts and names that would change the API path", () => {
@@ -23,6 +25,10 @@ describe("parseRemote", () => {
       "git@gitlab.com:github.com/o/r.git",
       "https://evilgithub.com/o/r",
       "https://github.com.evil.com/o/r",
+      "https://evil.com#@github.com/o/r",
+      "https://evil.com?@github.com/o/r",
+      "ssh://evil.com:22?@github.com/o/r",
+      "evil.com:x@github.com:o/r",
       "git@github.com:../user.git",
       "https://github.com/o/r?x=1",
       "https://github.com/o/r#x",
