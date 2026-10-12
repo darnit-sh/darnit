@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,10 @@ import { assetName, changelog, oasdiffBinary } from "../src/corpus/oasdiff.js";
 
 const YAML_DIR = fileURLToPath(new URL("./fixtures/specs/", import.meta.url));
 
+const tempDirs: string[] = [];
+
 afterEach(() => {
+  for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true });
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -27,6 +30,7 @@ describe("oasdiff", () => {
   it("refuses a release archive that differs from the pinned one, even with a matching checksums file", async () => {
     const home = mkdtempSync(join(tmpdir(), "darnit-home-"));
     const src = mkdtempSync(join(tmpdir(), "darnit-fake-"));
+    tempDirs.push(home, src);
     writeFileSync(join(src, "oasdiff"), "#!/bin/sh\ntouch planted\n", { mode: 0o755 });
     execFileSync("tar", ["-czf", join(src, "fake.tar.gz"), "-C", src, "oasdiff"]);
     const archive = readFileSync(join(src, "fake.tar.gz"));
