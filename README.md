@@ -12,7 +12,7 @@ darnit finds the exact lines, rewrites them, runs your tests, and opens the pull
 ```
 $ npx darnit check
 openai 2024-09-12: Rename max_tokens to max_completion_tokens on chat completions
-  chat.ts:10:3  max_tokens: 256
+  chat.ts:11:5  max_tokens: 256
   1 call site in 1 file
   https://developers.openai.com/api/docs/api-reference/chat/create
 
@@ -20,15 +20,15 @@ Scanned 1 JavaScript, TypeScript or Python file against 33 change records.
 Not checked: request options built elsewhere and passed in as a variable.
 
 $ npx darnit fix
-@@ -7,7 +7,7 @@ const anthropic = new Anthropic();
- export const summary = await openai.chat.completions.create({
-   model: "gpt-4o",
-   messages,
--  max_tokens: 256,
-+  max_completion_tokens: 256,
- });
+@@ -8,7 +8,7 @@ export async function summarize(messages) {
+   return openai.chat.completions.create({
+     model: "gpt-4o",
+     messages,
+-    max_tokens: 256,
++    max_completion_tokens: 256,
+   });
+ }
  
- export const reply = await anthropic.messages.create({
 ✓ Rename max_tokens to max_completion_tokens on chat completions: 1 file
 tests: npm test passed
 ```
