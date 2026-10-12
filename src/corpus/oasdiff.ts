@@ -9,6 +9,16 @@ const exec = promisify(execFile);
 
 export const OASDIFF_VERSION = "1.32.1";
 
+// Taken from the release's checksums.txt and matched against GitHub's own asset digests, so a
+// release changed after the fact can't swap the binary and its checksum together.
+const SHA256: Record<string, string> = {
+  "oasdiff_1.32.1_darwin_all.tar.gz": "e4d74b7e2dfb9d4819e7fc720c905ec86547e4637ac270a2b0187c0f1fb7187e",
+  "oasdiff_1.32.1_linux_amd64.tar.gz": "7c8939fc49b75ee11fec66a5b83b37a2fca6aee109fed85013b1ba2ac2a1ee7f",
+  "oasdiff_1.32.1_linux_arm64.tar.gz": "32fff58a120f75a723d6c2422444691c37fa6813fed61d23f53dbcb604b30f6d",
+  "oasdiff_1.32.1_windows_amd64.tar.gz": "4d0758b32d454e6011e59db93884af1ca27ae2b212d990f36738ea5efb5d7f28",
+  "oasdiff_1.32.1_windows_arm64.tar.gz": "7937f4506954676c495188b5c0a221019079801857fb7ba29dd2bc2a767cacab",
+};
+
 export function assetName(platform = process.platform, arch = process.arch): string {
   const cpu = arch === "arm64" ? "arm64" : "amd64";
   const os = platform === "darwin" ? "darwin_all" : platform === "win32" ? `windows_${cpu}` : `linux_${cpu}`;
@@ -35,8 +45,8 @@ export async function oasdiffBinary(): Promise<string> {
 
   const asset = assetName();
   const base = `https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}`;
-  const [archive, checksums] = await Promise.all([download(`${base}/${asset}`), download(`${base}/checksums.txt`)]);
-  const expected = checksums.toString().split("\n").find((l) => l.endsWith(asset))?.split(/\s+/)[0];
+  const archive = await download(`${base}/${asset}`);
+  const expected = SHA256[asset];
   const actual = createHash("sha256").update(archive).digest("hex");
   if (!expected || expected !== actual) throw new Error(`checksum mismatch for ${asset}`);
 
