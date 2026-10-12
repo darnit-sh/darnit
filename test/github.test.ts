@@ -13,6 +13,32 @@ describe("parseRemote", () => {
     expect(parseRemote("git@gitlab.com:x/y.git")).toBeUndefined();
     expect(parseSlug("o/r")).toEqual({ owner: "o", repo: "r" });
     expect(parseSlug("nope")).toBeUndefined();
+    expect(parseRemote("https://x-access-token:t@github.com/o/r.git")).toEqual({ owner: "o", repo: "r" });
+    expect(parseRemote("ssh://git@GitHub.com/o/r.js")).toEqual({ owner: "o", repo: "r.js" });
+    expect(parseRemote("git@github.com:alice_acme/r.git.git")).toEqual({ owner: "alice_acme", repo: "r.git" });
+    expect(parseSlug("alice_acme/r")).toEqual({ owner: "alice_acme", repo: "r" });
+  });
+
+  it("refuses other hosts and names that would change the API path", () => {
+    for (const url of [
+      "https://gitlab.com/mirror/github.com/o/r.git",
+      "git@gitlab.com:github.com/o/r.git",
+      "https://evilgithub.com/o/r",
+      "https://github.com.evil.com/o/r",
+      "https://evil.com#@github.com/o/r",
+      "https://evil.com?@github.com/o/r",
+      "ssh://evil.com:22?@github.com/o/r",
+      "evil.com:x@github.com:o/r",
+      "git@github.com:../user.git",
+      "https://github.com/o/r?x=1",
+      "https://github.com/o/r#x",
+      "https://github.com/o/..",
+    ]) {
+      expect(parseRemote(url), url).toBeUndefined();
+    }
+    for (const slug of ["../user", "o/r?x=1", "o/r#x", "o/..", "o/.", "o/r%2F..", "o.x/r"]) {
+      expect(parseSlug(slug), slug).toBeUndefined();
+    }
   });
 });
 
@@ -34,6 +60,16 @@ describe("GitHub API calls", () => {
     expect(calls[2]?.init?.method).toBe("POST");
     expect(JSON.parse(calls[2]?.init?.body as string)).toEqual({ title: "t", head: "darnit/x", base: "trunk", body: "b" });
     for (const c of calls) expect((c.init?.headers as Record<string, string>).authorization).toBe("Bearer tok");
+  });
+
+  it("keeps a repository name inside its path segment", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", (url: string) => {
+      urls.push(url);
+      return json({ default_branch: "main" });
+    });
+    await defaultBranch("tok", { owner: "o", repo: "r?x#y" });
+    expect(urls).toEqual(["https://api.github.com/repos/o/r%3Fx%23y"]);
   });
 
   it("reports API failures without leaking the token", async () => {

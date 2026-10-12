@@ -16,15 +16,26 @@ export async function githubToken(): Promise<string | undefined> {
   }
 }
 
+// Only characters GitHub allows in names, so a name can never change the API path.
+const NAME = String.raw`([A-Za-z0-9_-]+)/([A-Za-z0-9_.-]+)`;
+const REMOTE = new RegExp(String.raw`^(?:(?:https|ssh)://(?:[^@/?#\\]+@)?github\.com/|(?:[^@/:]+@)?github\.com:)${NAME}/?$`, "i");
+const SLUG = new RegExp(`^${NAME}$`);
+
+function toRepo(m: RegExpExecArray | null): Repo | undefined {
+  if (!m) return undefined;
+  const repo = m[2]!.replace(/\.git$/, "");
+  return repo === "" || repo === "." || repo === ".." ? undefined : { owner: m[1]!, repo };
+}
+
 export function parseRemote(url: string): Repo | undefined {
-  const m = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url);
-  return m ? { owner: m[1]!, repo: m[2]! } : undefined;
+  return toRepo(REMOTE.exec(url));
 }
 
 export function parseSlug(slug: string): Repo | undefined {
-  const m = /^([^/]+)\/([^/]+)$/.exec(slug);
-  return m ? { owner: m[1]!, repo: m[2]! } : undefined;
+  return toRepo(SLUG.exec(slug));
 }
+
+const repoPath = ({ owner, repo }: Repo) => `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 
 async function api<T>(token: string, method: string, path: string, body?: object): Promise<T> {
   const res = await fetch(`${API}${path}`, {
@@ -41,19 +52,19 @@ async function api<T>(token: string, method: string, path: string, body?: object
   return (await res.json()) as T;
 }
 
-export async function defaultBranch(token: string, { owner, repo }: Repo): Promise<string> {
-  return (await api<{ default_branch: string }>(token, "GET", `/repos/${owner}/${repo}`)).default_branch;
+export async function defaultBranch(token: string, repo: Repo): Promise<string> {
+  return (await api<{ default_branch: string }>(token, "GET", repoPath(repo))).default_branch;
 }
 
-export async function findOpenPr(token: string, { owner, repo }: Repo, head: string): Promise<string | undefined> {
-  const prs = await api<{ html_url: string }[]>(token, "GET", `/repos/${owner}/${repo}/pulls?state=open&head=${encodeURIComponent(`${owner}:${head}`)}`);
+export async function findOpenPr(token: string, repo: Repo, head: string): Promise<string | undefined> {
+  const prs = await api<{ html_url: string }[]>(token, "GET", `${repoPath(repo)}/pulls?state=open&head=${encodeURIComponent(`${repo.owner}:${head}`)}`);
   return prs[0]?.html_url;
 }
 
 export async function createPr(
   token: string,
-  { owner, repo }: Repo,
+  repo: Repo,
   pr: { title: string; head: string; base: string; body: string },
 ): Promise<string> {
-  return (await api<{ html_url: string }>(token, "POST", `/repos/${owner}/${repo}/pulls`, pr)).html_url;
+  return (await api<{ html_url: string }>(token, "POST", `${repoPath(repo)}/pulls`, pr)).html_url;
 }
