@@ -18,6 +18,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Install scripts and tests run with whatever git config holds; it must hold no GitHub token.
+      - run: "! git config --name-only --get-regexp '^http\\..*\\.extraheader$'"
       - run: npm run lint
       - run: npm run typecheck
 
