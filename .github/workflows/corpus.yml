@@ -6,14 +6,15 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -24,14 +25,21 @@ jobs:
       - run: npm run corpus | tee "$RUNNER_TEMP/corpus.log"
       - id: changes
         run: echo "count=$(git status --porcelain | wc -l)" >> "$GITHUB_OUTPUT"
-      # Pull requests opened with the workflow token get no CI run of their own,
-      # so the checks run here before anything is pushed.
       - if: steps.changes.outputs.count != '0'
         run: npm run check
+      # The app's token can push and open pull requests, and CI runs on them. It is made only
+      # after everything that runs dependency code.
+      - if: steps.changes.outputs.count != '0'
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.CORPUS_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORPUS_APP_KEY }}
       - if: steps.changes.outputs.count != '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
+          gh auth setup-git
           git config user.name darnit
           git config user.email darnit@users.noreply.github.com
           branch="corpus/$(date -u +%Y-%m-%d)"
