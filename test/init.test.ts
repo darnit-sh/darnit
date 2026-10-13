@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -87,5 +87,42 @@ describe("init", () => {
 
     const forced = await init(dir, { force: true });
     expect(forced.slice(1)).toEqual(["Rewrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
+  });
+});
+
+describe("init never writes outside the repository", () => {
+  async function outside(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-outside-"));
+    tempDirs.push(dir);
+    await mkdir(join(dir, "workflows"));
+    await writeFile(join(dir, "workflows", "darnit.yml"), "keep\n");
+    await writeFile(join(dir, "config.yml"), "keep\n");
+    return dir;
+  }
+
+  it("refuses a darnit.yml that links to a file outside", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await symlink(join(out, "config.yml"), join(dir, "darnit.yml"));
+    await expect(init(dir, { force: true })).rejects.toThrow("darnit.yml is a symbolic link; darnit only writes files inside the repository");
+    expect(await readFile(join(out, "config.yml"), "utf8")).toBe("keep\n");
+  });
+
+  it("refuses a .github folder that links outside, with or without --force", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await symlink(out, join(dir, ".github"));
+    await expect(init(dir, { force: true })).rejects.toThrow(".github/workflows/darnit.yml is outside the repository");
+    expect(await readFile(join(out, "workflows", "darnit.yml"), "utf8")).toBe("keep\n");
+
+    await rm(join(out, "workflows"), { recursive: true });
+    await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml is outside the repository");
+    expect(await readdir(out)).toEqual(["config.yml"]);
+  });
+
+  it("follows a folder link that stays inside the repository", async () => {
+    const dir = await scratchCopy("small");
+    await mkdir(join(dir, "ci"));
+    await symlink(join(dir, "ci"), join(dir, ".github"));
+    await init(dir);
+    expect(await readFile(join(dir, "ci", "workflows", "darnit.yml"), "utf8")).toContain("npx darnit check");
   });
 });

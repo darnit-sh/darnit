@@ -23,6 +23,7 @@ Notable changes to darnit. The format follows [Keep a Changelog](https://keepach
 - The repository's tests can no longer plant git hooks or settings that darnit's own git commands then run with its token. File names are passed to git literally, so a file named `*.ts` no longer pulls other files into the commit. ([#43](https://github.com/darnit-sh/darnit/pull/43))
 - File names, commands, test output and notes from the repository are shown literally in the pull request body and the terminal, so they cannot add live Markdown, mentions or links to the body, or send codes that change the terminal's title, clipboard or screen. Only the end of long test output is kept. ([#44](https://github.com/darnit-sh/darnit/pull/44))
 - `fix --pr` uses the `origin` remote only when github.com is its host, and refuses repository names that could reach another part of GitHub's API with your token. ([#49](https://github.com/darnit-sh/darnit/pull/49))
+- `init` refuses to write `darnit.yml` or the workflow through a symbolic link that leads outside the repository, such as a `.github` folder linked elsewhere, and exits 2 with the file it refused. Before, it wrote the file wherever the link pointed. ([#57](https://github.com/darnit-sh/darnit/pull/57))
 
 ## [0.1.0] - 2026-10-07
 
