@@ -8,7 +8,7 @@ Notable changes to darnit. The format follows [Keep a Changelog](https://keepach
 
 - `check` notes calls made with OpenAI's SDK pointed at a local or private network address (such as localhost, 192.168.x or `*.local`), and `--json` gets `localAddress`. The exit code is unchanged. `fix` lists these as `needs a human` instead of rewriting them, since a local server may not accept the new parameter. ([#39](https://github.com/darnit-sh/darnit/pull/39))
 - The pull request footer links the change record on darnit.sh. ([#40](https://github.com/darnit-sh/darnit/pull/40))
-- `check` lists retiring model names set as a value outside the call under "Possibly affected": a constant, a default, a keyword argument (including framework calls such as LangChain's `ChatOpenAI(model=...)`), an object or dict entry, or an environment variable's default, named for a model or engine. Test files are skipped. `check --json` adds `possiblyAffected`, with the same fields as `hits` plus `model`. These never change the exit code, and `fix` leaves them alone.
+- `check` lists retiring model names set as a value outside the call under "Possibly affected": a constant, a default, a keyword argument (including framework calls such as LangChain's `ChatOpenAI(model=...)`), an object or dict entry, or an environment variable's default, named for a model or engine. Test files are skipped. `check --json` adds `possiblyAffected`, with the same fields as `hits` plus `model`. These never change the exit code, and `fix` leaves them alone. ([#61](https://github.com/darnit-sh/darnit/pull/61))
 
 ### Changed
 
