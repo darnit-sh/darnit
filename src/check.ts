@@ -9,7 +9,7 @@ import { findModelValues, isTestPath } from "./scan/values.js";
 
 export type Hit = Match & { record: ChangeRecord; file: string };
 
-/** A model name from a record set as a value darnit cannot follow to a call: reported, never failing the check. */
+/** A model name from a record set as a model value, not confirmed as a call site: reported, never failing the check. */
 export type ModelValueHit = Hit & { model: string };
 
 /** Any other exact mention of a model name from a record, in any text file: counted, never failing the check. */
@@ -62,7 +62,7 @@ export async function scan(
     if (withMentions && !isBinary(text)) for (const m of findMentions(text, names)) mentions.push({ ...m, file, record: byName.get(m.model)! });
     if (!grammar) continue;
     scanned++;
-    const reported = new Set<number>();
+    const reported = new Set<string>();
     for (const record of records) {
       const patterns = record.detection.astGrepPatterns[grammar.lang];
       if (!patterns) continue;
@@ -70,21 +70,22 @@ export async function scan(
       const vendor = vendorClients(record.vendor);
       for (const match of findMatches(text, grammar.grammar, patterns, { symbols, endpoints, vendor })) {
         (match.foreign ? foreign : hits).push({ ...match, record, file });
-        reported.add(match.line);
+        reported.add(`${record.id}:${match.line}`);
       }
     }
     if (names.size === 0 || isTestPath(file)) continue;
     for (const v of findModelValues(file, text, grammar.grammar, names)) {
-      if (!reported.has(v.line)) values.push({ ...v, record: byName.get(v.model)!, file });
+      const record = byName.get(v.model)!;
+      if (!reported.has(`${record.id}:${v.line}`)) values.push({ ...v, record, file });
     }
   }
   // A name already reported on that line as a call site or a value is not mentioned again.
   const key = (file: string, line: number, model: string) => `${file}:${line} ${model}`;
-  const reported = new Set([
+  const listed = new Set([
     ...values.map((v) => key(v.file, v.line, v.model)),
     ...hits.flatMap((h) => findMentions(h.text, new Set(recordNames(h.record))).map((m) => key(h.file, h.line + m.line - 1, m.model))),
   ]);
-  return { hits, scanned, foreign, tooLarge, values, mentions: mentions.filter((m) => !reported.has(key(m.file, m.line, m.model))) };
+  return { hits, scanned, foreign, tooLarge, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
 }
 
 /** Every call site in `root` affected by a known vendor change, and what was covered. */
@@ -185,7 +186,7 @@ function grouped(hits: readonly Hit[], noun: string): string[] {
 }
 
 const VALUES_INTRO = [
-  "Possibly affected: retiring model names set as values that darnit cannot follow to a call.",
+  "Possibly affected: retiring model names set as model values, not confirmed as call sites.",
   "Check where each one is sent. These do not fail the check.",
 ];
 

@@ -110,7 +110,8 @@ report names each one.
 A retiring model name set as a value outside the call, such as
 `DEFAULT_MODEL = "gpt-4"`, `os.getenv("MODEL", "gpt-4")` or a `model="gpt-4"`
 default, is listed after the call sites under "Possibly affected", grouped by
-change. darnit cannot see where these values are sent, so check each one. They
+change, and so is one written inside the call in a form `check` does not
+confirm. darnit cannot see where these values are sent, so check each one. They
 never change the exit code, and test files are skipped. `--json` lists them in
 `possiblyAffected`, with the same fields as `hits` plus `model`.
 
@@ -280,17 +281,19 @@ To add a vendor, open a pull request adding its spec URL and SDK calls to
 
 - Request options built somewhere else and passed in as a variable are not
   followed. `check` reminds you at the end of every report, clean or not.
-- A model name fails `check` only when written in the call itself. A name set
-  as a value named for a model or engine (a constant, a default, a keyword
-  argument, an object or dict entry, an environment variable's default) is only
-  listed under "Possibly affected", and some of those go to other providers. This
-  includes framework calls such as LangChain's `ChatOpenAI(model="gpt-3.5-turbo")`:
-  darnit reports the name there, but does not follow LangChain or Vercel's AI SDK
-  calls. Any other mention, such as a name in a config file, a `.env` file, a list
-  of models or a test file, is only counted under "Also mentioned", and short
-  names such as `o1` or `ada` can match unrelated text. A name built at run time or
-  set outside the repository is missed. A clean `check` does not mean no retired
-  model is in use.
+- A model name fails `check` only when written in the call's own `model` option
+  as a plain string or a fallback such as `name || "gpt-4"`. Written any other
+  way in the call (a quoted `"model"` key, a template string, a Python f-string,
+  `**kwargs`) or set as a value named for a model or engine elsewhere (a
+  constant, a default, a keyword argument, an object or dict entry, an
+  environment variable's default), it is only listed under "Possibly affected",
+  and some of those go to other providers. This includes framework calls such as
+  LangChain's `ChatOpenAI(model="gpt-3.5-turbo")`: darnit reports the name
+  there, but does not follow LangChain or Vercel's AI SDK calls. Any other
+  mention, such as a name in a config file, a `.env` file, a list of models or a
+  test file, is only counted under "Also mentioned", and short names such as `o1`
+  or `ada` can match unrelated text. A name built at run time or set outside the
+  repository is missed. A clean `check` does not mean no retired model is in use.
 - Only changes with a record are found. No record, no report.
 - Clients that copy OpenAI's methods are left out when the same file shows a
   known look-alike: the Groq, Together, Cerebras or Fireworks SDKs, or OpenAI's
