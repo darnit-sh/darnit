@@ -914,6 +914,19 @@ describe("check on a repository built to slow it down", () => {
     expect(maxTokens(hits)).toEqual([`${name}:${line}`]);
   });
 
+  const request = (args: string) => `requests.post("https://api.openai.com/v1/chat/completions", ${args})`;
+
+  it.each([
+    ["a request with thousands of keyword arguments", `import requests\n${request("max_tokens=5, ".repeat(2000))}\n`, 2000],
+    ["a request inside calls nested a thousand deep", `import requests\nx = ${"f(max_tokens=5, ".repeat(1000)}${request("max_tokens=5")}${")".repeat(1000)}\n`, 1],
+  ])("finishes quickly on %s", async (_, text, count) => {
+    const dir = await scratch({ "app.py": text });
+    const start = performance.now();
+    const hits = await check(dir);
+    expect(performance.now() - start).toBeLessThan(2000);
+    expect(maxTokens(hits)).toHaveLength(count);
+  });
+
   it.each([
     ["global client", "app.py", py("from groq import Groq\ndef setup():\n    global client\n    client = Groq()"), "app.py:5"],
     ["global client in a nested block", "app.py", py("from groq import Groq\ndef setup():\n    if True:\n        global client\n    client = Groq()"), "app.py:6"],
