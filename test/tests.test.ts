@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { detectBuildCommand, detectTestCommand, runTests } from "../src/tests.js";
+import { detectBuildCommand, detectTestCommand, runTests, unreadSettings } from "../src/tests.js";
 
 const tempDirs: string[] = [];
 afterEach(async () => {
@@ -102,6 +102,15 @@ describe("detectTestCommand", () => {
     const endless = await dirWith({});
     await symlink("/dev/zero", join(endless, "pyproject.toml"));
     expect(await detectTestCommand(endless, path)).toBeUndefined();
+  });
+
+  it("does not switch to pytest when package.json is too large to read", async () => {
+    const big = JSON.stringify({ scripts: { test: "vitest" }, pad: "x".repeat(10.1 * 1024 * 1024) });
+    const dir = await dirWith({ "package.json": big, "pytest.ini": "" });
+    expect(await detectTestCommand(dir, await pathWith("python3"))).toBeUndefined();
+    expect(await unreadSettings(dir)).toBe("package.json");
+    expect(await unreadSettings(await dirWith({ "package.json": "{}", "pyproject.toml/": "" }))).toBe("pyproject.toml");
+    expect(await unreadSettings(await dirWith({ "package.json": "{}" }))).toBeUndefined();
   });
 });
 

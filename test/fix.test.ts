@@ -361,6 +361,13 @@ describe("fix", () => {
     }
   });
 
+  it("names a package.json it could not read instead of saying there is no test script", async () => {
+    const big = JSON.stringify({ scripts: { test: "vitest" }, pad: "x".repeat(10.1 * 1024 * 1024) });
+    const dir = await repoWith({ "package.json": big, "app.py": "c.chat.completions.create(model='x', max_tokens=5)\n" });
+    const result = await fix(dir);
+    expect(renderSummary(result)).toContain("tests: none run (package.json not read: over 10 MB or not a regular file; pass the command with --test)");
+  });
+
   it("turns every pack's before/ into its after/, touching only reported files", async () => {
     for (const { record, packDir } of await loadRecords()) {
       if (record.status !== "reviewed" || record.classification !== "mechanical") continue;

@@ -8,7 +8,7 @@ import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlu
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
-import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun } from "./tests.js";
+import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, unreadSettings } from "./tests.js";
 import { atLeast, npmVersionFor, pypiVersions, type Found } from "./versions.js";
 
 export type FixOptions = {
@@ -299,7 +299,11 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   }
 
   const commands: Commands = opts.noTest ? {} : { build: await detectBuildCommand(root), tests: opts.test ?? (await detectTestCommand(root)) };
-  if (!commands.tests && !opts.noTest && (await hasPytestSetup(root))) base.testsNote = "found a pytest setup but no python3 or python on PATH";
+  if (!commands.tests && !opts.noTest) {
+    const unread = await unreadSettings(root);
+    if (unread) base.testsNote = `${unread} not read: over 10 MB or not a regular file; pass the command with --test`;
+    else if (await hasPytestSetup(root)) base.testsNote = "found a pytest setup but no python3 or python on PATH";
+  }
   if (opts.pr) return pullRequests(root, applicable, base, commands, opts);
 
   const snap = await snapshotOf(root, [...new Set(applicable.flatMap((grp) => grp.files))]);

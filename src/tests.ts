@@ -11,7 +11,10 @@ const exists = (path: string) => access(path).then(() => true, () => false);
 const NPM_PLACEHOLDER = /no test specified/;
 
 export async function detectTestCommand(root: string, path = process.env.PATH ?? ""): Promise<string | undefined> {
-  const pkgText = await readText(join(root, "package.json"));
+  const pkgPath = join(root, "package.json");
+  const pkgText = await readText(pkgPath);
+  // One that exists but was skipped may hold the test script; don't guess another runner.
+  if (pkgText === undefined && (await exists(pkgPath))) return undefined;
   if (pkgText !== undefined) {
     try {
       const pkg = JSON.parse(pkgText) as { scripts?: { test?: string } };
@@ -63,6 +66,15 @@ export async function hasPytestSetup(root: string): Promise<boolean> {
   const pyproject = (await readText(join(root, "pyproject.toml"))) ?? "";
   const setupCfg = (await readText(join(root, "setup.cfg"))) ?? "";
   return pyproject.includes("[tool.pytest") || setupCfg.includes("[tool:pytest]");
+}
+
+/** The first settings file that exists but was not read (over 10 MB or not a regular file). */
+export async function unreadSettings(root: string): Promise<string | undefined> {
+  for (const name of ["package.json", "pyproject.toml", "setup.cfg"]) {
+    const path = join(root, name);
+    if ((await exists(path)) && (await readText(path)) === undefined) return name;
+  }
+  return undefined;
 }
 
 /** python3 first: stock macOS and most Linux distributions have no plain `python`. An active virtualenv provides both. */
