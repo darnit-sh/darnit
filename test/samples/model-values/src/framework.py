@@ -1,0 +1,4 @@
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+agent = Agent(model_name="gpt-4")

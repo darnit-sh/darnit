@@ -31,8 +31,9 @@ program
   .description("report vendor API changes that affect this repo's call sites")
   .option("--json", "machine-readable output")
   .action(async ({ json }: { json?: boolean }) => {
-    const { hits, coverage } = await checkReport(process.cwd());
-    console.log(json ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits) }, null, 2) : forTerminal(render(hits, coverage)));
+    const { hits, coverage, values } = await checkReport(process.cwd());
+    const out = json ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits), possiblyAffected: toJson(values) }, null, 2) : forTerminal(render(hits, coverage, values));
+    console.log(out);
     process.exitCode = exitCodeForCheck(hits);
   });
 

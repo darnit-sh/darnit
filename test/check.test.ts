@@ -7,6 +7,7 @@ import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
+import { isTestPath } from "../src/scan/values.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -626,6 +627,71 @@ describe("model shutdowns", () => {
     const { hits, coverage } = await checkReport(dir);
     expect(locations(shutdowns(hits)).sort()).toEqual(["stt.py:6", "stt.ts:5", "stt.ts:6", "stt.ts:7"]);
     expect(coverage.foreignAt).toEqual(["stt.ts:8"]);
+  });
+});
+
+describe("model names set as values", () => {
+  const MODEL_VALUES = join(SAMPLES, "model-values");
+
+  it("lists each kind of value once, outside tests and tokenizers, without failing the check", async () => {
+    const { hits, values, coverage } = await checkReport(MODEL_VALUES);
+    expect(locations(hits)).toEqual(["src/call.ts:6"]);
+    expect(coverage.foreignAt).toEqual(["src/call.ts:7"]);
+    expect(values.map((v) => `${v.file}:${v.line}:${v.model}`).sort()).toEqual(
+      [
+        "examples/agent.ts:3:gpt-3.5-turbo",
+        "src/config.ts:1:gpt-4-turbo",
+        "src/config.ts:2:tts-1",
+        "src/config.ts:5:gpt-4",
+        "src/config.ts:6:text-davinci-003",
+        "src/config.ts:8:o3-mini",
+        "src/config.ts:12:o1-mini",
+        "src/config.ts:16:whisper-1",
+        "src/config.ts:17:dall-e-3",
+        "src/config.ts:21:gpt-4-32k",
+        "src/config.ts:23:gpt-3.5-turbo-0613",
+        "src/config.ts:27:gpt-3.5-turbo",
+        "src/defaults.py:4:gpt-4-turbo",
+        "src/defaults.py:9:gpt-4",
+        "src/defaults.py:10:text-similarity-ada-001",
+        "src/defaults.py:14:o3-mini",
+        "src/defaults.py:18:o1-mini",
+        "src/defaults.py:23:text-davinci-003",
+        "src/defaults.py:24:gpt-4-0613",
+        "src/defaults.py:25:gpt-4",
+        "src/defaults.py:25:o1",
+        "src/defaults.py:26:gpt-3.5-turbo-0125",
+        "src/defaults.py:31:gpt-3.5-turbo",
+        "src/env.py:3:gpt-4-1106-preview",
+        "src/env.py:4:gpt-4-turbo",
+        "src/env.py:5:o1-mini",
+        "src/env.ts:1:gpt-3.5-turbo",
+        "src/env.ts:2:gpt-4",
+        "src/framework.py:3:gpt-3.5-turbo",
+        "src/framework.py:4:gpt-4",
+        "src/request.js:2:tts-1-hd",
+        "src/request.py:5:tts-1",
+      ].sort(),
+    );
+    expect(exitCodeForCheck(hits)).toBe(1);
+    const text = render(hits, coverage, values);
+    expect(text).toContain("Possibly affected: retiring model names set as values that darnit cannot follow to a call.");
+    expect(text).toContain("  src/defaults.py:4:23    DEFAULT_JUDGE_MODEL = 'gpt-4-turbo'\n");
+    expect(text).toContain("  19 values in 6 files\n");
+    expect(toJson(values)[0]).toMatchObject({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: "examples/agent.ts", line: 3, model: "gpt-3.5-turbo" });
+  });
+
+  it("knows test files by folder and by name", () => {
+    const test = ["tests/a.py", "src/__tests__/a.ts", "test_app.py", "app/x_test.py", "src/app.test.ts", "src/app.spec.js", "conftest.py", "fixtures/a.js", "src/mocks/a.ts"];
+    expect(test.filter((f) => !isTestPath(f))).toEqual([]);
+    expect(["src/latest.py", "contest.py", "testing.ts", "src/attest/a.py"].filter(isTestPath)).toEqual([]);
+  });
+
+  it("does not fail the check when values are all it finds", async () => {
+    const { hits, values, coverage } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
+    expect(exitCodeForCheck(hits)).toBe(0);
+    expect(values.map((v) => v.model)).toEqual(["gpt-4"]);
+    expect(render(hits, coverage, values)).toMatch(/^No call sites of known vendor changes found\.\n\nPossibly affected:/);
   });
 });
 

@@ -5,7 +5,7 @@ import type { AstGrepPattern, Lang } from "../records/schema.js";
 import { clientOrigin, FUNCTIONS, stringText, unwrap, urlOrigin, type VendorClients } from "./clients.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
-type Grammar = Parameters<typeof parse>[0];
+export type Grammar = Parameters<typeof parse>[0];
 
 // napi ships only the web grammars built in; Python is a plug-in grammar and
 // must be registered exactly once per process; here, at module load.
@@ -130,6 +130,13 @@ const literals = (context: string) => [...context.matchAll(/(["'])([\w.:/-]+)\1/
 const QUOTED = String.raw`("[^"]*"|'[^']*')`;
 const JS_VALUE = new RegExp(String.raw`^\(\{\s*(\w+):\s*${QUOTED}\s*\}\)$`);
 const PY_VALUE = new RegExp(String.raw`^f\((\w+)=${QUOTED}\)$`);
+
+/** The model names a record's patterns match as `model: "name"`, such as a shutdown record's models. */
+export const modelNames = (patterns: readonly AstGrepPattern[]) =>
+  patterns.flatMap((p) => {
+    const m = JS_VALUE.exec(p.context) ?? PY_VALUE.exec(p.context);
+    return m?.[1] === "model" ? literals(m[2]!) : [];
+  });
 
 /**
  * A pattern whose value is one quoted string also matches that string as the last fallback:
