@@ -734,6 +734,28 @@ describe("model names set as values", () => {
     }
   }, 60_000);
 
+  it("reads long names, long lines and deep code about as fast as parsing them", () => {
+    const defaults = 'default="gpt-4", '.repeat(5000);
+    const cases = [
+      ["app.py", `${"a.".repeat(50_000)}model = f(${defaults})\n`],
+      ["app.py", `f("${"model ".repeat(20_000)}", ${defaults})\n`],
+      ["app.ts", `${" ".repeat(1_000_000)}${'model = "gpt-4"; '.repeat(5000)}\n`],
+      ["app.py", `model = ${'f("gpt-4", '.repeat(5000)}x${")".repeat(5000)}\n`],
+      ["app.ts", `model = ${'c ? "gpt-4" : ('.repeat(5000)}x${")".repeat(5000)}\n`],
+      ["app.ts", `model = x${'.f("gpt-4")'.repeat(5000)}\n`],
+    ] as const;
+    const slow = cases.filter(([file, source]) => {
+      const grammar = grammarFor(file)!.grammar;
+      let start = performance.now();
+      parse(grammar, source);
+      const parsing = performance.now() - start;
+      start = performance.now();
+      findModelValues(file, source, grammar, new Set(["gpt-4"]));
+      return performance.now() - start > 5 * parsing + 200;
+    });
+    expect(slow.map(([, source]) => source.slice(0, 20))).toEqual([]);
+  }, 60_000);
+
   it("does not list a call's model fallback again when it wraps to the next line", async () => {
     const dir = await scratch({
       "app.ts": 'import OpenAI from "openai";\nconst openai = new OpenAI();\nawait openai.chat.completions.create({\n  model:\n    process.env.X ?? "gpt-4",\n  messages: [],\n});\n',
