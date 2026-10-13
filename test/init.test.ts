@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { Stats } from "node:fs";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { cp, type FileHandle, mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,6 +109,20 @@ describe("detectApis on a repository built to slow it down", () => {
     execFileSync("mkfifo", [join(dir, "darnit.yml")]);
     vi.mocked(stat).mockResolvedValueOnce({ isFile: () => true, size: 0 } as Stats);
     expect(await readText(join(dir, "darnit.yml"))).toBeUndefined();
+  });
+
+  it("reads no more than the size limit from a file that grew after the check", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    const path = join(dir, "notes.txt");
+    await writeFile(path, "x".repeat(MAX_FILE_BYTES + 1));
+    const handle = await open(path);
+    const grew = vi.spyOn(Object.getPrototypeOf(handle) as FileHandle, "stat").mockResolvedValueOnce({ isFile: () => true, size: 0 } as Stats);
+    await handle.close();
+    const starts: string[] = [];
+    expect(await readText(path, (start) => starts.push(start))).toBeUndefined();
+    expect(starts).toEqual(["x".repeat(8192)]);
+    grew.mockRestore();
   });
 });
 

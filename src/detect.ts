@@ -88,12 +88,11 @@ export async function readText(path: string, tooLarge?: (start: string) => void)
     // Checked again on what was opened, in case the path changed in between.
     const opened = await file?.stat();
     if (!opened?.isFile()) return undefined;
-    if (opened.size > MAX_FILE_BYTES) {
-      if (!tooLarge) return undefined;
-      const { buffer, bytesRead } = await file!.read(Buffer.alloc(8192), 0, 8192, 0);
-      return void tooLarge(buffer.toString("utf8", 0, bytesRead));
-    }
-    return await file!.readFile("utf8");
+    // At most one byte past the limit, since the file can grow after the check.
+    const end = opened.size > MAX_FILE_BYTES ? 8191 : MAX_FILE_BYTES;
+    const data = Buffer.concat(await file!.createReadStream({ start: 0, end, autoClose: false }).toArray());
+    if (opened.size <= MAX_FILE_BYTES && data.length <= MAX_FILE_BYTES) return data.toString("utf8");
+    return void tooLarge?.(data.toString("utf8", 0, 8192));
   } catch {
     return undefined;
   } finally {
