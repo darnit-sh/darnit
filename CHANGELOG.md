@@ -20,7 +20,7 @@ Notable changes to darnit. The format follows [Keep a Changelog](https://keepach
 
 ### Fixed
 
-- `check` counts a model name made only of letters, such as `ada` or `davinci`, under "Also mentioned" only when it sits inside quotes (`"ada"`, `'ada'` or `` `ada` ``), so an agent or person named Ada in a README is no longer counted. Files over 10 MB that are not JavaScript, TypeScript or Python are named under "Not checked" and in `check --json` `scanned.tooLarge`, like code files, instead of being skipped without a note.
+- `check` counts a model name made only of letters, such as `ada` or `davinci`, under "Also mentioned" only when it sits inside quotes (`"ada"`, `'ada'` or `` `ada` ``), so an agent or person named Ada in a README is no longer counted. Files over 10 MB that are not JavaScript, TypeScript or Python are named under "Not checked" and in `check --json` `scanned.tooLarge`, like code files, instead of being skipped without a note. ([#67](https://github.com/darnit-sh/darnit/pull/67))
 - The shorthand `create({ model, messages, max_tokens })` is found and rewritten. ([#35](https://github.com/darnit-sh/darnit/pull/35))
 - A retiring model written as the fallback value is found: `?? "name"` and `|| "name"` in JavaScript and TypeScript, `or "name"` in Python. ([#36](https://github.com/darnit-sh/darnit/pull/36))
 - `fix` renames `max_tokens` only in a call's first argument, not in the request settings passed second. `check` still reports one written there, and `fix` leaves it to a human. ([#37](https://github.com/darnit-sh/darnit/pull/37))
