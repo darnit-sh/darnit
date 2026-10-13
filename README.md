@@ -201,17 +201,12 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      - run: npx darnit@0.2 check
+      - run: npx darnit check
 ```
 
 Once a day it runs `check`. The day a reviewed or parser-verified change hits your code, the run fails and
 GitHub tells you, like any failed workflow. Scheduled workflows only run from
 the default branch, so commit this file there.
-
-`darnit@0.2` keeps the job on the 0.2 releases: it gets fixes and new change
-records, and a new minor release, which can change behavior, waits until you
-change the number. If your workflow runs plain `npx darnit`, it takes every
-release the day it comes out; change it to `npx darnit@0.2` to pin it.
 
 Want pull requests instead of a red run? darnit runs your tests before it
 pushes, so the job has to install your dependencies first:
@@ -223,7 +218,7 @@ permissions:
 
 # ...same as above, then replace the last step with:
       - run: npm ci   # or whatever installs your project
-      - run: npx darnit@0.2 fix --pr
+      - run: npx darnit fix --pr
         env:
           GITHUB_TOKEN: ${{ github.token }}
 ```
