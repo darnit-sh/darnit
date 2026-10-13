@@ -8,7 +8,7 @@ import { findModelValues, isTestPath } from "./scan/values.js";
 
 export type Hit = Match & { record: ChangeRecord; file: string };
 
-/** A model name from a record set as a value darnit cannot follow to a call: reported, never failing the check. */
+/** A model name from a record set as a model value, not confirmed as a call site: reported, never failing the check. */
 export type ModelValueHit = Hit & { model: string };
 
 /** Vendors listed in darnit.yml, when the file exists and lists any; otherwise no restriction. */
@@ -49,7 +49,7 @@ export async function scan(
     const text = await readText(join(root, file), () => tooLarge.push(file));
     if (text === undefined) continue;
     scanned++;
-    const reported = new Set<number>();
+    const reported = new Set<string>();
     for (const record of records) {
       const patterns = record.detection.astGrepPatterns[grammar.lang];
       if (!patterns) continue;
@@ -57,12 +57,13 @@ export async function scan(
       const vendor = vendorClients(record.vendor);
       for (const match of findMatches(text, grammar.grammar, patterns, { symbols, endpoints, vendor })) {
         (match.foreign ? foreign : hits).push({ ...match, record, file });
-        reported.add(match.line);
+        reported.add(`${record.id}:${match.line}`);
       }
     }
     if (names.size === 0 || isTestPath(file)) continue;
     for (const v of findModelValues(file, text, grammar.grammar, names)) {
-      if (!reported.has(v.line)) values.push({ ...v, record: byName.get(v.model)!, file });
+      const record = byName.get(v.model)!;
+      if (!reported.has(`${record.id}:${v.line}`)) values.push({ ...v, record, file });
     }
   }
   return { hits, scanned, foreign, tooLarge, values };
@@ -163,7 +164,7 @@ function grouped(hits: readonly Hit[], noun: string): string[] {
 }
 
 const VALUES_INTRO = [
-  "Possibly affected: retiring model names set as values that darnit cannot follow to a call.",
+  "Possibly affected: retiring model names set as model values, not confirmed as call sites.",
   "Check where each one is sent. These do not fail the check.",
 ];
 

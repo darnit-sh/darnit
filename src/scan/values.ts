@@ -95,20 +95,22 @@ function isModelValue(str: SgNode): boolean {
   return false;
 }
 
-/** Only a plain dotted name counts: a chained call's callee text holds earlier calls and their arguments. */
-const named = (field: string, kinds: string[]) => kinds.map((kind) => ({ kind, has: { field, regex: "(?i)^[\\w.$]*token[\\w.$]*$" } }));
-
-/**
- * Tokenizer code names a model to count tokens, not to call it: calls, functions and bindings
- * whose name says "token". Found top-down, since walking up from each string is slow in deep code.
- */
-const TOKEN_SCOPES = {
-  py: [...named("function", ["call"]), ...named("name", ["function_definition", "keyword_argument"]), ...named("left", ["assignment"])],
-  js: [
-    ...named("function", ["call_expression"]),
-    ...named("name", ["function_declaration", "function_expression", "method_definition", "variable_declarator"]),
-    ...named("left", ["assignment_expression"]),
-  ],
+/** Where tokenizer code says "token": the callee, function or binding name of these nodes. */
+const TOKEN_FIELDS: Record<string, string> = {
+  call: "function",
+  call_expression: "function",
+  function_definition: "name",
+  keyword_argument: "name",
+  function_declaration: "name",
+  function_expression: "name",
+  method_definition: "name",
+  variable_declarator: "name",
+  assignment: "left",
+  assignment_expression: "left",
+};
+const TOKEN_KINDS = {
+  py: ["call", "function_definition", "keyword_argument", "assignment"],
+  js: ["call_expression", "function_declaration", "function_expression", "method_definition", "variable_declarator", "assignment_expression"],
 };
 
 /** Whether [start, end) sits inside one of `ranges`, which are sorted and do not overlap. */
@@ -133,10 +135,15 @@ export function findModelValues(file: string, source: string, grammar: Grammar, 
   const root = parse(grammar, source).root();
   const lines = source.split("\n");
   const py = file.endsWith(".py");
+  // Tokenizer code names a model to count tokens, not to call it. Only a short plain dotted name
+  // counts: a chained call's callee holds the whole chain, and walking up from each name is slow in deep code.
   const tokenizers: { start: number; end: number }[] = [];
-  for (const n of root.findAll({ rule: { any: TOKEN_SCOPES[py ? "py" : "js"] } })) {
-    const { start, end } = n.range();
-    if (start.index >= (tokenizers.at(-1)?.end ?? -1)) tokenizers.push({ start: start.index, end: end.index });
+  if (TOKEN.test(source)) {
+    for (const n of root.findAll({ rule: { any: TOKEN_KINDS[py ? "py" : "js"].map((kind) => ({ kind })) } })) {
+      if (!/^[\w.$]*token[\w.$]*$/i.test(short(n.field(TOKEN_FIELDS[String(n.kind())]!)))) continue;
+      const { start, end } = n.range();
+      if (start.index >= (tokenizers.at(-1)?.end ?? -1)) tokenizers.push({ start: start.index, end: end.index });
+    }
   }
   const out: ModelValue[] = [];
   for (const str of root.findAll({ rule: { any: (py ? ["string"] : ["string", "template_string"]).map((kind) => ({ kind })) } })) {

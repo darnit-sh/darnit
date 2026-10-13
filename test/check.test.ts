@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "@ast-grep/napi";
 import { afterEach, describe, expect, it } from "vitest";
 import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit } from "../src/check.js";
 import { MAX_FILE_BYTES } from "../src/detect.js";
@@ -678,7 +679,7 @@ describe("model names set as values", () => {
     );
     expect(exitCodeForCheck(hits)).toBe(1);
     const text = render(hits, coverage, values);
-    expect(text).toContain("Possibly affected: retiring model names set as values that darnit cannot follow to a call.");
+    expect(text).toContain("Possibly affected: retiring model names set as model values, not confirmed as call sites.");
     expect(text).toContain("  src/defaults.py:4:23    DEFAULT_JUDGE_MODEL = 'gpt-4-turbo'\n");
     expect(text).toContain("  22 values in 6 files\n");
     expect(toJson(values)[0]).toMatchObject({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: "examples/agent.ts", line: 3, model: "gpt-3.5-turbo" });
@@ -700,6 +701,26 @@ describe("model names set as values", () => {
     const plain = time("x = 1\n");
     expect(time("count_tokens(x)\n")).toBeLessThan(3 * plain);
   }, 20_000);
+
+  it("reads long call chains about as fast as parsing them", () => {
+    for (const [file, link] of ["app.py", "app.ts"].flatMap((f) => [".a()", ".token", ".token()"].map((l) => [f, l] as const))) {
+      const grammar = grammarFor(file)!.grammar;
+      const source = `model = "gpt-4"; x${link.repeat(40_000)}\n`;
+      let start = performance.now();
+      parse(grammar, source);
+      const parsing = performance.now() - start;
+      start = performance.now();
+      expect(findModelValues(file, source, grammar, new Set(["gpt-4"]))).toHaveLength(1);
+      expect(performance.now() - start).toBeLessThan(5 * parsing + 200);
+    }
+  }, 20_000);
+
+  it("lists a model value on a line another change already reported", async () => {
+    const dir = await scratch({ "app.py": 'from openai import OpenAI\n\nclient = OpenAI()\nclient.chat.completions.create(**{"model": "gpt-4"}, messages=[], max_tokens=5)\n' });
+    const { hits, values } = await checkReport(dir);
+    expect(hits.map((h) => h.record.id)).not.toContain(values[0]?.record.id);
+    expect(values.map((v) => `${v.line}:${v.model}`)).toEqual(["4:gpt-4"]);
+  });
 
   it("prints a long list of values quickly", async () => {
     const { values } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
