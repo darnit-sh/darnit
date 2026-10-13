@@ -113,6 +113,14 @@ describe("detectTestCommand", () => {
     expect(await unreadSettings(await dirWith({ "package.json": "{}", "pyproject.toml/": "" }))).toBe("pyproject.toml");
     expect(await unreadSettings(await dirWith({ "package.json": "{}" }))).toBeUndefined();
   });
+
+  it("does not guess other commands when package.json is a broken link", async () => {
+    const dir = await dirWith({ "pytest.ini": "", "tsconfig.json": "{}", "node_modules/": "", "node_modules/.bin/": "", "node_modules/.bin/tsc": "" });
+    await symlink(join(dir, "missing.json"), join(dir, "package.json"));
+    expect(await detectTestCommand(dir, await pathWith("python3"))).toBeUndefined();
+    expect(await detectBuildCommand(dir)).toBeUndefined();
+    expect(await unreadSettings(dir)).toBe("package.json");
+  });
 });
 
 describe("runTests", () => {

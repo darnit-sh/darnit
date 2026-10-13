@@ -302,8 +302,8 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
 
   const commands: Commands = opts.noTest ? {} : { build: await detectBuildCommand(root), tests: opts.test ?? (await detectTestCommand(root)) };
   const unread = opts.noTest ? undefined : await unreadSettings(root);
-  const skipped = unread && `${unread} not read: over 10 MB or not a regular file`;
-  if (unread === "package.json") base.buildNote = skipped;
+  const skipped = unread && `${unread} could not be read`;
+  if (unread === "package.json" && applicable.some((grp) => grp.files.some((f) => COMPILED.test(f)))) base.buildNote = skipped;
   if (!commands.tests && !opts.noTest) {
     // A package.json that was not read already explains it; Python may well be there.
     const noPython = unread !== "package.json" && (await hasPytestSetup(root)) && "found a pytest setup but no python3 or python on PATH";

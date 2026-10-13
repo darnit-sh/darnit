@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access, readdir } from "node:fs/promises";
+import { access, lstat, readdir } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { readText } from "./detect.js";
 
 export type TestRun = { command: string; passed: boolean; output: string; timedOut: boolean };
 
 const exists = (path: string) => access(path).then(() => true, () => false);
+/** A file that is there, even as a broken link, but that readText turned away. */
+const unread = async (path: string, text: string | undefined) => text === undefined && (await lstat(path).then(() => true, () => false));
 
 const NPM_PLACEHOLDER = /no test specified/;
 
@@ -14,7 +16,7 @@ export async function detectTestCommand(root: string, path = process.env.PATH ??
   const pkgPath = join(root, "package.json");
   const pkgText = await readText(pkgPath);
   // One that exists but was skipped may hold the test script; don't guess another runner.
-  if (pkgText === undefined && (await exists(pkgPath))) return undefined;
+  if (await unread(pkgPath, pkgText)) return undefined;
   if (pkgText !== undefined) {
     try {
       const pkg = JSON.parse(pkgText) as { scripts?: { test?: string } };
@@ -41,7 +43,7 @@ async function packageManager(root: string): Promise<"pnpm" | "yarn" | "npm"> {
  */
 export async function detectBuildCommand(root: string): Promise<string | undefined> {
   const pkgText = await readText(join(root, "package.json"));
-  if (pkgText === undefined && (await exists(join(root, "package.json")))) return undefined;
+  if (await unread(join(root, "package.json"), pkgText)) return undefined;
   let scripts: Record<string, string> = {};
   try {
     scripts = (JSON.parse(pkgText ?? "{}") as { scripts?: Record<string, string> }).scripts ?? {};
@@ -69,11 +71,11 @@ export async function hasPytestSetup(root: string): Promise<boolean> {
   return pyproject.includes("[tool.pytest") || setupCfg.includes("[tool:pytest]");
 }
 
-/** The first settings file that exists but was not read (over 10 MB or not a regular file). */
+/** The first settings file that is there but could not be read (over 10 MB, not a regular file, or no permission). */
 export async function unreadSettings(root: string): Promise<string | undefined> {
   for (const name of ["package.json", "pyproject.toml", "setup.cfg"]) {
     const path = join(root, name);
-    if ((await exists(path)) && (await readText(path)) === undefined) return name;
+    if (await unread(path, await readText(path))) return name;
   }
   return undefined;
 }
