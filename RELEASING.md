@@ -10,8 +10,9 @@ a second job waits for a maintainer to approve the protected `npm` environment, 
 exact package with provenance. A version with a hyphen (`X.Y.Z-rc.N`) goes to `next`; any other
 goes to `latest`.
 
-Why the candidate step matters: the workflow `darnit init` writes runs `npx darnit check` with no
-version, so every repository set up by `init` runs the new `latest` on its next daily run.
+Why the candidate step matters: workflows written by `init` in 0.1.0 run `npx darnit check` with no
+version and take every new `latest`; from 0.2.0 on, `init` pins the minor (`npx darnit@0.2 check`),
+so those take every patch. Either way a release reaches people's scheduled CI within a day.
 
 Commands below use `X.Y.Z` for the version and `rc.N` for the candidate number.
 
@@ -20,8 +21,9 @@ Commands below use `X.Y.Z` for the version and `rc.N` for the candidate number.
 All must be true before tagging, for a candidate and again for the final version:
 
 - `main` CI is green on the exact commit you are about to tag.
-- `CHANGELOG.md` has an entry for the version, covering every user-facing change since the last
-  release, in user terms.
+- `CHANGELOG.md` covers every user-facing change since the last release, in user terms. The
+  entries stay under `## [Unreleased]` through every candidate and get the version heading only at
+  promote.
 - No pending items: no open security finding, no unreviewed fix, nothing marked as blocking the
   release.
 - The version follows the changelog's rule: before 1.0, a patch only adds CLI flags, exit codes,
@@ -35,12 +37,11 @@ All must be true before tagging, for a candidate and again for the final version
 ```sh
 git switch -c release/X.Y.Z
 npm version X.Y.Z-rc.N --no-git-tag-version
-# in CHANGELOG.md, head the Unreleased entries `## [X.Y.Z-rc.N]`
-# commit package.json, package-lock.json and CHANGELOG.md
+# commit package.json and package-lock.json
 # open the pull request, wait for CI to pass, merge it
 git switch main && git pull
 git tag vX.Y.Z-rc.N
-git push https://github.com/darnit-sh/darnit.git vX.Y.Z-rc.N
+git push origin vX.Y.Z-rc.N
 gh run list -R darnit-sh/darnit --workflow publish.yml
 ```
 
@@ -81,18 +82,21 @@ One line per angle, all on the candidate:
 
 ## Promote
 
-The final version is the verified candidate with only the version and the changelog heading
-changed:
+The final version is the verified candidate with only the version, the changelog and, for a new
+minor, the README changed:
 
 ```sh
 git switch -c release/X.Y.Z-final
 npm version X.Y.Z --no-git-tag-version
-# in CHANGELOG.md, the heading becomes `## [X.Y.Z] - <release date>`
+# in CHANGELOG.md, add `## [X.Y.Z] - <release date>` under an empty `## [Unreleased]`, point
+#   the `[Unreleased]` link at `vX.Y.Z...HEAD` and add an `[X.Y.Z]` link from the previous release
+# for a new minor (X.Y.0), README.md's workflow examples become `npx darnit@X.Y check` and
+#   `npx darnit@X.Y fix --pr`, with a one-line note on the pin; npm has no X.Y before this
 # open the pull request, wait for CI to pass, merge it
 git switch main && git pull
 git log --oneline vX.Y.Z-rc.N..main                 # only the version pull request
 git tag vX.Y.Z
-git push https://github.com/darnit-sh/darnit.git vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 Approve the `npm` environment on the publish run as above. Then:
@@ -103,7 +107,9 @@ cd "$(mktemp -d)" && npx -y darnit@X.Y.Z --version
 npm view darnit dist-tags                           # latest is X.Y.Z
 ```
 
-`notes.md` holds the version's changelog entry. Afterwards, watch the next scheduled run of the
+`notes.md` holds the version's changelog entry. A candidate's `init` pins its exact version
+(`darnit@X.Y.Z-rc.N`), so anyone who set up a repository with a candidate re-runs `init` or edits
+the pin to `darnit@X.Y`. Afterwards, watch the next scheduled run of the
 darnit-sh/darnit-example workflow (`gh run list -R darnit-sh/darnit-example`) and check it passes.
 
 ## Roll back
