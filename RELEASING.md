@@ -23,8 +23,8 @@ All must be true before tagging, for a candidate and again for the final version
 - `main` CI is green on the exact commit you are about to tag.
 - `CHANGELOG.md` covers every user-facing change since the last release, in user terms. Entries
   are written by hand and thank every outside contributor by name and GitHub handle for the change
-  they made (`Thanks Jane Doe (@janedoe)`). The entries stay under `## [Unreleased]` through every candidate and get the version heading only at
-  promote.
+  they made. The entries stay under `## [Unreleased]` through every candidate and get the version
+  heading only at promote.
 - No pending items: no open security finding, no unreviewed fix, nothing marked as blocking the
   release.
 - The version follows the changelog's rule: before 1.0, a patch only adds CLI flags, exit codes,
