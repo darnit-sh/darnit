@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { Stats } from "node:fs";
-import { cp, type FileHandle, mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { cp, type FileHandle, link, mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -155,10 +155,12 @@ describe("init", () => {
 });
 
 describe("pinned", () => {
-  it("pins the minor line, or the exact version for a prerelease", () => {
-    expect(pinned("0.2.3")).toBe("0.2");
-    expect(pinned("1.0.0")).toBe("1.0");
-    expect(pinned("0.2.0-rc.1")).toBe("0.2.0-rc.1");
+  it("pins the minor line before 1.0, the major line from 1.0, or the exact version for a prerelease", () => {
+    expect(pinned("0.2.0")).toBe("0.2");
+    expect(pinned("0.10.3")).toBe("0.10");
+    expect(pinned("1.0.0")).toBe("1");
+    expect(pinned("1.2.3")).toBe("1");
+    expect(pinned("2.0.0-rc.1")).toBe("2.0.0-rc.1");
   });
 });
 
@@ -196,5 +198,38 @@ describe("init never writes outside the repository", () => {
     await symlink(join(dir, "ci"), join(dir, ".github"));
     await init(dir);
     expect(await readFile(join(dir, "ci", "workflows", "darnit.yml"), "utf8")).toContain("npx darnit@");
+  });
+
+  it("rewrites a hard-linked file without changing the file it shares with", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await mkdir(join(dir, ".github", "workflows"), { recursive: true });
+    await link(join(out, "config.yml"), join(dir, "darnit.yml"));
+    await link(join(out, "workflows", "darnit.yml"), join(dir, ".github", "workflows", "darnit.yml"));
+    expect((await init(dir, { force: true })).slice(1)).toEqual(["Rewrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
+    expect(await readFile(join(out, "config.yml"), "utf8")).toBe("keep\n");
+    expect(await readFile(join(out, "workflows", "darnit.yml"), "utf8")).toBe("keep\n");
+    expect(await readFile(join(dir, "darnit.yml"), "utf8")).toContain("openai:");
+    expect(await readdir(dir)).not.toContain(expect.stringMatching(/\.tmp$/));
+  });
+
+  it("writes nothing when any file is refused", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await symlink(out, join(dir, ".github"));
+    await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml is outside the repository");
+    expect(await readdir(dir)).not.toContain("darnit.yml");
+  });
+
+  it("refuses a .github link that points nowhere", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await symlink(join(out, "missing"), join(dir, ".github"));
+    await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml goes through a broken symbolic link; darnit only writes files inside the repository");
+    expect(await readdir(out)).toEqual(["config.yml", "workflows"]);
+  });
+
+  it("says a darnit.yml link that points nowhere is a link, and leaves it", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await symlink(join(out, "missing.yml"), join(dir, "darnit.yml"));
+    expect((await init(dir))[1]).toBe("darnit.yml is a symbolic link, left unchanged");
+    expect(await readdir(out)).toEqual(["config.yml", "workflows"]);
   });
 });
