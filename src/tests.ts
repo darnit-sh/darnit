@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, readdir } from "node:fs/promises";
 import { delimiter, join } from "node:path";
+import { readText } from "./detect.js";
 
 export type TestRun = { command: string; passed: boolean; output: string; timedOut: boolean };
 
@@ -10,7 +11,7 @@ const exists = (path: string) => access(path).then(() => true, () => false);
 const NPM_PLACEHOLDER = /no test specified/;
 
 export async function detectTestCommand(root: string, path = process.env.PATH ?? ""): Promise<string | undefined> {
-  const pkgText = await readFile(join(root, "package.json"), "utf8").catch(() => undefined);
+  const pkgText = await readText(join(root, "package.json"));
   if (pkgText !== undefined) {
     try {
       const pkg = JSON.parse(pkgText) as { scripts?: { test?: string } };
@@ -36,7 +37,7 @@ async function packageManager(root: string): Promise<"pnpm" | "yarn" | "npm"> {
  * script, else its own TypeScript compiler when it has a tsconfig. Undefined when there is none.
  */
 export async function detectBuildCommand(root: string): Promise<string | undefined> {
-  const pkgText = await readFile(join(root, "package.json"), "utf8").catch(() => undefined);
+  const pkgText = await readText(join(root, "package.json"));
   let scripts: Record<string, string> = {};
   try {
     scripts = (JSON.parse(pkgText ?? "{}") as { scripts?: Record<string, string> }).scripts ?? {};
@@ -59,8 +60,8 @@ export async function hasPytestSetup(root: string): Promise<boolean> {
   // A tests/ folder is common in JavaScript repos too; it only means pytest when it holds Python.
   const tests = await readdir(join(root, "tests"), { recursive: true }).catch(() => []);
   if (tests.some((f) => f.endsWith(".py"))) return true;
-  const pyproject = await readFile(join(root, "pyproject.toml"), "utf8").catch(() => "");
-  const setupCfg = await readFile(join(root, "setup.cfg"), "utf8").catch(() => "");
+  const pyproject = (await readText(join(root, "pyproject.toml"))) ?? "";
+  const setupCfg = (await readText(join(root, "setup.cfg"))) ?? "";
   return pyproject.includes("[tool.pytest") || setupCfg.includes("[tool:pytest]");
 }
 
