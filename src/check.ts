@@ -58,7 +58,10 @@ export async function scan(
   for (const file of files) {
     const grammar = grammarFor(file);
     if (!grammar && !withMentions) continue;
-    const text = await readText(join(root, file), grammar ? () => tooLarge.push(file) : undefined);
+    const text = await readText(join(root, file), (start) => {
+      // A binary file is never searched, so it is not listed as left out.
+      if (grammar || !isBinary(start)) tooLarge.push(file);
+    });
     if (text === undefined) continue;
     if (withMentions && !isBinary(text)) {
       if (!grammar) otherFiles++;

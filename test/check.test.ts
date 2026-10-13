@@ -838,8 +838,50 @@ describe("other mentions of model names", () => {
 
   it("treats letters and digits in any script as part of a word", () => {
     const names = new Set(["ada", "o1"]);
-    const text = "orçada adaé naïve-o1 Ão1 o1ção ada² ٣o1\nA despesa foi orçada. Usamos ada. «o1»\n";
+    const text = '"orçada" "adaé" naïve-o1 Ão1 o1ção "ada²" ٣o1\nA despesa foi orçada. Usamos "ada". «o1»\n';
     expect(listed(findMentions(text, names))).toEqual([":2:ada", ":2:o1"]);
+  });
+
+  it("counts a name made only of letters only when it sits directly inside quotes", () => {
+    const names = new Set(["ada", "davinci", "gpt-4"]);
+    const text = 'ada --name ada ~/ada (ada) "ada \'ada" "ada\'\n"ada" \'davinci\' `ada`\ngpt-4 run\n';
+    expect(listed(findMentions(text, names))).toEqual([":2:ada", ":2:davinci", ":3:gpt-4"]);
+  });
+
+  it("counts a letter-only name in escaped quotes, as in a notebook cell", () => {
+    const text = '    "response = openai.Completion.create(model=\\"davinci\\")\\n",\n"a \\"ada\\\' b \\"ada"\n';
+    expect(listed(findMentions(text, new Set(["ada", "davinci"])))).toEqual([":1:davinci"]);
+  });
+
+  it("counts a letter-only name set as the whole value of a model or engine setting", () => {
+    const text = [
+      "OPENAI_MODEL=davinci",
+      "  model: curie  ",
+      'engine = "ada"',
+      "name: ada",
+      "--name ada",
+      "cd ~/ada",
+      "model: ada # old",
+      "model: ada.",
+      "model:\nada",
+      "llm.engine:\tbabbage\r",
+      "model ada",
+      "",
+    ].join("\n");
+    expect(listed(findMentions(text, new Set(["ada", "babbage", "curie", "davinci"])))).toEqual([":1:davinci", ":2:curie", ":3:ada", ":11:babbage"]);
+  });
+
+  it("lists quoted letter-only names, and big text files but not big binary files under Not checked", async () => {
+    const dir = await scratch({
+      "README.md": "Start an agent named ada: `--name ada`, then open ~/ada.\nRuns on gpt-4.\n",
+      "config.json": '{ "model": "ada" }\n',
+      "big.json": "x".repeat(MAX_FILE_BYTES + 100_000),
+      "demo.mp4": "\0" + "x".repeat(MAX_FILE_BYTES + 100_000),
+    });
+    const { hits, mentions, coverage } = await checkReport(dir);
+    expect(listed(mentions)).toEqual(["README.md:2:gpt-4", "config.json:1:ada"]);
+    expect(coverage.tooLarge).toEqual(["big.json"]);
+    expect(render(hits, coverage, [], mentions)).toContain("\nNot checked: 1 file over 10 MB: big.json.\n");
   });
 
   it("keeps a separate accent mark inside the word", () => {
@@ -847,7 +889,7 @@ describe("other mentions of model names", () => {
     expect(findMentions(text, new Set(["ada", "o1"]))).toEqual([]);
   });
 
-  it("skips binary files, pruned folders and files over the size limit, and never fails the check", async () => {
+  it("skips binary files and pruned folders, lists files over the size limit, and never fails the check", async () => {
     const dir = await scratch({
       "notes.txt": "gpt-4\n",
       "logo.png": "\0PNG gpt-4\n",
@@ -856,7 +898,7 @@ describe("other mentions of model names", () => {
     });
     const { hits, mentions, coverage } = await checkReport(dir);
     expect(listed(mentions)).toEqual(["notes.txt:1:gpt-4"]);
-    expect(coverage.tooLarge).toBeUndefined();
+    expect(coverage.tooLarge).toEqual(["big.json"]);
     expect(exitCodeForCheck(hits)).toBe(0);
     expect(render(hits, coverage, [], mentions)).toMatch(/^No call sites of known vendor changes found\.\n\nAlso mentioned:/);
   });
@@ -871,8 +913,8 @@ describe("other mentions of model names", () => {
   });
 
   it("reads a padded file in linear time", () => {
-    const names = new Set(["gpt-4", "o1"]);
-    for (const unit of ["a", ".", "gpt-4.gpt-4x", "x y ", "o1\n"]) {
+    const names = new Set(["gpt-4", "o1", "ada"]);
+    for (const unit of ["a", ".", "gpt-4.gpt-4x", "x y ", "o1\n", "model= ada ", '\\"ada\\"x ', "engine: \t"]) {
       const text = unit.repeat(Math.ceil(2_000_000 / unit.length));
       const start = performance.now();
       findMentions(text, names);

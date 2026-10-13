@@ -115,13 +115,17 @@ confirm. darnit cannot see where these values are sent, so check each one. They
 never change the exit code, and test files are skipped. `--json` lists them in
 `possiblyAffected`, with the same fields as `hits` plus `model`.
 
-Every other exact mention of a retired or retiring model name, in any file
-(docs, config, `.env`, tests, comments), is counted per file under "Also
-mentioned". Only the whole name counts: `gpt-4` never matches inside `gpt-4o`,
-`gpt-4.1` or `gpt-4-turbo`. Mentions never change the exit code. `--mentions`
-lists each line, and `--json` always lists them all in `mentions`, with `id`,
-`file`, `line` and `model`, and counts the other files searched in
-`scanned.otherFiles`. Binary files and files over 10 MB are skipped.
+Other exact mentions of a retired or retiring model name, in any file (docs,
+config, `.env`, tests, comments), are counted per file under "Also mentioned".
+Only the whole name counts: `gpt-4` never matches inside `gpt-4o`, `gpt-4.1` or
+`gpt-4-turbo`. A name made only of letters, such as `ada` or `davinci`, is also
+an everyday word or name, so it counts only inside quotes (`"ada"`, `'ada'`,
+`` `ada` `` or `\"ada\"` in a JSON string) or as the whole value of a setting
+named for a model or engine (`OPENAI_MODEL=ada`, `model: ada`). Mentions never
+change the exit code. `--mentions` lists each line, and `--json` always lists
+them all in `mentions`, with `id`, `file`, `line` and `model`, and counts the
+other files searched in `scanned.otherFiles`. Binary files are skipped, and
+other files over 10 MB are listed under "Not checked".
 
 | Flag | |
 |---|---|
@@ -293,8 +297,8 @@ To add a vendor, open a pull request adding its spec URL and SDK calls to
   there, but does not follow LangChain or Vercel's AI SDK calls. Any other
   mention, such as a name in a config file, a `.env` file, a list of models or a
   test file, is only counted under "Also mentioned", and short names such as `o1`
-  or `ada` can match unrelated text. A name built at run time or set outside the
-  repository is missed. A clean `check` does not mean no retired model is in use.
+  can match unrelated text, while `ada` in plain text is not counted. A name
+  built at run time or set outside the repository is missed. A clean `check` does not mean no retired model is in use.
 - Only changes with a record are found. No record, no report.
 - Clients that copy OpenAI's methods are left out when the same file shows a
   known look-alike: the Groq, Together, Cerebras or Fireworks SDKs, or OpenAI's

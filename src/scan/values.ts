@@ -5,7 +5,7 @@ import { stringText } from "./clients.js";
 
 export type ModelValue = Match & { model: string };
 
-const NAMED = /model|engine/i;
+export const NAMED = /model|engine/i;
 const TOKEN = /token/i;
 const ENV_READ = /process\.env|import\.meta\.env|os\.environ|getenv|\benv\.get|environ\.get/;
 const ENV_CALL = /(getenv|environ\.get|environ\.setdefault|env\.get)$/;
