@@ -21,10 +21,10 @@ Commands below use `X.Y.Z` for the version and `rc.N` for the candidate number.
 All must be true before tagging, for a candidate and again for the final version:
 
 - `main` CI is green on the exact commit you are about to tag.
-- `CHANGELOG.md` covers every user-facing change since the last release, in user terms. Entries
-  are written by hand and thank every outside contributor by name and GitHub handle for the change
-  they made. The entries stay under `## [Unreleased]` through every candidate and get the version
-  heading only at promote.
+- `CHANGELOG.md` covers every user-facing change since the last release, written by hand in user
+  terms. Each entry thanks the outside contributor who made it, by name or GitHub handle, and a line
+  under the version thanks anyone whose change needed no entry. Entries stay under
+  `## [Unreleased]` through every candidate and get the version heading only at promote.
 - No pending items: no open security finding, no unreviewed fix, nothing marked as blocking the
   release.
 - The version follows the changelog's rule: before 1.0, a patch only adds CLI flags, exit codes,
