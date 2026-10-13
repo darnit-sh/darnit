@@ -20,12 +20,11 @@ export function findMentions(text: string, names: ReadonlySet<string>): Mention[
   let line = 1;
   let newline = text.indexOf("\n");
   for (const { 0: run, index } of text.matchAll(WORD)) {
-    const candidates = run.length <= longest ? [run] : [];
-    // A trailing "." not followed by a letter or digit ends the name.
-    for (let i = run.indexOf("."); i !== -1 && i <= longest; i = run.indexOf(".", i + 1)) {
-      if (!ALNUM.test(run[i + 1] ?? "")) candidates.push(run.slice(0, i));
+    let model = run.length <= longest && names.has(run) ? run : undefined;
+    // A "." not followed by a letter or digit ends a name, as at the end of a sentence.
+    for (let i = run.indexOf("."); model === undefined && i !== -1 && i <= longest; i = run.indexOf(".", i + 1)) {
+      if (!ALNUM.test(run[i + 1] ?? "") && names.has(run.slice(0, i))) model = run.slice(0, i);
     }
-    const model = candidates.find((c) => names.has(c));
     if (model === undefined) continue;
     if (newline !== -1 && newline < index) seen = new Set();
     while (newline !== -1 && newline < index) {
