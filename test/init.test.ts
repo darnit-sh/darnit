@@ -77,7 +77,7 @@ describe("init", () => {
     const workflow = await readFile(join(dir, ".github", "workflows", "darnit.yml"), "utf8");
     expect(workflow).toContain("cron:");
     const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
-    expect(workflow).toContain(`- run: npx darnit@${version.split(".").slice(0, 2).join(".")} check\n`);
+    expect(workflow).toContain(`- run: npx darnit@${pinned(version)} check\n`);
 
     const second = await init(dir);
     expect(second.slice(1)).toEqual([
