@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import type { VendorClients } from "./scan/clients.js";
 import { basename, join } from "node:path";
 
@@ -73,6 +73,29 @@ const SKIP_DIRS = new Set([
 const SOURCE_FILE = /\.(m?[jt]sx?|c[jt]s|py)$/;
 const PYTHON_MANIFEST = /^(requirements[^/]*\.txt|pyproject\.toml|setup\.py|setup\.cfg|Pipfile)$/;
 
+/** Larger files are not read: no hand-written source comes close, and a planted one could stall a scan or run it out of memory. */
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** A regular file's text; undefined when it can't be read, isn't a file, or is over MAX_FILE_BYTES (then `tooLarge` is called). */
+export async function readText(path: string, tooLarge?: () => void): Promise<string | undefined> {
+  // Checked before opening, since opening a named pipe waits for a writer that never comes.
+  const stats = await stat(path).catch(() => undefined);
+  if (!stats?.isFile()) return undefined;
+  if (stats.size > MAX_FILE_BYTES) return void tooLarge?.();
+  const file = await open(path).catch(() => undefined);
+  try {
+    // Checked again on what was opened, in case the path changed in between.
+    const opened = await file?.stat();
+    if (!opened?.isFile()) return undefined;
+    if (opened.size > MAX_FILE_BYTES) return void tooLarge?.();
+    return await file!.readFile("utf8");
+  } catch {
+    return undefined;
+  } finally {
+    await file?.close();
+  }
+}
+
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** A generated Python SDK (OpenAI's and its siblings) keeps all of these at its package root. */
@@ -117,13 +140,12 @@ function pythonDeclares(text: string, pkg: string): boolean {
 function importsPackage(text: string, pkg: string, lang: "js" | "py"): boolean {
   const p = escapeRegExp(pkg);
   return lang === "py"
-    ? new RegExp(`^\\s*(from|import)\\s+${p}\\b`, "m").test(text)
+    ? new RegExp(`^[ \\t\\f]*(from|import)\\s+${p}\\b`, "m").test(text)
     : new RegExp(`(from\\s*|require\\(\\s*)["']${p}(/|["'])`).test(text);
 }
 
-/** Scans a repo for known vendor APIs. Sorted by vendor; evidence in path order. */
-export async function detectApis(root: string): Promise<Detection[]> {
-  // Known limit: every source file is read in full to look for host strings. Stream or cap sizes if repos get huge.
+/** Scans a repo for known vendor APIs. Sorted by vendor; evidence in path order. Files too large to read are added to `tooLarge`. */
+export async function detectApis(root: string, tooLarge: string[] = []): Promise<Detection[]> {
   const evidence = new Map<Vendor, string[]>();
   const add = (vendor: Vendor, note: string) => evidence.set(vendor, [...(evidence.get(vendor) ?? []), note]);
 
@@ -132,7 +154,7 @@ export async function detectApis(root: string): Promise<Detection[]> {
     const isManifest = name === "package.json" || PYTHON_MANIFEST.test(name);
     const lang = SOURCE_FILE.test(name) ? (name.endsWith(".py") ? "py" : "js") : undefined;
     if (!isManifest && !lang) continue;
-    const text = await readFile(join(root, file), "utf8").catch(() => "");
+    const text = (await readText(join(root, file), () => tooLarge.push(file))) ?? "";
     for (const [vendor, spec] of Object.entries(VENDORS) as [Vendor, (typeof VENDORS)[Vendor]][]) {
       if (name === "package.json") {
         for (const dep of npmDeps(text)) if ((spec.npm as readonly string[]).includes(dep)) add(vendor, `${file}: ${dep}`);

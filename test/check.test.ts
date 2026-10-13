@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit } from "../src/check.js";
+import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
 
@@ -642,5 +643,52 @@ describe("findMatches", () => {
     expect(findMatches('f({ model: "gpt-4" });\n', ts, [{ context: '({ model: "$M" })', selector: "pair" }])).toHaveLength(1);
     const py = grammarFor("a.py")!.grammar;
     expect(findMatches('f(model="gpt-4")\n', py, [{ context: 'f(model="$M")', selector: "keyword_argument" }])).toHaveLength(1);
+  });
+});
+
+describe("check on a repository built to slow it down", () => {
+  const maxTokens = (hits: Hit[]) => locations(hits.filter((h) => h.record.id.includes("max-tokens")));
+  const py = (client: string) => `${client}\nclient.chat.completions.create(model="x", max_tokens=5)\n`;
+
+  it.each([
+    ["an import split over thousands of blank lines", "app.py", py(`from openai import (${"\n".repeat(3000)}OpenAI)\nclient = OpenAI()`), 3003],
+    ["an import padded with thousands of spaces", "app.js", `import {${" ".repeat(3000)}OpenAI } from "openai";\nconst client = new OpenAI();\nclient.chat.completions.create({ max_tokens: 5 });\n`, 3],
+    ["a function with thousands of blank lines", "app.py", py(`from groq import Groq\ndef setup():\n    client = Groq()${"\n".repeat(150_000)}    return client`), 150_004],
+  ])("finishes quickly on %s", async (_, name, text, line) => {
+    const dir = await scratch({ [name]: text });
+    const start = performance.now();
+    const hits = await check(dir);
+    expect(performance.now() - start).toBeLessThan(2000);
+    expect(maxTokens(hits)).toEqual([`${name}:${line}`]);
+  });
+
+  it.each([
+    ["global client", "app.py", py("from groq import Groq\ndef setup():\n    global client\n    client = Groq()"), "app.py:5"],
+    ["global client in a nested block", "app.py", py("from groq import Groq\ndef setup():\n    if True:\n        global client\n    client = Groq()"), "app.py:6"],
+  ])("reads a function's %s, so a look-alike client set there stays left out", async (_, name, text, at) => {
+    const { hits, coverage } = await checkReport(await scratch({ [name]: text }));
+    expect(maxTokens(hits)).toEqual([]);
+    expect(coverage.foreignAt).toEqual([at]);
+  });
+
+  it.each([
+    ["global other", "app.py", py("from groq import Groq\ndef setup():\n    global other\n    client = Groq()"), "app.py:5"],
+    [
+      "the text global client in a JavaScript function",
+      "app.js",
+      'import Groq from "groq-sdk";\nfunction setup() {\n  const note = `\nglobal client`;\n  var client = new Groq();\n}\nclient.chat.completions.create({ model: "x", max_tokens: 5 });\n',
+      "app.js:7",
+    ],
+  ])("does not take %s as declaring the client global", async (_, name, text, at) => {
+    expect(maxTokens(await check(await scratch({ [name]: text })))).toEqual([at]);
+  });
+
+  it("does not read a file over the size limit, and says so", async () => {
+    const call = 'import OpenAI from "openai";\nnew OpenAI().chat.completions.create({ max_tokens: 5 });\n';
+    const dir = await scratch({ "small.js": call, "big.js": call + " ".repeat(MAX_FILE_BYTES) });
+    const { hits, coverage } = await checkReport(dir);
+    expect(maxTokens(hits)).toEqual(["small.js:2"]);
+    expect(coverage).toMatchObject({ files: 1, tooLarge: ["big.js"] });
+    expect(render(hits, coverage)).toContain("\nNot checked: 1 file over 10 MB: big.js.\n");
   });
 });

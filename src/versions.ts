@@ -1,10 +1,10 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { readText as read } from "./detect.js";
 
 /** A package version found in the repo, and the file that said so. */
 export type Found = { version: string; from: string };
 
-const read = (path: string) => readFile(path, "utf8").catch(() => undefined);
 const VERSION = /^\d+\.\d+\.\d+/;
 
 /**
@@ -56,7 +56,7 @@ export async function npmVersionFor(root: string, pkg: string, file: string): Pr
 async function pins(root: string, file: string, want: string): Promise<Found[]> {
   const found: Found[] = [];
   for (const line of (await read(join(root, file)))?.split("\n") ?? []) {
-    const m = /^\s*([A-Za-z0-9._-]+)\s*(?:\[[^\]]*\])?\s*==\s*(\d+\.\d+\.\d+[^\s;,#]*)/.exec(line);
+    const m = /^\s*([A-Za-z0-9._-]+)\s*(?:\[[^\]]*\]\s*)?==\s*(\d+\.\d+\.\d+[^\s;,#]*)/.exec(line);
     if (m && pyName(m[1]!) === want) found.push({ version: m[2]!, from: file });
   }
   return found;

@@ -3,6 +3,7 @@ import { mkdir, open, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
+import { tooLargeNote } from "./check.js";
 import { detectApis, VENDORS } from "./detect.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
@@ -71,7 +72,8 @@ async function place(root: string, rel: string, text: string, force: boolean): P
 
 /** `darnit init`: detect APIs, write darnit.yml and the scheduled workflow. Returns log lines. */
 export async function init(root: string, { force = false } = {}): Promise<string[]> {
-  const found = await detectApis(root);
+  const tooLarge: string[] = [];
+  const found = await detectApis(root, tooLarge);
   const summary =
     found.length === 0
       ? "Scanned repo: no known APIs found (the scheduled check still runs)"
@@ -83,5 +85,5 @@ export async function init(root: string, { force = false } = {}): Promise<string
   };
   const yml = `# darnit configuration (https://darnit.sh)\n# tier: supported = rule packs exist; recognized = named only, no change records yet; request support on GitHub\n${stringify(config)}`;
 
-  return [summary, await place(root, "darnit.yml", yml, force), await place(root, ".github/workflows/darnit.yml", WORKFLOW, force)];
+  return [summary, ...tooLargeNote(tooLarge), await place(root, "darnit.yml", yml, force), await place(root, ".github/workflows/darnit.yml", WORKFLOW, force)];
 }
