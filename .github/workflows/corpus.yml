@@ -11,6 +11,8 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.changes.outputs.count }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,19 +29,47 @@ jobs:
         run: echo "count=$(git status --porcelain | wc -l)" >> "$GITHUB_OUTPUT"
       - if: steps.changes.outputs.count != '0'
         run: npm run check
-      # The app's token can push and open pull requests, and CI runs on them. It is made only
-      # after everything that runs dependency code.
       - if: steps.changes.outputs.count != '0'
-        id: app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: corpus
+          path: |
+            corpus
+            packs
+      - if: steps.changes.outputs.count != '0'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: corpus-log
+          path: ${{ runner.temp }}/corpus.log
+
+  # Dependency code in the job above can leave hooks or processes behind, so the app's token
+  # (which can push and open pull requests) is made only on a machine that never runs it.
+  open-pr:
+    needs: refresh
+    if: needs.refresh.outputs.count != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - id: app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.CORPUS_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORPUS_APP_KEY }}
-      - if: steps.changes.outputs.count != '0'
-        env:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app.outputs.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: corpus
+          path: ${{ runner.temp }}/corpus
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: corpus-log
+          path: ${{ runner.temp }}
+      - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          gh auth setup-git
+          rm -rf corpus packs
+          cp -R "$RUNNER_TEMP/corpus/corpus" "$RUNNER_TEMP/corpus/packs" .
           git config user.name darnit
           git config user.email darnit@users.noreply.github.com
           branch="corpus/$(date -u +%Y-%m-%d)"
