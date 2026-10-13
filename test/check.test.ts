@@ -715,6 +715,35 @@ describe("model names set as values", () => {
     }
   }, 20_000);
 
+  it("reads calls with many arguments about as fast as parsing them", () => {
+    const cases = [
+      ["app.ts", '"gpt-4", '],
+      ["app.py", '"gpt-4", '],
+      ["app.py", 'default="gpt-4", '],
+      ["app.ts", '{ default: "gpt-4" }, '],
+    ] as const;
+    for (const [file, arg] of cases) {
+      const grammar = grammarFor(file)!.grammar;
+      const source = `f("model", ${arg.repeat(2000)})\n`;
+      let start = performance.now();
+      parse(grammar, source);
+      const parsing = performance.now() - start;
+      start = performance.now();
+      findModelValues(file, source, grammar, new Set(["gpt-4"]));
+      expect(performance.now() - start).toBeLessThan(5 * parsing + 200);
+    }
+  }, 60_000);
+
+  it("does not list a call's model fallback again when it wraps to the next line", async () => {
+    const dir = await scratch({
+      "app.ts": 'import OpenAI from "openai";\nconst openai = new OpenAI();\nawait openai.chat.completions.create({\n  model:\n    process.env.X ?? "gpt-4",\n  messages: [],\n});\n',
+      "app.py": 'import os\nfrom openai import OpenAI\n\nclient = OpenAI()\nclient.chat.completions.create(\n    model=os.environ.get("M")\n    or "gpt-4",\n    messages=[],\n)\n',
+    });
+    const { hits, values } = await checkReport(dir);
+    expect(locations(hits).sort()).toEqual(["app.py:6", "app.ts:4"]);
+    expect(values).toEqual([]);
+  });
+
   it("lists a model value on a line another change already reported", async () => {
     const dir = await scratch({ "app.py": 'from openai import OpenAI\n\nclient = OpenAI()\nclient.chat.completions.create(**{"model": "gpt-4"}, messages=[], max_tokens=5)\n' });
     const { hits, values } = await checkReport(dir);

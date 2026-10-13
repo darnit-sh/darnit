@@ -30,12 +30,16 @@ export function grammarFor(file: string): { lang: Lang; grammar: Grammar } | und
   return GRAMMAR_BY_EXT[extname(file)];
 }
 
+export type Span = { start: number; end: number };
+
 export type Match = {
   /** 1-based line of the match start. */
   line: number;
   /** 1-based column of the match start. */
   column: number;
   text: string;
+  /** Character offsets of the matched text in the file. */
+  span: Span;
   /** The file shows this call goes to another provider through the same methods (only set with a vendor gate). */
   foreign?: true;
   /** The private addresses the file shows this call is sent to, such as "localhost:11434" (only set with a vendor gate). */
@@ -164,7 +168,7 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
   const matches: Match[] = [];
   for (const { context, selector } of patterns) {
     for (const node of root.findAll({ rule: ruleFor(context, selector) })) {
-      const { start } = node.range();
+      const { start, end } = node.range();
       let foreign = false;
       let local: string[] | undefined;
       if (symbols.length > 0 || endpoints.length > 0) {
@@ -181,7 +185,7 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
           local = typeof origin === "object" ? origin.local : undefined;
         }
       }
-      matches.push({ line: start.line + 1, column: start.column + 1, text: node.text(), ...(foreign ? { foreign: true as const } : {}), ...(local ? { local } : {}) });
+      matches.push({ line: start.line + 1, column: start.column + 1, text: node.text(), span: { start: start.index, end: end.index }, ...(foreign ? { foreign: true as const } : {}), ...(local ? { local } : {}) });
     }
   }
   return matches.sort((a, b) => a.line - b.line || a.column - b.column);

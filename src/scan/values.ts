@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { parse, type SgNode } from "@ast-grep/napi";
-import type { Grammar, Match } from "./astgrep.js";
+import type { Grammar, Match, Span } from "./astgrep.js";
 import { stringText } from "./clients.js";
 
 export type ModelValue = Match & { model: string };
@@ -24,7 +24,19 @@ const short = (n: SgNode | null | undefined) => (n && n.range().end.index - n.ra
 
 const same = (a: SgNode | null | undefined, b: SgNode) => a?.range().start.index === b.range().start.index;
 
-const namedArgs = (args: SgNode) => args.children().filter((c) => c.isNamed() && !c.is("comment"));
+/** First arguments of each argument list, read once per list: reading them for each string in a long list is slow. */
+type FirstArgs = Map<number, SgNode[]>;
+
+function firstArgs(args: SgNode, cache: FirstArgs): SgNode[] {
+  const key = args.range().start.index;
+  let first = cache.get(key);
+  if (!first) {
+    first = [];
+    for (let c = args.child(0); c && first.length < 2; c = c.next()) if (c.isNamed() && !c.is("comment")) first.push(c);
+    cache.set(key, first);
+  }
+  return first;
+}
 
 /** The name a value is bound to, when `node` is the value side of `parent`. */
 function boundName(parent: SgNode, node: SgNode): string | undefined {
@@ -52,18 +64,18 @@ function boundName(parent: SgNode, node: SgNode): string | undefined {
 }
 
 /** `default=` on an option named for a model: `add_argument("--model", default=…)`, `model = field(default=…)`, `.option("model", { default: … })`. */
-function namedOption(defaultNode: SgNode): boolean {
+function namedOption(defaultNode: SgNode, cache: FirstArgs): boolean {
   let args = defaultNode.parent();
   if (args?.is("object")) args = args.parent();
   if (!args?.is("arguments") && !args?.is("argument_list")) return false;
-  const first = namedArgs(args)[0];
+  const first = firstArgs(args, cache)[0];
   if (first?.is("string") && NAMED.test(first.text())) return true;
   const binding = args.parent()?.parent();
   return binding !== null && binding !== undefined && NAMED.test(boundName(binding, args.parent()!) ?? "");
 }
 
 /** Whether a model-name string is set as the value of something named for a model, or as an env read's default. */
-function isModelValue(str: SgNode): boolean {
+function isModelValue(str: SgNode, cache: FirstArgs): boolean {
   let node = str;
   let env = false;
   for (let i = 0; i < 6; i++) {
@@ -81,7 +93,7 @@ function isModelValue(str: SgNode): boolean {
     }
     if (parent.is("arguments") || parent.is("argument_list")) {
       const fn = short(parent.parent()?.field("function"));
-      const args = namedArgs(parent);
+      const args = firstArgs(parent, cache);
       if (!same(args[1], node)) return false;
       if (ENV_CALL.test(fn)) return true;
       const key = args[0]!;
@@ -89,7 +101,7 @@ function isModelValue(str: SgNode): boolean {
     }
     if (env) return true;
     const isDefault = parent.is("keyword_argument") ? parent.field("name")?.text() === "default" : parent.is("pair") && /^["']?default["']?$/.test(parent.field("key")?.text() ?? "");
-    if (isDefault && !same(parent.field("key"), node)) return namedOption(parent);
+    if (isDefault && !same(parent.field("key"), node)) return namedOption(parent, cache);
     return NAMED.test(boundName(parent, node) ?? "");
   }
   return false;
@@ -114,7 +126,7 @@ const TOKEN_KINDS = {
 };
 
 /** Whether [start, end) sits inside one of `ranges`, which are sorted and do not overlap. */
-function inside(ranges: { start: number; end: number }[], start: number, end: number): boolean {
+export function inside(ranges: readonly Span[], start: number, end: number): boolean {
   let lo = 0;
   let hi = ranges.length - 1;
   while (lo <= hi) {
@@ -123,6 +135,17 @@ function inside(ranges: { start: number; end: number }[], start: number, end: nu
     else hi = mid - 1;
   }
   return hi >= 0 && end <= ranges[hi]!.end;
+}
+
+/** `ranges` sorted by start, with overlapping ones joined, ready for `inside`. */
+export function joined(ranges: readonly Span[]): Span[] {
+  const out: Span[] = [];
+  for (const { start, end } of [...ranges].sort((a, b) => a.start - b.start)) {
+    const last = out.at(-1);
+    if (last && start < last.end) last.end = Math.max(last.end, end);
+    else out.push({ start, end });
+  }
+  return out;
 }
 
 /**
@@ -137,7 +160,7 @@ export function findModelValues(file: string, source: string, grammar: Grammar, 
   const py = file.endsWith(".py");
   // Tokenizer code names a model to count tokens, not to call it. Only a short plain dotted name
   // counts: a chained call's callee holds the whole chain, and walking up from each name is slow in deep code.
-  const tokenizers: { start: number; end: number }[] = [];
+  const tokenizers: Span[] = [];
   if (TOKEN.test(source)) {
     for (const n of root.findAll({ rule: { any: TOKEN_KINDS[py ? "py" : "js"].map((kind) => ({ kind })) } })) {
       if (!/^[\w.$]*token[\w.$]*$/i.test(short(n.field(TOKEN_FIELDS[String(n.kind())]!)))) continue;
@@ -146,13 +169,14 @@ export function findModelValues(file: string, source: string, grammar: Grammar, 
     }
   }
   const out: ModelValue[] = [];
+  const cache: FirstArgs = new Map();
   for (const str of root.findAll({ rule: { any: (py ? ["string"] : ["string", "template_string"]).map((kind) => ({ kind })) } })) {
     const model = stringText(str);
-    if (model === undefined || !names.has(model) || !isModelValue(str)) continue;
+    if (model === undefined || !names.has(model) || !isModelValue(str, cache)) continue;
     const { start, end } = str.range();
     if (inside(tokenizers, start.index, end.index)) continue;
     const { line, column } = start;
-    out.push({ line: line + 1, column: column + 1, text: lines[line]!.trim().slice(0, 200), model });
+    out.push({ line: line + 1, column: column + 1, text: lines[line]!.trim().slice(0, 200), span: { start: start.index, end: end.index }, model });
   }
   return out;
 }
