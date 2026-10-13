@@ -11,6 +11,7 @@ Notable changes to darnit. The format follows [Keep a Changelog](https://keepach
 
 ### Changed
 
+- The npm package includes `CHANGELOG.md`, so the changes are readable offline in `node_modules/darnit`.
 - The repository's build and test commands run without `GITHUB_TOKEN` and `GH_TOKEN`, and those values are replaced with `***` in any output darnit keeps. A test suite that needs either variable no longer gets it from darnit. ([#41](https://github.com/darnit-sh/darnit/pull/41))
 - darnit's git commands no longer run git hooks, including your own (husky, commitlint, pre-push) and a global `core.hooksPath`, since git cannot tell them from hooks a repository's tests planted. The push now uses git's own credentials, the same as your own `git push`; darnit's token only opens the pull request. A credential helper that reads the token from the environment, such as `gh auth setup-git` with only `GH_TOKEN` set, no longer works for the push. ([#43](https://github.com/darnit-sh/darnit/pull/43))
 

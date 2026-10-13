@@ -8,6 +8,7 @@
     "darnit": "dist/cli.js"
   },
   "files": [
+    "CHANGELOG.md",
     "dist",
     "packs/**/change.json",
     "packs/**/rules/**"
