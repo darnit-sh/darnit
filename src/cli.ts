@@ -30,7 +30,7 @@ program
   .command("check")
   .description("report vendor API changes that affect this repo's call sites")
   .option("--json", "machine-readable output")
-  .option("--mentions", "list every line that mentions a retiring model name")
+  .option("--mentions", "list every line that mentions a retired or retiring model name")
   .action(async ({ json, mentions: all }: { json?: boolean; mentions?: boolean }) => {
     const { hits, coverage, values, mentions } = await checkReport(process.cwd());
     const out = json

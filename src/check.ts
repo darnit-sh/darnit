@@ -3,9 +3,9 @@ import { parse as parseYaml } from "yaml";
 import { listFiles, MAX_FILE_BYTES, readText, vendorClients } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
-import { findMatches, grammarFor, modelNames, type Match } from "./scan/astgrep.js";
+import { findMatches, grammarFor, modelNames, type Match, type Span } from "./scan/astgrep.js";
 import { findMentions, isBinary } from "./scan/mentions.js";
-import { findModelValues, isTestPath } from "./scan/values.js";
+import { findModelValues, inside, isTestPath, joined } from "./scan/values.js";
 
 export type Hit = Match & { record: ChangeRecord; file: string };
 
@@ -62,7 +62,7 @@ export async function scan(
     if (withMentions && !isBinary(text)) for (const m of findMentions(text, names)) mentions.push({ ...m, file, record: byName.get(m.model)! });
     if (!grammar) continue;
     scanned++;
-    const reported = new Set<string>();
+    const reported = new Map<string, Span[]>();
     for (const record of records) {
       const patterns = record.detection.astGrepPatterns[grammar.lang];
       if (!patterns) continue;
@@ -70,13 +70,17 @@ export async function scan(
       const vendor = vendorClients(record.vendor);
       for (const match of findMatches(text, grammar.grammar, patterns, { symbols, endpoints, vendor })) {
         (match.foreign ? foreign : hits).push({ ...match, record, file });
-        reported.add(`${record.id}:${match.line}`);
+        const spans = reported.get(record.id);
+        if (spans) spans.push(match.span);
+        else reported.set(record.id, [match.span]);
       }
     }
     if (names.size === 0 || isTestPath(file)) continue;
+    // A value inside a reported call site is already listed there.
+    const covered = new Map([...reported].map(([id, spans]) => [id, joined(spans)]));
     for (const v of findModelValues(file, text, grammar.grammar, names)) {
       const record = byName.get(v.model)!;
-      if (!reported.has(`${record.id}:${v.line}`)) values.push({ ...v, record, file });
+      if (!inside(covered.get(record.id) ?? [], v.span.start, v.span.end)) values.push({ ...v, record, file });
     }
   }
   // A name already reported on that line as a call site or a value is not mentioned again.
@@ -186,11 +190,14 @@ function grouped(hits: readonly Hit[], noun: string): string[] {
 }
 
 const VALUES_INTRO = [
-  "Possibly affected: retiring model names set as model values, not confirmed as call sites.",
+  "Possibly affected: retired or retiring model names set as model values, not confirmed as call sites.",
   "Check where each one is sent. These do not fail the check.",
 ];
 
-const MENTIONS_INTRO = "Also mentioned: retiring model names elsewhere, such as docs, config files, tests and comments. These do not fail the check.";
+const MENTIONS_INTRO = [
+  "Also mentioned: retired or retiring model names elsewhere, such as docs, config files, tests and comments.",
+  "These do not fail the check.",
+];
 const MENTION_FILES = 20;
 
 /** Mentions counted per file, most first; with `all`, one line per mention. */
@@ -202,12 +209,12 @@ function mentionSection(mentions: readonly MentionHit[], all: boolean): string[]
     else byFile.set(m.file, [m]);
   }
   const total = `${plural(mentions.length, "mention")} in ${plural(byFile.size, "file")}`;
-  if (all) return [MENTIONS_INTRO, ...mentions.map((m) => `  ${m.file}:${m.line}  ${m.model}`), `  ${total}`, ""];
+  if (all) return [...MENTIONS_INTRO, ...mentions.map((m) => `  ${m.file}:${m.line}  ${m.model}`), `  ${total}`, ""];
   const files = [...byFile].sort((a, b) => b[1].length - a[1].length).slice(0, MENTION_FILES);
   const width = files.reduce((w, [f]) => Math.max(w, f.length), 0) + 2;
   const digits = String(files[0]![1].length).length;
   return [
-    MENTIONS_INTRO,
+    ...MENTIONS_INTRO,
     ...files.map(([file, ms]) => `  ${file.padEnd(width)}${String(ms.length).padStart(digits)}  ${firstFive([...new Set(ms.map((m) => m.model))])}`),
     ...(byFile.size > MENTION_FILES ? [`  and ${plural(byFile.size - MENTION_FILES, "more file")}`] : []),
     `  ${total}. darnit check --mentions lists each line.`,

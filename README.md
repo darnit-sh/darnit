@@ -107,7 +107,7 @@ parser are marked `(parser-verified, not read by a person)` and do fail the chec
 Calls made through another provider's look-alike client are left out, and the
 report names each one.
 
-A retiring model name set as a value outside the call, such as
+A retired or retiring model name set as a value outside the call, such as
 `DEFAULT_MODEL = "gpt-4"`, `os.getenv("MODEL", "gpt-4")` or a `model="gpt-4"`
 default, is listed after the call sites under "Possibly affected", grouped by
 change, and so is one written inside the call in a form `check` does not
@@ -115,17 +115,17 @@ confirm. darnit cannot see where these values are sent, so check each one. They
 never change the exit code, and test files are skipped. `--json` lists them in
 `possiblyAffected`, with the same fields as `hits` plus `model`.
 
-Every other exact mention of a retiring model name, in any file (docs, config,
-`.env`, tests, comments), is counted per file under "Also mentioned". Only the
-whole name counts: `gpt-4` never matches inside `gpt-4o`, `gpt-4.1` or
-`gpt-4-turbo`. Mentions never change the exit code. `--mentions` lists each line,
-and `--json` always lists them all in `mentions`, with `id`, `file`, `line` and
-`model`. Binary files and files over 10 MB are skipped.
+Every other exact mention of a retired or retiring model name, in any file
+(docs, config, `.env`, tests, comments), is counted per file under "Also
+mentioned". Only the whole name counts: `gpt-4` never matches inside `gpt-4o`,
+`gpt-4.1` or `gpt-4-turbo`. Mentions never change the exit code. `--mentions`
+lists each line, and `--json` always lists them all in `mentions`, with `id`,
+`file`, `line` and `model`. Binary files and files over 10 MB are skipped.
 
 | Flag | |
 |---|---|
 | `--json` | machine-readable output |
-| `--mentions` | list every line that mentions a retiring model name |
+| `--mentions` | list every line that mentions a retired or retiring model name |
 
 | Exit | |
 |---|---|

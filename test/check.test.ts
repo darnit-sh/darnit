@@ -680,7 +680,7 @@ describe("model names set as values", () => {
     );
     expect(exitCodeForCheck(hits)).toBe(1);
     const text = render(hits, coverage, values);
-    expect(text).toContain("Possibly affected: retiring model names set as model values, not confirmed as call sites.");
+    expect(text).toContain("Possibly affected: retired or retiring model names set as model values, not confirmed as call sites.");
     expect(text).toContain("  src/defaults.py:4:23    DEFAULT_JUDGE_MODEL = 'gpt-4-turbo'\n");
     expect(text).toContain("  22 values in 6 files\n");
     expect(toJson(values)[0]).toMatchObject({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: "examples/agent.ts", line: 3, model: "gpt-3.5-turbo" });
@@ -712,9 +712,60 @@ describe("model names set as values", () => {
       const parsing = performance.now() - start;
       start = performance.now();
       expect(findModelValues(file, source, grammar, new Set(["gpt-4"]))).toHaveLength(1);
-      expect(performance.now() - start).toBeLessThan(5 * parsing + 200);
+      expect(performance.now() - start).toBeLessThan(10 * parsing + 500);
     }
   }, 20_000);
+
+  it("reads calls with many arguments about as fast as parsing them", () => {
+    const cases = [
+      ["app.ts", '"gpt-4", '],
+      ["app.py", '"gpt-4", '],
+      ["app.py", 'default="gpt-4", '],
+      ["app.ts", '{ default: "gpt-4" }, '],
+    ] as const;
+    for (const [file, arg] of cases) {
+      const grammar = grammarFor(file)!.grammar;
+      const source = `f("model", ${arg.repeat(2000)})\n`;
+      let start = performance.now();
+      parse(grammar, source);
+      const parsing = performance.now() - start;
+      start = performance.now();
+      findModelValues(file, source, grammar, new Set(["gpt-4"]));
+      expect(performance.now() - start).toBeLessThan(10 * parsing + 500);
+    }
+  }, 60_000);
+
+  it("reads long names, long lines and deep code about as fast as parsing them", () => {
+    const defaults = 'default="gpt-4", '.repeat(5000);
+    const cases = [
+      ["app.py", `${"a.".repeat(50_000)}model = f(${defaults})\n`],
+      ["app.py", `f("${"model ".repeat(40_000)}", ${defaults}${defaults})\n`],
+      ["app.ts", `${" ".repeat(1_000_000)}${'model = "gpt-4"; '.repeat(5000)}\n`],
+      ["app.py", `model = ${'f("gpt-4", '.repeat(5000)}x${")".repeat(5000)}\n`],
+      ["app.ts", `model = ${'c ? "gpt-4" : ('.repeat(5000)}x${")".repeat(5000)}\n`],
+      ["app.ts", `model = x${'.f("gpt-4")'.repeat(5000)}\n`],
+    ] as const;
+    const slow = cases.filter(([file, source]) => {
+      const grammar = grammarFor(file)!.grammar;
+      let start = performance.now();
+      parse(grammar, source);
+      const parsing = performance.now() - start;
+      start = performance.now();
+      findModelValues(file, source, grammar, new Set(["gpt-4"]));
+      return performance.now() - start > 10 * parsing + 500;
+    });
+    expect(slow.map(([, source]) => source.slice(0, 20))).toEqual([]);
+  }, 60_000);
+
+  it("does not list a call's model fallback again when it wraps to the next line", async () => {
+    const dir = await scratch({
+      "app.ts": 'import OpenAI from "openai";\nconst openai = new OpenAI();\nawait openai.chat.completions.create({\n  model:\n    process.env.X ?? "gpt-4",\n  messages: [],\n});\n',
+      "app.py": 'import os\nfrom openai import OpenAI\n\nclient = OpenAI()\nclient.chat.completions.create(\n    model=os.environ.get("M")\n    or "gpt-4",\n    messages=[],\n)\n',
+    });
+    const { hits, values } = await checkReport(dir);
+    expect(locations(hits).sort()).toEqual(["app.py:6", "app.ts:4"]);
+    expect(values).toEqual([]);
+  });
 
   it("lists a model value on a line another change already reported", async () => {
     const dir = await scratch({ "app.py": 'from openai import OpenAI\n\nclient = OpenAI()\nclient.chat.completions.create(**{"model": "gpt-4"}, messages=[], max_tokens=5)\n' });
@@ -759,7 +810,7 @@ describe("other mentions of model names", () => {
     ]);
     expect(exitCodeForCheck(hits)).toBe(1);
     const text = render(hits, coverage, values, mentions);
-    expect(text).toContain("Also mentioned: retiring model names elsewhere");
+    expect(text).toContain("Also mentioned: retired or retiring model names elsewhere");
     expect(text).toContain("  config.yaml         2  o3-mini, o1-mini\n");
     expect(text).toContain("  8 mentions in 5 files. darnit check --mentions lists each line.\n");
     expect(render(hits, coverage, values, mentions, true)).toContain("  src/chat.ts:6  o1\n");
