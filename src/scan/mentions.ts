@@ -1,9 +1,9 @@
 export type Mention = { line: number; model: string };
 
-/** Runs of name characters, with letters and digits in any script; a single character class, so it cannot backtrack. */
-const WORD = /[\p{L}\p{N}_.-]+/gu;
+/** Runs of name characters, with letters, accent marks and digits in any script; a single character class, so it cannot backtrack. */
+const WORD = /[\p{L}\p{M}\p{N}_.-]+/gu;
 /** A letter or digit at the start; two code units cover letters outside the basic plane. */
-const ALNUM = /^[\p{L}\p{N}]/u;
+const ALNUM = /^[\p{L}\p{M}\p{N}]/u;
 
 /** Binary files hold a NUL byte near the start; text files do not. */
 export const isBinary = (text: string) => text.slice(0, 8192).includes("\0");

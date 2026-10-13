@@ -62,7 +62,7 @@ export async function scan(
     if (text === undefined) continue;
     if (withMentions && !isBinary(text)) {
       if (!grammar) otherFiles++;
-      // ponytail: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
+      // Known limit: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
       // (300 MB of crafted names) exhaust the heap. Store them compactly, or cap each file and keep its count, if that matters.
       for (const m of findMentions(text, names)) mentions.push({ ...m, file, record: byName.get(m.model)! });
     }

@@ -842,6 +842,11 @@ describe("other mentions of model names", () => {
     expect(listed(findMentions(text, names))).toEqual([":2:ada", ":2:o1"]);
   });
 
+  it("keeps a separate accent mark inside the word", () => {
+    const text = "orc\u0327ada ada\u0301 \u0915\u093fo1\n";
+    expect(findMentions(text, new Set(["ada", "o1"]))).toEqual([]);
+  });
+
   it("skips binary files, pruned folders and files over the size limit, and never fails the check", async () => {
     const dir = await scratch({
       "notes.txt": "gpt-4\n",
