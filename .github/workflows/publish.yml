@@ -1,0 +1,41 @@
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Waits for a maintainer's approval before any step runs.
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # No dependency cache here: a release builds only from what the lockfile names.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # Publishing with a short-lived identity instead of a token needs npm 11.5.1 or newer.
+      - run: npm install -g npm@11.20.0
+      - id: release
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          dist_tag=$(sh scripts/check-release.sh "$TAG" "$GITHUB_SHA")
+          echo "dist-tag=$dist_tag" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - run: "! git config --name-only --get-regexp '^http\\..*\\.extraheader$'"
+      - run: npm run check
+      - run: npm run build
+      # The steps above already ran what prepublishOnly would.
+      - env:
+          DIST_TAG: ${{ steps.release.outputs.dist-tag }}
+        run: npm publish --provenance --access public --tag "$DIST_TAG" --ignore-scripts
