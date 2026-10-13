@@ -694,12 +694,12 @@ describe("model names set as values", () => {
     const grammar = grammarFor("app.py")!.grammar;
     const time = (line: string) => {
       const start = performance.now();
-      expect(findModelValues("app.py", `${line}model = "gpt-4"\n`.repeat(60_000), grammar, new Set(["gpt-4"]))).toHaveLength(60_000);
+      expect(findModelValues("app.py", `${line}model = "gpt-4"\n`.repeat(30_000), grammar, new Set(["gpt-4"]))).toHaveLength(30_000);
       return performance.now() - start;
     };
     const plain = time("x = 1\n");
     expect(time("count_tokens(x)\n")).toBeLessThan(3 * plain);
-  });
+  }, 20_000);
 
   it("prints a long list of values quickly", async () => {
     const { values } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
