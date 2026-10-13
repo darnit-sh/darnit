@@ -1,9 +1,17 @@
 import { constants } from "node:fs";
 import { mkdir, open, realpath } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
 import { tooLargeNote } from "./check.js";
 import { detectApis, VENDORS } from "./detect.js";
+
+const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+
+/** The version a written workflow runs: the minor line, or the exact version for a prerelease, which no range matches. */
+export function pinned(v: string): string {
+  return v.includes("-") ? v : v.split(".").slice(0, 2).join(".");
+}
 
 const WORKFLOW = `name: darnit
 
@@ -24,7 +32,7 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      - run: npx darnit check
+      - run: npx darnit@${pinned(version)} check
 `;
 
 const { O_WRONLY, O_CREAT, O_EXCL, O_TRUNC, O_NOFOLLOW } = constants;
