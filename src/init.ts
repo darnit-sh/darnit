@@ -1,5 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { constants } from "node:fs";
+import { mkdir, open, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
 import { detectApis, VENDORS } from "./detect.js";
 
@@ -25,15 +26,37 @@ jobs:
       - run: npx darnit check
 `;
 
-/** Writes `text` to root/rel unless it already exists. Returns the log line. */
+const { O_WRONLY, O_CREAT, O_EXCL, O_TRUNC, O_NOFOLLOW } = constants;
+
+/** Refuses `path` when its folder, links followed, is not inside root: a cloned repository can plant links. */
+async function refuseOutside(root: string, path: string, rel: string): Promise<void> {
+  let dir = dirname(path);
+  for (;;) {
+    try {
+      dir = await realpath(dir);
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT" || dir === root) throw err;
+      dir = dirname(dir);
+    }
+  }
+  const inside = relative(await realpath(root), dir);
+  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) throw new Error(`${rel} is outside the repository; darnit only writes files inside it`);
+}
+
+/** Writes `text` to root/rel unless it already exists. Never follows a link out of the repository. Returns the log line. */
 async function place(root: string, rel: string, text: string, force: boolean): Promise<string> {
   const path = join(root, rel);
+  await refuseOutside(root, path, rel);
   await mkdir(dirname(path), { recursive: true });
   try {
-    await writeFile(path, text, { flag: force ? "w" : "wx" });
+    const file = await open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | (force ? O_TRUNC : O_EXCL));
+    await file.writeFile(text).finally(() => file.close());
     return `${force ? "Rewrote" : "Wrote"} ${rel}`;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    const { code } = err as NodeJS.ErrnoException;
+    if (code === "ELOOP") throw new Error(`${rel} is a symbolic link; darnit only writes files inside the repository`, { cause: err });
+    if (code !== "EEXIST") throw err;
     return `${rel} exists, left unchanged (--force to rewrite)`;
   }
 }
