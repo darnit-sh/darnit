@@ -813,6 +813,9 @@ describe("other mentions of model names", () => {
     expect(text).toContain("Also mentioned: retired or retiring model names elsewhere");
     expect(text).toContain("  config.yaml         2  o3-mini, o1-mini\n");
     expect(text).toContain("  8 mentions in 5 files. darnit check --mentions lists each line.\n");
+    expect(text).toContain("Scanned 2 JavaScript, TypeScript or Python files against");
+    expect(text).toContain("Also searched 3 other files for retired or retiring model names.\n");
+    expect(coverage.otherFiles).toBe(3);
     expect(render(hits, coverage, values, mentions, true)).toContain("  src/chat.ts:6  o1\n");
     expect(mentionsToJson(mentions)[0]).toEqual({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: ".env", line: 1, model: "gpt-3.5-turbo" });
   });
@@ -831,6 +834,12 @@ describe("other mentions of model names", () => {
     const names = new Set(["gpt-4", "gpt-4-turbo", "o1"]);
     const text = "gpt-4o gpt-4.1 gpt-4.5 my_gpt-4 a.gpt-4 gpt-4_x xgpt-4 -gpt-4 o1-pro po1\n(gpt-4) gpt-4-turbo, o1\n'gpt-4'.\nmodels/gpt-4..\n";
     expect(listed(findMentions(text, names))).toEqual([":2:gpt-4", ":2:gpt-4-turbo", ":2:o1", ":3:gpt-4", ":4:gpt-4"]);
+  });
+
+  it("treats letters and digits in any script as part of a word", () => {
+    const names = new Set(["ada", "o1"]);
+    const text = "orçada adaé naïve-o1 Ão1 o1ção ada² ٣o1\nA despesa foi orçada. Usamos ada. «o1»\n";
+    expect(listed(findMentions(text, names))).toEqual([":2:ada", ":2:o1"]);
   });
 
   it("skips binary files, pruned folders and files over the size limit, and never fails the check", async () => {

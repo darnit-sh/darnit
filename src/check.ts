@@ -31,7 +31,7 @@ async function configuredVendors(root: string): Promise<Set<string> | undefined>
 }
 
 /** What a check covered, so a clean result can say what it was clean against. */
-export type Coverage = { files: number; records: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[] };
+export type Coverage = { files: number; records: number; otherFiles?: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[] };
 
 /**
  * Hits for `records` in `files` (relative to `root`), with `modelValues` the model names set as values
@@ -43,7 +43,7 @@ export async function scan(
   files: readonly string[],
   records: readonly ChangeRecord[],
   { modelValues = false, mentions: withMentions = false } = {},
-): Promise<{ hits: Hit[]; scanned: number; foreign: Hit[]; tooLarge: string[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
+): Promise<{ hits: Hit[]; scanned: number; otherFiles: number; foreign: Hit[]; tooLarge: string[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
   const hits: Hit[] = [];
   const values: ModelValueHit[] = [];
   const mentions: MentionHit[] = [];
@@ -53,13 +53,19 @@ export async function scan(
   const foreign: Hit[] = [];
   const tooLarge: string[] = [];
   let scanned = 0;
+  let otherFiles = 0;
   // Known limit: each file is parsed once per record. Fine for a handful of records; index them by vendor as the corpus grows.
   for (const file of files) {
     const grammar = grammarFor(file);
     if (!grammar && !withMentions) continue;
     const text = await readText(join(root, file), grammar ? () => tooLarge.push(file) : undefined);
     if (text === undefined) continue;
-    if (withMentions && !isBinary(text)) for (const m of findMentions(text, names)) mentions.push({ ...m, file, record: byName.get(m.model)! });
+    if (withMentions && !isBinary(text)) {
+      if (!grammar) otherFiles++;
+      // ponytail: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
+      // (300 MB of crafted names) exhaust the heap. Store them compactly, or cap each file and keep its count, if that matters.
+      for (const m of findMentions(text, names)) mentions.push({ ...m, file, record: byName.get(m.model)! });
+    }
     if (!grammar) continue;
     scanned++;
     const reported = new Map<string, Span[]>();
@@ -89,16 +95,16 @@ export async function scan(
     ...values.map((v) => key(v.file, v.line, v.model)),
     ...hits.flatMap((h) => findMentions(h.text, new Set(recordNames(h.record))).map((m) => key(h.file, h.line + m.line - 1, m.model))),
   ]);
-  return { hits, scanned, foreign, tooLarge, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
+  return { hits, scanned, otherFiles, foreign, tooLarge, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
 }
 
 /** Every call site in `root` affected by a known vendor change, and what was covered. */
 export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage; foreign: Hit[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
-  const { hits, scanned, foreign, tooLarge, values, mentions } = await scan(root, await listFiles(root), records, { modelValues: true, mentions: true });
+  const { hits, scanned, otherFiles, foreign, tooLarge, values, mentions } = await scan(root, await listFiles(root), records, { modelValues: true, mentions: true });
   const leftOut = foreign.length > 0 ? { foreign: foreign.length, foreignAt: foreign.map((h) => `${h.file}:${h.line}`) } : {};
-  return { hits, foreign, values, mentions, coverage: { files: scanned, records: records.length, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}) } };
+  return { hits, foreign, values, mentions, coverage: { files: scanned, records: records.length, otherFiles, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}) } };
 }
 
 /** Every call site in `root` affected by a known vendor change. */
@@ -243,6 +249,7 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
     ...(coverage
       ? [`Scanned ${plural(coverage.files, "JavaScript, TypeScript or Python file")} against ${plural(coverage.records, "change record")}.`]
       : []),
+    ...(coverage?.otherFiles && mentions.length > 0 ? [`Also searched ${plural(coverage.otherFiles, "other file")} for retired or retiring model names.`] : []),
     ...(coverage?.foreign
       ? [
           `Left out ${plural(coverage.foreign, "call")} made through another provider's client with the same methods: ${firstFive(coverage.foreignAt ?? [])}.`,

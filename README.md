@@ -120,7 +120,8 @@ Every other exact mention of a retired or retiring model name, in any file
 mentioned". Only the whole name counts: `gpt-4` never matches inside `gpt-4o`,
 `gpt-4.1` or `gpt-4-turbo`. Mentions never change the exit code. `--mentions`
 lists each line, and `--json` always lists them all in `mentions`, with `id`,
-`file`, `line` and `model`. Binary files and files over 10 MB are skipped.
+`file`, `line` and `model`, and counts the other files searched in
+`scanned.otherFiles`. Binary files and files over 10 MB are skipped.
 
 | Flag | |
 |---|---|
