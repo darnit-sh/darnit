@@ -356,6 +356,11 @@ describe("fix", () => {
       const result = await fix(dir);
       expect(result.testsNote).toBe("found a pytest setup but no python3 or python on PATH");
       expect(renderSummary(result)).toContain("tests: none run (found a pytest setup but no python3 or python on PATH)");
+      const unread = await repoWith({ "pytest.ini": "", "app.py": "c.chat.completions.create(model='x', max_tokens=5)\n" });
+      await symlink("/dev/zero", join(unread, "pyproject.toml"));
+      expect(renderSummary(await fix(unread))).toContain(
+        "tests: none run (pyproject.toml not read: over 10 MB or not a regular file; found a pytest setup but no python3 or python on PATH)",
+      );
     } finally {
       vi.unstubAllEnvs();
     }
@@ -366,6 +371,7 @@ describe("fix", () => {
     const dir = await repoWith({ "package.json": big, "app.py": "c.chat.completions.create(model='x', max_tokens=5)\n" });
     const result = await fix(dir);
     expect(renderSummary(result)).toContain("tests: none run (package.json not read: over 10 MB or not a regular file; pass the command with --test)");
+    expect(renderSummary(result)).toContain("build: none run (package.json not read: over 10 MB or not a regular file)");
   });
 
   it("turns every pack's before/ into its after/, touching only reported files", async () => {

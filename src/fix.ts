@@ -69,6 +69,8 @@ export type FixResult = {
   testsSkipped: boolean;
   /** Why no tests ran, when darnit found a test setup it could not run. */
   testsNote?: string | undefined;
+  /** Why no build check ran, when package.json could not be read. */
+  buildNote?: string | undefined;
   diff: string;
   reverted: boolean;
 };
@@ -299,10 +301,15 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   }
 
   const commands: Commands = opts.noTest ? {} : { build: await detectBuildCommand(root), tests: opts.test ?? (await detectTestCommand(root)) };
+  const unread = opts.noTest ? undefined : await unreadSettings(root);
+  const skipped = unread && `${unread} not read: over 10 MB or not a regular file`;
+  if (unread === "package.json") base.buildNote = skipped;
   if (!commands.tests && !opts.noTest) {
-    const unread = await unreadSettings(root);
-    if (unread) base.testsNote = `${unread} not read: over 10 MB or not a regular file; pass the command with --test`;
-    else if (await hasPytestSetup(root)) base.testsNote = "found a pytest setup but no python3 or python on PATH";
+    // A package.json that was not read already explains it; Python may well be there.
+    const noPython = unread !== "package.json" && (await hasPytestSetup(root)) && "found a pytest setup but no python3 or python on PATH";
+    if (skipped && noPython) base.testsNote = `${skipped}; ${noPython}`;
+    else if (skipped) base.testsNote = `${skipped}; pass the command with --test`;
+    else if (noPython) base.testsNote = noPython;
   }
   if (opts.pr) return pullRequests(root, applicable, base, commands, opts);
 
@@ -381,6 +388,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         tests,
         remaining: result.remaining,
         testsNote: base.testsNote,
+        buildNote: base.buildNote,
         unconfirmed: result.unconfirmed,
       });
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
@@ -468,11 +476,12 @@ export type PrEvidence = {
   tests?: TestOutcome | undefined;
   remaining?: readonly Site[] | undefined;
   testsNote?: string | undefined;
+  buildNote?: string | undefined;
   unconfirmed?: readonly string[] | undefined;
 };
 
 export function prBody(record: ChangeRecord, files: readonly string[], version: string, evidence: PrEvidence = {}): string {
-  const { build, tests, remaining = [], testsNote, unconfirmed = [] } = evidence;
+  const { build, tests, remaining = [], testsNote, buildNote, unconfirmed = [] } = evidence;
   const source = record.sources[0]!;
   return [
     prose(record.notes?.migration ?? title(record)),
@@ -491,7 +500,9 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
             ? `- [ ] ${code(build.command)} already fails without this change, so it could not check it`
             : `- [${build.passed ? "x" : " "}] ${code(build.command)} ${build.passed ? "passed" : "failed"}`,
         ]
-      : []),
+      : buildNote
+        ? [`- [ ] build not checked: ${buildNote}`]
+        : []),
     tests ? `- [${tests.passed ? "x" : " "}] ${code(tests.command)} ${tests.passed ? "passed" : "failed"}` : `- [ ] ${testsNote ? `tests not run: ${testsNote}` : "no test command found in this repository"}`,
     ...(tests?.output ? ["", "<details><summary>test output</summary>", "", fence(tests.output), tests.output, fence(tests.output), "", "</details>"] : []),
     "",
@@ -564,6 +575,7 @@ export function renderSummary(result: FixResult): string {
     // Per-record lines already carry the test result.
   } else if (applied) {
     if (result.build) lines.push(testLine(result.build));
+    else if (result.buildNote) lines.push(`build: none run (${result.buildNote})`);
     if (result.tests) lines.push(testLine(result.tests));
     else if (!failed(result.build)) {
       lines.push(
@@ -598,6 +610,7 @@ export function toJson(result: FixResult): object {
     tests: outcome(result.tests),
     testsSkipped: result.testsSkipped,
     testsNote: result.testsNote ?? null,
+    buildNote: result.buildNote ?? null,
     dryRun: result.dryRun,
     reverted: result.reverted,
     diff: result.diff,

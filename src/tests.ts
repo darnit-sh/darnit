@@ -41,6 +41,7 @@ async function packageManager(root: string): Promise<"pnpm" | "yarn" | "npm"> {
  */
 export async function detectBuildCommand(root: string): Promise<string | undefined> {
   const pkgText = await readText(join(root, "package.json"));
+  if (pkgText === undefined && (await exists(join(root, "package.json")))) return undefined;
   let scripts: Record<string, string> = {};
   try {
     scripts = (JSON.parse(pkgText ?? "{}") as { scripts?: Record<string, string> }).scripts ?? {};

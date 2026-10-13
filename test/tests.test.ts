@@ -104,10 +104,11 @@ describe("detectTestCommand", () => {
     expect(await detectTestCommand(endless, path)).toBeUndefined();
   });
 
-  it("does not switch to pytest when package.json is too large to read", async () => {
-    const big = JSON.stringify({ scripts: { test: "vitest" }, pad: "x".repeat(10.1 * 1024 * 1024) });
-    const dir = await dirWith({ "package.json": big, "pytest.ini": "" });
+  it("does not guess other commands when package.json is too large to read", async () => {
+    const big = JSON.stringify({ scripts: { test: "vitest", build: "tsc" }, pad: "x".repeat(10.1 * 1024 * 1024) });
+    const dir = await dirWith({ "package.json": big, "pytest.ini": "", "tsconfig.json": "{}", "node_modules/": "", "node_modules/.bin/": "", "node_modules/.bin/tsc": "" });
     expect(await detectTestCommand(dir, await pathWith("python3"))).toBeUndefined();
+    expect(await detectBuildCommand(dir)).toBeUndefined();
     expect(await unreadSettings(dir)).toBe("package.json");
     expect(await unreadSettings(await dirWith({ "package.json": "{}", "pyproject.toml/": "" }))).toBe("pyproject.toml");
     expect(await unreadSettings(await dirWith({ "package.json": "{}" }))).toBeUndefined();
