@@ -73,7 +73,11 @@ const IMPORTS = new Set(["import_statement", "import_from_statement"]);
 type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; blockScoped: boolean };
 type FileIndex = { imports: Map<string, Set<string>>; assignments: Assignment[] };
 
-/** Local name → every package it is imported from, read from import statements only (never comments or strings). */
+/**
+ * Local name → every package it is imported from, read from import statements only (never comments or strings).
+ * Each text is one whole statement of any size, so every pattern is anchored at its start and runs in
+ * time proportional to the text.
+ */
 function importsOf(statements: readonly string[]): Map<string, Set<string>> {
   const names = new Map<string, Set<string>>();
   const add = (name: string, pkg: string) => {
@@ -83,19 +87,21 @@ function importsOf(statements: readonly string[]): Map<string, Set<string>> {
     names.set(name.trim(), set);
   };
   for (const text of statements) {
-    for (const m of text.matchAll(/import\s+([^;'"]+?)\s+from\s+["']([^"']+)["']/g)) {
-      const [clause, pkg] = [m[1]!.replace(/^type\s+/, ""), m[2]!];
+    const esm = /^import\s+(?=\S)([^;'"]*?[^;'"\s])\s+from\s+["']([^"']+)["']/.exec(text);
+    if (esm) {
+      const [clause, pkg] = [esm[1]!.replace(/^type\s+/, ""), esm[2]!];
       const ns = /\*\s+as\s+([\w$]+)/.exec(clause);
       if (ns) add(ns[1]!, pkg);
       const def = /^\s*([\w$]+)/.exec(clause);
       if (def && !/^\s*[{*]/.test(clause)) add(def[1]!, pkg);
-      for (const part of /\{([^}]*)\}/.exec(clause)?.[1]?.split(",") ?? []) {
+      for (const part of /\{([^{}]*)\}/.exec(clause)?.[1]?.split(",") ?? []) {
         const alias = /^(?:type\s+)?([\w$]+)(?:\s+as\s+([\w$]+))?/.exec(part.trim());
         if (alias) add(alias[2] ?? alias[1]!, pkg);
       }
     }
-    for (const m of text.matchAll(/([^=;]+?)\s*=\s*require\(\s*["']([^"']+)["']\s*\)/g)) {
-      const [target, pkg] = [m[1]!.replace(/^\s*(?:const|let|var|import)\s+/, "").trim(), m[2]!];
+    const req = /^([^=;]*?[^=;\s])\s*=\s*require\(\s*["']([^"']+)["']\s*\)/.exec(text);
+    if (req) {
+      const [target, pkg] = [req[1]!.replace(/^\s*(?:const|let|var|import)\s+/, "").trim(), req[2]!];
       const destructured = /^\{([^}]*)\}$/.exec(target);
       if (!destructured) add(target, pkg);
       for (const part of destructured?.[1]!.split(",") ?? []) {
@@ -103,17 +109,14 @@ function importsOf(statements: readonly string[]): Map<string, Set<string>> {
         if (alias) add(alias[2] ?? alias[1]!, pkg);
       }
     }
-    for (const m of text.matchAll(/^\s*from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|([^\n]+))/gm)) {
-      for (const part of (m[2] ?? m[3]!).split(",")) {
-        const alias = /^([\w]+)(?:\s+as\s+([\w]+))?/.exec(part.replace(/#.*$/, "").trim());
-        if (alias) add(alias[2] ?? alias[1]!, m[1]!);
-      }
+    const from = /^from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|([^\n]+))/.exec(text);
+    for (const part of from ? (from[2] ?? from[3]!).split(",") : []) {
+      const alias = /^([\w]+)(?:\s+as\s+([\w]+))?/.exec(part.trim());
+      if (alias) add(alias[2] ?? alias[1]!, from![1]!);
     }
-    for (const m of text.matchAll(/^\s*import\s+([\w.,\s]+?)\s*$/gm)) {
-      for (const part of m[1]!.split(",")) {
-        const alias = /^([\w.]+)(?:\s+as\s+(\w+))?$/.exec(part.trim());
-        if (alias) add(alias[2] ?? alias[1]!.split(".")[0]!, alias[1]!);
-      }
+    for (const part of /^import\s([\w.,\s]+)$/.exec(text.trimEnd())?.[1]!.split(",") ?? []) {
+      const alias = /^([\w.]+)(?:\s+as\s+(\w+))?$/.exec(part.trim());
+      if (alias) add(alias[2] ?? alias[1]!.split(".")[0]!, alias[1]!);
     }
   }
   return names;
@@ -173,7 +176,9 @@ function parameters(fn: SgNode): string[] {
 }
 
 /** True if a Python function declares `global name`, which makes its assignments module-level. */
-const declaresGlobal = (fn: SgNode, name: string) => new RegExp(`(^|\\n)\\s*global\\s+[\\w\\s,]*\\b${name}\\b`).test(fn.text());
+const declaresGlobal = (fn: SgNode, name: string) =>
+  String(fn.kind()) === "function_definition" &&
+  fn.findAll({ rule: { kind: "global_statement" } }).some((g) => g.children().some((c) => c.is("identifier") && c.text() === name));
 
 const blockOf = (a: Assignment) => a.node.ancestors().find((x) => x.is("statement_block") || FUNCTIONS.has(String(x.kind())));
 

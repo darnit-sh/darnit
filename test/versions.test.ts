@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { MAX_FILE_BYTES } from "../src/detect.js";
 import { atLeast, npmVersionFor, pypiVersions } from "../src/versions.js";
 
 const tempDirs: string[] = [];
@@ -95,5 +96,19 @@ describe("pypiVersions", () => {
       { version: "1.30.5", from: "uv.lock" },
       { version: "1.52.0", from: "uv.lock" },
     ]);
+  });
+});
+
+describe("versions on a repository built to slow it down", () => {
+  it("finishes quickly on a requirements line padded with spaces", async () => {
+    const dir = await dirWith({ "requirements.txt": `openai${" ".repeat(100_000)}\nopenai==1.50.0\n` });
+    const start = performance.now();
+    expect(await pypiVersions(dir, "openai")).toEqual([{ version: "1.50.0", from: "requirements.txt" }]);
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
+
+  it("does not read a lock file over the size limit", async () => {
+    const big = lock({ "node_modules/openai": "4.60.0" }).replace(/^\{/, `{${" ".repeat(MAX_FILE_BYTES)}`);
+    expect(await npmVersionFor(await dirWith({ "package-lock.json": big }), "openai", "src/app.ts")).toBeUndefined();
   });
 });

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { detectApis } from "../src/detect.js";
+import { detectApis, MAX_FILE_BYTES, readText } from "../src/detect.js";
 import { init } from "../src/init.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
@@ -60,6 +60,33 @@ describe("detectApis", () => {
       { vendor: "openai", evidence: ["index.js: import openai", "package.json: openai"] },
       { vendor: "stripe", evidence: ["Pipfile: stripe"] },
     ]);
+  });
+});
+
+describe("detectApis on a repository built to slow it down", () => {
+  it("finishes quickly on a Python file of blank lines", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, "blank.py"), "\n".repeat(150_000));
+    const start = performance.now();
+    expect((await detectApis(dir)).map((d) => d.vendor)).toEqual(["openai"]);
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
+
+  it("does not read a file over the size limit, and init says so", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    await writeFile(join(dir, "big.py"), `import stripe\n${" ".repeat(MAX_FILE_BYTES)}`);
+    const tooLarge: string[] = [];
+    expect(await detectApis(dir, tooLarge)).toEqual([]);
+    expect(tooLarge).toEqual(["big.py"]);
+    expect((await init(dir)).slice(0, 2)).toEqual([
+      "Scanned repo: no known APIs found (the scheduled check still runs)",
+      "Not checked: 1 file over 10 MB: big.py.",
+    ]);
+  });
+
+  it("reads only regular files", async () => {
+    expect(await readText("/dev/zero")).toBeUndefined();
   });
 });
 

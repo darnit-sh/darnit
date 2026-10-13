@@ -1,7 +1,6 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { listFiles, vendorClients } from "./detect.js";
+import { listFiles, MAX_FILE_BYTES, readText, vendorClients } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, type Match } from "./scan/astgrep.js";
@@ -10,7 +9,7 @@ export type Hit = Match & { record: ChangeRecord; file: string };
 
 /** Vendors listed in darnit.yml, when the file exists and lists any; otherwise no restriction. */
 async function configuredVendors(root: string): Promise<Set<string> | undefined> {
-  const text = await readFile(join(root, "darnit.yml"), "utf8").catch(() => undefined);
+  const text = await readText(join(root, "darnit.yml"));
   if (text === undefined) return undefined;
   try {
     const apis = (parseYaml(text) as { apis?: Record<string, unknown> } | null)?.apis;
@@ -22,23 +21,24 @@ async function configuredVendors(root: string): Promise<Set<string> | undefined>
 }
 
 /** What a check covered, so a clean result can say what it was clean against. */
-export type Coverage = { files: number; records: number; foreign?: number; foreignAt?: string[] };
+export type Coverage = { files: number; records: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[] };
 
 /** Hits for `records` in `files` (relative to `root`). Files darnit cannot parse are skipped. */
 export async function scan(
   root: string,
   files: readonly string[],
   records: readonly ChangeRecord[],
-): Promise<{ hits: Hit[]; scanned: number; foreign: Hit[] }> {
+): Promise<{ hits: Hit[]; scanned: number; foreign: Hit[]; tooLarge: string[] }> {
   const hits: Hit[] = [];
   // Calls through another provider's client (Groq's SDK, the vendor's SDK pointed elsewhere): never reported.
   const foreign: Hit[] = [];
+  const tooLarge: string[] = [];
   let scanned = 0;
   // Known limit: each file is parsed once per record. Fine for a handful of records; index them by vendor as the corpus grows.
   for (const file of files) {
     const grammar = grammarFor(file);
     if (!grammar) continue;
-    const text = await readFile(join(root, file), "utf8").catch(() => undefined);
+    const text = await readText(join(root, file), () => tooLarge.push(file));
     if (text === undefined) continue;
     scanned++;
     for (const record of records) {
@@ -51,16 +51,16 @@ export async function scan(
       }
     }
   }
-  return { hits, scanned, foreign };
+  return { hits, scanned, foreign, tooLarge };
 }
 
 /** Every call site in `root` affected by a known vendor change, and what was covered. */
 export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage; foreign: Hit[] }> {
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
-  const { hits, scanned, foreign } = await scan(root, await listFiles(root), records);
+  const { hits, scanned, foreign, tooLarge } = await scan(root, await listFiles(root), records);
   const leftOut = foreign.length > 0 ? { foreign: foreign.length, foreignAt: foreign.map((h) => `${h.file}:${h.line}`) } : {};
-  return { hits, foreign, coverage: { files: scanned, records: records.length, ...leftOut } };
+  return { hits, foreign, coverage: { files: scanned, records: records.length, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}) } };
 }
 
 /** Every call site in `root` affected by a known vendor change. */
@@ -85,6 +85,13 @@ const LABELS: Record<ChangeRecord["status"], string> = {
 const heading = (r: ChangeRecord) => `${r.vendor} ${r.announcedAt}: ${title(r)}${LABELS[r.status]}`;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** "a, b, c, d, e and 2 more" */
+const firstFive = (items: readonly string[]) => `${items.slice(0, 5).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;
+
+/** The report line for files too large to read, if any. */
+export const tooLargeNote = (files: readonly string[] = []) =>
+  files.length > 0 ? [`Not checked: ${plural(files.length, "file")} over ${MAX_FILE_BYTES / 1024 / 1024} MB: ${firstFive(files)}.`] : [];
 
 /** Machine-readable form of the hits. */
 export function toJson(hits: Hit[]): object[] {
@@ -124,11 +131,10 @@ export function render(hits: Hit[], coverage?: Coverage): string {
       : []),
     ...(coverage?.foreign
       ? [
-          `Left out ${plural(coverage.foreign, "call")} made through another provider's client with the same methods: ${(coverage.foreignAt ?? []).slice(0, 5).join(", ")}${
-            (coverage.foreignAt?.length ?? 0) > 5 ? ` and ${coverage.foreignAt!.length - 5} more` : ""
-          }.`,
+          `Left out ${plural(coverage.foreign, "call")} made through another provider's client with the same methods: ${firstFive(coverage.foreignAt ?? [])}.`,
         ]
       : []),
+    ...tooLargeNote(coverage?.tooLarge),
     NOT_CHECKED,
   ];
   if (hits.length === 0) return ["No known vendor changes affect this repository.", "", ...footer].join("\n");
