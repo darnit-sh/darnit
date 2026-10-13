@@ -5,10 +5,10 @@ release candidate on npm's `next` tag first, gets checked from every angle below
 becomes `latest`.
 
 Nobody publishes from a laptop. Pushing a `vX.Y.Z` tag starts the `publish` workflow: one job checks
-that the tag matches `package.json` and that the tagged commit is the merge commit of a pull request
-merged into `main` (`scripts/check-release.sh`), runs `npm run check`, and builds the package; a
-second job waits for a maintainer to approve the protected `npm` environment, then publishes that
-exact package with provenance. A third job waits for npm to serve the new version, then runs it with
+that the tag matches `package.json`, that the tagged commit is the merge commit of a pull request
+merged into `main`, and that `ci` passed on that commit (`scripts/check-release.sh`), runs
+`npm run check`, and builds the package; a second job waits for a maintainer to approve the protected
+`npm` environment, then publishes that exact package with provenance. A third job waits for npm to serve the new version, then runs it with
 `npx` from an empty folder and requires `--version` to print it and `check` to exit 1 with a hit on
 `test/samples/small` (`scripts/verify-release.sh`). A version with a hyphen (`X.Y.Z-rc.N`) goes to
 `next`; any other goes to `latest`.
@@ -23,7 +23,8 @@ Commands below use `X.Y.Z` for the version and `rc.N` for the candidate number.
 
 All must be true before tagging, for a candidate and again for the final version:
 
-- `main` CI is green on the exact commit you are about to tag.
+- `main` CI is green on the exact commit you are about to tag. The workflow refuses the tag otherwise;
+  once CI passes, rerun it.
 - `CHANGELOG.md` covers every user-facing change since the last release, written by hand in user
   terms. Each entry thanks the outside contributor who made it, by name or GitHub handle, and a line
   under the version thanks anyone whose change needed no entry. Entries stay under
