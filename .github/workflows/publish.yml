@@ -12,8 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       dist-tag: ${{ steps.release.outputs.dist-tag }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -26,9 +28,11 @@ jobs:
       - id: release
         env:
           TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           dist_tag=$(sh scripts/check-release.sh "$TAG" "$GITHUB_SHA")
           echo "dist-tag=$dist_tag" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - run: npm ci
       - run: "! git config --name-only --get-regexp '^http\\..*\\.extraheader$'"
       - run: npm run check
@@ -62,3 +66,20 @@ jobs:
       - env:
           DIST_TAG: ${{ needs.build.outputs.dist-tag }}
         run: npm publish "$RUNNER_TEMP"/package/*.tgz --provenance --access public --tag "$DIST_TAG" --ignore-scripts
+
+  # Installs what npm now serves, the way users get it, and checks that it runs.
+  verify:
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: sh scripts/verify-release.sh "$VERSION"

@@ -5,10 +5,13 @@ release candidate on npm's `next` tag first, gets checked from every angle below
 becomes `latest`.
 
 Nobody publishes from a laptop. Pushing a `vX.Y.Z` tag starts the `publish` workflow: one job checks
-that the tag matches `package.json` and sits on `main`, runs `npm run check`, and builds the package;
-a second job waits for a maintainer to approve the protected `npm` environment, then publishes that
-exact package with provenance. A version with a hyphen (`X.Y.Z-rc.N`) goes to `next`; any other
-goes to `latest`.
+that the tag matches `package.json` and that the tagged commit is the merge commit of a pull request
+merged into `main` (`scripts/check-release.sh`), runs `npm run check`, and builds the package; a
+second job waits for a maintainer to approve the protected `npm` environment, then publishes that
+exact package with provenance. A third job waits for npm to serve the new version, then runs it with
+`npx` from an empty folder and requires `--version` to print it and `check` to exit 1 with a hit on
+`test/samples/small` (`scripts/verify-release.sh`). A version with a hyphen (`X.Y.Z-rc.N`) goes to
+`next`; any other goes to `latest`.
 
 Why the candidate step matters: workflows written by `init` in 0.1.0 run `npx darnit check` with no
 version and take every new `latest`; from 0.2.0 on, `init` pins the minor (`npx darnit@0.2 check`),
@@ -46,7 +49,8 @@ gh run list -R darnit-sh/darnit --workflow publish.yml
 ```
 
 Open that run, read the build job's log, and approve the `npm` environment under Review deployments.
-Then, from an empty folder:
+The run's `verify` job must pass; if it fails, the candidate is on npm but broken: deprecate it as in
+"Roll back" below and cut `rc.N+1`. Then, from an empty folder:
 
 ```sh
 cd "$(mktemp -d)" && npx -y darnit@next --version   # prints X.Y.Z-rc.N
@@ -99,7 +103,8 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-Approve the `npm` environment on the publish run as above. Then:
+Approve the `npm` environment on the publish run as above and wait for its `verify` job to pass; if
+it fails, roll back (below). Then:
 
 ```sh
 gh release create vX.Y.Z -R darnit-sh/darnit --verify-tag --title vX.Y.Z --notes-file notes.md
