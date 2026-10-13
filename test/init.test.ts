@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { detectApis } from "../src/detect.js";
-import { init } from "../src/init.js";
+import { init, pinned } from "../src/init.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 
@@ -76,7 +76,8 @@ describe("init", () => {
     expect(yml).toContain("stripe:\n    tier: recognized");
     const workflow = await readFile(join(dir, ".github", "workflows", "darnit.yml"), "utf8");
     expect(workflow).toContain("cron:");
-    expect(workflow).toContain("npx darnit check");
+    const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
+    expect(workflow).toContain(`- run: npx darnit@${version.split(".").slice(0, 2).join(".")} check\n`);
 
     const second = await init(dir);
     expect(second.slice(1)).toEqual([
@@ -87,6 +88,14 @@ describe("init", () => {
 
     const forced = await init(dir, { force: true });
     expect(forced.slice(1)).toEqual(["Rewrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
+  });
+});
+
+describe("pinned", () => {
+  it("pins the minor line, or the exact version for a prerelease", () => {
+    expect(pinned("0.2.3")).toBe("0.2");
+    expect(pinned("1.0.0")).toBe("1.0");
+    expect(pinned("0.2.0-rc.1")).toBe("0.2.0-rc.1");
   });
 });
 
@@ -123,6 +132,6 @@ describe("init never writes outside the repository", () => {
     await mkdir(join(dir, "ci"));
     await symlink(join(dir, "ci"), join(dir, ".github"));
     await init(dir);
-    expect(await readFile(join(dir, "ci", "workflows", "darnit.yml"), "utf8")).toContain("npx darnit check");
+    expect(await readFile(join(dir, "ci", "workflows", "darnit.yml"), "utf8")).toContain("npx darnit@");
   });
 });
