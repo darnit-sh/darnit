@@ -11,6 +11,7 @@ Notable changes to darnit. The format follows [Keep a Changelog](https://keepach
 
 ### Changed
 
+- The workflow `init` writes runs `npx darnit@0.2` instead of `npx darnit`, so a scheduled run takes fixes but waits for you to move to a new minor release, which can change behavior. A workflow written by an earlier version keeps running the latest release; change `npx darnit` to `npx darnit@0.2` in `.github/workflows/darnit.yml` to pin it. ([#58](https://github.com/darnit-sh/darnit/pull/58))
 - The repository's build and test commands run without `GITHUB_TOKEN` and `GH_TOKEN`, and those values are replaced with `***` in any output darnit keeps. A test suite that needs either variable no longer gets it from darnit. ([#41](https://github.com/darnit-sh/darnit/pull/41))
 - darnit's git commands no longer run git hooks, including your own (husky, commitlint, pre-push) and a global `core.hooksPath`, since git cannot tell them from hooks a repository's tests planted. The push now uses git's own credentials, the same as your own `git push`; darnit's token only opens the pull request. A credential helper that reads the token from the environment, such as `gh auth setup-git` with only `GH_TOKEN` set, no longer works for the push. ([#43](https://github.com/darnit-sh/darnit/pull/43))
 
