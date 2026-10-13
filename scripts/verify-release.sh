@@ -15,7 +15,9 @@ done
 dir=$(mktemp -d)
 cp -R test/samples/small "$dir/sample"
 mkdir "$dir/empty"
-got=$(cd "$dir/empty" && npx -y "darnit@$version" --version)
+# npx reads a separately cached listing that can lag behind npm view, so give its install a retry.
+got=$(cd "$dir/empty" && npx -y "darnit@$version" --version) ||
+  { sleep 30; got=$(cd "$dir/empty" && npx -y "darnit@$version" --version); }
 if [ "$got" != "$version" ]; then
   echo "::error::darnit@$version --version printed $got" >&2
   exit 1
@@ -26,9 +28,8 @@ if [ "$status" != 1 ]; then
   echo "::error::darnit@$version check exited $status on test/samples/small, expected 1 for a hit" >&2
   exit 1
 fi
-hits=$(node -p 'require(process.argv[1]).hits.length' "$dir/out.json")
-if [ "$hits" -lt 1 ]; then
-  echo "::error::darnit@$version check found no hits on test/samples/small" >&2
+if ! hits=$(node -e 'const { hits } = require(process.argv[1]); if (!Array.isArray(hits) || !hits.length) process.exit(1); console.log(hits.length)' "$dir/out.json"); then
+  echo "::error::darnit@$version check --json has no hits on test/samples/small" >&2
   exit 1
 fi
 echo "darnit@$version: --version prints $got, check finds $hits hit(s)"

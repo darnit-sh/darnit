@@ -49,8 +49,9 @@ gh run list -R darnit-sh/darnit --workflow publish.yml
 ```
 
 Open that run, read the build job's log, and approve the `npm` environment under Review deployments.
-The run's `verify` job must pass; if it fails, the candidate is on npm but broken: deprecate it as in
-"Roll back" below and cut `rc.N+1`. Then, from an empty folder:
+The run's `verify` job must pass. npm can take a few minutes to serve a new version everywhere, so
+if it fails, rerun it once; if it fails again, the candidate is on npm but broken: deprecate it as
+in "Roll back" below and cut `rc.N+1`. Then, from an empty folder:
 
 ```sh
 cd "$(mktemp -d)" && npx -y darnit@next --version   # prints X.Y.Z-rc.N
@@ -104,7 +105,7 @@ git push origin vX.Y.Z
 ```
 
 Approve the `npm` environment on the publish run as above and wait for its `verify` job to pass; if
-it fails, roll back (below). Then:
+it fails, rerun it once, and if it fails again, roll back (below). Then:
 
 ```sh
 gh release create vX.Y.Z -R darnit-sh/darnit --verify-tag --title vX.Y.Z --notes-file notes.md
