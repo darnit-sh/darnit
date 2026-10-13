@@ -690,12 +690,15 @@ describe("model names set as values", () => {
     expect(["src/latest.py", "contest.py", "testing.ts", "src/attest/a.py"].filter(isTestPath)).toEqual([]);
   });
 
-  it("finishes quickly on a file full of tokenizer calls and model values", () => {
-    const source = 'count_tokens(x)\nmodel = "gpt-4"\n'.repeat(60_000);
-    const start = performance.now();
-    const values = findModelValues("app.py", source, grammarFor("app.py")!.grammar, new Set(["gpt-4"]));
-    expect(performance.now() - start).toBeLessThan(3000);
-    expect(values).toHaveLength(60_000);
+  it("takes about as long with tokenizer calls in the file as without", () => {
+    const grammar = grammarFor("app.py")!.grammar;
+    const time = (line: string) => {
+      const start = performance.now();
+      expect(findModelValues("app.py", `${line}model = "gpt-4"\n`.repeat(60_000), grammar, new Set(["gpt-4"]))).toHaveLength(60_000);
+      return performance.now() - start;
+    };
+    const plain = time("x = 1\n");
+    expect(time("count_tokens(x)\n")).toBeLessThan(3 * plain);
   });
 
   it("prints a long list of values quickly", async () => {
