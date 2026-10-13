@@ -4,12 +4,18 @@ import { listFiles, MAX_FILE_BYTES, readText, vendorClients } from "./detect.js"
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, modelNames, type Match } from "./scan/astgrep.js";
+import { findMentions, isBinary } from "./scan/mentions.js";
 import { findModelValues, isTestPath } from "./scan/values.js";
 
 export type Hit = Match & { record: ChangeRecord; file: string };
 
 /** A model name from a record set as a value darnit cannot follow to a call: reported, never failing the check. */
 export type ModelValueHit = Hit & { model: string };
+
+/** Any other exact mention of a model name from a record, in any text file: counted, never failing the check. */
+export type MentionHit = { file: string; line: number; model: string; record: ChangeRecord };
+
+const recordNames = (r: ChangeRecord) => Object.values(r.detection.astGrepPatterns).flatMap((p) => modelNames(p));
 
 /** Vendors listed in darnit.yml, when the file exists and lists any; otherwise no restriction. */
 async function configuredVendors(root: string): Promise<Set<string> | undefined> {
@@ -27,16 +33,21 @@ async function configuredVendors(root: string): Promise<Set<string> | undefined>
 /** What a check covered, so a clean result can say what it was clean against. */
 export type Coverage = { files: number; records: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[] };
 
-/** Hits for `records` in `files` (relative to `root`), and with `modelValues` the model names set as values outside test code. Files darnit cannot parse are skipped. */
+/**
+ * Hits for `records` in `files` (relative to `root`), with `modelValues` the model names set as values
+ * outside test code, and with `mentions` every other mention of those names in any text file.
+ * Files darnit cannot parse are skipped for hits and values.
+ */
 export async function scan(
   root: string,
   files: readonly string[],
   records: readonly ChangeRecord[],
-  { modelValues = false } = {},
-): Promise<{ hits: Hit[]; scanned: number; foreign: Hit[]; tooLarge: string[]; values: ModelValueHit[] }> {
+  { modelValues = false, mentions: withMentions = false } = {},
+): Promise<{ hits: Hit[]; scanned: number; foreign: Hit[]; tooLarge: string[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
   const hits: Hit[] = [];
   const values: ModelValueHit[] = [];
-  const byName = new Map(modelValues ? records.flatMap((r) => Object.values(r.detection.astGrepPatterns).flatMap((p) => modelNames(p)).map((n) => [n, r] as const)) : []);
+  const mentions: MentionHit[] = [];
+  const byName = new Map(modelValues || withMentions ? records.flatMap((r) => recordNames(r).map((n) => [n, r] as const)) : []);
   const names = new Set(byName.keys());
   // Calls through another provider's client (Groq's SDK, the vendor's SDK pointed elsewhere): never reported.
   const foreign: Hit[] = [];
@@ -45,9 +56,11 @@ export async function scan(
   // Known limit: each file is parsed once per record. Fine for a handful of records; index them by vendor as the corpus grows.
   for (const file of files) {
     const grammar = grammarFor(file);
-    if (!grammar) continue;
-    const text = await readText(join(root, file), () => tooLarge.push(file));
+    if (!grammar && !withMentions) continue;
+    const text = await readText(join(root, file), grammar ? () => tooLarge.push(file) : undefined);
     if (text === undefined) continue;
+    if (withMentions && !isBinary(text)) for (const m of findMentions(text, names)) mentions.push({ ...m, file, record: byName.get(m.model)! });
+    if (!grammar) continue;
     scanned++;
     const reported = new Set<number>();
     for (const record of records) {
@@ -65,16 +78,22 @@ export async function scan(
       if (!reported.has(v.line)) values.push({ ...v, record: byName.get(v.model)!, file });
     }
   }
-  return { hits, scanned, foreign, tooLarge, values };
+  // A name already reported on that line as a call site or a value is not mentioned again.
+  const key = (file: string, line: number, model: string) => `${file}:${line} ${model}`;
+  const reported = new Set([
+    ...values.map((v) => key(v.file, v.line, v.model)),
+    ...hits.flatMap((h) => findMentions(h.text, new Set(recordNames(h.record))).map((m) => key(h.file, h.line + m.line - 1, m.model))),
+  ]);
+  return { hits, scanned, foreign, tooLarge, values, mentions: mentions.filter((m) => !reported.has(key(m.file, m.line, m.model))) };
 }
 
 /** Every call site in `root` affected by a known vendor change, and what was covered. */
-export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage; foreign: Hit[]; values: ModelValueHit[] }> {
+export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage; foreign: Hit[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
-  const { hits, scanned, foreign, tooLarge, values } = await scan(root, await listFiles(root), records, { modelValues: true });
+  const { hits, scanned, foreign, tooLarge, values, mentions } = await scan(root, await listFiles(root), records, { modelValues: true, mentions: true });
   const leftOut = foreign.length > 0 ? { foreign: foreign.length, foreignAt: foreign.map((h) => `${h.file}:${h.line}`) } : {};
-  return { hits, foreign, values, coverage: { files: scanned, records: records.length, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}) } };
+  return { hits, foreign, values, mentions, coverage: { files: scanned, records: records.length, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}) } };
 }
 
 /** Every call site in `root` affected by a known vendor change. */
@@ -126,6 +145,9 @@ export function toJson(hits: (Hit | ModelValueHit)[]): object[] {
   }));
 }
 
+/** Machine-readable form of the mentions. */
+export const mentionsToJson = (mentions: readonly MentionHit[]) => mentions.map((m) => ({ id: m.record.id, file: m.file, line: m.line, model: m.model }));
+
 /** The matched code on one line, at most 60 characters; "…" marks anything cut off. */
 export function snippet(text: string, width = 60): string {
   const line = text.split("\n")[0]!;
@@ -167,8 +189,33 @@ const VALUES_INTRO = [
   "Check where each one is sent. These do not fail the check.",
 ];
 
-/** Terminal report, grouped by vendor change, then the model values. Always ends by saying what was and was not covered. */
-export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelValueHit[] = []): string {
+const MENTIONS_INTRO = "Also mentioned: retiring model names elsewhere, such as docs, config files, tests and comments. These do not fail the check.";
+const MENTION_FILES = 20;
+
+/** Mentions counted per file, most first; with `all`, one line per mention. */
+function mentionSection(mentions: readonly MentionHit[], all: boolean): string[] {
+  const byFile = new Map<string, MentionHit[]>();
+  for (const m of mentions) {
+    const list = byFile.get(m.file);
+    if (list) list.push(m);
+    else byFile.set(m.file, [m]);
+  }
+  const total = `${plural(mentions.length, "mention")} in ${plural(byFile.size, "file")}`;
+  if (all) return [MENTIONS_INTRO, ...mentions.map((m) => `  ${m.file}:${m.line}  ${m.model}`), `  ${total}`, ""];
+  const files = [...byFile].sort((a, b) => b[1].length - a[1].length).slice(0, MENTION_FILES);
+  const width = files.reduce((w, [f]) => Math.max(w, f.length), 0) + 2;
+  const digits = String(files[0]![1].length).length;
+  return [
+    MENTIONS_INTRO,
+    ...files.map(([file, ms]) => `  ${file.padEnd(width)}${String(ms.length).padStart(digits)}  ${firstFive([...new Set(ms.map((m) => m.model))])}`),
+    ...(byFile.size > MENTION_FILES ? [`  and ${plural(byFile.size - MENTION_FILES, "more file")}`] : []),
+    `  ${total}. darnit check --mentions lists each line.`,
+    "",
+  ];
+}
+
+/** Terminal report, grouped by vendor change, then the model values and other mentions. Always ends by saying what was and was not covered. */
+export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelValueHit[] = [], mentions: readonly MentionHit[] = [], allMentions = false): string {
   const footer = [
     ...(coverage
       ? [`Scanned ${plural(coverage.files, "JavaScript, TypeScript or Python file")} against ${plural(coverage.records, "change record")}.`]
@@ -181,9 +228,9 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
     ...tooLargeNote(coverage?.tooLarge),
     NOT_CHECKED,
   ];
-  const section = values.length > 0 ? [...VALUES_INTRO, "", ...grouped(values, "value")] : [];
+  const section = [...(values.length > 0 ? [...VALUES_INTRO, "", ...grouped(values, "value")] : []), ...(mentions.length > 0 ? mentionSection(mentions, allMentions) : [])];
   if (hits.length === 0) {
-    const clean = values.length > 0 ? "No call sites of known vendor changes found." : "No known vendor changes affect this repository.";
+    const clean = section.length > 0 ? "No call sites of known vendor changes found." : "No known vendor changes affect this repository.";
     return [clean, "", ...section, ...footer].join("\n");
   }
   const out = [...grouped(hits, "call site"), ...section];

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { Command, CommanderError } from "commander";
-import { checkReport, exitCodeForCheck, render, toJson } from "./check.js";
+import { checkReport, exitCodeForCheck, mentionsToJson, render, toJson } from "./check.js";
 import { exitCodeFor, fix, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 
@@ -30,9 +30,12 @@ program
   .command("check")
   .description("report vendor API changes that affect this repo's call sites")
   .option("--json", "machine-readable output")
-  .action(async ({ json }: { json?: boolean }) => {
-    const { hits, coverage, values } = await checkReport(process.cwd());
-    const out = json ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits), possiblyAffected: toJson(values) }, null, 2) : forTerminal(render(hits, coverage, values));
+  .option("--mentions", "list every line that mentions a retiring model name")
+  .action(async ({ json, mentions: all }: { json?: boolean; mentions?: boolean }) => {
+    const { hits, coverage, values, mentions } = await checkReport(process.cwd());
+    const out = json
+      ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits), possiblyAffected: toJson(values), mentions: mentionsToJson(mentions) }, null, 2)
+      : forTerminal(render(hits, coverage, values, mentions, all));
     console.log(out);
     process.exitCode = exitCodeForCheck(hits);
   });

@@ -9,3 +9,6 @@ coverage/
 .env.*
 *.log
 .DS_Store
+
+# Model name fixtures
+!test/samples/model-mentions/.env

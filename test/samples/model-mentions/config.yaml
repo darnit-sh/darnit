@@ -1,0 +1,3 @@
+llm:
+  model: o3-mini
+  fallback: "o1-mini"
