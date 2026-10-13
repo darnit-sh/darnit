@@ -29,6 +29,7 @@ Notable changes to darnit. The format follows [Keep a Changelog](https://keepach
 - `fix --pr` uses the `origin` remote only when github.com is its host, and refuses repository names that could reach another part of GitHub's API with your token. ([#49](https://github.com/darnit-sh/darnit/pull/49))
 - `init` refuses to write `darnit.yml` or the workflow through a symbolic link that leads outside the repository, such as a `.github` folder linked elsewhere, and exits 2 with the file it refused. Before, it wrote the file wherever the link pointed. ([#57](https://github.com/darnit-sh/darnit/pull/57))
 - A file padded with blank lines or spaces to slow down the patterns darnit matches against it, such as an import split over thousands of blank lines, no longer stalls `check`, `init` or `fix`. A named pipe, such as one named `darnit.yml`, is not opened, so it no longer hangs `check`. Files over 10 MB are not read: `check` and `init` name them under "Not checked", and `check --json` lists them in `scanned.tooLarge`. The exit code is unchanged. ([#60](https://github.com/darnit-sh/darnit/pull/60))
+- `fix` no longer hangs or fills memory when `package.json`, `pyproject.toml` or `setup.cfg` is a named pipe or a link to one, or a link to a device such as `/dev/zero`. Like every other file, they are read only when they are regular files under 10 MB. A file replaced by a named pipe while darnit opens it no longer hangs `check`, `init` or `fix`. ([#66](https://github.com/darnit-sh/darnit/pull/66))
 
 ## [0.1.0] - 2026-10-07
 
