@@ -4,6 +4,8 @@ export type Mention = { line: number; model: string };
 const WORD = /[\p{L}\p{M}\p{N}_.-]+/gu;
 /** A letter or digit at the start; two code units cover letters outside the basic plane. */
 const ALNUM = /^[\p{L}\p{M}\p{N}]/u;
+const LETTERS = /^\p{L}+$/u;
+const QUOTES = new Set(['"', "'", "`"]);
 
 /** Binary files hold a NUL byte near the start; text files do not. */
 export const isBinary = (text: string) => text.slice(0, 8192).includes("\0");
@@ -12,6 +14,8 @@ export const isBinary = (text: string) => text.slice(0, 8192).includes("\0");
  * Every exact mention of `names` in `text`, once per name per line. A name counts only when it is
  * not part of a longer name: gpt-4 never matches gpt-4o, gpt-4.1, gpt-4-turbo or my_gpt-4, but a
  * sentence ending "gpt-4." does. A letter in any script joins a word, so ada never matches orçada.
+ * A name made only of letters, such as ada, is also an everyday word or name, so it counts only
+ * directly inside quotes: "ada", 'ada' or `ada`.
  */
 export function findMentions(text: string, names: ReadonlySet<string>): Mention[] {
   const longest = Math.max(0, ...[...names].map((n) => n.length));
@@ -27,6 +31,8 @@ export function findMentions(text: string, names: ReadonlySet<string>): Mention[
       if (!ALNUM.test(run.slice(i + 1, i + 3)) && names.has(run.slice(0, i))) model = run.slice(0, i);
     }
     if (model === undefined) continue;
+    const quote = text.charAt(index - 1);
+    if (LETTERS.test(model) && !(QUOTES.has(quote) && text.charAt(index + model.length) === quote)) continue;
     if (newline !== -1 && newline < index) seen = new Set();
     while (newline !== -1 && newline < index) {
       line++;
