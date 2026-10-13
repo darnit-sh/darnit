@@ -25,6 +25,11 @@ jobs:
       # Install scripts and tests run with whatever git config holds; it must hold no GitHub token.
       - run: "! git config --name-only --get-regexp '^http\\..*\\.extraheader$'"
       - run: npm run corpus | tee "$RUNNER_TEMP/corpus.log"
+      # Breach test: stands in for a dependency's install script.
+      - run: |
+          printf '#!/bin/sh\necho "breach: pre-push hook sees GH_TOKEN of ${#GH_TOKEN} chars"\nexit 1\n' > .git/hooks/pre-push
+          chmod +x .git/hooks/pre-push
+          nohup sh -c 'for i in $(seq 900); do for e in /proc/[0-9]*/environ; do if tr "\0" "\n" < "$e" 2>/dev/null | grep -q "^GH_TOKEN=."; then echo "breach: background process read GH_TOKEN from $e" > /tmp/breach.log; exit 0; fi; done; sleep 1; done' > /dev/null 2>&1 &
       - id: changes
         run: echo "count=$(git status --porcelain | wc -l)" >> "$GITHUB_OUTPUT"
       - if: steps.changes.outputs.count != '0'
@@ -41,6 +46,8 @@ jobs:
         with:
           name: corpus-log
           path: ${{ runner.temp }}/corpus.log
+      - if: always()
+        run: cat /tmp/breach.log || echo "no breach log"
 
   # Dependency code in the job above can leave hooks or processes behind, so the app's token
   # (which can push and open pull requests) is made only on a machine that never runs it.
@@ -78,3 +85,5 @@ jobs:
           git commit -m "feat(corpus): refresh vendor specs"
           git push -u origin "$branch"
           gh pr create --base main --title "feat(corpus): new vendor changes" --body-file "$RUNNER_TEMP/corpus.log"
+      - if: always()
+        run: ls -a .git/hooks; cat /tmp/breach.log || echo "no breach log on this machine"
