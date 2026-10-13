@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,6 +88,13 @@ describe("detectApis on a repository built to slow it down", () => {
 
   it("reads only regular files", async () => {
     expect(await readText("/dev/zero")).toBeUndefined();
+  });
+
+  it.skipIf(process.platform === "win32")("does not wait on a named pipe", { timeout: 2000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    execFileSync("mkfifo", [join(dir, "darnit.yml")]);
+    expect(await readText(join(dir, "darnit.yml"))).toBeUndefined();
   });
 });
 

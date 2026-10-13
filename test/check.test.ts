@@ -662,11 +662,25 @@ describe("check on a repository built to slow it down", () => {
     expect(maxTokens(hits)).toEqual([`${name}:${line}`]);
   });
 
-  it("still reads a global statement, so a look-alike client set inside a function stays left out", async () => {
-    const dir = await scratch({ "app.py": py("from groq import Groq\ndef setup():\n    global client\n    client = Groq()") });
-    const { hits, coverage } = await checkReport(dir);
+  it.each([
+    ["global client", "app.py", py("from groq import Groq\ndef setup():\n    global client\n    client = Groq()"), "app.py:5"],
+    ["global client in a nested block", "app.py", py("from groq import Groq\ndef setup():\n    if True:\n        global client\n    client = Groq()"), "app.py:6"],
+  ])("reads a function's %s, so a look-alike client set there stays left out", async (_, name, text, at) => {
+    const { hits, coverage } = await checkReport(await scratch({ [name]: text }));
     expect(maxTokens(hits)).toEqual([]);
-    expect(coverage.foreignAt).toEqual(["app.py:5"]);
+    expect(coverage.foreignAt).toEqual([at]);
+  });
+
+  it.each([
+    ["global other", "app.py", py("from groq import Groq\ndef setup():\n    global other\n    client = Groq()"), "app.py:5"],
+    [
+      "the text global client in a JavaScript function",
+      "app.js",
+      'import Groq from "groq-sdk";\nfunction setup() {\n  const note = `\nglobal client`;\n  var client = new Groq();\n}\nclient.chat.completions.create({ model: "x", max_tokens: 5 });\n',
+      "app.js:7",
+    ],
+  ])("does not take %s as declaring the client global", async (_, name, text, at) => {
+    expect(maxTokens(await check(await scratch({ [name]: text })))).toEqual([at]);
   });
 
   it("does not read a file over the size limit, and says so", async () => {

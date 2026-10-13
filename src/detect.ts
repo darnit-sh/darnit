@@ -1,4 +1,4 @@
-import { open, readdir } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import type { VendorClients } from "./scan/clients.js";
 import { basename, join } from "node:path";
 
@@ -78,11 +78,16 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 /** A regular file's text; undefined when it can't be read, isn't a file, or is over MAX_FILE_BYTES (then `tooLarge` is called). */
 export async function readText(path: string, tooLarge?: () => void): Promise<string | undefined> {
+  // Checked before opening, since opening a named pipe waits for a writer that never comes.
+  const stats = await stat(path).catch(() => undefined);
+  if (!stats?.isFile()) return undefined;
+  if (stats.size > MAX_FILE_BYTES) return void tooLarge?.();
   const file = await open(path).catch(() => undefined);
   try {
-    const stats = await file?.stat();
-    if (!stats?.isFile()) return undefined;
-    if (stats.size > MAX_FILE_BYTES) return void tooLarge?.();
+    // Checked again on what was opened, in case the path changed in between.
+    const opened = await file?.stat();
+    if (!opened?.isFile()) return undefined;
+    if (opened.size > MAX_FILE_BYTES) return void tooLarge?.();
     return await file!.readFile("utf8");
   } catch {
     return undefined;
