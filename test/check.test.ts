@@ -848,11 +848,12 @@ describe("other mentions of model names", () => {
     expect(listed(findMentions(text, names))).toEqual([":2:ada", ":2:davinci", ":3:gpt-4"]);
   });
 
-  it("lists quoted letter-only names and big text files under Not checked", async () => {
+  it("lists quoted letter-only names, and big text files but not big binary files under Not checked", async () => {
     const dir = await scratch({
       "README.md": "Start an agent named ada: `--name ada`, then open ~/ada.\nRuns on gpt-4.\n",
       "config.json": '{ "model": "ada" }\n',
       "big.json": "x".repeat(MAX_FILE_BYTES + 100_000),
+      "demo.mp4": "\0" + "x".repeat(MAX_FILE_BYTES + 100_000),
     });
     const { hits, mentions, coverage } = await checkReport(dir);
     expect(listed(mentions)).toEqual(["README.md:2:gpt-4", "config.json:1:ada"]);

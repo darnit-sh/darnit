@@ -76,18 +76,21 @@ const PYTHON_MANIFEST = /^(requirements[^/]*\.txt|pyproject\.toml|setup\.py|setu
 /** Larger files are not read: no hand-written source comes close, and a planted one could stall a scan or run it out of memory. */
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
-/** A regular file's text; undefined when it can't be read, isn't a file, or is over MAX_FILE_BYTES (then `tooLarge` is called). */
-export async function readText(path: string, tooLarge?: () => void): Promise<string | undefined> {
+/** A regular file's text; undefined when it can't be read, isn't a file, or is over MAX_FILE_BYTES (then `tooLarge` gets its first 8 KB). */
+export async function readText(path: string, tooLarge?: (start: string) => void): Promise<string | undefined> {
   // Checked before opening, since opening a named pipe waits for a writer that never comes.
   const stats = await stat(path).catch(() => undefined);
   if (!stats?.isFile()) return undefined;
-  if (stats.size > MAX_FILE_BYTES) return void tooLarge?.();
   const file = await open(path).catch(() => undefined);
   try {
     // Checked again on what was opened, in case the path changed in between.
     const opened = await file?.stat();
     if (!opened?.isFile()) return undefined;
-    if (opened.size > MAX_FILE_BYTES) return void tooLarge?.();
+    if (opened.size > MAX_FILE_BYTES) {
+      if (!tooLarge) return undefined;
+      const { buffer, bytesRead } = await file!.read(Buffer.alloc(8192), 0, 8192, 0);
+      return void tooLarge(buffer.toString("utf8", 0, bytesRead));
+    }
     return await file!.readFile("utf8");
   } catch {
     return undefined;

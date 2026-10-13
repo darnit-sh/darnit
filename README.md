@@ -123,7 +123,7 @@ an everyday word or name, so it counts only inside quotes: `"ada"`, `'ada'` or
 `` `ada` ``. Mentions never change the exit code. `--mentions` lists each line,
 and `--json` always lists them all in `mentions`, with `id`, `file`, `line` and
 `model`, and counts the other files searched in `scanned.otherFiles`. Binary
-files are skipped, and files over 10 MB are listed under "Not checked".
+files are skipped, and other files over 10 MB are listed under "Not checked".
 
 | Flag | |
 |---|---|
