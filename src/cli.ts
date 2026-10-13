@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+import { once } from "node:events";
 import { createRequire } from "node:module";
 import { Command, CommanderError } from "commander";
-import { checkReport, exitCodeForCheck, render, toJson } from "./check.js";
+import { checkJson, checkReport, exitCodeForCheck, render, toJson } from "./check.js";
 import { exitCodeFor, fix, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 
@@ -30,10 +31,20 @@ program
   .command("check")
   .description("report vendor API changes that affect this repo's call sites")
   .option("--json", "machine-readable output")
-  .action(async ({ json }: { json?: boolean }) => {
-    const { hits, coverage, values } = await checkReport(process.cwd());
-    const out = json ? JSON.stringify({ version, scanned: coverage, hits: toJson(hits), possiblyAffected: toJson(values) }, null, 2) : forTerminal(render(hits, coverage, values));
-    console.log(out);
+  .option("--mentions", "list every line that mentions a retired or retiring model name")
+  .action(async ({ json, mentions: all }: { json?: boolean; mentions?: boolean }) => {
+    const { hits, coverage, values, mentions } = await checkReport(process.cwd());
+    if (json) {
+      const out = process.stdout;
+      // A reader that stops early (`| head`) ends the report quietly, as with console.log.
+      out.on("error", () => {});
+      const report = checkJson({ version, scanned: coverage, hits: toJson(hits), possiblyAffected: toJson(values) }, mentions);
+      for (const chunk of report) {
+        if (out.destroyed) break;
+        if (!out.write(chunk)) await once(out, "drain").catch(() => {});
+      }
+      out.write("\n");
+    } else console.log(forTerminal(render(hits, coverage, values, mentions, all)));
     process.exitCode = exitCodeForCheck(hits);
   });
 

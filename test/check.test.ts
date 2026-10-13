@@ -4,11 +4,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "@ast-grep/napi";
 import { afterEach, describe, expect, it } from "vitest";
-import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit } from "../src/check.js";
+import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, snippet, toJson, type Hit } from "../src/check.js";
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { findModelValues, isTestPath } from "../src/scan/values.js";
+import { findMentions } from "../src/scan/mentions.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -786,6 +787,97 @@ describe("model names set as values", () => {
     expect(exitCodeForCheck(hits)).toBe(0);
     expect(values.map((v) => v.model)).toEqual(["gpt-4"]);
     expect(render(hits, coverage, values)).toMatch(/^No call sites of known vendor changes found\.\n\nPossibly affected:/);
+  });
+});
+
+describe("other mentions of model names", () => {
+  const MENTIONS = join(SAMPLES, "model-mentions");
+  const listed = (ms: { line: number; model: string; file?: string }[]) => ms.map((m) => `${m.file ?? ""}:${m.line}:${m.model}`);
+
+  it("counts every other exact mention in any file, once per name and line", async () => {
+    const { hits, values, mentions, coverage } = await checkReport(MENTIONS);
+    expect(locations(hits)).toEqual(["src/chat.ts:6"]);
+    expect(listed(values)).toEqual(["src/chat.ts:4:o4-mini"]);
+    expect(listed(mentions)).toEqual([
+      ".env:1:gpt-3.5-turbo",
+      "README.md:3:gpt-4",
+      "README.md:4:gpt-4-turbo",
+      "config.yaml:2:o3-mini",
+      "config.yaml:3:o1-mini",
+      "src/chat.ts:5:text-davinci-003",
+      "src/chat.ts:6:o1",
+      "tests/test_chat.py:2:gpt-4",
+    ]);
+    expect(exitCodeForCheck(hits)).toBe(1);
+    const text = render(hits, coverage, values, mentions);
+    expect(text).toContain("Also mentioned: retired or retiring model names elsewhere");
+    expect(text).toContain("  config.yaml         2  o3-mini, o1-mini\n");
+    expect(text).toContain("  8 mentions in 5 files. darnit check --mentions lists each line.\n");
+    expect(text).toContain("Scanned 2 JavaScript, TypeScript or Python files against");
+    expect(text).toContain("Also searched 3 other files for retired or retiring model names.\n");
+    expect(coverage.otherFiles).toBe(3);
+    expect(render(hits, coverage, values, mentions, true)).toContain("  src/chat.ts:6  o1\n");
+    expect(mentionsToJson(mentions)[0]).toEqual({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: ".env", line: 1, model: "gpt-3.5-turbo" });
+  });
+
+  it("writes the JSON report in pieces, so millions of mentions still fit", async () => {
+    const { mentions } = await checkReport(join(SAMPLES, "model-mentions"));
+    const head = { version: "1", hits: [{ a: 1 }] };
+    for (const list of [[], mentions.slice(0, 1), Array.from({ length: 2500 }, () => mentions).flat()]) {
+      const chunks = [...checkJson(head, list)];
+      expect(chunks.join("")).toBe(JSON.stringify({ ...head, mentions: mentionsToJson(list) }, null, 2));
+      expect(Math.max(...chunks.map((c) => c.length))).toBeLessThan(500_000);
+    }
+  });
+
+  it("matches whole names only", () => {
+    const names = new Set(["gpt-4", "gpt-4-turbo", "o1"]);
+    const text = "gpt-4o gpt-4.1 gpt-4.5 my_gpt-4 a.gpt-4 gpt-4_x xgpt-4 -gpt-4 o1-pro po1\n(gpt-4) gpt-4-turbo, o1\n'gpt-4'.\nmodels/gpt-4..\n";
+    expect(listed(findMentions(text, names))).toEqual([":2:gpt-4", ":2:gpt-4-turbo", ":2:o1", ":3:gpt-4", ":4:gpt-4"]);
+  });
+
+  it("treats letters and digits in any script as part of a word", () => {
+    const names = new Set(["ada", "o1"]);
+    const text = "orçada adaé naïve-o1 Ão1 o1ção ada² ٣o1\nA despesa foi orçada. Usamos ada. «o1»\n";
+    expect(listed(findMentions(text, names))).toEqual([":2:ada", ":2:o1"]);
+  });
+
+  it("keeps a separate accent mark inside the word", () => {
+    const text = "orc\u0327ada ada\u0301 \u0915\u093fo1\n";
+    expect(findMentions(text, new Set(["ada", "o1"]))).toEqual([]);
+  });
+
+  it("skips binary files, pruned folders and files over the size limit, and never fails the check", async () => {
+    const dir = await scratch({
+      "notes.txt": "gpt-4\n",
+      "logo.png": "\0PNG gpt-4\n",
+      "node_modules/x/README.md": "gpt-4\n",
+      "big.json": "x".repeat(MAX_FILE_BYTES) + "gpt-4\n",
+    });
+    const { hits, mentions, coverage } = await checkReport(dir);
+    expect(listed(mentions)).toEqual(["notes.txt:1:gpt-4"]);
+    expect(coverage.tooLarge).toBeUndefined();
+    expect(exitCodeForCheck(hits)).toBe(0);
+    expect(render(hits, coverage, [], mentions)).toMatch(/^No call sites of known vendor changes found\.\n\nAlso mentioned:/);
+  });
+
+  it("lists the 20 files with the most mentions", async () => {
+    const files = Object.fromEntries(Array.from({ length: 23 }, (_, i) => [`f${i}.md`, "gpt-4\n".repeat(i + 1)]));
+    const { mentions } = await checkReport(await scratch(files));
+    const text = render([], undefined, [], mentions);
+    expect(text).toContain("  f22.md  23  gpt-4\n");
+    expect(text).not.toContain("f2.md");
+    expect(text).toContain("  and 3 more files\n  276 mentions in 23 files.");
+  });
+
+  it("reads a padded file in linear time", () => {
+    const names = new Set(["gpt-4", "o1"]);
+    for (const unit of ["a", ".", "gpt-4.gpt-4x", "x y ", "o1\n"]) {
+      const text = unit.repeat(Math.ceil(2_000_000 / unit.length));
+      const start = performance.now();
+      findMentions(text, names);
+      expect(performance.now() - start).toBeLessThan(3000);
+    }
   });
 });
 
