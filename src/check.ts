@@ -141,12 +141,16 @@ export const exitCodeForCheck = (hits: readonly Hit[]): 0 | 1 => (hits.some((h) 
 /** One block per vendor change: heading, locations, count, sources. */
 function grouped(hits: readonly Hit[], noun: string): string[] {
   const groups = new Map<string, Hit[]>();
-  for (const hit of hits) groups.set(hit.record.id, [...(groups.get(hit.record.id) ?? []), hit]);
+  for (const hit of hits) {
+    const group = groups.get(hit.record.id);
+    if (group) group.push(hit);
+    else groups.set(hit.record.id, [hit]);
+  }
   const out: string[] = [];
   for (const group of groups.values()) {
     const record = group[0]!.record;
     const locations = group.map((h) => `${h.file}:${h.line}:${h.column}`);
-    const width = Math.max(...locations.map((l) => l.length)) + 2;
+    const width = locations.reduce((w, l) => Math.max(w, l.length), 0) + 2;
     out.push(heading(record));
     group.forEach((h, i) =>
       out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.join(" or ")}; ignore if that server isn't OpenAI)` : ""}`),

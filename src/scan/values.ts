@@ -95,7 +95,8 @@ function isModelValue(str: SgNode): boolean {
   return false;
 }
 
-const named = (field: string, kinds: string[]) => kinds.map((kind) => ({ kind, has: { field, regex: "(?i)token" } }));
+/** Only a plain dotted name counts: a chained call's callee text holds earlier calls and their arguments. */
+const named = (field: string, kinds: string[]) => kinds.map((kind) => ({ kind, has: { field, regex: "(?i)^[\\w.$]*token[\\w.$]*$" } }));
 
 /**
  * Tokenizer code names a model to count tokens, not to call it: calls, functions and bindings
@@ -110,6 +111,18 @@ const TOKEN_SCOPES = {
   ],
 };
 
+/** Whether [start, end) sits inside one of `ranges`, which are sorted and do not overlap. */
+function inside(ranges: { start: number; end: number }[], start: number, end: number): boolean {
+  let lo = 0;
+  let hi = ranges.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (ranges[mid]!.start <= start) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return hi >= 0 && end <= ranges[hi]!.end;
+}
+
 /**
  * Strings exactly equal to one of `names`, set as the value of something named for a model or
  * engine: a constant, a default, a keyword argument, an object or dict entry, an env read's default.
@@ -120,13 +133,17 @@ export function findModelValues(file: string, source: string, grammar: Grammar, 
   const root = parse(grammar, source).root();
   const lines = source.split("\n");
   const py = file.endsWith(".py");
-  const tokenizers = root.findAll({ rule: { any: TOKEN_SCOPES[py ? "py" : "js"] } }).map((n) => n.range());
+  const tokenizers: { start: number; end: number }[] = [];
+  for (const n of root.findAll({ rule: { any: TOKEN_SCOPES[py ? "py" : "js"] } })) {
+    const { start, end } = n.range();
+    if (start.index >= (tokenizers.at(-1)?.end ?? -1)) tokenizers.push({ start: start.index, end: end.index });
+  }
   const out: ModelValue[] = [];
   for (const str of root.findAll({ rule: { any: (py ? ["string"] : ["string", "template_string"]).map((kind) => ({ kind })) } })) {
     const model = stringText(str);
     if (model === undefined || !names.has(model) || !isModelValue(str)) continue;
     const { start, end } = str.range();
-    if (tokenizers.some((t) => t.start.index <= start.index && end.index <= t.end.index)) continue;
+    if (inside(tokenizers, start.index, end.index)) continue;
     const { line, column } = start;
     out.push({ line: line + 1, column: column + 1, text: lines[line]!.trim().slice(0, 200), model });
   }

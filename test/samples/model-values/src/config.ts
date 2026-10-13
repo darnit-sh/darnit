@@ -25,3 +25,5 @@ export function fallback(opts: { model?: string }) {
 }
 
 export const cli = yargs.option("model", { default: "gpt-3.5-turbo" }).option("temperature", { default: "gpt-4" });
+export const bound = new ChatOpenAI({ modelName: "gpt-4", maxTokens: 500 }).bind({});
+export const flags = yargs.option("token").option("model", { default: "gpt-4" });

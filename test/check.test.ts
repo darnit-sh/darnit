@@ -7,7 +7,7 @@ import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
-import { isTestPath } from "../src/scan/values.js";
+import { findModelValues, isTestPath } from "../src/scan/values.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -651,6 +651,8 @@ describe("model names set as values", () => {
         "src/config.ts:21:gpt-4-32k",
         "src/config.ts:23:gpt-3.5-turbo-0613",
         "src/config.ts:27:gpt-3.5-turbo",
+        "src/config.ts:28:gpt-4",
+        "src/config.ts:29:gpt-4",
         "src/defaults.py:4:gpt-4-turbo",
         "src/defaults.py:9:gpt-4",
         "src/defaults.py:10:text-similarity-ada-001",
@@ -669,6 +671,7 @@ describe("model names set as values", () => {
         "src/env.ts:2:gpt-4",
         "src/framework.py:3:gpt-3.5-turbo",
         "src/framework.py:4:gpt-4",
+        "src/framework.py:5:gpt-4",
         "src/request.js:2:tts-1-hd",
         "src/request.py:5:tts-1",
       ].sort(),
@@ -677,7 +680,7 @@ describe("model names set as values", () => {
     const text = render(hits, coverage, values);
     expect(text).toContain("Possibly affected: retiring model names set as values that darnit cannot follow to a call.");
     expect(text).toContain("  src/defaults.py:4:23    DEFAULT_JUDGE_MODEL = 'gpt-4-turbo'\n");
-    expect(text).toContain("  19 values in 6 files\n");
+    expect(text).toContain("  22 values in 6 files\n");
     expect(toJson(values)[0]).toMatchObject({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: "examples/agent.ts", line: 3, model: "gpt-3.5-turbo" });
   });
 
@@ -685,6 +688,22 @@ describe("model names set as values", () => {
     const test = ["tests/a.py", "src/__tests__/a.ts", "test_app.py", "app/x_test.py", "src/app.test.ts", "src/app.spec.js", "conftest.py", "fixtures/a.js", "src/mocks/a.ts"];
     expect(test.filter((f) => !isTestPath(f))).toEqual([]);
     expect(["src/latest.py", "contest.py", "testing.ts", "src/attest/a.py"].filter(isTestPath)).toEqual([]);
+  });
+
+  it("finishes quickly on a file full of tokenizer calls and model values", () => {
+    const source = 'count_tokens(x)\nmodel = "gpt-4"\n'.repeat(60_000);
+    const start = performance.now();
+    const values = findModelValues("app.py", source, grammarFor("app.py")!.grammar, new Set(["gpt-4"]));
+    expect(performance.now() - start).toBeLessThan(3000);
+    expect(values).toHaveLength(60_000);
+  });
+
+  it("prints a long list of values quickly", async () => {
+    const { values } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
+    const many = Array.from({ length: 200_000 }, (_, i) => ({ ...values[0]!, line: i + 1 }));
+    const start = performance.now();
+    expect(render([], undefined, many)).toContain("  200000 values in 1 file\n");
+    expect(performance.now() - start).toBeLessThan(2000);
   });
 
   it("does not fail the check when values are all it finds", async () => {
