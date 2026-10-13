@@ -107,7 +107,7 @@ parser are marked `(parser-verified, not read by a person)` and do fail the chec
 Calls made through another provider's look-alike client are left out, and the
 report names each one.
 
-A retiring model name set as a value outside the call, such as
+A retired or retiring model name set as a value outside the call, such as
 `DEFAULT_MODEL = "gpt-4"`, `os.getenv("MODEL", "gpt-4")` or a `model="gpt-4"`
 default, is listed after the call sites under "Possibly affected", grouped by
 change, and so is one written inside the call in a form `check` does not

@@ -168,7 +168,7 @@ function grouped(hits: readonly Hit[], noun: string): string[] {
 }
 
 const VALUES_INTRO = [
-  "Possibly affected: retiring model names set as model values, not confirmed as call sites.",
+  "Possibly affected: retired or retiring model names set as model values, not confirmed as call sites.",
   "Check where each one is sent. These do not fail the check.",
 ];
 

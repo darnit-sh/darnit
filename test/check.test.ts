@@ -679,7 +679,7 @@ describe("model names set as values", () => {
     );
     expect(exitCodeForCheck(hits)).toBe(1);
     const text = render(hits, coverage, values);
-    expect(text).toContain("Possibly affected: retiring model names set as model values, not confirmed as call sites.");
+    expect(text).toContain("Possibly affected: retired or retiring model names set as model values, not confirmed as call sites.");
     expect(text).toContain("  src/defaults.py:4:23    DEFAULT_JUDGE_MODEL = 'gpt-4-turbo'\n");
     expect(text).toContain("  22 values in 6 files\n");
     expect(toJson(values)[0]).toMatchObject({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: "examples/agent.ts", line: 3, model: "gpt-3.5-turbo" });
