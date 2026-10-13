@@ -153,6 +153,21 @@ export function toJson(hits: (Hit | ModelValueHit)[]): object[] {
 /** Machine-readable form of the mentions. */
 export const mentionsToJson = (mentions: readonly MentionHit[]) => mentions.map((m) => ({ id: m.record.id, file: m.file, line: m.line, model: m.model }));
 
+/** The `check --json` text in pieces, with `mentions` last: millions of mentions do not fit in one string. */
+export function* checkJson(report: object, mentions: readonly MentionHit[]): Generator<string> {
+  const empty = JSON.stringify({ ...report, mentions: [] }, null, 2);
+  if (mentions.length === 0) {
+    yield empty;
+    return;
+  }
+  yield empty.slice(0, -"]\n}".length);
+  for (let i = 0; i < mentions.length; i += 1000) {
+    const items = mentionsToJson(mentions.slice(i, i + 1000)).map((m) => JSON.stringify(m, null, 2).replaceAll("\n", "\n    "));
+    yield `${i > 0 ? "," : ""}\n    ${items.join(",\n    ")}`;
+  }
+  yield "\n  ]\n}";
+}
+
 /** The matched code on one line, at most 60 characters; "…" marks anything cut off. */
 export function snippet(text: string, width = 60): string {
   const line = text.split("\n")[0]!;

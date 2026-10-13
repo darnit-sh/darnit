@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "@ast-grep/napi";
 import { afterEach, describe, expect, it } from "vitest";
-import { check, checkReport, exitCodeForCheck, mentionsToJson, render, snippet, toJson, type Hit } from "../src/check.js";
+import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, snippet, toJson, type Hit } from "../src/check.js";
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
@@ -815,6 +815,16 @@ describe("other mentions of model names", () => {
     expect(text).toContain("  8 mentions in 5 files. darnit check --mentions lists each line.\n");
     expect(render(hits, coverage, values, mentions, true)).toContain("  src/chat.ts:6  o1\n");
     expect(mentionsToJson(mentions)[0]).toEqual({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: ".env", line: 1, model: "gpt-3.5-turbo" });
+  });
+
+  it("writes the JSON report in pieces, so millions of mentions still fit", async () => {
+    const { mentions } = await checkReport(join(SAMPLES, "model-mentions"));
+    const head = { version: "1", hits: [{ a: 1 }] };
+    for (const list of [[], mentions.slice(0, 1), Array.from({ length: 2500 }, () => mentions).flat()]) {
+      const chunks = [...checkJson(head, list)];
+      expect(chunks.join("")).toBe(JSON.stringify({ ...head, mentions: mentionsToJson(list) }, null, 2));
+      expect(Math.max(...chunks.map((c) => c.length))).toBeLessThan(500_000);
+    }
   });
 
   it("matches whole names only", () => {
