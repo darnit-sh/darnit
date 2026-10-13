@@ -156,6 +156,12 @@ export function findModelValues(file: string, source: string, grammar: Grammar, 
   const root = parse(grammar, source).root();
   const lines = source.split("\n");
   const py = file.endsWith(".py");
+  const kinds = py ? ["string"] : ["string", "template_string"];
+  const found = root.findAll({ rule: { any: kinds.map((kind) => ({ kind })) } }).flatMap((n) => {
+    const model = stringText(n);
+    return model !== undefined && names.has(model) ? [{ start: n.range().start.index, model }] : [];
+  });
+  if (found.length === 0) return [];
   // Tokenizer code names a model to count tokens, not to call it. Only a short plain dotted name
   // counts: a chained call's callee holds the whole chain, and walking up from each name is slow in deep code.
   const tokenizers: Span[] = [];
@@ -166,11 +172,6 @@ export function findModelValues(file: string, source: string, grammar: Grammar, 
       if (start.index >= (tokenizers.at(-1)?.end ?? -1)) tokenizers.push({ start: start.index, end: end.index });
     }
   }
-  const kinds = py ? ["string"] : ["string", "template_string"];
-  const found = root.findAll({ rule: { any: kinds.map((kind) => ({ kind })) } }).flatMap((n) => {
-    const model = stringText(n);
-    return model !== undefined && names.has(model) ? [{ start: n.range().start.index, model }] : [];
-  });
   /** Index of the first model name starting at or after `at`. */
   const next = (at: number) => {
     let [lo, hi] = [0, found.length];
