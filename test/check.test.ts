@@ -2,11 +2,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "@ast-grep/napi";
 import { afterEach, describe, expect, it } from "vitest";
 import { check, checkReport, exitCodeForCheck, render, snippet, toJson, type Hit } from "../src/check.js";
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
+import { findModelValues, isTestPath } from "../src/scan/values.js";
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -626,6 +628,164 @@ describe("model shutdowns", () => {
     const { hits, coverage } = await checkReport(dir);
     expect(locations(shutdowns(hits)).sort()).toEqual(["stt.py:6", "stt.ts:5", "stt.ts:6", "stt.ts:7"]);
     expect(coverage.foreignAt).toEqual(["stt.ts:8"]);
+  });
+});
+
+describe("model names set as values", () => {
+  const MODEL_VALUES = join(SAMPLES, "model-values");
+
+  it("lists each kind of value once, outside tests and tokenizers, without failing the check", async () => {
+    const { hits, values, coverage } = await checkReport(MODEL_VALUES);
+    expect(locations(hits)).toEqual(["src/call.ts:6"]);
+    expect(coverage.foreignAt).toEqual(["src/call.ts:7"]);
+    expect(values.map((v) => `${v.file}:${v.line}:${v.model}`).sort()).toEqual(
+      [
+        "examples/agent.ts:3:gpt-3.5-turbo",
+        "src/config.ts:1:gpt-4-turbo",
+        "src/config.ts:2:tts-1",
+        "src/config.ts:5:gpt-4",
+        "src/config.ts:6:text-davinci-003",
+        "src/config.ts:8:o3-mini",
+        "src/config.ts:12:o1-mini",
+        "src/config.ts:16:whisper-1",
+        "src/config.ts:17:dall-e-3",
+        "src/config.ts:21:gpt-4-32k",
+        "src/config.ts:23:gpt-3.5-turbo-0613",
+        "src/config.ts:27:gpt-3.5-turbo",
+        "src/config.ts:28:gpt-4",
+        "src/config.ts:29:gpt-4",
+        "src/defaults.py:4:gpt-4-turbo",
+        "src/defaults.py:9:gpt-4",
+        "src/defaults.py:10:text-similarity-ada-001",
+        "src/defaults.py:14:o3-mini",
+        "src/defaults.py:18:o1-mini",
+        "src/defaults.py:23:text-davinci-003",
+        "src/defaults.py:24:gpt-4-0613",
+        "src/defaults.py:25:gpt-4",
+        "src/defaults.py:25:o1",
+        "src/defaults.py:26:gpt-3.5-turbo-0125",
+        "src/defaults.py:31:gpt-3.5-turbo",
+        "src/env.py:3:gpt-4-1106-preview",
+        "src/env.py:4:gpt-4-turbo",
+        "src/env.py:5:o1-mini",
+        "src/env.ts:1:gpt-3.5-turbo",
+        "src/env.ts:2:gpt-4",
+        "src/framework.py:3:gpt-3.5-turbo",
+        "src/framework.py:4:gpt-4",
+        "src/framework.py:5:gpt-4",
+        "src/request.js:2:tts-1-hd",
+        "src/request.py:5:tts-1",
+      ].sort(),
+    );
+    expect(exitCodeForCheck(hits)).toBe(1);
+    const text = render(hits, coverage, values);
+    expect(text).toContain("Possibly affected: retired or retiring model names set as model values, not confirmed as call sites.");
+    expect(text).toContain("  src/defaults.py:4:23    DEFAULT_JUDGE_MODEL = 'gpt-4-turbo'\n");
+    expect(text).toContain("  22 values in 6 files\n");
+    expect(toJson(values)[0]).toMatchObject({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: "examples/agent.ts", line: 3, model: "gpt-3.5-turbo" });
+  });
+
+  it("knows test files by folder and by name", () => {
+    const test = ["tests/a.py", "src/__tests__/a.ts", "test_app.py", "app/x_test.py", "src/app.test.ts", "src/app.spec.js", "conftest.py", "fixtures/a.js", "src/mocks/a.ts"];
+    expect(test.filter((f) => !isTestPath(f))).toEqual([]);
+    expect(["src/latest.py", "contest.py", "testing.ts", "src/attest/a.py"].filter(isTestPath)).toEqual([]);
+  });
+
+  it("takes about as long with tokenizer calls in the file as without", () => {
+    const grammar = grammarFor("app.py")!.grammar;
+    const time = (line: string) => {
+      const start = performance.now();
+      expect(findModelValues("app.py", `${line}model = "gpt-4"\n`.repeat(30_000), grammar, new Set(["gpt-4"]))).toHaveLength(30_000);
+      return performance.now() - start;
+    };
+    const plain = time("x = 1\n");
+    expect(time("count_tokens(x)\n")).toBeLessThan(3 * plain);
+  }, 20_000);
+
+  it("reads long call chains about as fast as parsing them", () => {
+    for (const [file, link] of ["app.py", "app.ts"].flatMap((f) => [".a()", ".token", ".token()"].map((l) => [f, l] as const))) {
+      const grammar = grammarFor(file)!.grammar;
+      const source = `model = "gpt-4"; x${link.repeat(40_000)}\n`;
+      let start = performance.now();
+      parse(grammar, source);
+      const parsing = performance.now() - start;
+      start = performance.now();
+      expect(findModelValues(file, source, grammar, new Set(["gpt-4"]))).toHaveLength(1);
+      expect(performance.now() - start).toBeLessThan(10 * parsing + 500);
+    }
+  }, 20_000);
+
+  it("reads calls with many arguments about as fast as parsing them", () => {
+    const cases = [
+      ["app.ts", '"gpt-4", '],
+      ["app.py", '"gpt-4", '],
+      ["app.py", 'default="gpt-4", '],
+      ["app.ts", '{ default: "gpt-4" }, '],
+    ] as const;
+    for (const [file, arg] of cases) {
+      const grammar = grammarFor(file)!.grammar;
+      const source = `f("model", ${arg.repeat(2000)})\n`;
+      let start = performance.now();
+      parse(grammar, source);
+      const parsing = performance.now() - start;
+      start = performance.now();
+      findModelValues(file, source, grammar, new Set(["gpt-4"]));
+      expect(performance.now() - start).toBeLessThan(10 * parsing + 500);
+    }
+  }, 60_000);
+
+  it("reads long names, long lines and deep code about as fast as parsing them", () => {
+    const defaults = 'default="gpt-4", '.repeat(5000);
+    const cases = [
+      ["app.py", `${"a.".repeat(50_000)}model = f(${defaults})\n`],
+      ["app.py", `f("${"model ".repeat(40_000)}", ${defaults}${defaults})\n`],
+      ["app.ts", `${" ".repeat(1_000_000)}${'model = "gpt-4"; '.repeat(5000)}\n`],
+      ["app.py", `model = ${'f("gpt-4", '.repeat(5000)}x${")".repeat(5000)}\n`],
+      ["app.ts", `model = ${'c ? "gpt-4" : ('.repeat(5000)}x${")".repeat(5000)}\n`],
+      ["app.ts", `model = x${'.f("gpt-4")'.repeat(5000)}\n`],
+    ] as const;
+    const slow = cases.filter(([file, source]) => {
+      const grammar = grammarFor(file)!.grammar;
+      let start = performance.now();
+      parse(grammar, source);
+      const parsing = performance.now() - start;
+      start = performance.now();
+      findModelValues(file, source, grammar, new Set(["gpt-4"]));
+      return performance.now() - start > 10 * parsing + 500;
+    });
+    expect(slow.map(([, source]) => source.slice(0, 20))).toEqual([]);
+  }, 60_000);
+
+  it("does not list a call's model fallback again when it wraps to the next line", async () => {
+    const dir = await scratch({
+      "app.ts": 'import OpenAI from "openai";\nconst openai = new OpenAI();\nawait openai.chat.completions.create({\n  model:\n    process.env.X ?? "gpt-4",\n  messages: [],\n});\n',
+      "app.py": 'import os\nfrom openai import OpenAI\n\nclient = OpenAI()\nclient.chat.completions.create(\n    model=os.environ.get("M")\n    or "gpt-4",\n    messages=[],\n)\n',
+    });
+    const { hits, values } = await checkReport(dir);
+    expect(locations(hits).sort()).toEqual(["app.py:6", "app.ts:4"]);
+    expect(values).toEqual([]);
+  });
+
+  it("lists a model value on a line another change already reported", async () => {
+    const dir = await scratch({ "app.py": 'from openai import OpenAI\n\nclient = OpenAI()\nclient.chat.completions.create(**{"model": "gpt-4"}, messages=[], max_tokens=5)\n' });
+    const { hits, values } = await checkReport(dir);
+    expect(hits.map((h) => h.record.id)).not.toContain(values[0]?.record.id);
+    expect(values.map((v) => `${v.line}:${v.model}`)).toEqual(["4:gpt-4"]);
+  });
+
+  it("prints a long list of values quickly", async () => {
+    const { values } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
+    const many = Array.from({ length: 200_000 }, (_, i) => ({ ...values[0]!, line: i + 1 }));
+    const start = performance.now();
+    expect(render([], undefined, many)).toContain("  200000 values in 1 file\n");
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
+
+  it("does not fail the check when values are all it finds", async () => {
+    const { hits, values, coverage } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
+    expect(exitCodeForCheck(hits)).toBe(0);
+    expect(values.map((v) => v.model)).toEqual(["gpt-4"]);
+    expect(render(hits, coverage, values)).toMatch(/^No call sites of known vendor changes found\.\n\nPossibly affected:/);
   });
 });
 
