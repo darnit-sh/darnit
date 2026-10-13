@@ -1,4 +1,5 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -79,6 +80,28 @@ describe("detectTestCommand", () => {
 
   it("finds nothing in an empty project", async () => {
     expect(await detectTestCommand(await dirWith({}))).toBeUndefined();
+  });
+
+  /** A project whose `names` are links to a named pipe, which never ends when read. */
+  async function linkedToPipe(...names: string[]): Promise<string> {
+    const dir = await dirWith({});
+    execFileSync("mkfifo", [join(dir, "pipe")]);
+    for (const name of names) await symlink(join(dir, "pipe"), join(dir, name));
+    return dir;
+  }
+
+  it.skipIf(process.platform === "win32")("does not wait on a package.json that is not a regular file", { timeout: 2000 }, async () => {
+    const dir = await linkedToPipe("package.json");
+    expect(await detectTestCommand(dir)).toBeUndefined();
+    expect(await detectBuildCommand(dir)).toBeUndefined();
+  });
+
+  it.skipIf(process.platform === "win32")("does not wait on Python settings that are not regular files", { timeout: 2000 }, async () => {
+    const path = await pathWith("python3");
+    expect(await detectTestCommand(await linkedToPipe("pyproject.toml", "setup.cfg"), path)).toBeUndefined();
+    const endless = await dirWith({});
+    await symlink("/dev/zero", join(endless, "pyproject.toml"));
+    expect(await detectTestCommand(endless, path)).toBeUndefined();
   });
 });
 

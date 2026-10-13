@@ -1,11 +1,17 @@
 import { execFileSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import type { Stats } from "node:fs";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { detectApis, MAX_FILE_BYTES, readText } from "../src/detect.js";
 import { init, pinned } from "../src/init.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...real, stat: vi.fn(real.stat) };
+});
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 
@@ -94,6 +100,14 @@ describe("detectApis on a repository built to slow it down", () => {
     const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
     tempDirs.push(dir);
     execFileSync("mkfifo", [join(dir, "darnit.yml")]);
+    expect(await readText(join(dir, "darnit.yml"))).toBeUndefined();
+  });
+
+  it.skipIf(process.platform === "win32")("does not wait on a named pipe swapped in after the first check", { timeout: 2000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    execFileSync("mkfifo", [join(dir, "darnit.yml")]);
+    vi.mocked(stat).mockResolvedValueOnce({ isFile: () => true, size: 0 } as Stats);
     expect(await readText(join(dir, "darnit.yml"))).toBeUndefined();
   });
 });

@@ -1,3 +1,4 @@
+import { constants } from "node:fs";
 import { open, readdir, stat } from "node:fs/promises";
 import type { VendorClients } from "./scan/clients.js";
 import { basename, join } from "node:path";
@@ -81,7 +82,8 @@ export async function readText(path: string, tooLarge?: (start: string) => void)
   // Checked before opening, since opening a named pipe waits for a writer that never comes.
   const stats = await stat(path).catch(() => undefined);
   if (!stats?.isFile()) return undefined;
-  const file = await open(path).catch(() => undefined);
+  // Non-blocking, so a named pipe swapped in after that check opens at once instead of waiting.
+  const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK).catch(() => undefined);
   try {
     // Checked again on what was opened, in case the path changed in between.
     const opened = await file?.stat();
