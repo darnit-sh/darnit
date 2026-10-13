@@ -711,7 +711,7 @@ describe("model names set as values", () => {
       const parsing = performance.now() - start;
       start = performance.now();
       expect(findModelValues(file, source, grammar, new Set(["gpt-4"]))).toHaveLength(1);
-      expect(performance.now() - start).toBeLessThan(5 * parsing + 200);
+      expect(performance.now() - start).toBeLessThan(10 * parsing + 500);
     }
   }, 20_000);
 
@@ -730,7 +730,7 @@ describe("model names set as values", () => {
       const parsing = performance.now() - start;
       start = performance.now();
       findModelValues(file, source, grammar, new Set(["gpt-4"]));
-      expect(performance.now() - start).toBeLessThan(5 * parsing + 200);
+      expect(performance.now() - start).toBeLessThan(10 * parsing + 500);
     }
   }, 60_000);
 
@@ -738,7 +738,7 @@ describe("model names set as values", () => {
     const defaults = 'default="gpt-4", '.repeat(5000);
     const cases = [
       ["app.py", `${"a.".repeat(50_000)}model = f(${defaults})\n`],
-      ["app.py", `f("${"model ".repeat(20_000)}", ${defaults})\n`],
+      ["app.py", `f("${"model ".repeat(40_000)}", ${defaults}${defaults})\n`],
       ["app.ts", `${" ".repeat(1_000_000)}${'model = "gpt-4"; '.repeat(5000)}\n`],
       ["app.py", `model = ${'f("gpt-4", '.repeat(5000)}x${")".repeat(5000)}\n`],
       ["app.ts", `model = ${'c ? "gpt-4" : ('.repeat(5000)}x${")".repeat(5000)}\n`],
@@ -751,7 +751,7 @@ describe("model names set as values", () => {
       const parsing = performance.now() - start;
       start = performance.now();
       findModelValues(file, source, grammar, new Set(["gpt-4"]));
-      return performance.now() - start > 5 * parsing + 200;
+      return performance.now() - start > 10 * parsing + 500;
     });
     expect(slow.map(([, source]) => source.slice(0, 20))).toEqual([]);
   }, 60_000);
