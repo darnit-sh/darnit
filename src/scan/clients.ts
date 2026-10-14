@@ -70,12 +70,16 @@ const FIELDS = new Set(["public_field_definition", "field_definition"]);
 const ASSIGNMENTS = new Set(["variable_declarator", "assignment_expression", "public_field_definition", "field_definition", "assignment"]);
 const IMPORTS = new Set(["import_statement", "import_from_statement"]);
 
-/** Where a node sits: the function it is in (unless a class is nearer), its class, its block or function, its parent. */
-type Context = { fn?: SgNode | undefined; cls?: SgNode | undefined; block?: SgNode | undefined; parent?: SgNode };
+/** A function or block around a node, and the ones around it. */
+type Scope = { node: SgNode; fn: boolean; outer: Scope | undefined };
+/** Where a node sits: the function it is in (unless a class is nearer), its class, its block or function, its parent, every function and block around it. */
+type Context = { fn?: SgNode | undefined; cls?: SgNode | undefined; block?: SgNode | undefined; parent?: SgNode; scope?: Scope | undefined };
 /** A client's origin, or the name its base address is read from, which depends on where the call is. */
 type Built = Origin | { name: string };
 type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; blockScoped: boolean; built?: Built } & Context;
-type FileIndex = { imports: Map<string, Set<string>>; assignments: Map<string, Assignment[]> };
+/** Assignments by name, then by the node they live in: a function or block, a class, or undefined for the whole file. */
+type Grouped = Map<string, Map<SgNode | undefined, Assignment[]>>;
+type FileIndex = { imports: Map<string, Set<string>>; scoped: Grouped; classed: Grouped; calls: Map<number, Context>; globalHomes: Map<string, SgNode[]> };
 
 /**
  * Local name → every package it is imported from, read from import statements only (never comments or strings).
@@ -137,7 +141,16 @@ const indexes = new WeakMap<SgNode, FileIndex>();
 function indexOf(root: SgNode): FileIndex {
   let index = indexes.get(root);
   if (index) return index;
-  const assignments = new Map<string, Assignment[]>();
+  const scoped: Grouped = new Map();
+  const classed: Grouped = new Map();
+  const add = (groups: Grouped, home: SgNode | undefined, a: Assignment) => {
+    const byHome = groups.get(a.target) ?? new Map<SgNode | undefined, Assignment[]>();
+    const list = byHome.get(home) ?? [];
+    list.push(a);
+    byHome.set(home, list);
+    groups.set(a.target, byHome);
+  };
+  const calls = new Map<number, Context>();
   const importTexts: string[] = [];
   const stack: [SgNode, Context][] = [[root, {}]];
   while (stack.length > 0) {
@@ -151,20 +164,23 @@ function indexOf(root: SgNode): FileIndex {
         if ((value.is("call_expression") || value.is("member_expression")) && /^require\s*\(/.test(value.text())) importTexts.push(node.text());
         // A Python class-body assignment is a class attribute: reached as self.x, not as a bare name.
         const field = FIELDS.has(kind) || (kind === "assignment" && up.cls !== undefined && up.fn === undefined);
-        // let and const live in their block; var and plain assignments live in the whole function.
         const blockScoped = kind === "variable_declarator" && up.parent?.is("lexical_declaration") === true;
         if (!isPlaceholder(value)) {
-          const named = assignments.get(target) ?? [];
-          named.push({ target, value, node, field, blockScoped, ...up });
-          assignments.set(target, named);
+          const a = { target, value, node, field, blockScoped, ...up };
+          // let and const live in their block; var and plain assignments live in the whole function.
+          if (!field) add(scoped, blockScoped && up.block ? up.block : up.fn, a);
+          add(classed, up.cls, a);
         }
       }
     }
+    if (kind === "call_expression" || kind === "call") calls.set(node.id(), up);
     const [isFunction, isClass] = [FUNCTIONS.has(kind), CLASSES.has(kind)];
-    const inner = { fn: isFunction ? node : isClass ? undefined : up.fn, cls: isClass ? node : up.cls, block: isFunction || kind === "statement_block" ? node : up.block, parent: node };
+    const isBlock = isFunction || kind === "statement_block";
+    const scope = isBlock ? { node, fn: isFunction, outer: up.scope } : up.scope;
+    const inner = { fn: isFunction ? node : isClass ? undefined : up.fn, cls: isClass ? node : up.cls, block: isBlock ? node : up.block, parent: node, scope };
     for (const child of node.children()) stack.push([child, inner]);
   }
-  index = { imports: importsOf(importTexts), assignments };
+  index = { imports: importsOf(importTexts), scoped, classed, calls, globalHomes: new Map() };
   indexes.set(root, index);
   return index;
 }
@@ -172,7 +188,7 @@ function indexOf(root: SgNode): FileIndex {
 // Read once per node: a crafted file can pair thousands of assignments with thousands of calls.
 const spans = new WeakMap<SgNode, [number, number]>();
 const globals = new WeakMap<SgNode, Set<string>>();
-const ancestors = new WeakMap<SgNode, SgNode[]>();
+const params = new WeakMap<SgNode, string[]>();
 
 function span(node: SgNode): [number, number] {
   let s = spans.get(node);
@@ -180,16 +196,16 @@ function span(node: SgNode): [number, number] {
   return s;
 }
 
-function ancestorsOf(node: SgNode): SgNode[] {
-  let up = ancestors.get(node);
-  if (!up) ancestors.set(node, (up = node.ancestors()));
-  return up;
-}
-
 const contains = (outer: SgNode, inner: SgNode) => span(outer)[0] <= span(inner)[0] && span(inner)[1] <= span(outer)[1];
 
 /** Parameter names of a function node (JavaScript, TypeScript or Python). */
 function parameters(fn: SgNode): string[] {
+  let names = params.get(fn);
+  if (!names) params.set(fn, (names = readParameters(fn)));
+  return names;
+}
+
+function readParameters(fn: SgNode): string[] {
   const list = fn.field("parameters") ?? fn.field("parameter");
   if (!list) return [];
   if (list.is("identifier")) return [list.text()];
@@ -210,6 +226,10 @@ function declaresGlobal(fn: SgNode, name: string): boolean {
   return names.has(name);
 }
 
+// Tracing a call takes time in proportion to the assignments that reach it, so a name assigned more
+// often than this where one call can see it is not traced, and its calls count as the vendor's.
+const MAX_TRACED = 50;
+
 /** Every assignment to `target` that could be the value the call sees. */
 function visibleAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] {
   const visible = reachingAssignments(index, target, call);
@@ -223,25 +243,28 @@ function visibleAssignments(index: FileIndex, target: string, call: SgNode): Ass
 
 /** Assignments to `target` whose scope reaches the call, before any shadowing. */
 function reachingAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] {
+  const at = index.calls.get(call.id()) ?? {};
   const member = /^(?:this|self)\.([\w$#]+)$/.exec(target)?.[1];
-  const named = index.assignments.get(target) ?? [];
-  const candidates = member === undefined ? named.filter((a) => !a.field) : [...named, ...(index.assignments.get(member) ?? []).filter((a) => a.field)];
-  // A name assigned more than 50 times in one file is not traced, so its calls count as the vendor's:
-  // tracing every call would take time in proportion to both counts.
-  if (candidates.length === 0 || candidates.length > 50) return [];
-  const up = ancestorsOf(call);
   if (member !== undefined) {
-    const callClass = up.find((a) => CLASSES.has(String(a.kind())));
-    return candidates.filter((a) => a.cls !== undefined && callClass !== undefined && span(a.cls)[0] === span(callClass)[0]);
+    if (!at.cls) return [];
+    const own = [...(index.classed.get(target)?.get(at.cls) ?? []), ...(index.classed.get(member)?.get(at.cls) ?? []).filter((a) => a.field)];
+    return own.length > MAX_TRACED ? [] : own;
   }
+  const groups = index.scoped.get(target);
+  if (!groups) return [];
+  // Only assignments in the file's top level, in a function or block around the call, or in a
+  // function that declares the name global.
+  const homes = new Set<SgNode | undefined>([undefined]);
+  for (let s = at.scope; s; s = s.outer) homes.add(s.node);
+  const reaching = [...homes].flatMap((home) => groups.get(home) ?? []);
+  let global = index.globalHomes.get(target);
+  if (!global) index.globalHomes.set(target, (global = [...groups.keys()].filter((home): home is SgNode => home !== undefined && declaresGlobal(home, target))));
+  for (const home of global) if (!homes.has(home)) reaching.push(...groups.get(home)!.filter((a) => !a.blockScoped));
+  if (reaching.length > MAX_TRACED) return [];
   // A parameter with the same name, between the assignment and the call, shadows it.
-  const shadowing = up.filter((a) => FUNCTIONS.has(String(a.kind())) && parameters(a).includes(target));
-  return candidates.filter((a) => {
-    // A let or const is only visible inside the block that holds it.
-    if (a.blockScoped && a.block && !contains(a.block, call)) return false;
-    if (a.fn && !contains(a.fn, call) && !declaresGlobal(a.fn, target)) return false;
-    return !shadowing.some((fn) => !contains(fn, a.node));
-  });
+  const shadowing: SgNode[] = [];
+  for (let s = at.scope; s; s = s.outer) if (s.fn && parameters(s.node).includes(target)) shadowing.push(s.node);
+  return reaching.filter((a) => !shadowing.some((fn) => !contains(fn, a.node)));
 }
 
 /** The written-out base address in a constructor's arguments, or the name it is read from. Read from the syntax so comments never count. */
@@ -311,10 +334,15 @@ export function clientOrigin(root: SgNode, call: SgNode, symbol: string, v: Vend
   const client = callee && clientNode(callee, symbol);
   if (!client) return "unknown";
   const index = indexOf(root);
+  const byName = new Map<string, Origin>();
   const traced = (built: Built): Origin => {
     if (typeof built !== "object" || !("name" in built)) return built;
-    const consts = visibleAssignments(index, built.name, call).map((a) => stringText(a.value));
-    return consts.length === 1 && consts[0] ? urlOrigin(consts[0], v) : "vendor";
+    let origin = byName.get(built.name);
+    if (!origin) {
+      const consts = visibleAssignments(index, built.name, call).map((a) => stringText(a.value));
+      byName.set(built.name, (origin = consts.length === 1 && consts[0] ? urlOrigin(consts[0], v) : "vendor"));
+    }
+    return origin;
   };
   if (client.is("new_expression") || client.is("call_expression") || client.is("call")) return traced(constructed(client, index, v));
   const target = client.text().replace(/\s+/g, "");

@@ -917,20 +917,29 @@ describe("check on a repository built to slow it down", () => {
   const times = (n: number, line: (i: number) => string) => Array.from({ length: n }, (_, i) => line(i)).join("");
   const call = 'client.chat.completions.create(model="x", max_tokens=5)\n';
 
+  // Each takes 10 seconds or more when tracing reads every assignment for every call.
   it.each([
-    ["thousands of clients, each with its own call", "app.js", `import OpenAI from "openai";\n${times(5000, (i) => `const c${i} = new OpenAI();\nc${i}.chat.completions.create({ max_tokens: 5 });\n`)}`, 5000],
-    ["hundreds of calls on a client set hundreds of times", "app.py", `from openai import OpenAI\n${times(600, () => "client = OpenAI()\n")}${times(600, () => call)}`, 600],
-    ["hundreds of calls and hundreds of functions setting the client", "app.py", `from openai import OpenAI\n${times(800, (i) => `def f${i}():\n    client = OpenAI()\n`)}${times(800, () => call)}`, 800],
-    ["an assignment chained thousands of names long", "app.py", py(`from openai import OpenAI\n${times(3000, (i) => `a${i} = `)}1\nclient = OpenAI()`), 1],
-  ])("finishes quickly on %s", async (_, name, text, count) => {
+    ["thousands of clients, each with its own call", "app.js", `import OpenAI from "openai";\n${times(6000, (i) => `const c${i} = new OpenAI();\nc${i}.chat.completions.create({ max_tokens: 5 });\n`)}`, 6000, 8000],
+    ["a thousand calls on a client set a thousand times", "app.py", `from openai import OpenAI\n${times(1000, () => "client = OpenAI()\n")}${times(1000, () => call)}`, 1000, 2000],
+    ["a thousand calls and a thousand functions setting the client", "app.py", `from openai import OpenAI\n${times(1000, (i) => `def f${i}():\n    client = OpenAI()\n`)}${times(1000, () => call)}`, 1000, 2000],
+    ["an assignment chained thousands of names long", "app.py", py(`from openai import OpenAI\n${times(4000, (i) => `a${i} = `)}1\nclient = OpenAI()`), 1, 2000],
+    ["calls on clients whose address is set in 50 nested blocks", "app.js", `import OpenAI from "openai";\n${times(50, (i) => `{\nconst baseURL = "http://localhost:${i}";\nvar client = new OpenAI({ baseURL });\n`)}${times(20, () => "client.chat.completions.create({ max_tokens: 5 });\n")}${"}\n".repeat(50)}`, 20, 2000],
+  ])("finishes quickly on %s", { timeout: 300_000 }, async (_, name, text, count, budget) => {
     const dir = await scratch({ [name]: text });
     const start = performance.now();
     const hits = await check(dir);
-    expect(performance.now() - start).toBeLessThan(2000);
+    expect(performance.now() - start).toBeLessThan(budget);
     expect(maxTokens(hits)).toHaveLength(count);
   });
 
-  it("does not trace a name set more than 50 times in one file, so its calls count as the vendor's", async () => {
+  it("traces each call through the assignments it can see, not every one of the name in the file", async () => {
+    const text = `from groq import Groq\n${times(51, (i) => `def test_${i}():\n    client = Groq()\n    ${call}`)}`;
+    const { hits, coverage } = await checkReport(await scratch({ "app.py": text }));
+    expect(maxTokens(hits)).toEqual([]);
+    expect(coverage.foreign).toBe(51);
+  });
+
+  it("does not trace a name set more than 50 times where one call sees it, so the call counts as the vendor's", async () => {
     const text = (n: number) => `from groq import Groq\n${times(n, () => "client = Groq()\n")}${call}`;
     expect(maxTokens(await check(await scratch({ "app.py": text(50) })))).toEqual([]);
     expect(maxTokens(await check(await scratch({ "app.py": text(51) })))).toEqual(["app.py:53"]);
