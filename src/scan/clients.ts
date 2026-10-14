@@ -70,8 +70,16 @@ const FIELDS = new Set(["public_field_definition", "field_definition"]);
 const ASSIGNMENTS = new Set(["variable_declarator", "assignment_expression", "public_field_definition", "field_definition", "assignment"]);
 const IMPORTS = new Set(["import_statement", "import_from_statement"]);
 
-type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; blockScoped: boolean };
-type FileIndex = { imports: Map<string, Set<string>>; assignments: Assignment[] };
+/** A function or block around a node, and the ones around it. */
+type Scope = { node: SgNode; fn: boolean; outer: Scope | undefined };
+/** Where a node sits: the function it is in (unless a class is nearer), its class, its block or function, its parent, every function and block around it. */
+type Context = { fn?: SgNode | undefined; cls?: SgNode | undefined; block?: SgNode | undefined; parent?: SgNode; scope?: Scope | undefined };
+/** A client's origin, or the name its base address is read from, which depends on where the call is. */
+type Built = Origin | { name: string };
+type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; blockScoped: boolean; built?: Built } & Context;
+/** Assignments by name, then by the node they live in: a function or block, a class, or undefined for the whole file. */
+type Grouped = Map<string, Map<SgNode | undefined, Assignment[]>>;
+type FileIndex = { imports: Map<string, Set<string>>; scoped: Grouped; classed: Grouped; calls: Map<number, Context>; globalHomes: Map<string, SgNode[]> };
 
 /**
  * Local name → every package it is imported from, read from import statements only (never comments or strings).
@@ -122,21 +130,31 @@ function importsOf(statements: readonly string[]): Map<string, Set<string>> {
   return names;
 }
 
-const scopeKinds = (node: SgNode) => node.ancestors().find((a) => FUNCTIONS.has(String(a.kind())) || CLASSES.has(String(a.kind())));
-const isClass = (node: SgNode | undefined) => node !== undefined && CLASSES.has(String(node.kind()));
+// A placeholder such as `client = null` is not a client. Only a short value is read.
+const isPlaceholder = (value: SgNode) => value.range().end.index - value.range().start.index <= 9 && /^(null|undefined|None)$/.test(value.text());
 
 // One iterative walk and one import read per parsed file, however many calls it has. Iterative so
-// a deeply nested generated file can't overflow the stack.
+// a deeply nested generated file can't overflow the stack, and it keeps each node's surroundings
+// on the way down, since asking a node for its ancestors walks down from the root.
 const indexes = new WeakMap<SgNode, FileIndex>();
 
 function indexOf(root: SgNode): FileIndex {
   let index = indexes.get(root);
   if (index) return index;
-  const assignments: Assignment[] = [];
+  const scoped: Grouped = new Map();
+  const classed: Grouped = new Map();
+  const add = (groups: Grouped, home: SgNode | undefined, a: Assignment) => {
+    const byHome = groups.get(a.target) ?? new Map<SgNode | undefined, Assignment[]>();
+    const list = byHome.get(home) ?? [];
+    list.push(a);
+    byHome.set(home, list);
+    groups.set(a.target, byHome);
+  };
+  const calls = new Map<number, Context>();
   const importTexts: string[] = [];
-  const stack: SgNode[] = [root];
+  const stack: [SgNode, Context][] = [[root, {}]];
   while (stack.length > 0) {
-    const node = stack.pop()!;
+    const [node, up] = stack.pop()!;
     const kind = String(node.kind());
     if (IMPORTS.has(kind)) importTexts.push(node.text());
     if (ASSIGNMENTS.has(kind)) {
@@ -145,26 +163,49 @@ function indexOf(root: SgNode): FileIndex {
       if (target && value) {
         if ((value.is("call_expression") || value.is("member_expression")) && /^require\s*\(/.test(value.text())) importTexts.push(node.text());
         // A Python class-body assignment is a class attribute: reached as self.x, not as a bare name.
-        const field = FIELDS.has(kind) || (kind === "assignment" && isClass(scopeKinds(node)));
-        // let and const live in their block; var and plain assignments live in the whole function.
-        const blockScoped = kind === "variable_declarator" && node.parent()?.is("lexical_declaration") === true;
-        assignments.push({ target, value, node, field, blockScoped });
+        const field = FIELDS.has(kind) || (kind === "assignment" && up.cls !== undefined && up.fn === undefined);
+        const blockScoped = kind === "variable_declarator" && up.parent?.is("lexical_declaration") === true;
+        if (!isPlaceholder(value)) {
+          const a = { target, value, node, field, blockScoped, ...up };
+          // let and const live in their block; var and plain assignments live in the whole function.
+          if (!field) add(scoped, blockScoped && up.block ? up.block : up.fn, a);
+          add(classed, up.cls, a);
+        }
       }
     }
-    for (const child of node.children()) stack.push(child);
+    if (kind === "call_expression" || kind === "call") calls.set(node.id(), up);
+    const [isFunction, isClass] = [FUNCTIONS.has(kind), CLASSES.has(kind)];
+    const isBlock = isFunction || kind === "statement_block";
+    const scope = isBlock ? { node, fn: isFunction, outer: up.scope } : up.scope;
+    const inner = { fn: isFunction ? node : isClass ? undefined : up.fn, cls: isClass ? node : up.cls, block: isBlock ? node : up.block, parent: node, scope };
+    for (const child of node.children()) stack.push([child, inner]);
   }
-  index = { imports: importsOf(importTexts), assignments };
+  index = { imports: importsOf(importTexts), scoped, classed, calls, globalHomes: new Map() };
   indexes.set(root, index);
   return index;
 }
 
-const contains = (outer: SgNode, inner: SgNode) => {
-  const [o, i] = [outer.range(), inner.range()];
-  return o.start.index <= i.start.index && i.end.index <= o.end.index;
-};
+// Read once per node: a crafted file can pair thousands of assignments with thousands of calls.
+const spans = new WeakMap<SgNode, [number, number]>();
+const globals = new WeakMap<SgNode, Set<string>>();
+const params = new WeakMap<SgNode, string[]>();
+
+function span(node: SgNode): [number, number] {
+  let s = spans.get(node);
+  if (!s) spans.set(node, (s = [node.range().start.index, node.range().end.index]));
+  return s;
+}
+
+const contains = (outer: SgNode, inner: SgNode) => span(outer)[0] <= span(inner)[0] && span(inner)[1] <= span(outer)[1];
 
 /** Parameter names of a function node (JavaScript, TypeScript or Python). */
 function parameters(fn: SgNode): string[] {
+  let names = params.get(fn);
+  if (!names) params.set(fn, (names = readParameters(fn)));
+  return names;
+}
+
+function readParameters(fn: SgNode): string[] {
   const list = fn.field("parameters") ?? fn.field("parameter");
   if (!list) return [];
   if (list.is("identifier")) return [list.text()];
@@ -176,51 +217,58 @@ function parameters(fn: SgNode): string[] {
 }
 
 /** True if a Python function declares `global name`, which makes its assignments module-level. */
-const declaresGlobal = (fn: SgNode, name: string) =>
-  String(fn.kind()) === "function_definition" &&
-  fn.findAll({ rule: { kind: "global_statement" } }).some((g) => g.children().some((c) => c.is("identifier") && c.text() === name));
+function declaresGlobal(fn: SgNode, name: string): boolean {
+  let names = globals.get(fn);
+  if (!names) {
+    const statements = String(fn.kind()) === "function_definition" ? fn.findAll({ rule: { kind: "global_statement" } }) : [];
+    globals.set(fn, (names = new Set(statements.flatMap((g) => g.children().filter((c) => c.is("identifier")).map((c) => c.text())))));
+  }
+  return names.has(name);
+}
 
-const blockOf = (a: Assignment) => a.node.ancestors().find((x) => x.is("statement_block") || FUNCTIONS.has(String(x.kind())));
+// Tracing a call takes time in proportion to the assignments that reach it, so a name assigned more
+// often than this where one call can see it is not traced, and its calls count as the vendor's.
+const MAX_TRACED = 50;
 
 /** Every assignment to `target` that could be the value the call sees. */
 function visibleAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] {
   const visible = reachingAssignments(index, target, call);
   // A let or const in an inner block hides one of the same name in a block around it.
-  const blocks = visible.filter((a) => a.blockScoped).map(blockOf);
+  const blocks = visible.filter((a) => a.blockScoped).map((a) => a.block);
   return visible.filter((a) => {
-    const block = a.blockScoped ? blockOf(a) : undefined;
-    return !block || !blocks.some((b) => b && b.range().start.index !== block.range().start.index && contains(block, b));
+    const block = a.blockScoped ? a.block : undefined;
+    return !block || !blocks.some((b) => b && span(b)[0] !== span(block)[0] && contains(block, b));
   });
 }
 
 /** Assignments to `target` whose scope reaches the call, before any shadowing. */
 function reachingAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] {
+  const at = index.calls.get(call.id()) ?? {};
   const member = /^(?:this|self)\.([\w$#]+)$/.exec(target)?.[1];
-  const callClass = call.ancestors().find((a) => CLASSES.has(String(a.kind())));
-  const callFunctions = call.ancestors().filter((a) => FUNCTIONS.has(String(a.kind())));
-  return index.assignments.filter((a) => {
-    // A placeholder such as `client = null` is not a client.
-    if (/^(null|undefined|None)$/.test(a.value.text())) return false;
-    if (member !== undefined) {
-      if (a.target !== target && !(a.field && a.target === member)) return false;
-      const cls = a.node.ancestors().find((x) => CLASSES.has(String(x.kind())));
-      return cls !== undefined && callClass !== undefined && cls.range().start.index === callClass.range().start.index;
-    }
-    if (a.field || a.target !== target) return false;
-    // A let or const is only visible inside the block that holds it.
-    if (a.blockScoped) {
-      const block = blockOf(a);
-      if (block && !contains(block, call)) return false;
-    }
-    const scope = scopeKinds(a.node);
-    if (scope && FUNCTIONS.has(String(scope.kind())) && !contains(scope, call) && !declaresGlobal(scope, target)) return false;
-    // A parameter with the same name, between the assignment and the call, shadows it.
-    return !callFunctions.some((fn) => !contains(fn, a.node) && parameters(fn).includes(target));
-  });
+  if (member !== undefined) {
+    if (!at.cls) return [];
+    const own = [...(index.classed.get(target)?.get(at.cls) ?? []), ...(index.classed.get(member)?.get(at.cls) ?? []).filter((a) => a.field)];
+    return own.length > MAX_TRACED ? [] : own;
+  }
+  const groups = index.scoped.get(target);
+  if (!groups) return [];
+  // Only assignments in the file's top level, in a function or block around the call, or in a
+  // function that declares the name global.
+  const homes = new Set<SgNode | undefined>([undefined]);
+  for (let s = at.scope; s; s = s.outer) homes.add(s.node);
+  const reaching = [...homes].flatMap((home) => groups.get(home) ?? []);
+  let global = index.globalHomes.get(target);
+  if (!global) index.globalHomes.set(target, (global = [...groups.keys()].filter((home): home is SgNode => home !== undefined && declaresGlobal(home, target))));
+  for (const home of global) if (!homes.has(home)) reaching.push(...groups.get(home)!.filter((a) => !a.blockScoped));
+  if (reaching.length > MAX_TRACED) return [];
+  // A parameter with the same name, between the assignment and the call, shadows it.
+  const shadowing: SgNode[] = [];
+  for (let s = at.scope; s; s = s.outer) if (s.fn && parameters(s.node).includes(target)) shadowing.push(s.node);
+  return reaching.filter((a) => !shadowing.some((fn) => !contains(fn, a.node)));
 }
 
-/** The written-out base address in a constructor's arguments, read from the syntax so comments never count. */
-function baseAddress(args: SgNode | null, index: FileIndex, call: SgNode): string | undefined {
+/** The written-out base address in a constructor's arguments, or the name it is read from. Read from the syntax so comments never count. */
+function baseAddress(args: SgNode | null): string | { name: string } | undefined {
   if (!args) return undefined;
   const stack: SgNode[] = [args];
   while (stack.length > 0) {
@@ -232,11 +280,7 @@ function baseAddress(args: SgNode | null, index: FileIndex, call: SgNode): strin
     if (value) {
       const literal = stringText(value);
       if (literal !== undefined) return literal;
-      if (value.is("identifier") || value.is("shorthand_property_identifier")) {
-        const consts = visibleAssignments(index, value.text(), call).map((a) => stringText(a.value));
-        return consts.length === 1 ? consts[0] : undefined;
-      }
-      return undefined;
+      return value.is("identifier") || value.is("shorthand_property_identifier") ? { name: value.text() } : undefined;
     }
     // Don't descend into nested calls or functions: their options are not this client's.
     if (node === args || !(node.is("call_expression") || node.is("call") || node.is("new_expression") || FUNCTIONS.has(String(node.kind())))) {
@@ -247,7 +291,7 @@ function baseAddress(args: SgNode | null, index: FileIndex, call: SgNode): strin
 }
 
 /** Origin of a client built as `new C(args)` or `C(args)`. */
-function constructed(node: SgNode, index: FileIndex, call: SgNode, v: VendorClients): Origin {
+function constructed(node: SgNode, index: FileIndex, v: VendorClients): Built {
   const isNew = node.is("new_expression");
   const ctor = (isNew ? node.field("constructor") : node.field("function"))?.text();
   if (!ctor || !/^[\w$.]+$/.test(ctor)) return "unknown";
@@ -258,8 +302,8 @@ function constructed(node: SgNode, index: FileIndex, call: SgNode, v: VendorClie
   // A wrapper or factory from any other package (wrapOpenAI, instructor, a local helper) is the
   // vendor's client underneath as far as this file can tell.
   if (!pkgs.some((p) => v.packages.includes(p))) return "unknown";
-  const base = baseAddress(node.field("arguments"), index, call);
-  return base ? urlOrigin(base, v) : "vendor";
+  const base = baseAddress(node.field("arguments"));
+  return typeof base === "object" ? base : base ? urlOrigin(base, v) : "vendor";
 }
 
 const WRAPPERS = new Set(["parenthesized_expression", "as_expression", "non_null_expression", "satisfies_expression", "await_expression"]);
@@ -290,12 +334,27 @@ export function clientOrigin(root: SgNode, call: SgNode, symbol: string, v: Vend
   const client = callee && clientNode(callee, symbol);
   if (!client) return "unknown";
   const index = indexOf(root);
-  if (client.is("new_expression") || client.is("call_expression") || client.is("call")) return constructed(client, index, call, v);
+  const byName = new Map<string, Origin>();
+  const traced = (built: Built): Origin => {
+    if (typeof built !== "object" || !("name" in built)) return built;
+    let origin = byName.get(built.name);
+    if (!origin) {
+      const consts = visibleAssignments(index, built.name, call).map((a) => stringText(a.value));
+      byName.set(built.name, (origin = consts.length === 1 && consts[0] ? urlOrigin(consts[0], v) : "vendor"));
+    }
+    return origin;
+  };
+  if (client.is("new_expression") || client.is("call_expression") || client.is("call")) return traced(constructed(client, index, v));
   const target = client.text().replace(/\s+/g, "");
   if (!/^(?:(?:this|self)\.)?[\w$#]+$/.test(target)) return "unknown";
-  const origins = visibleAssignments(index, target, call).map((a) =>
-    a.value.is("new_expression") || a.value.is("call_expression") || a.value.is("call") ? constructed(a.value, index, call, v) : "unknown",
-  );
+  const origins: Origin[] = [];
+  for (const a of visibleAssignments(index, target, call)) {
+    a.built ??= a.value.is("new_expression") || a.value.is("call_expression") || a.value.is("call") ? constructed(a.value, index, v) : "unknown";
+    const origin = traced(a.built);
+    // One vendor client among them settles it.
+    if (origin === "vendor") return "vendor";
+    origins.push(origin);
+  }
   if (origins.length === 0) return "unknown";
   // Foreign only when every assignment the call could see is a look-alike; local only when every one is local.
   if (origins.every((o) => o === "foreign")) return "foreign";
