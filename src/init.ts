@@ -73,16 +73,27 @@ async function refuseOrSkip(root: string, rel: string, force: boolean): Promise<
   return undefined;
 }
 
-/** Writes a new file. A rewrite goes to a new file renamed into place, so the old one, and any hard link to it, is never written. */
-async function place(path: string, text: string, rewrite: boolean): Promise<void> {
+/**
+ * Writes a new file; false if one appeared since the check. A rewrite goes to a new file renamed into place with the old
+ * one's permissions, so the old one, and any hard link to it, is never written.
+ */
+async function place(path: string, text: string, rewrite: boolean): Promise<boolean> {
   await mkdir(dirname(path), { recursive: true });
   const target = rewrite ? `${path}.${randomUUID()}.tmp` : path;
+  const old = rewrite ? await lstat(path).catch(() => undefined) : undefined;
   try {
     const file = await open(target, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW);
-    await file.writeFile(text).finally(() => file.close());
+    try {
+      await file.writeFile(text);
+      if (old?.isFile()) await file.chmod(old.mode & 0o7777);
+    } finally {
+      await file.close();
+    }
     if (rewrite) await rename(target, path);
+    return true;
   } catch (err) {
     if (rewrite) await rm(target, { force: true });
+    if (!rewrite && (err as NodeJS.ErrnoException).code === "EEXIST") return false;
     throw err;
   }
 }
@@ -109,8 +120,8 @@ export async function init(root: string, { force = false } = {}): Promise<string
   const skips = await Promise.all(files.map(([rel]) => refuseOrSkip(root, rel, force)));
   const log = [];
   for (const [i, [rel, text]] of files.entries()) {
-    if (!skips[i]) await place(join(root, rel), text, force);
-    log.push(skips[i] ?? `${force ? "Rewrote" : "Wrote"} ${rel}`);
+    const skip = skips[i] ?? ((await place(join(root, rel), text, force)) ? undefined : `${rel} exists, left unchanged (--force to rewrite)`);
+    log.push(skip ?? `${force ? "Rewrote" : "Wrote"} ${rel}`);
   }
   return [summary, ...tooLargeNote(tooLarge), ...log];
 }

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { Stats } from "node:fs";
-import { cp, type FileHandle, link, mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, type FileHandle, link, lstat, mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +10,7 @@ import { init, pinned } from "../src/init.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...real, stat: vi.fn(real.stat) };
+  return { ...real, stat: vi.fn(real.stat), lstat: vi.fn(real.lstat) };
 });
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
@@ -151,6 +151,29 @@ describe("init", () => {
 
     const forced = await init(dir, { force: true });
     expect(forced.slice(1)).toEqual(["Rewrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
+  });
+
+  it.skipIf(process.platform === "win32")("keeps a rewritten file's permissions", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, "darnit.yml"), "old\n");
+    await chmod(join(dir, "darnit.yml"), 0o600);
+    await init(dir, { force: true });
+    expect((await stat(join(dir, "darnit.yml"))).mode & 0o777).toBe(0o600);
+  });
+
+  it("leaves a file alone that appears after the check", async () => {
+    const dir = await scratchCopy("small");
+    const path = join(dir, "darnit.yml");
+    await writeFile(path, "theirs\n");
+    const real = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const missing = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    vi.mocked(lstat).mockImplementation((p) => (p === path ? Promise.reject(missing) : real.lstat(p)));
+    try {
+      expect((await init(dir)).slice(1)).toEqual(["darnit.yml exists, left unchanged (--force to rewrite)", "Wrote .github/workflows/darnit.yml"]);
+    } finally {
+      vi.mocked(lstat).mockImplementation(real.lstat);
+    }
+    expect(await readFile(path, "utf8")).toBe("theirs\n");
   });
 });
 
