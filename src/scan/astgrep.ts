@@ -164,7 +164,7 @@ function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly stri
       out.set(node.id(), { call, symbol, url });
     }
     up.push({ node });
-    const kids = node.children();
+    const kids = node.namedChildren();
     for (let k = kids.length - 1; k >= 0; k--) {
       const { start, end } = kids[k]!.range();
       if (next(start.index) < end.index) todo.push({ node: kids[k]!, depth: depth + 1, start: start.index });
