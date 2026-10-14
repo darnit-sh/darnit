@@ -987,6 +987,18 @@ describe("check on a repository built to slow it down", () => {
     expect(maxTokens(await check(await scratch({ "app.py": text(51) })))).toEqual(["app.py:53"]);
   });
 
+  // Each took over a minute when every call looked up its surroundings again.
+  it.each([
+    ["SDK calls nested 2000 deep", "app.py", `from openai import OpenAI\nclient = OpenAI()\nx = ${"client.chat.completions.create(max_tokens=5, x=".repeat(2000)}1${")".repeat(2000)}\n`, 2000],
+    ["calls in functions nested 2000 deep", "app.js", `import OpenAI from "openai";\nconst client = new OpenAI();\n${times(2000, (i) => `function f${i}(a) {\n  client.chat.completions.create({ max_tokens: 5 });\n`)}${"}\n".repeat(2000)}`, 2000],
+  ])("finishes quickly on %s", { timeout: 300_000 }, async (_, name, text, count) => {
+    const dir = await scratch({ [name]: text });
+    const start = performance.now();
+    const hits = await check(dir);
+    expect(performance.now() - start).toBeLessThan(5000);
+    expect(maxTokens(hits)).toHaveLength(count);
+  });
+
   const request = (args: string) => `requests.post("https://api.openai.com/v1/chat/completions", ${args})`;
 
   it.each([

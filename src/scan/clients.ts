@@ -79,7 +79,7 @@ type Built = Origin | { name: string };
 type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; blockScoped: boolean; built?: Built } & Context;
 /** Assignments by name, then by the node they live in: a function or block, a class, or undefined for the whole file. */
 type Grouped = Map<string, Map<SgNode | undefined, Assignment[]>>;
-type FileIndex = { imports: Map<string, Set<string>>; scoped: Grouped; classed: Grouped; calls: Map<number, Context>; globalHomes: Map<string, SgNode[]> };
+type FileIndex = { imports: Map<string, Set<string>>; scoped: Grouped; classed: Grouped; calls: Map<number, Context>; globals: Map<string, { homes: Map<SgNode, Assignment[]>; total: number }> };
 
 /**
  * Local name → every package it is imported from, read from import statements only (never comments or strings).
@@ -180,7 +180,7 @@ function indexOf(root: SgNode): FileIndex {
     const inner = { fn: isFunction ? node : isClass ? undefined : up.fn, cls: isClass ? node : up.cls, block: isBlock ? node : up.block, parent: node, scope };
     for (const child of node.children()) stack.push([child, inner]);
   }
-  index = { imports: importsOf(importTexts), scoped, classed, calls, globalHomes: new Map() };
+  index = { imports: importsOf(importTexts), scoped, classed, calls, globals: new Map() };
   indexes.set(root, index);
   return index;
 }
@@ -256,11 +256,22 @@ function reachingAssignments(index: FileIndex, target: string, call: SgNode): As
   // function that declares the name global.
   const homes = new Set<SgNode | undefined>([undefined]);
   for (let s = at.scope; s; s = s.outer) homes.add(s.node);
+  let global = index.globals.get(target);
+  if (!global) {
+    global = { homes: new Map(), total: 0 };
+    for (const [home, list] of groups) {
+      if (!home || !declaresGlobal(home, target)) continue;
+      global.homes.set(home, list.filter((a) => !a.blockScoped));
+      global.total += global.homes.get(home)!.length;
+    }
+    index.globals.set(target, global);
+  }
+  // Counted before anything is copied, so a name assigned thousands of times costs little per call.
+  let count = global.total;
+  for (const home of homes) count += (groups.get(home)?.length ?? 0) - (home ? (global.homes.get(home)?.length ?? 0) : 0);
+  if (count > MAX_TRACED) return [];
   const reaching = [...homes].flatMap((home) => groups.get(home) ?? []);
-  let global = index.globalHomes.get(target);
-  if (!global) index.globalHomes.set(target, (global = [...groups.keys()].filter((home): home is SgNode => home !== undefined && declaresGlobal(home, target))));
-  for (const home of global) if (!homes.has(home)) reaching.push(...groups.get(home)!.filter((a) => !a.blockScoped));
-  if (reaching.length > MAX_TRACED) return [];
+  for (const [home, list] of global.homes) if (!homes.has(home)) reaching.push(...list);
   // A parameter with the same name, between the assignment and the call, shadows it.
   const shadowing: SgNode[] = [];
   for (let s = at.scope; s; s = s.outer) if (s.fn && parameters(s.node).includes(target)) shadowing.push(s.node);
