@@ -161,6 +161,41 @@ describe("init", () => {
     expect((await stat(join(dir, "darnit.yml"))).mode & 0o777).toBe(0o600);
   });
 
+  it.skipIf(process.platform === "win32")("drops setuid and setgid from a rewritten file", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, "darnit.yml"), "old\n");
+    await chmod(join(dir, "darnit.yml"), 0o4755);
+    await init(dir, { force: true });
+    expect((await stat(join(dir, "darnit.yml"))).mode & 0o7777).toBe(0o755);
+  });
+
+  it("says Wrote, not Rewrote, under --force when nothing was there", async () => {
+    const dir = await scratchCopy("small");
+    expect((await init(dir, { force: true })).slice(1)).toEqual(["Wrote darnit.yml", "Wrote .github/workflows/darnit.yml"]);
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("changes no file when a write fails", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, "darnit.yml"), "old\n");
+    await mkdir(join(dir, ".github", "workflows"), { recursive: true });
+    await chmod(join(dir, ".github", "workflows"), 0o555);
+    try {
+      await expect(init(dir, { force: true })).rejects.toThrow("could not write .github/workflows/darnit.yml (permission denied); no file was changed");
+    } finally {
+      await chmod(join(dir, ".github", "workflows"), 0o755);
+    }
+    expect(await readFile(join(dir, "darnit.yml"), "utf8")).toBe("old\n");
+    expect(await readdir(dir)).not.toContain(expect.stringMatching(/\.tmp$/));
+  });
+
+  it("removes a temporary file an earlier run left behind", async () => {
+    const dir = await scratchCopy("small");
+    const stale = ".darnit-0b5e2c1a-7d4f-4a6e-9c3b-2f1e8d7a6b5c.tmp";
+    await writeFile(join(dir, stale), "half\n");
+    await init(dir);
+    expect(await readdir(dir)).not.toContain(stale);
+  });
+
   it("leaves a file alone that appears after the check", async () => {
     const dir = await scratchCopy("small");
     const path = join(dir, "darnit.yml");
@@ -213,6 +248,13 @@ describe("init never writes outside the repository", () => {
     await rm(join(out, "workflows"), { recursive: true });
     await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml is outside the repository");
     expect(await readdir(out)).toEqual(["config.yml"]);
+  });
+
+  it("refuses a .github that is a file, and writes nothing", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, ".github"), "not a folder\n");
+    await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml cannot be written: part of its path is a file, not a folder");
+    expect(await readdir(dir)).not.toContain("darnit.yml");
   });
 
   it("follows a folder link that stays inside the repository", async () => {

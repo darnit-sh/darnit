@@ -15,7 +15,8 @@ merged into `main`, and that `ci` passed on that commit (`scripts/check-release.
 
 Why the candidate step matters: workflows written by `init` in 0.1.0 run `npx darnit check` with no
 version and take every new `latest`; from 0.2.0 on, `init` pins the minor (`npx darnit@0.2 check`),
-so those take every patch. Either way a release reaches people's scheduled CI within a day.
+so those take every patch, and from 1.0.0 on the major (`npx darnit@1 check`), so those take every
+minor and patch. Either way a release reaches people's scheduled CI within a day.
 
 Commands below use `X.Y.Z` for the version and `rc.N` for the candidate number.
 
@@ -97,8 +98,10 @@ git switch -c release/X.Y.Z-final
 npm version X.Y.Z --no-git-tag-version
 # in CHANGELOG.md, add `## [X.Y.Z] - <release date>` under an empty `## [Unreleased]`, point
 #   the `[Unreleased]` link at `vX.Y.Z...HEAD` and add an `[X.Y.Z]` link from the previous release
-# for a new minor (X.Y.0), README.md's workflow examples become `npx darnit@X.Y check` and
-#   `npx darnit@X.Y fix --pr`, with a one-line note on the pin; npm has no X.Y before this
+# for a new minor (X.Y.0) before 1.0, README.md's workflow examples become `npx darnit@X.Y check`
+#   and `npx darnit@X.Y fix --pr`, with a one-line note on the pin; npm has no X.Y before this.
+#   From 1.0 on, `init` pins the major, so for a new major (X.0.0) they become `npx darnit@X check`
+#   and `npx darnit@X fix --pr`
 # open the pull request, wait for CI to pass, merge it
 git switch main && git pull
 git log --oneline vX.Y.Z-rc.N..main                 # only the version pull request
@@ -117,7 +120,7 @@ npm view darnit dist-tags                           # latest is X.Y.Z
 
 `notes.md` holds the version's changelog entry. A candidate's `init` pins its exact version
 (`darnit@X.Y.Z-rc.N`), so anyone who set up a repository with a candidate re-runs `init` or edits
-the pin to `darnit@X.Y`. Afterwards, watch the next scheduled run of the
+the pin to `darnit@X.Y` (`darnit@X` from 1.0 on). Afterwards, watch the next scheduled run of the
 darnit-sh/darnit-example workflow (`gh run list -R darnit-sh/darnit-example`) and check it passes.
 
 ## Roll back
