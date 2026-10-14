@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { listFiles, MAX_FILE_BYTES, readText, vendorClients } from "./detect.js";
+import { firstFive, listFiles, plural, readText, tooLargeNote, vendorClients } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, modelNames, type Match, type Span } from "./scan/astgrep.js";
@@ -130,15 +130,6 @@ const LABELS: Record<ChangeRecord["status"], string> = {
 };
 
 const heading = (r: ChangeRecord) => `${r.vendor} ${r.announcedAt}: ${title(r)}${LABELS[r.status]}`;
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-/** "a, b, c, d, e and 2 more" */
-const firstFive = (items: readonly string[]) => `${items.slice(0, 5).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;
-
-/** The report line for files too large to read, if any. */
-export const tooLargeNote = (files: readonly string[] = []) =>
-  files.length > 0 ? [`Not checked: ${plural(files.length, "file")} over ${MAX_FILE_BYTES / 1024 / 1024} MB: ${firstFive(files)}.`] : [];
 
 /** Machine-readable form of the hits. */
 export function toJson(hits: (Hit | ModelValueHit)[]): object[] {

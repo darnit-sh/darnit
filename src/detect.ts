@@ -77,6 +77,15 @@ const PYTHON_MANIFEST = /^(requirements[^/]*\.txt|pyproject\.toml|setup\.py|setu
 /** Larger files are not read: no hand-written source comes close, and a planted one could stall a scan or run it out of memory. */
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** "a, b, c, d, e and 2 more" */
+export const firstFive = (items: readonly string[]) => `${items.slice(0, 5).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;
+
+/** The report line for files too large to read, if any. */
+export const tooLargeNote = (files: readonly string[] = []) =>
+  files.length > 0 ? [`Not checked: ${plural(files.length, "file")} over ${MAX_FILE_BYTES / 1024 / 1024} MB: ${firstFive(files)}.`] : [];
+
 /** A regular file's text; undefined when it can't be read, isn't a file, or is over MAX_FILE_BYTES (then `tooLarge` gets its first 8 KB). */
 export async function readText(path: string, tooLarge?: (start: string) => void): Promise<string | undefined> {
   // Checked before opening, since opening a named pipe waits for a writer that never comes.
