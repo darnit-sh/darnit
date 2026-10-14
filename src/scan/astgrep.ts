@@ -62,15 +62,6 @@ export type Gate = {
 
 const isCall = (n: SgNode) => n.is("call_expression") || n.is("call");
 
-/** The nearest enclosing call. Bounded so a detached object literal never inherits a distant call. */
-function enclosingCall(node: SgNode): SgNode | undefined {
-  let n: SgNode | null = node;
-  for (let i = 0; i < 8 && (n = n.parent()); i++) {
-    if (isCall(n)) return n;
-  }
-  return undefined;
-}
-
 /** Callee text as written, minus line breaks and optional chaining, so `chat?.completions\n .create` still matches. */
 const normalized = (callee: string) => callee.replace(/\s+/g, "").replace(/\?\./g, ".");
 
@@ -108,19 +99,78 @@ const namesEndpoint = (url: SgNode, endpoints: readonly string[]) =>
     return endpoints.some((e) => text.includes(e) && !/\s/.test(text.slice(0, text.indexOf(e))));
   });
 
+/** An ancestor of a match. `url` is kept once read: the endpoint URL of the raw request a node directly inside it belongs to, or null. */
+type Frame = { node: SgNode; url?: string | null };
+
 /**
  * The raw HTTP request a match belongs to, with its URL text: the nearest enclosing call that has
  * an endpoint URL as an argument. Stops at a function, so a route handler, mock or test body
- * never borrows the URL of the call it is passed to.
+ * never borrows the URL of the call it is passed to. `up` holds the match's ancestors.
  */
-function endpointCall(node: SgNode, endpoints: readonly string[]): string | undefined {
-  for (const a of node.ancestors()) {
-    if (FUNCTIONS.has(String(a.kind()))) return undefined;
-    if (!isCall(a)) continue;
-    const url = urlCandidates(a).find((u) => namesEndpoint(u, endpoints));
-    if (url) return stringText(url) ?? url.text().replace(/^[fFrRbBuU]*[`'"]/, "");
+function endpointUrl(up: readonly Frame[], endpoints: readonly string[]): string | undefined {
+  const read: Frame[] = [];
+  let url: string | null = null;
+  for (let i = up.length - 1; i >= 0; i--) {
+    const { node, url: known } = up[i]!;
+    if (known !== undefined) {
+      url = known;
+      break;
+    }
+    read.push(up[i]!);
+    if (FUNCTIONS.has(String(node.kind()))) break;
+    const found = isCall(node) ? urlCandidates(node).find((u) => namesEndpoint(u, endpoints)) : undefined;
+    if (found) {
+      url = stringText(found) ?? found.text().replace(/^[fFrRbBuU]*[`'"]/, "");
+      break;
+    }
   }
-  return undefined;
+  for (const f of read) f.url = url;
+  return url ?? undefined;
+}
+
+type Request = { call: SgNode | undefined; symbol: string | undefined; url: string | undefined };
+
+/**
+ * For each node, the call it belongs to: its nearest enclosing call (at most 8 levels up, so a
+ * detached object literal never inherits a distant call) with the vendor method that call matched,
+ * or else the URL of the raw request around it. One walk down from the root keeps each node's
+ * ancestors, since asking a node for its parent walks down from the root each time.
+ */
+function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly string[], endpoints: readonly string[]): Map<number, Request> {
+  const wanted = new Set(nodes.map((n) => n.id()));
+  const starts = [...new Set(nodes.map((n) => n.range().start.index))].sort((a, b) => a - b);
+  /** The first match starting at or after `at`. */
+  const next = (at: number) => {
+    let [lo, hi] = [0, starts.length];
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (starts[mid]! < at) lo = mid + 1;
+      else hi = mid;
+    }
+    return starts[lo] ?? Infinity;
+  };
+  const out = new Map<number, Request>();
+  const up: Frame[] = [];
+  const todo = [{ node: root, depth: 0, start: 0 }];
+  while (todo.length > 0) {
+    const { node, depth, start } = todo.pop()!;
+    up.length = depth;
+    if (next(start) === start && wanted.has(node.id())) {
+      const call = up.slice(-8).reverse().find((f) => isCall(f.node))?.node;
+      const raw = call?.field("function")?.text();
+      const callee = raw === undefined ? undefined : normalized(raw);
+      const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s)).sort((a, b) => b.length - a.length)[0];
+      const url = symbol === undefined && endpoints.length > 0 ? endpointUrl(up, endpoints) : undefined;
+      out.set(node.id(), { call, symbol, url });
+    }
+    up.push({ node });
+    const kids = node.namedChildren();
+    for (let k = kids.length - 1; k >= 0; k--) {
+      const { start, end } = kids[k]!.range();
+      if (next(start.index) < end.index) todo.push({ node: kids[k]!, depth: depth + 1, start: start.index });
+    }
+  }
+  return out;
 }
 
 /**
@@ -165,22 +215,19 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
   const root = parse(grammar, source).root();
   const symbols = gate?.symbols ?? [];
   const endpoints = gate?.endpoints ?? [];
+  const found = patterns.map(({ context, selector }) => root.findAll({ rule: ruleFor(context, selector) }));
+  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, found.flat(), symbols, endpoints) : undefined;
   const matches: Match[] = [];
-  for (const { context, selector } of patterns) {
-    for (const node of root.findAll({ rule: ruleFor(context, selector) })) {
+  for (const nodes of found) {
+    for (const node of nodes) {
       const { start, end } = node.range();
       let foreign = false;
       let local: string[] | undefined;
-      if (symbols.length > 0 || endpoints.length > 0) {
-        const call = enclosingCall(node);
-        const raw = call?.field("function")?.text();
-        const callee = raw === undefined ? undefined : normalized(raw);
-        const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s)).sort((a, b) => b.length - a.length)[0];
-        const viaEndpoint = symbol === undefined && endpoints.length > 0 ? endpointCall(node, endpoints) : undefined;
-        if (symbol === undefined && viaEndpoint === undefined) continue;
+      if (gated) {
+        const { call, symbol, url } = gated.get(node.id())!;
+        if (symbol === undefined && url === undefined) continue;
         if (gate?.vendor) {
-          const origin =
-            symbol !== undefined ? clientOrigin(root, call!, symbol, gate.vendor) : urlOrigin(viaEndpoint!, gate.vendor);
+          const origin = symbol !== undefined ? clientOrigin(root, call!, symbol, gate.vendor) : urlOrigin(url!, gate.vendor);
           foreign = origin === "foreign";
           local = typeof origin === "object" ? origin.local : undefined;
         }
