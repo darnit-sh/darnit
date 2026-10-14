@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { Stats } from "node:fs";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, type FileHandle, link, lstat, mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +10,7 @@ import { init, pinned } from "../src/init.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...real, stat: vi.fn(real.stat) };
+  return { ...real, stat: vi.fn(real.stat), lstat: vi.fn(real.lstat) };
 });
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
@@ -110,6 +110,20 @@ describe("detectApis on a repository built to slow it down", () => {
     vi.mocked(stat).mockResolvedValueOnce({ isFile: () => true, size: 0 } as Stats);
     expect(await readText(join(dir, "darnit.yml"))).toBeUndefined();
   });
+
+  it("reads no more than the size limit from a file that grew after the check", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    const path = join(dir, "notes.txt");
+    await writeFile(path, "x".repeat(MAX_FILE_BYTES + 1));
+    const handle = await open(path);
+    const grew = vi.spyOn(Object.getPrototypeOf(handle) as FileHandle, "stat").mockResolvedValueOnce({ isFile: () => true, size: 0 } as Stats);
+    await handle.close();
+    const starts: string[] = [];
+    expect(await readText(path, (start) => starts.push(start))).toBeUndefined();
+    expect(starts).toEqual(["x".repeat(8192)]);
+    grew.mockRestore();
+  });
 });
 
 describe("init", () => {
@@ -138,13 +152,73 @@ describe("init", () => {
     const forced = await init(dir, { force: true });
     expect(forced.slice(1)).toEqual(["Rewrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
   });
+
+  it.skipIf(process.platform === "win32")("keeps a rewritten file's permissions", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, "darnit.yml"), "old\n");
+    await chmod(join(dir, "darnit.yml"), 0o600);
+    await init(dir, { force: true });
+    expect((await stat(join(dir, "darnit.yml"))).mode & 0o777).toBe(0o600);
+  });
+
+  it.skipIf(process.platform === "win32")("drops setuid and setgid from a rewritten file", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, "darnit.yml"), "old\n");
+    await chmod(join(dir, "darnit.yml"), 0o4755);
+    await init(dir, { force: true });
+    expect((await stat(join(dir, "darnit.yml"))).mode & 0o7777).toBe(0o755);
+  });
+
+  it("says Wrote, not Rewrote, under --force when nothing was there", async () => {
+    const dir = await scratchCopy("small");
+    expect((await init(dir, { force: true })).slice(1)).toEqual(["Wrote darnit.yml", "Wrote .github/workflows/darnit.yml"]);
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("changes no file when a write fails", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, "darnit.yml"), "old\n");
+    await mkdir(join(dir, ".github", "workflows"), { recursive: true });
+    await chmod(join(dir, ".github", "workflows"), 0o555);
+    try {
+      await expect(init(dir, { force: true })).rejects.toThrow("could not write .github/workflows/darnit.yml (permission denied); no file was changed");
+    } finally {
+      await chmod(join(dir, ".github", "workflows"), 0o755);
+    }
+    expect(await readFile(join(dir, "darnit.yml"), "utf8")).toBe("old\n");
+    expect(await readdir(dir)).not.toContain(expect.stringMatching(/\.tmp$/));
+  });
+
+  it("removes a temporary file an earlier run left behind", async () => {
+    const dir = await scratchCopy("small");
+    const stale = ".darnit-0b5e2c1a-7d4f-4a6e-9c3b-2f1e8d7a6b5c.tmp";
+    await writeFile(join(dir, stale), "half\n");
+    await init(dir);
+    expect(await readdir(dir)).not.toContain(stale);
+  });
+
+  it("leaves a file alone that appears after the check", async () => {
+    const dir = await scratchCopy("small");
+    const path = join(dir, "darnit.yml");
+    await writeFile(path, "theirs\n");
+    const real = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const missing = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    vi.mocked(lstat).mockImplementation((p) => (p === path ? Promise.reject(missing) : real.lstat(p)));
+    try {
+      expect((await init(dir)).slice(1)).toEqual(["darnit.yml exists, left unchanged (--force to rewrite)", "Wrote .github/workflows/darnit.yml"]);
+    } finally {
+      vi.mocked(lstat).mockImplementation(real.lstat);
+    }
+    expect(await readFile(path, "utf8")).toBe("theirs\n");
+  });
 });
 
 describe("pinned", () => {
-  it("pins the minor line, or the exact version for a prerelease", () => {
-    expect(pinned("0.2.3")).toBe("0.2");
-    expect(pinned("1.0.0")).toBe("1.0");
-    expect(pinned("0.2.0-rc.1")).toBe("0.2.0-rc.1");
+  it("pins the minor line before 1.0, the major line from 1.0, or the exact version for a prerelease", () => {
+    expect(pinned("0.2.0")).toBe("0.2");
+    expect(pinned("0.10.3")).toBe("0.10");
+    expect(pinned("1.0.0")).toBe("1");
+    expect(pinned("1.2.3")).toBe("1");
+    expect(pinned("2.0.0-rc.1")).toBe("2.0.0-rc.1");
   });
 });
 
@@ -176,11 +250,51 @@ describe("init never writes outside the repository", () => {
     expect(await readdir(out)).toEqual(["config.yml"]);
   });
 
+  it("refuses a .github that is a file, and writes nothing", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, ".github"), "not a folder\n");
+    await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml cannot be written: part of its path is a file, not a folder");
+    expect(await readdir(dir)).not.toContain("darnit.yml");
+  });
+
   it("follows a folder link that stays inside the repository", async () => {
     const dir = await scratchCopy("small");
     await mkdir(join(dir, "ci"));
     await symlink(join(dir, "ci"), join(dir, ".github"));
     await init(dir);
     expect(await readFile(join(dir, "ci", "workflows", "darnit.yml"), "utf8")).toContain("npx darnit@");
+  });
+
+  it("rewrites a hard-linked file without changing the file it shares with", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await mkdir(join(dir, ".github", "workflows"), { recursive: true });
+    await link(join(out, "config.yml"), join(dir, "darnit.yml"));
+    await link(join(out, "workflows", "darnit.yml"), join(dir, ".github", "workflows", "darnit.yml"));
+    expect((await init(dir, { force: true })).slice(1)).toEqual(["Rewrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
+    expect(await readFile(join(out, "config.yml"), "utf8")).toBe("keep\n");
+    expect(await readFile(join(out, "workflows", "darnit.yml"), "utf8")).toBe("keep\n");
+    expect(await readFile(join(dir, "darnit.yml"), "utf8")).toContain("openai:");
+    expect(await readdir(dir)).not.toContain(expect.stringMatching(/\.tmp$/));
+  });
+
+  it("writes nothing when any file is refused", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await symlink(out, join(dir, ".github"));
+    await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml is outside the repository");
+    expect(await readdir(dir)).not.toContain("darnit.yml");
+  });
+
+  it("refuses a .github link that points nowhere", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await symlink(join(out, "missing"), join(dir, ".github"));
+    await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml goes through a broken symbolic link; darnit only writes files inside the repository");
+    expect(await readdir(out)).toEqual(["config.yml", "workflows"]);
+  });
+
+  it("says a darnit.yml link that points nowhere is a link, and leaves it", async () => {
+    const [dir, out] = [await scratchCopy("small"), await outside()];
+    await symlink(join(out, "missing.yml"), join(dir, "darnit.yml"));
+    expect((await init(dir))[1]).toBe("darnit.yml is a symbolic link, left unchanged");
+    expect(await readdir(out)).toEqual(["config.yml", "workflows"]);
   });
 });

@@ -77,20 +77,31 @@ const PYTHON_MANIFEST = /^(requirements[^/]*\.txt|pyproject\.toml|setup\.py|setu
 /** Larger files are not read: no hand-written source comes close, and a planted one could stall a scan or run it out of memory. */
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
-/** A regular file's text; undefined when it can't be read, isn't a file, or is over MAX_FILE_BYTES (then `tooLarge` is called). */
-export async function readText(path: string, tooLarge?: () => void): Promise<string | undefined> {
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** "a, b, c, d, e and 2 more" */
+export const firstFive = (items: readonly string[]) => `${items.slice(0, 5).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;
+
+/** The report line for files too large to read, if any. */
+export const tooLargeNote = (files: readonly string[] = []) =>
+  files.length > 0 ? [`Not checked: ${plural(files.length, "file")} over ${MAX_FILE_BYTES / 1024 / 1024} MB: ${firstFive(files)}.`] : [];
+
+/** A regular file's text; undefined when it can't be read, isn't a file, or is over MAX_FILE_BYTES (then `tooLarge` gets its first 8 KB). */
+export async function readText(path: string, tooLarge?: (start: string) => void): Promise<string | undefined> {
   // Checked before opening, since opening a named pipe waits for a writer that never comes.
   const stats = await stat(path).catch(() => undefined);
   if (!stats?.isFile()) return undefined;
-  if (stats.size > MAX_FILE_BYTES) return void tooLarge?.();
   // Non-blocking, so a named pipe swapped in after that check opens at once instead of waiting.
   const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK).catch(() => undefined);
   try {
     // Checked again on what was opened, in case the path changed in between.
     const opened = await file?.stat();
     if (!opened?.isFile()) return undefined;
-    if (opened.size > MAX_FILE_BYTES) return void tooLarge?.();
-    return await file!.readFile("utf8");
+    // At most one byte past the limit, since the file can grow after the check.
+    const end = opened.size > MAX_FILE_BYTES ? 8191 : MAX_FILE_BYTES;
+    const data = Buffer.concat(await file!.createReadStream({ start: 0, end, autoClose: false }).toArray());
+    if (opened.size <= MAX_FILE_BYTES && data.length <= MAX_FILE_BYTES) return data.toString("utf8");
+    return void tooLarge?.(data.toString("utf8", 0, 8192));
   } catch {
     return undefined;
   } finally {
