@@ -917,9 +917,9 @@ describe("check on a repository built to slow it down", () => {
   const times = (n: number, line: (i: number) => string) => Array.from({ length: n }, (_, i) => line(i)).join("");
   const call = 'client.chat.completions.create(model="x", max_tokens=5)\n';
 
-  // Each takes 10 seconds or more when tracing reads every assignment for every call.
+  // Each takes 8 seconds or more when tracing reads every assignment for every call.
   it.each([
-    ["thousands of clients, each with its own call", "app.js", `import OpenAI from "openai";\n${times(6000, (i) => `const c${i} = new OpenAI();\nc${i}.chat.completions.create({ max_tokens: 5 });\n`)}`, 6000, 8000],
+    ["thousands of clients, each with its own call", "app.js", `import OpenAI from "openai";\n${times(3000, (i) => `const c${i} = new OpenAI({ organization: "${"x".repeat(200)}" });\nc${i}.chat.completions.create({ max_tokens: 5 });\n`)}`, 3000, 3000],
     ["a thousand calls on a client set a thousand times", "app.py", `from openai import OpenAI\n${times(1000, () => "client = OpenAI()\n")}${times(1000, () => call)}`, 1000, 2000],
     ["a thousand calls and a thousand functions setting the client", "app.py", `from openai import OpenAI\n${times(1000, (i) => `def f${i}():\n    client = OpenAI()\n`)}${times(1000, () => call)}`, 1000, 2000],
     ["an assignment chained thousands of names long", "app.py", py(`from openai import OpenAI\n${times(4000, (i) => `a${i} = `)}1\nclient = OpenAI()`), 1, 2000],
