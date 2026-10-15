@@ -47,7 +47,8 @@ export async function scan(
   const hits: Hit[] = [];
   const values: ModelValueHit[] = [];
   const mentions: MentionHit[] = [];
-  const byName = new Map(modelValues || withMentions ? records.flatMap((r) => recordNames(r).map((n) => [n, r] as const)) : []);
+  const namesOf = new Map(records.map((r) => [r, new Set(recordNames(r))]));
+  const byName = new Map(modelValues || withMentions ? records.flatMap((r) => [...namesOf.get(r)!].map((n) => [n, r] as const)) : []);
   const names = new Set(byName.keys());
   // Calls through another provider's client (Groq's SDK, the vendor's SDK pointed elsewhere): never reported.
   const foreign: Hit[] = [];
@@ -96,7 +97,7 @@ export async function scan(
   const key = (file: string, line: number, model: string) => `${file}:${line} ${model}`;
   const listed = new Set([
     ...values.map((v) => key(v.file, v.line, v.model)),
-    ...hits.flatMap((h) => findMentions(h.text, new Set(recordNames(h.record))).map((m) => key(h.file, h.line + m.line - 1, m.model))),
+    ...hits.flatMap((h) => findMentions(h.text, namesOf.get(h.record)!).map((m) => key(h.file, h.line + m.line - 1, m.model))),
   ]);
   return { hits, scanned, otherFiles, foreign, tooLarge, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
 }
@@ -132,7 +133,7 @@ const LABELS: Record<ChangeRecord["status"], string> = {
 const heading = (r: ChangeRecord) => `${r.vendor} ${r.announcedAt}: ${title(r)}${LABELS[r.status]}`;
 
 /** Machine-readable form of the hits. */
-export function toJson(hits: (Hit | ModelValueHit)[]): object[] {
+export function toJson(hits: readonly (Hit | ModelValueHit)[]): object[] {
   return hits.map((h) => ({
     id: h.record.id,
     title: title(h.record),
@@ -153,19 +154,35 @@ export function toJson(hits: (Hit | ModelValueHit)[]): object[] {
 /** Machine-readable form of the mentions. */
 export const mentionsToJson = (mentions: readonly MentionHit[]) => mentions.map((m) => ({ id: m.record.id, file: m.file, line: m.line, model: m.model }));
 
-/** The `check --json` text in pieces, with `mentions` last: millions of mentions do not fit in one string. */
-export function* checkJson(report: object, mentions: readonly MentionHit[]): Generator<string> {
-  const empty = JSON.stringify({ ...report, mentions: [] }, null, 2);
-  if (mentions.length === 0) {
-    yield empty;
+/** `items` as a JSON array one level inside the report, in pieces of 1000. */
+function* jsonArray<T>(items: readonly T[], toObjects: (items: readonly T[]) => object[]): Generator<string> {
+  if (items.length === 0) {
+    yield "[]";
     return;
   }
-  yield empty.slice(0, -"]\n}".length);
-  for (let i = 0; i < mentions.length; i += 1000) {
-    const items = mentionsToJson(mentions.slice(i, i + 1000)).map((m) => JSON.stringify(m, null, 2).replaceAll("\n", "\n    "));
-    yield `${i > 0 ? "," : ""}\n    ${items.join(",\n    ")}`;
+  yield "[";
+  for (let i = 0; i < items.length; i += 1000) {
+    const parts = toObjects(items.slice(i, i + 1000)).map((m) => JSON.stringify(m, null, 2).replaceAll("\n", "\n    "));
+    yield `${i > 0 ? "," : ""}\n    ${parts.join(",\n    ")}`;
   }
-  yield "\n  ]\n}";
+  yield "\n  ]";
+}
+
+/** The `check --json` text in pieces, with the lists last: millions of hits or mentions do not fit in one string. */
+export function* checkJson(
+  report: object,
+  { hits, possiblyAffected, mentions }: { hits: readonly Hit[]; possiblyAffected: readonly ModelValueHit[]; mentions: readonly MentionHit[] },
+): Generator<string> {
+  yield JSON.stringify(report, null, 2).slice(0, -"\n}".length);
+  for (const [key, list] of [
+    ["hits", jsonArray(hits, toJson)],
+    ["possiblyAffected", jsonArray(possiblyAffected, toJson)],
+    ["mentions", jsonArray(mentions, mentionsToJson)],
+  ] as const) {
+    yield `,\n  "${key}": `;
+    yield* list;
+  }
+  yield "\n}";
 }
 
 /** The matched code on one line, at most 60 characters; "…" marks anything cut off. */

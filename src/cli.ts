@@ -2,7 +2,7 @@
 import { once } from "node:events";
 import { createRequire } from "node:module";
 import { Command, CommanderError } from "commander";
-import { checkJson, checkReport, exitCodeForCheck, render, toJson } from "./check.js";
+import { checkJson, checkReport, exitCodeForCheck, render } from "./check.js";
 import { exitCodeFor, fix, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 
@@ -38,7 +38,7 @@ program
       const out = process.stdout;
       // A reader that stops early (`| head`) ends the report quietly, as with console.log.
       out.on("error", () => {});
-      const report = checkJson({ version, scanned: coverage, hits: toJson(hits), possiblyAffected: toJson(values) }, mentions);
+      const report = checkJson({ version, scanned: coverage }, { hits, possiblyAffected: values, mentions });
       for (const chunk of report) {
         if (out.destroyed) break;
         if (!out.write(chunk)) await once(out, "drain").catch(() => {});

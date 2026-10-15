@@ -822,13 +822,14 @@ describe("other mentions of model names", () => {
     expect(mentionsToJson(mentions)[0]).toEqual({ id: "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down", file: ".env", line: 1, model: "gpt-3.5-turbo" });
   });
 
-  it("writes the JSON report in pieces, so millions of mentions still fit", async () => {
-    const { mentions } = await checkReport(join(SAMPLES, "model-mentions"));
-    const head = { version: "1", hits: [{ a: 1 }] };
-    for (const list of [[], mentions.slice(0, 1), Array.from({ length: 2500 }, () => mentions).flat()]) {
-      const chunks = [...checkJson(head, list)];
-      expect(chunks.join("")).toBe(JSON.stringify({ ...head, mentions: mentionsToJson(list) }, null, 2));
-      expect(Math.max(...chunks.map((c) => c.length))).toBeLessThan(500_000);
+  it("writes the JSON report in pieces, so millions of hits or mentions still fit", async () => {
+    const { hits, values, mentions } = await checkReport(join(SAMPLES, "model-mentions"));
+    const head = { version: "1", scanned: { files: 1 } };
+    const many = <T>(list: T[]) => Array.from({ length: 2500 }, () => list).flat();
+    for (const [h, v, m] of [[[], [], []], [hits, values, mentions.slice(0, 1)], [many(hits), many(values), many(mentions)]] as const) {
+      const chunks = [...checkJson(head, { hits: h, possiblyAffected: v, mentions: m })];
+      expect(chunks.join("")).toBe(JSON.stringify({ ...head, hits: toJson(h), possiblyAffected: toJson(v), mentions: mentionsToJson(m) }, null, 2));
+      expect(Math.max(...chunks.map((c) => c.length))).toBeLessThan(1_000_000);
     }
   });
 
