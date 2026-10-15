@@ -38,6 +38,25 @@ async function scratch(files: Record<string, string>): Promise<string> {
 
 const locations = (hits: Hit[]) => hits.map((h) => `${h.file}:${h.line}`);
 
+/** Milliseconds of CPU time `f` takes, which shared runners and parallel test files disturb less than wall time. */
+function cpuTime(f: () => unknown): number {
+  const start = process.cpuUsage();
+  f();
+  const { user, system } = process.cpuUsage(start);
+  return (user + system) / 1000;
+}
+
+/** How much longer `findModelValues` takes on `source(1)` than on `source(1 / 8)`: 8 when linear, 64 when quadratic. Healthy runs stay under 11. */
+function growth(file: string, source: (scale: number) => string): number {
+  const grammar = grammarFor(file)!.grammar;
+  const time = (scale: number) => {
+    const text = source(scale);
+    return cpuTime(() => findModelValues(file, text, grammar, new Set(["gpt-4"])));
+  };
+  const small = time(1 / 8);
+  return time(1) / small;
+}
+
 describe("check tells OpenAI apart from look-alike clients", () => {
   const maxTokens = (hits: Hit[]) => locations(hits.filter((h) => h.record.id.includes("max-tokens")));
 
@@ -716,10 +735,7 @@ describe("model names set as values", () => {
     // for each value is about 5x here. The search itself is counted step by step in the next test.
     const time = (call: string) => {
       const source = `count_tokens(x)\n${`${call}(x)\nmodel = "gpt-4"\n`.repeat(120_000)}`;
-      const start = process.cpuUsage();
-      expect(findModelValues("app.py", source, grammar, new Set(["gpt-4"]))).toHaveLength(120_000);
-      const { user, system } = process.cpuUsage(start);
-      return user + system;
+      return cpuTime(() => expect(findModelValues("app.py", source, grammar, new Set(["gpt-4"]))).toHaveLength(120_000));
     };
     const plain = time("count_things");
     expect(time("count_tokens")).toBeLessThan(2.5 * plain);
@@ -739,16 +755,9 @@ describe("model names set as values", () => {
     expect(reads).toBeLessThan(2 * 2000 * 50);
   });
 
-  it("reads long call chains about as fast as parsing them", () => {
+  it("reads long call chains in linear time", () => {
     for (const [file, link] of ["app.py", "app.ts"].flatMap((f) => [".a()", ".token", ".token()"].map((l) => [f, l] as const))) {
-      const grammar = grammarFor(file)!.grammar;
-      const source = `model = "gpt-4"; x${link.repeat(40_000)}\n`;
-      let start = performance.now();
-      parse(grammar, source);
-      const parsing = performance.now() - start;
-      start = performance.now();
-      expect(findModelValues(file, source, grammar, new Set(["gpt-4"]))).toHaveLength(1);
-      expect(performance.now() - start).toBeLessThan(10 * parsing + 500);
+      expect(growth(file, (n) => `model = "gpt-4"; x${link.repeat(40_000 * n)}\n`)).toBeLessThan(24);
     }
   }, 20_000);
 
@@ -771,26 +780,18 @@ describe("model names set as values", () => {
     }
   }, 60_000);
 
-  it("reads long names, long lines and deep code about as fast as parsing them", () => {
-    const defaults = 'default="gpt-4", '.repeat(5000);
+  it("reads long names, long lines and deep code in linear time", () => {
+    const defaults = (n: number) => 'default="gpt-4", '.repeat(5000 * n);
     const cases = [
-      ["app.py", `${"a.".repeat(50_000)}model = f(${defaults})\n`],
-      ["app.py", `f("${"model ".repeat(40_000)}", ${defaults}${defaults})\n`],
-      ["app.ts", `${" ".repeat(1_000_000)}${'model = "gpt-4"; '.repeat(5000)}\n`],
-      ["app.py", `model = ${'f("gpt-4", '.repeat(5000)}x${")".repeat(5000)}\n`],
-      ["app.ts", `model = ${'c ? "gpt-4" : ('.repeat(5000)}x${")".repeat(5000)}\n`],
-      ["app.ts", `model = x${'.f("gpt-4")'.repeat(5000)}\n`],
+      ["app.py", (n: number) => `${"a.".repeat(50_000 * n)}model = f(${defaults(n)})\n`],
+      ["app.py", (n: number) => `f("${"model ".repeat(40_000 * n)}", ${defaults(n)}${defaults(n)})\n`],
+      ["app.ts", (n: number) => `${" ".repeat(1_000_000 * n)}${'model = "gpt-4"; '.repeat(5000 * n)}\n`],
+      ["app.py", (n: number) => `model = ${'f("gpt-4", '.repeat(5000 * n)}x${")".repeat(5000 * n)}\n`],
+      ["app.ts", (n: number) => `model = ${'c ? "gpt-4" : ('.repeat(5000 * n)}x${")".repeat(5000 * n)}\n`],
+      ["app.ts", (n: number) => `model = x${'.f("gpt-4")'.repeat(5000 * n)}\n`],
     ] as const;
-    const slow = cases.filter(([file, source]) => {
-      const grammar = grammarFor(file)!.grammar;
-      let start = performance.now();
-      parse(grammar, source);
-      const parsing = performance.now() - start;
-      start = performance.now();
-      findModelValues(file, source, grammar, new Set(["gpt-4"]));
-      return performance.now() - start > 10 * parsing + 500;
-    });
-    expect(slow.map(([, source]) => source.slice(0, 20))).toEqual([]);
+    const slow = cases.filter(([file, source]) => growth(file, source) > 24);
+    expect(slow.map(([, source]) => source(1).slice(0, 20))).toEqual([]);
   }, 60_000);
 
   it("does not list a call's model fallback again when it wraps to the next line", async () => {
@@ -813,9 +814,8 @@ describe("model names set as values", () => {
   it("prints a long list of values quickly", async () => {
     const { values } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
     const many = Array.from({ length: 200_000 }, (_, i) => ({ ...values[0]!, line: i + 1 }));
-    const start = performance.now();
-    expect(render([], undefined, many)).toContain("  200000 values in 1 file\n");
-    expect(performance.now() - start).toBeLessThan(2000);
+    // A tenth of a second on a laptop; comparing each value with every other takes 40 seconds.
+    expect(cpuTime(() => expect(render([], undefined, many)).toContain("  200000 values in 1 file\n"))).toBeLessThan(10_000);
   });
 
   it("does not fail the check when values are all it finds", async () => {
