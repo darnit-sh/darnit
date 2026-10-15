@@ -11,6 +11,7 @@ const VERSION = /^\d+\.\d+\.\d+/;
  * True if `version` is at least `min` (both x.y.z). A prerelease of the minimum, like
  * 4.60.0-beta.1 or 1.45.0rc1, comes before it and does not count.
  */
+// demo
 export function atLeast(version: string, min: string): boolean {
   const core = VERSION.exec(version)?.[0] ?? version;
   const a = core.split(".").map((n) => parseInt(n, 10));
