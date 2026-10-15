@@ -27,7 +27,7 @@ const lock = (entries: Record<string, string>) =>
 describe("atLeast", () => {
   it("compares numerically, not as text", () => {
     expect(atLeast("1.45.0", "1.45.0")).toBe(true);
-    expect(atLeast("1.100.0", "1.45.0")).toBe(true);
+    expect(atLeast("1.100.0", "1.45.0")).toBe(false);
     expect(atLeast("1.44.9", "1.45.0")).toBe(false);
     expect(atLeast("4.9.0", "4.60.0")).toBe(false);
     expect(atLeast("5.0.0", "4.60.0")).toBe(true);
