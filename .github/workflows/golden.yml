@@ -9,6 +9,8 @@ on:
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
+  push:
+    branches: [ci/golden-all-repos]
 
 permissions:
   contents: read
@@ -64,7 +66,7 @@ jobs:
         timeout-minutes: ${{ steps.scope.outputs.set == 'all' && 45 || 15 }}
         env:
           ALL: ${{ steps.scope.outputs.set == 'all' && 'yes' || '' }}
-          RECHECK: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'yes' || '' }}
+          RECHECK: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/ci/golden-all-repos') && 'yes' || '' }}
           BASE: ${{ github.event.pull_request.base.sha }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: time npm run golden -- --out "$RUNNER_TEMP/golden-update" ${ALL:+--all} ${RECHECK:+--recheck} ${BASE:+--base "$BASE"}
@@ -74,7 +76,7 @@ jobs:
           name: golden-update
           path: ${{ runner.temp }}/golden-update
           if-no-files-found: ignore
-      - if: github.ref == 'refs/heads/main' && steps.clones.outputs.cache-hit != 'true'
+      - if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/golden-all-repos') && steps.clones.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/darnit-golden
