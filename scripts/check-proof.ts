@@ -11,7 +11,8 @@ const MISSING = "does not exist without this change";
 const lines = (s = "") => s.split("\n").filter(Boolean);
 const read = (f: string) => (existsSync(`${env.OUT}/${f}`) ? readFileSync(`${env.OUT}/${f}`, "utf8") : "");
 const first = (s = "") => s.split("\n").find((l) => l.trim())?.trim().slice(0, 200) ?? "";
-const code = (s: string) => `\`${s.replace(/`/g, "'").replace(/\|/g, "\\|")}\``;
+// Inline code in a table cell: no backtick can end it and no pipe can split the cell.
+const code = (s: string) => `\`${s.replace(/`/g, "'").replace(/\|/g, "¦")}\``;
 
 if (process.argv[2] === "mark") {
   // Vitest reads a name a module does not export as undefined, so a test could fail on base for that
@@ -31,10 +32,10 @@ if (process.argv[2] === "mark") {
     const name = /^(\w+)(\s+as\s+(\w+))?/.exec(f.src[at]!.slice(start));
     if (member && name) {
       f.src[at] = `${f.src[at]!.slice(0, start)}${name[1]} as __missing${n++}${f.src[at]!.slice(start + name[0].length)}`;
-      f.values += `const ${name[3] ?? name[1]} = __missing(${JSON.stringify(name[1])}); `;
-    } else f.src.push(`throw new Error(${JSON.stringify(`${file} ${MISSING}: ${text}`)});`);
+      f.values += `const ${name[3] ?? name[1]} = __missing("${name[1]}"); `;
+    } else f.src.push(`throw new Error("this file ${MISSING}");`);
   }
-  const helper = `function __missing(name) { const fail = () => { throw new Error(name + ${JSON.stringify(` ${MISSING}`)}); }; return new Proxy(function () {}, { get: fail, apply: fail, construct: fail, has: fail, ownKeys: fail, getPrototypeOf: fail, set: fail }); }`;
+  const helper = `function __missing(name) { const fail = () => { throw new Error(name + " ${MISSING}"); }; return new Proxy(function () {}, { get: fail, apply: fail, construct: fail, has: fail, ownKeys: fail, getPrototypeOf: fail, set: fail }); }`;
   for (const [file, { src, values }] of files) writeFileSync(file, [values + src[0], ...src.slice(1), helper, ""].join("\n"));
   process.exit(0);
 }
