@@ -115,6 +115,14 @@ describe("detectApis on a repository built to slow it down", () => {
     ]);
   });
 
+  it.skipIf(process.platform === "win32")("keeps a crafted file name in its evidence on one line", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    await writeFile(join(dir, "x\n::error::\u202Ey.py"), "import openai\n");
+    const [summary] = await init(dir);
+    expect(summary).toBe("Scanned repo: found openai (x?::error::?y.py: import openai)");
+  });
+
   it.skipIf(process.platform === "win32")("prints folder names without their control characters, and no check mark on Not checked", async () => {
     const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
     tempDirs.push(dir);
@@ -122,7 +130,7 @@ describe("detectApis on a repository built to slow it down", () => {
     const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
     const { stdout } = await promisify(execFile)(process.execPath, ["--import", import.meta.resolve("tsx"), cli, "init"], { cwd: dir });
     expect(stdout).not.toContain("\u001b");
-    expect(stdout).toContain("\nNot checked: 1 dependency or build folder: a[2J[31mPWNED/vendor.\n");
+    expect(stdout).toContain("\nNot checked: 1 dependency or build folder: a?[2J?[31mPWNED/vendor.\n");
     expect(stdout).toMatch(/^✓ Scanned repo: /);
   });
 

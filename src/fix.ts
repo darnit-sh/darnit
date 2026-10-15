@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkReport, scan, title, type Hit } from "./check.js";
 import * as g from "./git.js";
-import { vendorName } from "./detect.js";
+import { shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
@@ -113,7 +113,7 @@ async function groupHits(root: string, only: string[] | undefined): Promise<Grou
     if (only && !only.includes(hit.record.id)) continue;
     const group = byId.get(hit.record.id) ?? { record: hit.record, packDir: packs.get(hit.record.id)!, files: [], sites: 0 };
     if (mixed.has(key(hit)) || local.has(key(hit))) {
-      const note = hit.local ? `sent to ${hit.local.join(" or ")}, which may not be OpenAI` : mixed.has(key(hit)) ? MIXED : LOCAL;
+      const note = hit.local ? `sent to ${hit.local.map(shown).join(" or ")}, which may not be OpenAI` : mixed.has(key(hit)) ? MIXED : LOCAL;
       (group.held ??= []).push({ file: hit.file, line: hit.line, note });
     } else {
       if (!group.files.includes(hit.file)) group.files.push(hit.file);
@@ -167,7 +167,7 @@ async function versionGate(root: string, grp: Group): Promise<{ blocked?: string
   const py = grp.files.length > js.length;
   const unconfirmed: string[] = [];
   const tooOld = (pkg: string, min: string, found: Found) =>
-    `needs ${pkg} >= ${min}, this repo has ${found.version} (${found.from}); upgrade it first`;
+    `needs ${pkg} >= ${min}, this repo has ${found.version} (${shown(found.from)}); upgrade it first`;
 
   for (const [pkg, min] of js.length > 0 ? Object.entries(requires.npm ?? {}) : []) {
     let unknown = false;
@@ -565,7 +565,7 @@ export function renderSummary(result: FixResult): string {
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;
-    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${s.file}:${s.line}${s.note ? ` (${s.note})` : ""}`);
+    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}:${s.line}${s.note ? ` (${s.note})` : ""}`);
     if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
   if (lines.length === 0) lines.push("Nothing to fix.");

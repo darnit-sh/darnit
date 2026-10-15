@@ -442,6 +442,50 @@ describe("check reads raw HTTP calls by their URL argument only", () => {
   });
 });
 
+describe.skipIf(process.platform === "win32")("check prints crafted file and folder names on one line", () => {
+  const call = "import OpenAI from 'openai';\nawait new OpenAI().chat.completions.create({ model: 'gpt-4', max_tokens: 5 });\n";
+  const lines = (text: string) => text.split("\n");
+
+  it("cannot forge the headline or a GitHub Actions command with a folder name", async () => {
+    const dir = await scratch({
+      "e\nNo known vendor changes affect this repository./build/x.js": "",
+      "x\n::error title=t::text/build/x.js": "",
+      "big\n::warning::.json": "x".repeat(MAX_FILE_BYTES + 1),
+    });
+    const { hits, coverage } = await checkReport(dir);
+    const text = render(hits, coverage);
+    expect(lines(text)).not.toContain("No known vendor changes affect this repository.");
+    expect(lines(text).filter((l) => l.startsWith("::"))).toEqual([]);
+    expect(text).toContain("e?No known vendor changes affect this repository./build");
+    expect(text).toContain("x?::error title=t::text/build");
+    expect(text).toContain("big?::warning::.json");
+  });
+
+  it("keeps a call site, value and mention in a crafted file name on one line", async () => {
+    const dir = await scratch({
+      "a\n::error::b.ts": call,
+      "\u202Egpj.ts": call,
+      "m\r::warning::.md": "gpt-4\n",
+      "v\t::notice::.py": 'MODEL = "gpt-4"\n',
+      "local.ts": 'import OpenAI from "openai";\nconst c = new OpenAI({ baseURL: "http://localhost:1\u202Eabc/v1" });\nawait c.chat.completions.create({ model: "x", max_tokens: 5 });\n',
+    });
+    const { hits, coverage, values, mentions } = await checkReport(dir);
+    expect(hits.length).toBeGreaterThan(0);
+    for (const all of [false, true]) {
+      const text = render(hits, coverage, values, mentions, all);
+      expect(lines(text).filter((l) => l.startsWith("::"))).toEqual([]);
+      expect(text).not.toMatch(/[\r\t\u202E]/);
+      expect(text).toContain("a?::error::b.ts:2:");
+      expect(text).toContain("?gpj.ts:2:");
+      expect(text).toContain("m?::warning::.md");
+    }
+    expect(render(hits, coverage, values, mentions)).toContain("v?::notice::.py:1:");
+    expect(render(hits, coverage, values, mentions)).toContain("(sent to localhost:1?abc;");
+    const json = JSON.parse([...checkJson({ version: "t" }, { hits, possiblyAffected: values, mentions })].join("")) as { hits: { file: string }[] };
+    expect(json.hits.map((h) => h.file)).toContain("a\n::error::b.ts");
+  });
+});
+
 describe("snippet", () => {
   it("marks code that was cut off, by length or by line, and leaves short code alone", () => {
     expect(snippet("max_tokens: 256")).toBe("max_tokens: 256");

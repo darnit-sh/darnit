@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { parse, type SgNode } from "@ast-grep/napi";
 import { parse as parseYaml } from "yaml";
-import { byPath, firstFive, listFiles, plural, readText, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
+import { byPath, firstFive, listFiles, plural, readText, shown, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, modelNames, type Match, type Span } from "./scan/astgrep.js";
@@ -228,11 +228,11 @@ function grouped(hits: readonly Hit[], noun: string): string[] {
   const out: string[] = [];
   for (const group of groups.values()) {
     const record = group[0]!.record;
-    const locations = group.map((h) => `${h.file}:${h.line}:${h.column}`);
+    const locations = group.map((h) => `${shown(h.file)}:${h.line}:${h.column}`);
     const width = locations.reduce((w, l) => Math.max(w, l.length), 0) + 2;
     out.push(heading(record));
     group.forEach((h, i) =>
-      out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.join(" or ")}; ignore if that server isn't OpenAI)` : ""}`),
+      out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.map(shown).join(" or ")}; ignore if that server isn't OpenAI)` : ""}`),
     );
     out.push(`  ${plural(group.length, noun)} in ${plural(new Set(group.map((h) => h.file)).size, "file")}`);
     for (const source of record.sources) out.push(`  ${source.url}`);
@@ -263,8 +263,8 @@ function mentionSection(listed: readonly MentionHit[], all: boolean): string[] {
     else byFile.set(m.file, [m]);
   }
   const total = `${plural(mentions.length, "mention")} in ${plural(byFile.size, "file")}`;
-  if (all) return [...MENTIONS_INTRO, ...mentions.map((m) => `  ${m.file}:${m.line}  ${m.model}`), `  ${total}`, ""];
-  const files = [...byFile].sort((a, b) => b[1].length - a[1].length).slice(0, MENTION_FILES);
+  if (all) return [...MENTIONS_INTRO, ...mentions.map((m) => `  ${shown(m.file)}:${m.line}  ${m.model}`), `  ${total}`, ""];
+  const files = [...byFile].sort((a, b) => b[1].length - a[1].length).slice(0, MENTION_FILES).map(([file, ms]) => [shown(file), ms] as const);
   const width = files.reduce((w, [f]) => Math.max(w, f.length), 0) + 2;
   const digits = String(files[0]![1].length).length;
   return [

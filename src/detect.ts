@@ -78,8 +78,15 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** "a, b, c, d, e and 2 more" */
-export const firstFive = (items: readonly string[]) => `${items.slice(0, 5).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;
+/**
+ * A file or folder name from the repository as report text: each control or direction-changing character
+ * becomes "?", so a name can't start a new line (a forged report line, or a GitHub Actions command) or reorder one.
+ */
+// eslint-disable-next-line no-control-regex
+export const shown = (name: string) => name.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, "?");
+
+/** "a, b, c, d, e and 2 more", each item through `shown` */
+export const firstFive = (items: readonly string[]) => `${items.slice(0, 5).map(shown).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;
 
 /** The report line for files too large to read, if any. */
 export const tooLargeNote = (files: readonly string[] = []) =>
@@ -209,12 +216,12 @@ export async function detectApis(root: string, tooLarge: string[] = [], skipped:
     }
     for (const [vendor, spec] of Object.entries(VENDORS) as [Vendor, (typeof VENDORS)[Vendor]][]) {
       if (name === "package.json") {
-        for (const dep of npmDeps(text)) if ((spec.npm as readonly string[]).includes(dep)) add(vendor, `${file}: ${dep}`);
+        for (const dep of npmDeps(text)) if ((spec.npm as readonly string[]).includes(dep)) add(vendor, `${shown(file)}: ${dep}`);
       } else if (isManifest) {
-        for (const pkg of spec.pypi) if (pythonDeclares(text, pkg)) add(vendor, `${file}: ${pkg}`);
+        for (const pkg of spec.pypi) if (pythonDeclares(text, pkg)) add(vendor, `${shown(file)}: ${pkg}`);
       } else if (lang) {
-        for (const pkg of lang === "py" ? spec.pypi : spec.npm) if (importsPackage(text, pkg, lang)) add(vendor, `${file}: import ${pkg}`);
-        for (const host of spec.hosts) if (text.includes(host)) add(vendor, `${file}: ${host}`);
+        for (const pkg of lang === "py" ? spec.pypi : spec.npm) if (importsPackage(text, pkg, lang)) add(vendor, `${shown(file)}: import ${pkg}`);
+        for (const host of spec.hosts) if (text.includes(host)) add(vendor, `${shown(file)}: ${host}`);
       }
     }
   }
