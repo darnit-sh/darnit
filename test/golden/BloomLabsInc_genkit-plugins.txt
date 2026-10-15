@@ -1,9 +1,9 @@
 exit 0
-scanned files=76 otherFiles=138 foreign=0 tooLarge=0 skipped=0
-P plugins/azure-openai/src/dalle.ts:56:12 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
-P plugins/azure-openai/src/whisper.ts:67:12 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P plugins/openai/src/dalle.ts:53:12 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
-P plugins/openai/src/whisper.ts:82:12 whisper-1 openai:2026-08-26:transcription-models-shut-down
+scanned files=76 records=33 otherFiles=138 foreign=0 tooLarge=0 skipped=0
+P plugins/azure-openai/src/dalle.ts:56:12 #6874764d dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P plugins/azure-openai/src/whisper.ts:67:12 #d7f2cd2d whisper-1 openai:2026-08-26:transcription-models-shut-down
+P plugins/openai/src/dalle.ts:53:12 #6874764d dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P plugins/openai/src/whisper.ts:82:12 #d7f2cd2d whisper-1 openai:2026-08-26:transcription-models-shut-down
 M docs/docs/plugins/openai.md:41 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M docs/docs/plugins/openai.md:41 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M docs/docs/plugins/openai.md:41 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27

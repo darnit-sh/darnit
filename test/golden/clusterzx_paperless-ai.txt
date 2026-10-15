@@ -1,11 +1,11 @@
 exit 1
-scanned files=37 otherFiles=48 foreign=0 tooLarge=0 skipped=0
-H services/azureService.js:379:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H services/azureService.js:412:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H services/azureService.js:445:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H services/chatService.js:132:11 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-H services/customService.js:396:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H services/customService.js:429:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
+scanned files=37 records=33 otherFiles=48 foreign=0 tooLarge=0 skipped=0
+H services/azureService.js:379:9 #2d843cd4 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H services/azureService.js:412:9 #a6a9db97 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H services/azureService.js:445:9 #2d843cd4 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H services/chatService.js:132:11 #338734d5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H services/customService.js:396:9 #2a01f15d openai:2024-09-12:max-tokens-to-max-completion-tokens
+H services/customService.js:429:9 #2d843cd4 openai:2024-09-12:max-tokens-to-max-completion-tokens
 M OPENAPI/openapi.json:2131 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M OPENAPI/openapi.json:3020 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M routes/setup.js:3455 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

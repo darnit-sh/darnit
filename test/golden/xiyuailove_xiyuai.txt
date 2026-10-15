@@ -1,10 +1,10 @@
 exit 1
-scanned files=307 otherFiles=80 foreign=1 tooLarge=0 skipped=0
-H src/providers/chat.mjs:395:52 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H src/providers/chat.mjs:466:11 openai:2024-09-12:max-tokens-to-max-completion-tokens
-P src/providers/asr.mjs:41:19 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P src/providers/image.mjs:138:44 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P src/providers/tts.mjs:44:19 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+scanned files=307 records=33 otherFiles=80 foreign=1 tooLarge=0 skipped=0
+H src/providers/chat.mjs:395:52 #c5225b8e openai:2024-09-12:max-tokens-to-max-completion-tokens
+H src/providers/chat.mjs:466:11 #a4d75be4 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P src/providers/asr.mjs:41:19 #742f4215 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P src/providers/image.mjs:138:44 #13b0a87f gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P src/providers/tts.mjs:44:19 #9f75876f tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 M .env.example:16 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M ACKNOWLEDGMENTS.md:58 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M ACKNOWLEDGMENTS.md:132 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

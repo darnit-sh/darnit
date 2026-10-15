@@ -93,8 +93,11 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+        # --no-renames lists a renamed file under its old name too; a git failure fails the step.
         run: |
-          if [ -n "$BASE" ] && ! git diff --name-only "$BASE...$HEAD" | grep -Eqv '\.md$|^LICENSE$'; then
+          [ -n "$BASE" ] || exit 0
+          changed=$(git diff --name-only --no-renames "$BASE...$HEAD")
+          if ! printf '%s\n' "$changed" | grep -Eqv '\.md$|^LICENSE$'; then
             echo "Golden skipped: this pull request changes only Markdown or LICENSE files." | tee -a "$GITHUB_STEP_SUMMARY"
             echo skip=true >> "$GITHUB_OUTPUT"
           fi
@@ -113,7 +116,9 @@ jobs:
           path: ~/.cache/darnit-golden
           key: golden-slice-${{ hashFiles('test/golden/repos.tsv') }}
       - if: steps.scope.outputs.skip != 'true'
-        run: npm run golden -- --out "$RUNNER_TEMP/golden-update"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: npm run golden -- --out "$RUNNER_TEMP/golden-update" ${BASE:+--base "$BASE"}
       - if: failure() && steps.scope.outputs.skip != 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

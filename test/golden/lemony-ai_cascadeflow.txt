@@ -1,23 +1,23 @@
 exit 1
-scanned files=554 otherFiles=244 foreign=4 tooLarge=0 skipped=0
-H packages/core/src/vercel-ai/__tests__/e2e.test.ts:94:7 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H packages/core/src/vercel-ai/__tests__/e2e.test.ts:161:7 openai:2024-09-12:max-tokens-to-max-completion-tokens
-P cascadeflow/routing/cascade_pipeline.py:345:23 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/cost_forecasting_anomaly_detection.py:54:15 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/cost_forecasting_anomaly_detection.py:200:15 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/enforcement/basic_enforcement.py:145:15 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/enforcement/stripe_integration.py:151:23 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/enforcement/stripe_integration.py:176:23 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/integrations/litellm_cost_tracking.py:147:19 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/integrations/litellm_cost_tracking.py:148:19 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/integrations/opentelemetry_grafana.py:108:22 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/multi_step_cascade.py:372:23 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/user_budget_tracking.py:73:15 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P examples/user_budget_tracking.py:101:19 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P packages/core/src/routers/cascade-pipeline.ts:345:16 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P packages/langchain-cascadeflow/examples/analyze-models.ts:62:29 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P packages/langchain-cascadeflow/examples/analyze-models.ts:63:29 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P packages/langchain-cascadeflow/examples/model-discovery.ts:30:31 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+scanned files=554 records=33 otherFiles=244 foreign=4 tooLarge=0 skipped=0
+H packages/core/src/vercel-ai/__tests__/e2e.test.ts:94:7 #c072360c openai:2024-09-12:max-tokens-to-max-completion-tokens
+H packages/core/src/vercel-ai/__tests__/e2e.test.ts:161:7 #c072360c openai:2024-09-12:max-tokens-to-max-completion-tokens
+P cascadeflow/routing/cascade_pipeline.py:345:23 #2db244a7 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/cost_forecasting_anomaly_detection.py:54:15 #bd33224b gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/cost_forecasting_anomaly_detection.py:200:15 #2db244a7 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/enforcement/basic_enforcement.py:145:15 #2db244a7 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/enforcement/stripe_integration.py:151:23 #2db244a7 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/enforcement/stripe_integration.py:176:23 #2db244a7 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/integrations/litellm_cost_tracking.py:147:19 #27182146 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/integrations/litellm_cost_tracking.py:148:19 #9446d50e gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/integrations/opentelemetry_grafana.py:108:22 #17eb0670 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/multi_step_cascade.py:372:23 #2db244a7 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/user_budget_tracking.py:73:15 #2db244a7 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/user_budget_tracking.py:101:19 #2db244a7 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P packages/core/src/routers/cascade-pipeline.ts:345:16 #97fd0616 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P packages/langchain-cascadeflow/examples/analyze-models.ts:62:29 #6467ef49 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P packages/langchain-cascadeflow/examples/analyze-models.ts:63:29 #1f77365a gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P packages/langchain-cascadeflow/examples/model-discovery.ts:30:31 #a30cbd33 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M .env.example:16 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M .env.example:16 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M .env.example:16 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

@@ -1,27 +1,27 @@
 exit 1
-scanned files=1233 otherFiles=193 foreign=2 tooLarge=0 skipped=0
-H server/utils/AiProviders/koboldCPP/index.js:182:34 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H server/utils/AiProviders/koboldCPP/index.js:221:32 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H server/utils/TextToSpeech/openAi/index.js:15:9 openai:2026-10-01:text-to-speech-models-shut-down
-H server/utils/agents/aibitat/providers/deepseek.js:93:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H server/utils/agents/aibitat/providers/koboldcpp.js:49:32 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H server/utils/agents/aibitat/providers/koboldcpp.js:69:30 openai:2024-09-12:max-tokens-to-max-completion-tokens
-H server/utils/agents/aibitat/providers/vertex.js:59:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
-P collector/utils/WhisperProviders/OpenAiWhisper.js:11:18 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P server/models/systemSettings.js:894:55 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P server/utils/AiProviders/openAi/index.js:32:57 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P server/utils/ImageGenerators/openAi/index.js:15:50 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P server/utils/SpeechToText/lemonade/index.js:18:57 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P server/utils/SpeechToText/openAi/index.js:8:51 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P server/utils/SpeechToText/openAiGeneric/index.js:24:62 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P server/utils/TextToSpeech/openAiGeneric/index.js:25:62 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
-P server/utils/agents/aibitat/example/websocket/websock-branding-collab.js:64:12 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P server/utils/agents/aibitat/index.js:753:14 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P server/utils/agents/aibitat/providers/genericOpenAi.js:29:21 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P server/utils/agents/aibitat/providers/openai.js:20:15 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P server/utils/agents/ephemeral.js:537:28 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P server/utils/agents/index.js:323:47 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P server/utils/agents/index.js:896:28 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+scanned files=1233 records=33 otherFiles=193 foreign=2 tooLarge=0 skipped=0
+H server/utils/AiProviders/koboldCPP/index.js:182:34 #06141c36 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H server/utils/AiProviders/koboldCPP/index.js:221:32 #06141c36 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H server/utils/TextToSpeech/openAi/index.js:15:9 #f0e1b516 openai:2026-10-01:text-to-speech-models-shut-down
+H server/utils/agents/aibitat/providers/deepseek.js:93:9 #06141c36 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H server/utils/agents/aibitat/providers/koboldcpp.js:49:32 #06141c36 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H server/utils/agents/aibitat/providers/koboldcpp.js:69:30 #06141c36 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H server/utils/agents/aibitat/providers/vertex.js:59:9 #06141c36 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P collector/utils/WhisperProviders/OpenAiWhisper.js:11:18 #9007a15c whisper-1 openai:2026-08-26:transcription-models-shut-down
+P server/models/systemSettings.js:894:55 #d711d549 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P server/utils/AiProviders/openAi/index.js:32:57 #021a4189 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P server/utils/ImageGenerators/openAi/index.js:15:50 #73788bf7 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P server/utils/SpeechToText/lemonade/index.js:18:57 #e41d8cab whisper-1 openai:2026-08-26:transcription-models-shut-down
+P server/utils/SpeechToText/openAi/index.js:8:51 #37c4b658 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P server/utils/SpeechToText/openAiGeneric/index.js:24:62 #38f63dac whisper-1 openai:2026-08-26:transcription-models-shut-down
+P server/utils/TextToSpeech/openAiGeneric/index.js:25:62 #2bf8c79c tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P server/utils/agents/aibitat/example/websocket/websock-branding-collab.js:64:12 #d629ef9f gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P server/utils/agents/aibitat/index.js:753:14 #d629ef9f gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P server/utils/agents/aibitat/providers/genericOpenAi.js:29:21 #db84c4a1 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P server/utils/agents/aibitat/providers/openai.js:20:15 #0ebf8f1d gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P server/utils/agents/ephemeral.js:537:28 #d895b5df gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P server/utils/agents/index.js:323:47 #eab9337e gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P server/utils/agents/index.js:896:28 #d895b5df gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M docker/.env.example:15 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M docker/.env.example:85 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M docker/.env.example:92 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

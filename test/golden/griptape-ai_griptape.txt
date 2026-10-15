@@ -1,29 +1,29 @@
 exit 0
-scanned files=1239 otherFiles=381 foreign=0 tooLarge=0 skipped=0
-P docs/griptape-framework/drivers/src/audio_transcription_drivers_1.py:5:47 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P docs/griptape-framework/drivers/src/event_listener_drivers_4.py:11:84 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/drivers/src/image_generation_drivers_1.py:6:11 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/drivers/src/image_generation_drivers_4.py:8:11 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
-P docs/griptape-framework/drivers/src/image_generation_drivers_6.py:5:44 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/drivers/src/image_generation_drivers_griptape_cloud.py:10:11 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
-P docs/griptape-framework/drivers/src/prompt_drivers_openai_reasoning.py:9:15 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/drivers/src/vector_store_drivers_4.py:11:46 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/engines/src/extraction_engines_1.py:6:48 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/engines/src/summary_engines_1.py:9:48 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/structures/src/task_memory_6.py:11:48 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/structures/src/tasks_11.py:7:11 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
-P docs/griptape-framework/structures/src/tasks_18.py:6:47 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P docs/griptape-framework/structures/src/tasks_6.py:8:48 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/structures/src/tasks_7.py:10:48 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-P docs/griptape-framework/tools/official-tools/src/audio_transcription_tool_1.py:5:47 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P docs/recipes/src/talk_to_an_audio_1.py:11:11 gpt-4o-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
-P docs/recipes/src/talk_to_an_audio_2.py:65:15 gpt-4o-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
-P griptape/configs/drivers/azure_openai_drivers_config.py:66:19 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
-P griptape/configs/drivers/openai_drivers_config.py:21:50 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
-P griptape/configs/drivers/openai_drivers_config.py:33:47 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
-P griptape/configs/drivers/openai_drivers_config.py:37:53 whisper-1 openai:2026-08-26:transcription-models-shut-down
-P griptape/drivers/image_generation/griptape_cloud_image_generation_driver.py:14:17 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
-P griptape/drivers/text_to_speech/openai_text_to_speech_driver.py:18:32 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+scanned files=1239 records=33 otherFiles=381 foreign=0 tooLarge=0 skipped=0
+P docs/griptape-framework/drivers/src/audio_transcription_drivers_1.py:5:47 #22ebe1c1 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P docs/griptape-framework/drivers/src/event_listener_drivers_4.py:11:84 #d84b3a0c gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/drivers/src/image_generation_drivers_1.py:6:11 #8ca163c1 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/drivers/src/image_generation_drivers_4.py:8:11 #a56156f4 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P docs/griptape-framework/drivers/src/image_generation_drivers_6.py:5:44 #89d162c8 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/drivers/src/image_generation_drivers_griptape_cloud.py:10:11 #a56156f4 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P docs/griptape-framework/drivers/src/prompt_drivers_openai_reasoning.py:9:15 #ec8371eb o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/drivers/src/vector_store_drivers_4.py:11:46 #98d70431 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/engines/src/extraction_engines_1.py:6:48 #34ac33fd gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/engines/src/summary_engines_1.py:9:48 #b57f037a gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/structures/src/task_memory_6.py:11:48 #274384d9 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/structures/src/tasks_11.py:7:11 #a56156f4 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P docs/griptape-framework/structures/src/tasks_18.py:6:47 #22ebe1c1 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P docs/griptape-framework/structures/src/tasks_6.py:8:48 #e6e83efb gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/structures/src/tasks_7.py:10:48 #b57f037a gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P docs/griptape-framework/tools/official-tools/src/audio_transcription_tool_1.py:5:47 #22ebe1c1 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P docs/recipes/src/talk_to_an_audio_1.py:11:11 #01134e5f gpt-4o-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+P docs/recipes/src/talk_to_an_audio_2.py:65:15 #01134e5f gpt-4o-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+P griptape/configs/drivers/azure_openai_drivers_config.py:66:19 #0d05fbe7 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P griptape/configs/drivers/openai_drivers_config.py:21:50 #86b81dd4 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P griptape/configs/drivers/openai_drivers_config.py:33:47 #8274f376 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P griptape/configs/drivers/openai_drivers_config.py:37:53 #82b5ffc5 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P griptape/drivers/image_generation/griptape_cloud_image_generation_driver.py:14:17 #bb50eb74 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+P griptape/drivers/text_to_speech/openai_text_to_speech_driver.py:18:32 #b604929d tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 M CHANGELOG.md:13 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M CHANGELOG.md:183 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M CHANGELOG.md:1149 gpt-4-vision-preview openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2024-12-06
