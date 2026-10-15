@@ -30,21 +30,42 @@ base=$1 head=$2
 type=$(printf '%s\n' "$TITLE" | sed -nE '1s/^([a-z]+)(\([a-z0-9-]+\))?!?: .*/\1/p')
 # No rename detection: a renamed file shows as its old path deleted and its new path added.
 paths() { git diff --no-renames --name-only "$@" "$base...$head"; }
+# The body as a reader sees it: HTML comments and fenced code blocks taken out.
+visible() {
+  printf '%s\n' "${BODY:-}" | tr -d '\r' | awk '
+    !c && fence == "" && match($0, /^ ? ? ?(```+|~~~+)/) { fence = substr($0, RSTART, RLENGTH); sub(/^ +/, "", fence); next }
+    fence != "" { t = $0; sub(/^ +/, "", t); if (index(t, fence) == 1 && t ~ /^(`+|~+)[ \t]*$/) fence = ""; next }
+    {
+      s = $0; out = ""
+      while (s != "") {
+        if (c) { i = index(s, "-->"); if (i) { s = substr(s, i + 3); c = 0 } else s = "" }
+        else { i = index(s, "<!--"); if (i) { out = out substr(s, 1, i - 1); s = substr(s, i + 4); c = 1 } else { out = out s; s = "" } }
+      }
+      print out
+    }'
+}
 
 case $type in
 refactor | perf)
-  say "**Rule for \`$type\`:** (a) no existing test, fixture or golden file changes; (b) base's tests and fixtures pass against this code."
-  edited=$(paths --diff-filter=DMT | grep -E '^"?(test/|packs/[^/]+/[^/]+/fixtures/)' || true)
+  say "**Rule for \`$type\`:** (a) no existing test, fixture, golden file or test script changes, and no record (change.json) at all; (b) base's tests and fixtures pass against this code."
+  # CI runs this change's copy of the test scripts, and records are data the tests do not check.
+  edited=$(
+    paths --diff-filter=DMT | grep -E '^"?(test/|packs/[^/]+/[^/]+/fixtures/|scripts/(e2e|golden)\.ts"?$)' || true
+    paths | grep -E '(^|/)change\.json"?$' || true
+  )
   if [ -n "$edited" ]; then
-    say "**(a) failed:** a $type keeps every existing test as it is (new test files are fine). Changed, deleted or renamed:"
+    say "**(a) failed:** a $type keeps every existing test, test script and record as it is (new test files are fine). Touched:"
     list "$edited"
     exit 1
   fi
-  say "**(a) passed:** no existing file under test/ or packs/*/*/fixtures/ changed."
-  reason=$(printf '%s\n' "${BODY:-}" | tr -d '\r' | sed -n 's/^Proof: none, //p' | head -1 | sed 's/[[:space:]]*$//')
-  if [ "${#reason}" -ge 10 ]; then
+  say "**(a) passed:** no existing test, fixture, golden file, test script or record changed."
+  reason=$(visible | sed -n 's/^Proof: none, //p' | head -1 | sed 's/[[:space:]]*$//')
+  # Characters, not bytes, whatever the locale: UTF-8 continuation bytes are not counted.
+  length=$(($(printf '%s' "$reason" | LC_ALL=C tr -d '\200-\277' | wc -c)))
+  if [ "$length" -ge 10 ]; then
+    code=$(printf '%s' "$reason" | tr '`' "'")
     echo "::warning::(b) skipped by a 'Proof: none' line in the pull request body; the reason is in the job summary"
-    say "**(b) skipped** by the opt-out line in the pull request body. Reason given: $reason"
+    say "**(b) skipped** by the opt-out line in the pull request body. Reason given: \`$code\`"
   else
     [ -n "$reason" ] && say "The opt-out line was ignored: its reason needs at least 10 characters."
     say "(b) runs next."

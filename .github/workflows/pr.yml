@@ -41,7 +41,14 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
         run: |
-          git show "$BASE:scripts/check-refactor.sh" > "$RUNNER_TEMP/rule.sh" || cp scripts/check-refactor.sh "$RUNNER_TEMP/rule.sh"
+          if git show "$BASE:scripts/check-refactor.sh" > "$RUNNER_TEMP/rule.sh"; then
+            copy="base's scripts/check-refactor.sh"
+          else
+            cp scripts/check-refactor.sh "$RUNNER_TEMP/rule.sh"
+            copy="this change's scripts/check-refactor.sh, since base has none"
+          fi
+          echo "Rule from $copy"
+          printf 'Rule from %s\n\n' "$copy" >> "$GITHUB_STEP_SUMMARY"
           sh "$RUNNER_TEMP/rule.sh" "$BASE" "$HEAD"
       - if: steps.table.outputs.base-tests == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
