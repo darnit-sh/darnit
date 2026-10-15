@@ -632,6 +632,16 @@ describe("fix --pr", () => {
     expect(await tree(dir)).toEqual(await tree(BEFORE));
     expect(renderSummary(result)).toContain("nothing pushed");
   });
+
+  it("keeps test output as plain text when the tests print color", async () => {
+    const { dir, branch } = await repoWithOrigin();
+    const posts = stubGitHub(branch);
+    const colored = "node -e \"console.log('\\u001b[32mok\\u001b[39m \\u001b[2mdim\\u001b[22m\\u001b(B\\u001b[2K\\u001b[1A\\u001b]8;;https://x.example\\u0007link\\u001b]8;;\\u001b\\u005c')\"";
+    const result = await fix(dir, { pr: true, test: colored, repo: "o/r" });
+    expect(result.records[0]?.pr).toMatchObject({ state: "opened", tests: { output: "ok dimlink" } });
+    expect(String(posts[0]?.body)).toContain("\n```\nok dimlink\n```\n");
+    expect(String(posts[0]?.body)).not.toContain("\u001b");
+  });
 });
 
 describe("prBody", () => {

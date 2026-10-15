@@ -106,6 +106,10 @@ function redact(text: string): string {
     .reduce((t, secret) => t.replaceAll(secret, "***"), text);
 }
 
+/** Terminal escape sequences (colors, cursor moves, links), so kept output is plain text. */
+// eslint-disable-next-line no-control-regex
+const ESCAPES = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b\n]*(?:\u0007|\u001b\\)?|[ -/]*[0-~])/g;
+
 export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 1000): Promise<TestRun> {
   return new Promise((resolve) => {
     // Detached = its own process group, so a timeout kills the command and not just the shell around it.
@@ -133,7 +137,9 @@ export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 10
     child.stderr.on("data", keep);
     child.on("close", (code) => {
       clearTimeout(timer);
-      const text = cut ? redact(output).slice(CUT_MARGIN) : redact(output);
+      // Masked before and after the codes come out: removing one can cut a token or join one.
+      const plain = redact(output).replace(ESCAPES, "");
+      const text = cut ? redact(plain).slice(CUT_MARGIN) : redact(plain);
       const tail = text.trimEnd().split("\n").slice(-TAIL_LINES).join("\n").slice(-TAIL_CHARS);
       resolve({ command, passed: code === 0 && !timedOut, output: tail, timedOut });
     });

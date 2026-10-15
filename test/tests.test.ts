@@ -164,6 +164,11 @@ describe("runTests", () => {
       const file = await runTests(dir, "cat leak.txt");
       expect(file.output).not.toContain("ghp_testtoken1234567890");
       expect(file.output).toContain("***");
+      // Nor by wrapping it in terminal codes that, once removed, would cut or join it.
+      for (const wrapped of ["\u001bghp_testtoken1234567890", "\u001b[ghp_testtoken1234567890", "gh\u001b[0mp_testtoken1234567890"]) {
+        await writeFile(join(dir, "leak.txt"), wrapped);
+        expect((await runTests(dir, "cat leak.txt")).output).not.toContain("testtoken1234567890");
+      }
     } finally {
       for (const [k, v] of Object.entries(saved)) {
         if (v === undefined) delete process.env[k];
