@@ -21,10 +21,16 @@ export const sha256 = (text: string) => createHash("sha256").update(text).digest
 
 export const parseSpec = (text: string) => parse(text) as Spec;
 
+/** A $ref cycle resolves to nothing; each schema is visited once, so any chain ends. */
 function resolve(spec: Spec, schema: Schema | undefined): Schema | undefined {
-  if (!schema?.$ref) return schema;
-  const name = schema.$ref.split("/").pop() ?? "";
-  return resolve(spec, spec.components?.schemas?.[name]);
+  const seen = new Set<string>();
+  while (schema?.$ref) {
+    const name = schema.$ref.split("/").pop() ?? "";
+    if (seen.has(name)) return undefined;
+    seen.add(name);
+    schema = spec.components?.schemas?.[name];
+  }
+  return schema;
 }
 
 /** Properties of an operation's JSON request body; $ref resolved, allOf flattened one level. */

@@ -27,6 +27,11 @@ const KIND: Record<string, ChangeRecord["kind"]> = {
   "endpoint-deprecated": "deprecation",
 };
 const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
+// Spec text lands in rule YAML, ast-grep patterns, fixtures and the corpus pull request,
+// so only plain names and paths get through; anything else is counted in `ignored`, never echoed.
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const METHOD = /^[A-Z]+$/;
+const PATH = /^\/[\w/{}?=-]*$/;
 
 // Only explicit phrasings; a bare "use X" would turn prose like "Use this to…" into a rename.
 const REPLACEMENT = /(?:in favou?r of|replaced by)\s+`?([A-Za-z_][A-Za-z0-9_]*)`?|use\s+`([A-Za-z_][A-Za-z0-9_]*)`\s+instead/i;
@@ -81,10 +86,18 @@ export function deriveCandidates(input: {
       skip(e.id);
       continue;
     }
+    if (!METHOD.test(e.operation) || !PATH.test(e.path)) {
+      skip(`${e.id} (endpoint is not a plain path)`);
+      continue;
+    }
     const fieldLevel = e.id.startsWith("request-p");
     const field = fieldLevel ? e.text.match(/`([^`]+)`/)?.[1] : undefined;
     if (fieldLevel && (!field || field.includes("/"))) {
       skip(`${e.id} (nested property)`);
+      continue;
+    }
+    if (field !== undefined && !IDENTIFIER.test(field)) {
+      skip(`${e.id} (field name is not a plain identifier, ${endpoint})`);
       continue;
     }
     const symbol = config.symbols?.[endpoint];

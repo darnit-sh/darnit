@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { deriveCandidates, writeCandidate } from "../src/corpus/candidates.js";
 import { changelog } from "../src/corpus/oasdiff.js";
-import { parseSpec } from "../src/corpus/spec.js";
+import { parseSpec, requestProperties, type Schema, type Spec } from "../src/corpus/spec.js";
 import { runPackFixtures } from "../src/packs/fixtures.js";
 import { loadRecords } from "../src/records/load.js";
 
@@ -113,5 +113,38 @@ describe("deriveCandidates", () => {
     const { candidates, ignored } = await derive("additive-after.yaml");
     expect(candidates).toEqual([]);
     expect(ignored).toEqual({ "new-optional-request-property": 1, "endpoint-added": 1 });
+  });
+
+  it("skips spec text that is not a plain name, with a note, instead of writing it into rules", () => {
+    const bad = ["a'\n    strictness: 'x", "$K", "a b"];
+    const properties = Object.fromEntries(bad.map((f) => [f, { description: "Deprecated in favor of `b`." }]));
+    const spec: Spec = { paths: { "/chat/completions": { post: { requestBody: { content: { "application/json": { schema: { properties } } } } } } } };
+    const entry = (field: string, path = "/chat/completions") => ({ id: "request-property-deprecated", level: 1 as const, text: `request property \`${field}\` deprecated`, operation: "POST", path });
+    const entries = [...bad.map((f) => entry(f)), entry("max_tokens", "/chat/completions <img src=x>")];
+    const { candidates, ignored, unmapped } = deriveCandidates({ vendor: "openai", config, entries, spec, existing: [], observedAt });
+    expect(candidates.flatMap((c) => Object.values(c.files)).join("\n")).not.toMatch(/strictness|\$K/);
+    expect(candidates).toEqual([]);
+    expect(unmapped).toEqual([]);
+    expect(ignored).toEqual({
+      "request-property-deprecated (field name is not a plain identifier, POST /chat/completions)": 3,
+      "request-property-deprecated (endpoint is not a plain path)": 1,
+    });
+  });
+});
+
+describe("requestProperties", () => {
+  it("stops at $ref cycles and follows long chains within a CPU budget", () => {
+    const ref = (name: string): Schema => ({ $ref: `#/components/schemas/${name}` });
+    const schemas: Record<string, Schema> = { A: ref("B"), B: ref("A"), Self: ref("Self") };
+    for (let i = 0; i < 100_000; i++) schemas[`C${i}`] = ref(`C${i + 1}`);
+    schemas["C100000"] = { properties: { max_tokens: ref("Self") } };
+    const op = (name: string) => ({ post: { requestBody: { content: { "application/json": { schema: ref(name) } } } } });
+    const spec: Spec = { paths: { "/a": op("A"), "/self": op("Self"), "/chain": op("C0") }, components: { schemas } };
+    const start = process.cpuUsage();
+    expect(requestProperties(spec, "POST", "/a")).toEqual({});
+    expect(requestProperties(spec, "POST", "/self")).toEqual({});
+    expect(requestProperties(spec, "POST", "/chain")).toEqual({ max_tokens: ref("Self") });
+    const { user, system } = process.cpuUsage(start);
+    expect((user + system) / 1000).toBeLessThan(1000);
   });
 });
