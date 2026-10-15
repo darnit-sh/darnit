@@ -8,7 +8,7 @@ import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
-import { findModelValues, isTestPath } from "../src/scan/values.js";
+import { findModelValues, inside, isTestPath } from "../src/scan/values.js";
 import { findMentions } from "../src/scan/mentions.js";
 
 vi.mock("@ast-grep/napi", async (importOriginal) => {
@@ -711,16 +711,33 @@ describe("model names set as values", () => {
 
   it("takes about as long with tokenizer calls in the file as without", () => {
     const grammar = grammarFor("app.py")!.grammar;
-    // CPU time, so other work on the machine does not count; 120,000 lines, so even cheap quadratic work shows.
-    const time = (line: string) => {
+    // Both files hold the same calls and both get the tokenizer pass, so a healthy run is about 1x. CPU
+    // time on shared runners still varies by up to half, so the bound is loose: checking every tokenizer
+    // for each value is about 5x here. The search itself is counted step by step in the next test.
+    const time = (call: string) => {
+      const source = `count_tokens(x)\n${`${call}(x)\nmodel = "gpt-4"\n`.repeat(120_000)}`;
       const start = process.cpuUsage();
-      expect(findModelValues("app.py", `${line}model = "gpt-4"\n`.repeat(120_000), grammar, new Set(["gpt-4"]))).toHaveLength(120_000);
+      expect(findModelValues("app.py", source, grammar, new Set(["gpt-4"]))).toHaveLength(120_000);
       const { user, system } = process.cpuUsage(start);
       return user + system;
     };
-    const plain = time("x = 1\n");
-    expect(time("count_tokens(x)\n")).toBeLessThan(2 * plain);
+    const plain = time("count_things");
+    expect(time("count_tokens")).toBeLessThan(2.5 * plain);
   }, 60_000);
+
+  it("finds the range around a value in a few steps however many ranges there are", () => {
+    const ranges = Array.from({ length: 2000 }, (_, i) => ({ start: 10 * i, end: 10 * i + 5 }));
+    let reads = 0;
+    const counted = new Proxy(ranges, {
+      get(target, key) {
+        if (/^\d+$/.test(String(key))) reads++;
+        return Reflect.get(target, key) as unknown;
+      },
+    });
+    expect(ranges.filter((_, i) => inside(counted, 10 * i + 1, 10 * i + 2) && !inside(counted, 10 * i + 4, 10 * i + 6))).toHaveLength(2000);
+    // A binary search reads at most 12 ranges per lookup here, a scan from the start about 1000.
+    expect(reads).toBeLessThan(2 * 2000 * 50);
+  });
 
   it("reads long call chains about as fast as parsing them", () => {
     for (const [file, link] of ["app.py", "app.ts"].flatMap((f) => [".a()", ".token", ".token()"].map((l) => [f, l] as const))) {
