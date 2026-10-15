@@ -2,14 +2,19 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse } from "@ast-grep/napi";
-import { afterEach, describe, expect, it } from "vitest";
+import { parse, SgNode } from "@ast-grep/napi";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, snippet, toJson, type Hit } from "../src/check.js";
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { findModelValues, isTestPath } from "../src/scan/values.js";
 import { findMentions } from "../src/scan/mentions.js";
+
+vi.mock("@ast-grep/napi", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@ast-grep/napi")>();
+  return { ...real, parse: vi.fn(real.parse) };
+});
 
 const SAMPLES = fileURLToPath(new URL("./samples/", import.meta.url));
 const MAX_TOKENS_FIXTURE = fileURLToPath(
@@ -940,6 +945,30 @@ describe("findMatches", () => {
     expect(findMatches('f({ model: "gpt-4" });\n', ts, [{ context: '({ model: "$M" })', selector: "pair" }])).toHaveLength(1);
     const py = grammarFor("a.py")!.grammar;
     expect(findMatches('f(model="gpt-4")\n', py, [{ context: 'f(model="$M")', selector: "keyword_argument" }])).toHaveLength(1);
+  });
+});
+
+describe("check parses each file once", () => {
+  // Every parse and every node read from it holds memory until the file is done: one per record took gigabytes on a file of 20,000 calls.
+  it("shares one syntax tree among every record and the model values", async () => {
+    const text = 'import OpenAI from "openai";\nconst client = new OpenAI();\nclient.chat.completions.create({ model: "gpt-3.5-turbo-0613", max_tokens: 5 });\nconst model = "gpt-3.5-turbo-0613";\n';
+    vi.mocked(parse).mockClear();
+    const { hits, values } = await checkReport(await scratch({ "app.ts": text }));
+    expect(new Set(hits.map((h) => h.record.id)).size).toBe(2);
+    expect(values).toHaveLength(1);
+    expect(vi.mocked(parse).mock.calls.filter(([, source]) => source === text)).toHaveLength(1);
+  });
+
+  it("reads only the nodes around matches, not every node in the file", async () => {
+    const filler = Array.from({ length: 1000 }, (_, i) => `  const total${i} = price * 2 + tax;\n`).join("");
+    const text = `import OpenAI from "openai";\nconst client = new OpenAI();\nfunction totals(price, tax) {\n${filler}}\nclient.chat.completions.create({ model: "gpt-3.5-turbo-0613", max_tokens: 5 });\n`;
+    const node = SgNode.prototype as unknown as { children(): unknown[]; namedChildren(): unknown[] };
+    const spies = [vi.spyOn(node, "children"), vi.spyOn(node, "namedChildren")];
+    const { hits } = await checkReport(await scratch({ "app.ts": text }));
+    const read = spies.flatMap((s) => s.mock.results).reduce((n, r) => n + (r.value as unknown[]).length, 0);
+    for (const spy of spies) spy.mockRestore();
+    expect(hits).toHaveLength(2);
+    expect(read).toBeLessThan(1000);
   });
 });
 

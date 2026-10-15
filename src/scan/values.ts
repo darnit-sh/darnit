@@ -151,9 +151,9 @@ export function joined(ranges: readonly Span[]): Span[] {
  * engine: a constant, a default, a keyword argument, an object or dict entry, an env read's default.
  * Comments, dict keys, comparisons, list items and types are left out by the parser.
  */
-export function findModelValues(file: string, source: string, grammar: Grammar, names: ReadonlySet<string>): ModelValue[] {
+export function findModelValues(file: string, source: string, grammar: Grammar, names: ReadonlySet<string>, parsed = () => parse(grammar, source).root()): ModelValue[] {
   if (TOKEN.test(basename(file)) || ![...names].some((n) => source.includes(n))) return [];
-  const root = parse(grammar, source).root();
+  const root = parsed();
   const lines = source.split("\n");
   const py = file.endsWith(".py");
   const kinds = py ? ["string"] : ["string", "template_string"];

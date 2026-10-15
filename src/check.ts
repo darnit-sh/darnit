@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { parse, type SgNode } from "@ast-grep/napi";
 import { parse as parseYaml } from "yaml";
 import { firstFive, listFiles, plural, readText, tooLargeNote, vendorClients } from "./detect.js";
 import { loadRecords } from "./records/load.js";
@@ -55,7 +56,6 @@ export async function scan(
   const tooLarge: string[] = [];
   let scanned = 0;
   let otherFiles = 0;
-  // Known limit: each file is parsed once per record. Fine for a handful of records; index them by vendor as the corpus grows.
   for (const file of files) {
     const grammar = grammarFor(file);
     if (!grammar && !withMentions) continue;
@@ -72,23 +72,28 @@ export async function scan(
     }
     if (!grammar) continue;
     scanned++;
+    // Parsed at most once, when a record needs it; every record shares the tree and the client index built on it.
+    let tree: SgNode | undefined;
+    const parsed = () => (tree ??= parse(grammar.grammar, text).root());
     const reported = new Map<string, Span[]>();
     for (const record of records) {
       const patterns = record.detection.astGrepPatterns[grammar.lang];
       if (!patterns) continue;
       const { sdkSymbols: symbols, endpoints } = record.surface;
       const vendor = vendorClients(record.vendor);
-      for (const match of findMatches(text, grammar.grammar, patterns, { symbols, endpoints, vendor })) {
+      for (const match of findMatches(text, grammar.grammar, patterns, { symbols, endpoints, vendor }, parsed)) {
         (match.foreign ? foreign : hits).push({ ...match, record, file });
         const spans = reported.get(record.id);
         if (spans) spans.push(match.span);
         else reported.set(record.id, [match.span]);
       }
+      // Nodes read from the tree free their memory only once the scan yields, so a big file holds one record's at a time, not every record's.
+      if (tree) await new Promise((r) => setImmediate(r));
     }
     if (names.size === 0 || isTestPath(file)) continue;
     // A value inside a reported call site is already listed there.
     const covered = new Map([...reported].map(([id, spans]) => [id, joined(spans)]));
-    for (const v of findModelValues(file, text, grammar.grammar, names)) {
+    for (const v of findModelValues(file, text, grammar.grammar, names, parsed)) {
       const record = byName.get(v.model)!;
       if (!inside(covered.get(record.id) ?? [], v.span.start, v.span.end)) values.push({ ...v, record, file });
     }
