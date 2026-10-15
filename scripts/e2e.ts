@@ -7,6 +7,9 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// No run may reach the npm registry.
+process.env.DARNIT_NO_UPDATE_CHECK = "1";
+
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCENARIOS = join(ROOT, "test", "e2e");
 

@@ -5,6 +5,7 @@ import { Command, CommanderError } from "commander";
 import { checkJson, checkReport, exitCodeForCheck, render } from "./check.js";
 import { exitCodeFor, fix, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
+import { updateNotice } from "./update.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -33,6 +34,7 @@ program
   .option("--json", "machine-readable output")
   .option("--mentions", "list every line that mentions a retired or retiring model name")
   .action(async ({ json, mentions: all }: { json?: boolean; mentions?: boolean }) => {
+    const update = updateNotice(version, { env: process.env, json });
     const { hits, coverage, values, mentions } = await checkReport(process.cwd());
     if (json) {
       const out = process.stdout;
@@ -44,7 +46,11 @@ program
         if (!out.write(chunk)) await once(out, "drain").catch(() => {});
       }
       out.write("\n");
-    } else console.log(forTerminal(render(hits, coverage, values, mentions, all)));
+    } else {
+      console.log(forTerminal(render(hits, coverage, values, mentions, all)));
+      const notice = await update;
+      if (notice) console.log(notice);
+    }
     process.exitCode = exitCodeForCheck(hits);
   });
 
@@ -62,6 +68,7 @@ program
   .option("--no-test", "skip tests and the build check")
   .option("--json", "machine-readable output")
   .action(async (flags: FixFlags) => {
+    const update = updateNotice(version, { env: process.env, json: flags.json });
     const result = await fix(process.cwd(), {
       dryRun: flags.dryRun ?? false,
       pr: flags.pr ?? false,
@@ -77,6 +84,8 @@ program
     else {
       if (result.diff) console.log(forTerminal(result.diff, true));
       console.log(forTerminal(renderSummary(result)));
+      const notice = await update;
+      if (notice) console.log(notice);
     }
     process.exitCode = exitCodeFor(result);
   });
