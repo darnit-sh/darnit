@@ -387,8 +387,9 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         build,
         tests,
         remaining: result.remaining,
-        testsNote: base.testsNote,
-        buildNote: base.buildNote,
+        testsNote: opts.noTest ? "skipped with --no-test" : base.testsNote,
+        // A build only runs for JavaScript and TypeScript changes, so only those were skipped.
+        buildNote: opts.noTest && changed.some((f) => COMPILED.test(f)) ? "skipped with --no-test" : base.buildNote,
         unconfirmed: result.unconfirmed,
       });
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
