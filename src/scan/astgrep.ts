@@ -217,7 +217,13 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
   const endpoints = gate?.endpoints ?? [];
   const found = patterns.map(({ context, selector }) => root.findAll({ rule: ruleFor(context, selector) }));
   // A static call counts only on the vendor's own class, never a local or another package's of the same name.
-  const isVendorClass = (callee: string) => !gate?.vendor || vendorClass(root, grammar, callee, gate.vendor);
+  const classes = new Map<string, boolean>();
+  const isVendorClass = (callee: string) => {
+    if (!gate?.vendor) return true;
+    const name = callee.split(".")[0]!;
+    if (!classes.has(name)) classes.set(name, vendorClass(root, grammar, callee, gate.vendor));
+    return classes.get(name)!;
+  };
   const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, found.flat(), symbols, endpoints, isVendorClass) : undefined;
   const matches: Match[] = [];
   for (const nodes of found) {

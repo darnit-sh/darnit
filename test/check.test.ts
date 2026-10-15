@@ -857,11 +857,13 @@ describe("model shutdowns", () => {
       ].join("\n"),
       "other.ts": [
         'import { OpenAIRealtimeWS } from "some-realtime-lib";',
+        'import { OpenAIRealtimeTranslationWS } from "openai-realtime-api/realtime/translations/ws";',
         "class OpenAIRealtimeWebSocket {",
         "  static create(client: unknown, props: { model: string }) {}",
         "}",
         `OpenAIRealtimeWS.create(client, { model: "${old}" });`,
         `OpenAIRealtimeWebSocket.create(client, { model: "${old}" });`,
+        `OpenAIRealtimeTranslationWS.create(client, { model: "${old}" });`,
         "",
       ].join("\n"),
     });
@@ -869,7 +871,7 @@ describe("model shutdowns", () => {
     expect([...new Set(locations(shutdowns(hits)))].sort()).toEqual(["cjs.js:3", "rt0.ts:4", "rt1.ts:4", "rt2.ts:4", "rt3.ts:4", "rt4.ts:4"]);
     expect(coverage.foreignAt).toEqual(["groq.ts:4"]);
     // A look-alike's model is still listed, as possibly affected.
-    expect([...new Set(values.map((v) => `${v.file}:${v.line}`))].sort()).toEqual(["other.ts:5", "other.ts:6"]);
+    expect([...new Set(values.map((v) => `${v.file}:${v.line}`))].sort()).toEqual(["other.ts:6", "other.ts:7", "other.ts:8"]);
   });
 
   it("reports a retiring model written as the fallback when no model is passed", async () => {
@@ -1353,6 +1355,20 @@ describe("check on a repository built to slow it down", () => {
     // About 0.9 seconds on a laptop.
     expect((user + system) / 1000).toBeLessThan(5000);
     expect(new Set(hits.map((h) => h.line)).size).toBe(3000);
+  });
+
+  it("checks a class name imported from thousands of packages, with as many calls, within a CPU budget", { timeout: 60_000 }, async () => {
+    const text = [
+      times(16000, (i) => `import { OpenAIRealtimeWS } from "pkg${i}/realtime/ws";\n`),
+      times(16000, () => 'OpenAIRealtimeWS.create(c, { model: "gpt-4o-realtime-preview-2024-10-01" });\n'),
+    ].join("");
+    const dir = await scratch({ "app.ts": text });
+    const start = process.cpuUsage();
+    const { hits } = await checkReport(dir);
+    const { user, system } = process.cpuUsage(start);
+    // About 2 seconds on a laptop; 16 when each call walked every import of the name.
+    expect((user + system) / 1000).toBeLessThan(8000);
+    expect(hits).toEqual([]);
   });
 
   it("traces each call through the assignments it can see, not every one of the name in the file", async () => {
