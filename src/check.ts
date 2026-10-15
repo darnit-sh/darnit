@@ -49,7 +49,9 @@ export async function scan(
   const values: ModelValueHit[] = [];
   const mentions: MentionHit[] = [];
   const namesOf = new Map(records.map((r) => [r, new Set(recordNames(r))]));
-  const byName = new Map(modelValues || withMentions ? records.flatMap((r) => [...namesOf.get(r)!].map((n) => [n, r] as const)) : []);
+  // Every record naming a model: a value or mention is listed under each, the same way call sites are.
+  const byName = new Map<string, ChangeRecord[]>();
+  for (const r of modelValues || withMentions ? records : []) for (const n of namesOf.get(r)!) byName.set(n, [...(byName.get(n) ?? []), r]);
   const names = new Set(byName.keys());
   // Calls through another provider's client (Groq's SDK, the vendor's SDK pointed elsewhere): never reported.
   const foreign: Hit[] = [];
@@ -68,7 +70,7 @@ export async function scan(
       if (!grammar) otherFiles++;
       // Known limit: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
       // (300 MB of crafted names) exhaust the heap. Store them compactly, or cap each file and keep its count, if that matters.
-      for (const m of findMentions(text, names)) mentions.push({ ...m, file, record: byName.get(m.model)! });
+      for (const m of findMentions(text, names)) for (const record of byName.get(m.model)!) mentions.push({ ...m, file, record });
     }
     if (!grammar) continue;
     scanned++;
@@ -92,14 +94,14 @@ export async function scan(
       if (tree && text.length > 100_000) await new Promise((r) => setImmediate(r));
     }
     if (names.size === 0 || isTestPath(file)) continue;
-    // A value inside a reported call site is already listed there.
+    // A value inside a call site reported for a record naming that model is already listed there.
     const covered = new Map([...reported].map(([id, spans]) => [id, joined(spans)]));
     for (const v of findModelValues(file, text, grammar.grammar, names, parsed)) {
-      const record = byName.get(v.model)!;
-      if (!inside(covered.get(record.id) ?? [], v.span.start, v.span.end)) values.push({ ...v, record, file });
+      const named = byName.get(v.model)!;
+      if (!named.some((r) => inside(covered.get(r.id) ?? [], v.span.start, v.span.end))) for (const record of named) values.push({ ...v, record, file });
     }
   }
-  // A name already reported on that line as a call site or a value is not mentioned again.
+  // A name already reported on that line, as a call site or a value, is not mentioned again.
   const key = (file: string, line: number, model: string) => `${file}:${line} ${model}`;
   const listed = new Set([
     ...values.map((v) => key(v.file, v.line, v.model)),
@@ -238,8 +240,10 @@ const MENTIONS_INTRO = [
 ];
 const MENTION_FILES = 20;
 
-/** Mentions counted per file, most first; with `all`, one line per mention. */
-function mentionSection(mentions: readonly MentionHit[], all: boolean): string[] {
+/** Mentions counted per file, most first; with `all`, one line per mention. A mention named by two records is counted once. */
+function mentionSection(listed: readonly MentionHit[], all: boolean): string[] {
+  // One entry per record naming the model, side by side: keep the first.
+  const mentions = listed.filter((m, i) => i === 0 || m.line !== listed[i - 1]!.line || m.model !== listed[i - 1]!.model || m.file !== listed[i - 1]!.file);
   const byFile = new Map<string, MentionHit[]>();
   for (const m of mentions) {
     const list = byFile.get(m.file);

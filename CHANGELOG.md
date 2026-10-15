@@ -21,6 +21,7 @@ Notable changes to darnit. The format follows [Keep a Changelog](https://keepach
 
 ### Fixed
 
+- A model name listed in more than one change record is reported under each of them, the same way call sites are: under every record's heading in "Possibly affected", and once per record in `possiblyAffected` and `mentions` in `check --json`, each entry with that record's `id`. Before, only one of the records showed it. "Also mentioned" still counts each line once. No shipped records share a model name today. ([#87](https://github.com/darnit-sh/darnit/pull/87))
 - A pull request opened with `fix --pr --no-test` says the tests and the build check were skipped with `--no-test`, instead of claiming the repository has no test command. ([#85](https://github.com/darnit-sh/darnit/pull/85))
 - `check` parses each file once for all change records instead of once per record, and reads only the parts of the file around what it finds, so a file with thousands of call sites takes far less memory and time: one with 20,000 calls peaked near 2 GB and now stays near 550 MB. The output is unchanged. ([#78](https://github.com/darnit-sh/darnit/pull/78))
 - `check --json` writes call sites and model values in pieces, as it already did for mentions, so a report with hundreds of thousands of them no longer holds a second full copy in memory or fails once it passes the longest string Node can hold. The output is unchanged. ([#77](https://github.com/darnit-sh/darnit/pull/77))
