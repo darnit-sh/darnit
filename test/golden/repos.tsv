@@ -1,0 +1,80 @@
+repo	sha	slice	shape
+alfredfrancis/ai-chatbot-framework	6a0b00f27a1464b31e998bbd03cd0cf278b53313	no	field set
+algorithmicsuperintelligence/optillm	e4ad19906578c9c472a3f8fd04d218db89a31c8c	yes	79 max_tokens hits
+AmberSahdev/Open-Interface	5a4f706223507fc9d9eb2239cced85385fcb1308	no	field set
+argilla-io/distilabel	313fac85b1a2472dd88db1a31c2b754599f46476	no	field set
+askrella/whatsapp-chatgpt	a5aad4f581aaff9b6cf91f994d6b61197371e5ba	no	field set
+ax-llm/ax	458f27373c72edf7505410bc40b7f925826f9af1	no	field set
+bookfere/Ebook-Translator-Calibre-Plugin	91055325e4339e5b34b1fba71823c4f2b966cfac	no	field set
+Center-for-AI-Innovation/LLMFlux	733022966d6ec48fd0f1768c4b7826b46e8c6e51	yes	no findings, exit 0
+codigoencasa/builderbot	7aa5413a8634271258b293fa648f014736bf2614	no	field set
+darkzOGx/youtube-automation-agent	e26792ae00dc1ec2434faf32632896609396dfad	no	field set
+daveebbelaar/ai-cookbook	84748d7a076c2ef3ab751435e80bf419b1c9ca61	yes	22 Python hits
+ggozad/oterm	5771a2e3aaef947df8e0e042d1ff072750649b67	no	field set
+gptme/gptme	461a603d4670a4e529e0cecb0cbbb6c5b5277e90	no	field set
+griptape-ai/griptape	aa95c59934c7d8ff691cd7112034f9cc016b9a0c	yes	constructor value across files
+guy-hartstein/company-research-agent	5b2caa8277605b98aa7029246267faeba8a312fb	no	field set
+InternLM/lmdeploy	110965c7706bbbeb31e21df5d7ef2531fe01c935	no	field set
+itsOwen/CyberScraper-2077	a260fa81f4a0c7c732885cceb68333c91fcda3d9	no	field set
+JusticeRage/Gepetto	f98e4c12decf86eae76ece9d6955bb6dfe472190	no	field set
+llm-workflow-engine/llm-workflow-engine	8a64e79dc45a5c4ef1c1c3db37eae84e18dce10d	no	field set
+mattzcarey/shippie	23e91d0c3ed12950c5de591e9e11d9b0c6dbf3f8	no	field set
+mozilla-ai/any-llm	7b3bfc8d38f2696acc28e3d54160d697a0febc60	no	field set
+nhaouari/obsidian-textgenerator-plugin	2a11031d15c4af8be477d35a5c2de17672e946eb	no	field set
+open-compass/VLMEvalKit	54a063c5bf75245c35599daab9826d0a5b8e2671	yes	partial and raw HTTP
+openai/openai-agents-js	d8fa6c35b51deb5b0b4761fd1c6dda45879d52df	no	field set
+OvidijusParsiunas/deep-chat	9bb9114651a9100abb33f6c4d5116edd730d21c1	no	field set
+PEPETII/gpt-image	e658c7b9b3ee8273ae6424575c10d3ca1cc60dc5	no	field set
+pezzolabs/pezzo	0787e3c037ad24544c2d3e6842507c3e7461a1de	no	field set
+sethbang/venice-py	c55fbe0b54482b76a47e630ad54c07c7ef76039e	no	field set
+Josh-XT/AGiXT	3a3202419a962aa815d139849d6f218d3f81c998	no	field set
+SolidLao/SQLBarber	5a4d119c32e70df5f40ab82e3c3a5cc1ef4419a6	no	11,134 mentions
+OEvortex/llm4free	ee00a7a0621dd8efdb23681bad514a49365279a2	no	field set
+Acacian/aegis	134580e37190ed9297a245eb3c902972ca9bb334	no	field set
+CodeUpdaterBot/ClickUi	e11ba303b4e41c13539034d40999d7f630cd96d6	no	field set
+AvatarMemory/UnifiedMem	3df9428e6a788d2c2ab6b859c85b937a0128ba2f	no	field set
+MervinPraison/PraisonAIUI	f7d4eb8a1325864b7fcc2b14ba3ad0a5547ed7e8	yes	minified bundles, ada
+hepai-lab/hepai	2cd79ca84e5eafaf2f99bca13d392c0caf00ae91	no	field set
+bigdata-ustc/Agent4Edu	ecf065d1909c66691da7c2362a61ccd3dcf9169c	no	field set
+AI-in-Health/BioMedArena	4ea206b8a68e8f66357623e349774bf26431446f	no	field set
+lemony-ai/cascadeflow	280ac9728aae622be0f9892b7e9239786ee4e3c0	yes	cost tables, 727 mentions
+maritaca-ai/oab-bench	238e9991c1fd204788001482cddaea472c66b86f	no	field set
+AI45Lab/ActorAttack	3149db7f60f84d7e70075b5a3d75f84b196f5184	no	field set
+lunary-ai/lunary-js	1ed97cb261b9b5e28d36596775058ff9f87977c9	no	field set
+BloomLabsInc/genkit-plugins	11fdcf25a3b0dd29f0d26ca969845393ece7092c	yes	o1 identifier naming the model
+znc15/FlowVision	46318ab70bbc5bb76acd6697a0d17a2ea27c3925	no	field set
+anxelswanz/astraea-agent	2676a3931dd81c2b34fa411444404afb82509081	no	field set
+deptex/deptex	c8f5794648ff2a6a9668edd9ae608dff118ebc75	no	field set
+PrashamTrivedi/SourceSailor-CLI	ab7cb4423cf8166f6bca20b97432f16eb9086766	no	field set
+chaterm/Chaterm	4707789f3506e4d6228ee842e12e1415c509c8ce	no	field set
+clusterzx/paperless-ai	d2fda6991e5e55d51d6473997176bb8d054f61fd	yes	fallback model value
+spatialpixel/funkify	bde1af64021baf98b0dfcd455bd0e25957828e4c	no	field set
+stephenlb/buttercup.sh	72c26b4b99a81f263ea0793daf3c3ed065983886	no	field set
+XiamiYoung/ClanKit	d25cf17db7ec92637e760c04e40713db749cda86	no	field set
+xiyuailove/xiyuai	06928e2dbccf438109a9eeae80086bb12f729fd3	yes	shorthand { max_tokens }, foreign calls
+nate1029/Impulse	a3dafcfca952def8365371334c3375c3d61c0a57	no	field set
+iSEngLab/Psearch	1770fae8f92e7be52848c008e63fc90b74f73589	no	holdout set
+shfshanyue/Daily-Question	710fb4ae0b6cb6432679567b31deb1649567b3fd	no	holdout set
+The-FinAI/Fino1	f2b9e9931778d806ff9dd0fbb299b0ce1a2c3398	no	holdout set
+ryoiki-tokuiten/Deepthink	442d4bbe96899cca2d6354e569fb3cfeba99143e	no	holdout set
+Mintplex-Labs/anything-llm	7cbea8025211f7e7ead3701979157bd0d0e1f140	yes	compatible servers
+AnswerDotAI/cosette	b097f541e148d56158fc3986e4cdec46f8ba04cf	no	holdout set
+1146345502/aural-oss	6f85feea999cff2b123366b1b85e634a7366037f	no	holdout set
+admonstrator/zettelrobbe	c6adeb5e31d6b4c57570efba4d34d23e252ba322	no	holdout set
+sotopia-lab/sotopia-rl	2ebb14ea4802c4b8cb3def40e9a0f9a0398265c5	yes	default parameter; data-filter false
+Jovancoding/Network-AI	9e3f54e11a701248969572b1420a53cf4e0c224a	yes	test-*.ts at the root
+brandononchain/opentrade	d488b2dd6a124d7a2da76cb5afe679842bed0c92	no	holdout set
+li-group/OptiChat	17c0ddf0d84375279e2e5e77fcc78960984ada3d	no	holdout set
+swadhinbiswas/OpencodeHub	a01fddb801d148639e9a1cb4aaa6a7b90d681c60	no	holdout set
+Cohee1207/SillyTavern-ExtrasLite	7bea9e1dff3242fe7997dd5913d8a57d110babe2	no	holdout set
+supersational/JAMMIN-GPT	5fedbe4f51b4cd746835eb355670046c5aa55a9c	no	holdout set
+get-convex/chef	d8a6cb6a6f226133fdc63ed5f59d04cacb9b06cc	no	holdout set
+TomFrankly/pipedream-notion-voice-notes	aeaaff7b12cc554406e9a074a2de61a83695abaf	yes	ternaries, file over the size cap
+crestalnetwork/intentkit	afc8cc44255210db6352f7437e569ed8b88ed5e1	no	holdout set
+Code-with-Beto/snapai	a60d5393287cbf46794507e6ee0ff54d689d5976	no	holdout set
+umple/umple	90991d8dbf6da508118fcfba6d8583ec614c4f95	no	Java o1 comparators, bundled SDK copy
+harmeetsingh11/RefactorMate	b459e18e7fe392f96dcd457a2e4feffb7f8cbf66	no	holdout set
+UCSB-NLP-Chang/GroupMemBench	e2682e01ff490acfe4fac2940159dce60307dfc9	no	holdout set
+x-man-git/Async	2c18a43c0711d1f991a6eabd913831f9c82794b0	no	holdout set
+Faris0520/Botdumbess	4e0a97a1586897946c4499a04f1efc388e2ed9c6	yes	tiny JS, o1 command
+SanBingYouYong/shapecraft	2a091775acd5135e72630b96f8e7b1b27bf4056d	no	holdout set

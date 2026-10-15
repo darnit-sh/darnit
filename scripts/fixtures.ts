@@ -1,4 +1,6 @@
-import { loadRecords } from "../src/records/load.js";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 import { runPackFixtures } from "../src/packs/fixtures.js";
 
 // Runs every pack's fixtures. Exit 1 on any problem, so CI fails on drift,
@@ -7,6 +9,14 @@ import { runPackFixtures } from "../src/packs/fixtures.js";
 const records = await loadRecords();
 let failed = 0;
 let passed = 0;
+
+// A pack folder without change.json is never loaded, so its rules and fixtures would never run.
+for (const vendor of readdirSync(PACKS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory()))
+  for (const pack of readdirSync(join(PACKS_DIR, vendor.name), { withFileTypes: true }).filter((d) => d.isDirectory()))
+    if (!existsSync(join(PACKS_DIR, vendor.name, pack.name, "change.json"))) {
+      failed += 1;
+      console.log(`✗ ${vendor.name}/${pack.name} has no change.json`);
+    }
 
 for (const { record, packDir } of records) {
   for (const result of await runPackFixtures(packDir, record)) {

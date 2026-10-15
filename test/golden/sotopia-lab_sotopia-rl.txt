@@ -1,0 +1,74 @@
+exit 1
+scanned files=103 records=33 otherFiles=62 foreign=0 tooLarge=0 skipped=0
+H sotopia_rl/utils/openai.py:13:13 #8b919b34 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H sotopia_rl/utils/openai.py:31:13 #8b919b34 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H sotopia_rl/utils/openai.py:50:13 #8b919b34 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P prompter/attribution_prompting.py:17:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/direct_attribution_function.py:10:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/direct_attribution_generic_function.py:15:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/direct_attribution_normalized_function.py:10:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/goal_progress_attribution_function.py:26:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/goal_progress_attribution_function.py:37:18 #f48d27d1 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/key_utterance_function.py:20:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/only_response_attribution_function.py:106:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/only_response_attribution_function.py:117:18 #f48d27d1 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/sotopia_generate.py:211:23 #2aef845b gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/utterance_quality_attribution_function.py:44:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/utterance_quality_attribution_function.py:55:18 #f48d27d1 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/utterance_quality_attribution_normalized_function.py:100:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P prompter/utterance_quality_attribution_normalized_function.py:111:18 #f48d27d1 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/data_filtering.py:230:20 #32dccce2 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/data_filtering.py:231:17 #23512839 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/data_filtering.py:289:17 #23512839 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/db_free_data_filtering.py:232:20 #32dccce2 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/db_free_data_filtering.py:233:17 #23512839 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/db_free_data_filtering.py:292:17 #23512839 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/generate_conversations.py:11:25 #de170335 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/generate_conversations.py:12:25 #fd33d267 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/generate_conversations.py:90:17 #67f2206b gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P scripts/data_process/generate_conversations.py:96:17 #67f2206b gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P sotopia_rl/utils/openai.py:6:43 #2e32c1ce gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M annotator/episode_sampling.py:28 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M annotator/episode_sampling.py:29 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M annotator/episode_sampling.py:32 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M annotator/episode_sampling.py:33 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/experiment_eval.py:176 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/judge_model_ablation/reevaluate_episodes.py:23 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/judge_model_ablation/reevaluate_episodes.py:33 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/judge_model_ablation/reevaluate_episodes_28.py:24 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/judge_model_ablation/reevaluate_episodes_28.py:34 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/sotopia_conf/generation_utils_conf/generate.gin:17 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/sotopia_conf/rerun_missing_episodes_in_batch.gin:5 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/sotopia_conf/rerun_missing_episodes_in_batch.gin:9 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/sotopia_conf/run_async_server_in_batch.gin:5 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/sotopia_conf/run_async_server_in_batch.gin:6 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/sotopia_conf/run_async_server_in_batch.gin:7 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/sotopia_conf/run_async_server_in_batch_script.gin:6 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/sotopia_conf/server_conf/server.gin:12 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/sotopia_conf/server_conf/server.gin:12 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/attribution_prompting.py:65 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/attribution_prompting.py:197 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/direct_attribution_function.py:57 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/direct_attribution_generic_function.py:16 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/direct_attribution_generic_function.py:16 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/direct_attribution_generic_function.py:16 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/direct_attribution_generic_function.py:113 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/direct_attribution_normalized_function.py:57 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/goal_progress_attribution_function.py:69 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/key_utterance_function.py:52 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/key_utterance_prompting.py:63 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/only_response_attribution_function.py:149 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/preference_data_prompting.py:246 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/preference_eval.py:12 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/preference_eval.py:13 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/sotopia_generate.py:280 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/sotopia_generate.py:281 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/sotopia_generate.py:282 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/utterance_quality_attribution_function.py:87 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M prompter/utterance_quality_attribution_normalized_function.py:143 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/annotate/process_sotopia_pi.py:23 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/data_process/generate_conversations.py:91 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/data_process/generate_conversations.py:97 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M sotopia_rl/utils/openai.py:7 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M sotopia_rl/utils/openai.py:7 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M sotopia_rl/utils/openai.py:7 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

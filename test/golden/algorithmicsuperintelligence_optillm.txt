@@ -1,0 +1,129 @@
+exit 1
+scanned files=129 records=33 otherFiles=95 foreign=0 tooLarge=0 skipped=0
+H optillm/mars/agent.py:76:17 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/mars/agent.py:177:17 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/mars/agent.py:254:17 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/mars/aggregator.py:259:17 #f35fb7e2 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/mars/mars.py:544:13 #3db847f2 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/mars/strategy_network.py:179:17 #df4dfed3 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/mars/strategy_network.py:360:17 #848b178a openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/mars/strategy_network.py:478:17 #f35fb7e2 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/compact_plugin.py:136:13 #add5bfd8 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deep_research/research_engine.py:426:17 #986a67dc openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deep_research/research_engine.py:577:17 #1ab0c99d openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deep_research/research_engine.py:652:17 #add5bfd8 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deep_research/research_engine.py:714:17 #986a67dc openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deep_research/research_engine.py:859:17 #1533d288 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deep_research/research_engine.py:913:17 #1ab0c99d openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deep_research/research_engine.py:1164:17 #1533d288 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deepthink/self_discover.py:99:13 #8b919b34 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deepthink/self_discover.py:165:13 #6abffd05 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deepthink/self_discover.py:242:13 #6abffd05 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deepthink/self_discover.py:422:13 #f35fb7e2 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deepthink/uncertainty_cot.py:130:17 #f35fb7e2 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/deepthink/uncertainty_cot.py:156:13 #f35fb7e2 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/genselect_plugin.py:189:13 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/genselect_plugin.py:208:21 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/genselect_plugin.py:240:13 #6abffd05 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/longcepo/utils.py:131:9 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/majority_voting_plugin.py:112:13 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/majority_voting_plugin.py:127:21 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/memory_plugin.py:146:13 #986a67dc openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/proxy/client.py:211:21 #92f3beaf openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/spl/evaluation.py:150:17 #6652ec6c openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/spl/evaluation.py:217:13 #6652ec6c openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/spl/generation.py:59:13 #6652ec6c openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/spl/generation.py:126:13 #6652ec6c openai:2024-09-12:max-tokens-to-max-completion-tokens
+H optillm/plugins/spl/main.py:237:17 #6652ec6c openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_aime_benchmark.py:317:13 #df27d2b5 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_arena_hard_auto_rtc.py:62:17 #c5d98e30 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H scripts/eval_frames_benchmark.py:43:9 #986a67dc openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_frames_benchmark.py:78:9 #fb726326 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H scripts/eval_imo25_benchmark.py:299:13 #df27d2b5 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_imo25_benchmark.py:324:13 #ec870385 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_imo25_benchmark.py:494:13 #df27d2b5 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_imobench_answer.py:176:13 #23d3e03f openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_imobench_proof.py:126:13 #c15235fc openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_imobench_proof.py:234:13 #df27d2b5 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_math500_benchmark.py:695:13 #78769a9f openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H scripts/eval_optillmbench.py:386:25 #c5d98e30 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_optillmbench.py:408:33 #c5d98e30 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_optillmbench.py:532:25 #c5d98e30 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_optillmbench.py:614:21 #c5d98e30 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_simpleqa_benchmark.py:276:17 #c5d98e30 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/eval_simpleqa_benchmark.py:306:17 #c5d98e30 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test.py:85:17 #b189854d openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_api_compatibility.py:34:9 #ec870385 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_api_compatibility.py:53:9 #848b178a openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_api_compatibility.py:69:9 #ec870385 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_api_compatibility.py:84:9 #848b178a openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_api_compatibility.py:99:9 #848b178a openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_api_compatibility.py:119:9 #17262a90 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_api_compatibility.py:145:9 #e99cd4f6 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_api_compatibility.py:169:9 #848b178a openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_api_compatibility.py:191:9 #ec870385 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_conversation_logging_server.py:164:13 #ec870385 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:199:13 #ec870385 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:232:13 #848b178a openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:266:13 #ec870385 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:297:13 #17262a90 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:346:21 #ec870385 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:392:21 #ec870385 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:440:17 #92f3beaf openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:474:13 #549fc27c openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:549:13 #bc526ed9 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_conversation_logging_server.py:562:17 #bc526ed9 openai:2024-09-12:max-tokens-to-max-completion-tokens local=localhost:8000
+H tests/test_json_plugin.py:309:17 #17262a90 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_json_plugin.py:346:17 #c608f59e openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_n_parameter.py:40:17 #17262a90 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_reasoning_tokens.py:147:17 #848b178a openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_reasoning_tokens.py:173:17 #c608f59e openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/test_reasoning_tokens.py:199:17 #848b178a openai:2024-09-12:max-tokens-to-max-completion-tokens
+P optillm/server.py:1042:56 #cc5a784f gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M README.md:741 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M README.md:818 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M README.md:837 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M README.md:840 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
+M README.md:864 gpt-4o-2024-05-13 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M README.md:865 gpt-4-turbo-2024-04-09 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/compact_plugin.py:87 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:38 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:38 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M optillm/plugins/proxy/README.md:98 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:120 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:150 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:173 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:174 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:288 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:289 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:290 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:299 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:300 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:436 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:448 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:457 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:473 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/README.md:514 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/example_config.yaml:27 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/example_config.yaml:28 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/example_config.yaml:29 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M optillm/plugins/proxy/example_config.yaml:74 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/eval_aime_benchmark.py:885 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/eval_aime_benchmark.py:885 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/eval_math500_benchmark.py:786 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/eval_math500_benchmark.py:786 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_ci_quick.py:65 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_ci_quick.py:66 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_ci_quick.py:67 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:86 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:96 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:109 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:128 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:143 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:162 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:177 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:193 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:211 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:226 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:237 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_compact_plugin.py:251 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
