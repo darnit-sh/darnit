@@ -182,4 +182,13 @@ describe("runTests", () => {
     const run = await runTests(dir, "node -e \"setTimeout(() => {}, 60000)\"", 300);
     expect(run).toMatchObject({ passed: false, timedOut: true });
   });
+
+  it.skipIf(process.platform === "win32")("returns at the timeout even when a process left the group and holds the output open", async () => {
+    const dir = await dirWith({});
+    const start = Date.now();
+    const run = await runTests(dir, "perl -MPOSIX -e 'if (fork() == 0) { POSIX::setsid(); sleep 10; exit } sleep 60'", 500);
+    expect(run).toMatchObject({ passed: false, timedOut: true });
+    // Waiting on the escaped process would take 10 seconds.
+    expect(Date.now() - start).toBeLessThan(5000);
+  }, 20_000);
 });

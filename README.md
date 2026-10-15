@@ -170,7 +170,10 @@ it once more, so it can tell you whether the change broke it or it was already
 failing. A build that was already failing can't judge the change, so darnit
 keeps the change and says the build could not check it. Tests that were already
 failing still put the files back: fix them first, or use `--no-test`. The build
-check only runs when JavaScript or TypeScript changed.
+check only runs when JavaScript or TypeScript changed. A build or test run that
+takes over 10 minutes is stopped: darnit puts your files back and says it timed
+out, without running it again or saying whether the change was the cause. The
+same goes when the run without the change times out.
 
 Before rewriting, darnit checks the SDK version your repo uses: for JavaScript,
 `node_modules` or `package-lock.json`; for Python, exact `==` pins in
@@ -183,7 +186,21 @@ call site still there is listed as `needs a human: file:line` (also in the pull
 request). If the rules changed nothing, it says so instead of claiming a fix.
 
 `fix` skips changes that are not yet reviewed, and changes that a rule can't
-fully make. Both still show up in `check`.
+fully make. Both still show up in `check`. It works from the same scan as
+`check`, so it ends with the same lines about folders and files it did not
+read, and when something was not read, "Nothing to fix." reads "Nothing to fix
+in the files darnit checked." When `check` lists model names outside the call
+sites, which `fix` leaves alone, it says "No call sites to fix." and points to
+`darnit check`.
+
+`--json` gives each check it ran under `build` and `tests` (or under each
+record's `pr`) with `kind` (`build` or `tests`), `command`, `passed`, `output`,
+`attributed` (`change` when the change broke it, `baseline` when it already
+failed without the change), `notChecked` (true when an already failing build
+could not check the change) and `timedOut`. A check that timed out has
+`timedOut: true`, and with `--pr` its record's `pr.state` is `build-failed` or
+`tests-failed`. `scanned` is the same as in `check --json`, including
+`scanned.skipped` and `scanned.tooLarge`.
 
 | Flag | |
 |---|---|
@@ -199,7 +216,7 @@ fully make. Both still show up in `check`.
 | Exit | |
 |---|---|
 | 0 | done, or nothing to do (including changes left alone because the SDK is too old, and call sites listed as `needs a human`) |
-| 1 | the build or tests failed after the change (files put back, nothing pushed) |
+| 1 | the build or tests failed or timed out after the change (files put back, nothing pushed) |
 | 2 | darnit refused or failed, or a mistyped command or flag |
 
 #### `--pr`

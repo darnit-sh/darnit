@@ -1,14 +1,14 @@
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkReport, scan, title, type Hit } from "./check.js";
+import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
 import { shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
-import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, unreadSettings } from "./tests.js";
+import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, TIME_LIMIT_MINUTES, unreadSettings } from "./tests.js";
 import { atLeast, npmVersionFor, pypiVersions, type Found } from "./versions.js";
 
 export type FixOptions = {
@@ -27,7 +27,7 @@ export type FixOptions = {
 export type TestOutcome = TestRun & {
   /** What was run: the repo's build or typecheck, or its tests. */
   kind: "build" | "tests";
-  /** "change": passed before, failed after. "baseline": already failing before. */
+  /** "change": passed before, failed after. "baseline": already failing before. Neither when it timed out. */
   attributed?: "change" | "baseline";
   /** A build that already failed before the change says nothing about it: the change is kept and this is reported instead. */
   notChecked?: boolean;
@@ -73,6 +73,10 @@ export type FixResult = {
   buildNote?: string | undefined;
   diff: string;
   reverted: boolean;
+  /** What check read and did not read, as in `check`. */
+  coverage: Coverage;
+  /** Whether check lists model names outside the call sites (possibly affected values, other mentions), which fix leaves alone. */
+  namesElsewhere: boolean;
 };
 
 /** Thrown when darnit declines to act; the message says what to change. */
@@ -100,10 +104,10 @@ function heldReason(held: readonly Site[]): string {
 
 const NOT_COVERED = "the rewrite rules don't cover this call shape yet";
 
-async function groupHits(root: string, only: string[] | undefined): Promise<Group[]> {
+async function groupHits(root: string, only: string[] | undefined): Promise<{ groups: Group[]; coverage: Coverage; namesElsewhere: boolean }> {
   const packs = new Map((await loadRecords()).map((l) => [l.record.id, l.packDir]));
   for (const id of only ?? []) if (!packs.has(id)) throw new Refusal(`unknown change record: ${id}`);
-  const { hits, foreign } = await checkReport(root);
+  const { hits, foreign, coverage, values, mentions } = await checkReport(root);
   const key = (h: Hit) => `${h.record.id}\0${h.file}`;
   const mixed = new Set(foreign.map(key));
   // A server at a private address may not accept the new parameter, so its calls, and the rest of its file, go to a human.
@@ -121,7 +125,7 @@ async function groupHits(root: string, only: string[] | undefined): Promise<Grou
     }
     byId.set(hit.record.id, group);
   }
-  return [...byId.values()];
+  return { groups: [...byId.values()], coverage, namesElsewhere: values.length + mentions.length > 0 };
 }
 
 async function snapshotOf(root: string, files: readonly string[]): Promise<Map<string, string>> {
@@ -199,13 +203,19 @@ function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = 
   return outcome.changed;
 }
 
-/** Runs a check; on failure puts the files back and runs it again to say whether the change was the cause. */
+/**
+ * Runs a check; on failure puts the files back and runs it again to say whether the change was the cause.
+ * A run that timed out checked nothing, so its files go back with no verdict, and no second run when it was the first.
+ */
 async function testAndAttribute(root: string, command: string, snap: Map<string, string>, kind: TestOutcome["kind"]): Promise<TestOutcome> {
   const outcome: TestOutcome = { ...(await runTests(root, command)), kind };
   if (!outcome.passed) {
     const changed = await snapshotOf(root, [...snap.keys()]);
     await restore(root, snap);
-    outcome.attributed = (await runTests(root, command)).passed ? "change" : "baseline";
+    if (outcome.timedOut) return outcome;
+    const again = await runTests(root, command);
+    if (again.timedOut) return { ...outcome, timedOut: true };
+    outcome.attributed = again.passed ? "change" : "baseline";
     // A build that fails without the change too (missing dependencies, secrets, an unrelated error)
     // cannot judge it. Put the change back and say so, rather than blocking a fix the build never saw.
     if (kind === "build" && outcome.attributed === "baseline") {
@@ -246,7 +256,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     throw new Refusal("not a git repository; darnit only edits files it can undo. Use --dry-run to preview.");
   }
 
-  const groups = await groupHits(root, opts.only);
+  const { groups, coverage, namesElsewhere } = await groupHits(root, opts.only);
   const records: RecordResult[] = [];
   const applicable: Group[] = [];
   for (const grp of groups) {
@@ -282,7 +292,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     if (applied) applicable.push(grp);
   }
   const resultOf = (grp: Group) => records.find((r) => r.record.id === grp.record.id)!;
-  const base: FixResult = { records, dryRun, pr: opts.pr ?? false, testsSkipped: opts.noTest ?? false, diff: "", reverted: false };
+  const base: FixResult = { records, dryRun, pr: opts.pr ?? false, testsSkipped: opts.noTest ?? false, diff: "", reverted: false, coverage, namesElsewhere };
   if (applicable.length === 0) return base;
 
   if (dryRun) {
@@ -538,6 +548,9 @@ export function exitCodeFor(result: FixResult): 0 | 1 {
 function testLine(t: TestOutcome): string {
   if (t.passed) return `${t.kind}: ${t.command} passed`;
   if (t.notChecked) return `${t.kind}: ${t.command} already fails without the change, so it could not check it; change kept`;
+  if (t.timedOut) {
+    return `${t.kind}: ${t.command} timed out after ${TIME_LIMIT_MINUTES} minutes; files put back, since a run that did not finish can't check the change. Rerun with --no-test to apply it without the tests or the build check.${t.output ? `\n${t.output}` : ""}`;
+  }
   const why =
     t.kind === "build"
       ? t.attributed === "change"
@@ -568,7 +581,17 @@ export function renderSummary(result: FixResult): string {
     if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}:${s.line}${s.note ? ` (${s.note})` : ""}`);
     if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
-  if (lines.length === 0) lines.push("Nothing to fix.");
+  const notChecked = notCheckedNotes(result.coverage);
+  // A bare "Nothing to fix." would read as a clean repository; as in check, only when nothing else was found or left unread.
+  if (lines.length === 0) {
+    lines.push(
+      result.namesElsewhere
+        ? "No call sites to fix. darnit check lists the model names it found elsewhere, which fix leaves alone."
+        : notChecked.length > 0
+          ? "Nothing to fix in the files darnit checked."
+          : "Nothing to fix.",
+    );
+  }
   const applied = result.records.some((r) => r.applied);
   if (result.dryRun) {
     if (applied) lines.push("dry run: nothing written");
@@ -588,11 +611,12 @@ export function renderSummary(result: FixResult): string {
       );
     }
   }
-  return lines.join("\n");
+  return [...lines, ...notChecked].join("\n");
 }
 
 export function toJson(result: FixResult): object {
-  const outcome = (t: TestOutcome | undefined) => (t ? { command: t.command, passed: t.passed, attributed: t.attributed, output: t.output } : null);
+  const outcome = (t: TestOutcome | undefined) =>
+    t ? { kind: t.kind, command: t.command, passed: t.passed, attributed: t.attributed, notChecked: t.notChecked ?? false, timedOut: t.timedOut, output: t.output } : null;
   return {
     records: result.records.map((r) => ({
       id: r.record.id,
@@ -615,5 +639,6 @@ export function toJson(result: FixResult): object {
     dryRun: result.dryRun,
     reverted: result.reverted,
     diff: result.diff,
+    scanned: result.coverage,
   };
 }
