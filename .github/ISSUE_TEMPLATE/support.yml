@@ -1,12 +1,12 @@
 name: Request support for a change
-description: A vendor API change, deprecation or model shutdown darnit has no record for.
+description: A vendor API change, deprecation or model shutdown darnit has no change record for.
 labels: [enhancement]
 body:
   - type: input
     id: vendor
     attributes:
       label: Vendor
-      placeholder: OpenAI
+      placeholder: Stripe
     validations:
       required: true
   - type: input

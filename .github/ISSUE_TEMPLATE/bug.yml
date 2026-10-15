@@ -6,7 +6,7 @@ body:
     id: command
     attributes:
       label: Command
-      description: The command you ran and its output.
+      description: The command you ran and its output. Leave out secrets.
       render: shell
     validations:
       required: true
@@ -14,8 +14,8 @@ body:
     id: versions
     attributes:
       label: Versions
-      description: "`darnit --version`, `node --version` and your OS."
-      placeholder: darnit 0.2.0, Node 22.12.0, macOS 15
+      description: "`darnit --version`, the vendor SDK's version (such as `openai`), `node --version` and your OS."
+      placeholder: darnit 0.2.0, openai 4.104.0, Node 22.12.0, macOS 15
     validations:
       required: true
   - type: textarea
