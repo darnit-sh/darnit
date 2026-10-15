@@ -711,15 +711,17 @@ describe("model names set as values", () => {
 
   it("takes about as long with tokenizer calls in the file as without", () => {
     const grammar = grammarFor("app.py")!.grammar;
-    // CPU time, so other work on the machine does not count; 120,000 lines, so even cheap quadratic work shows.
-    const time = (line: string) => {
+    // CPU time, so other work on the machine does not count. Both files hold the same calls and both
+    // get the tokenizer pass, so a healthy run is about 1x; 180,000 lines, so cheap quadratic work shows.
+    const time = (call: string) => {
+      const source = `count_tokens(x)\n${`${call}(x)\nmodel = "gpt-4"\n`.repeat(180_000)}`;
       const start = process.cpuUsage();
-      expect(findModelValues("app.py", `${line}model = "gpt-4"\n`.repeat(120_000), grammar, new Set(["gpt-4"]))).toHaveLength(120_000);
+      expect(findModelValues("app.py", source, grammar, new Set(["gpt-4"]))).toHaveLength(180_000);
       const { user, system } = process.cpuUsage(start);
       return user + system;
     };
-    const plain = time("x = 1\n");
-    expect(time("count_tokens(x)\n")).toBeLessThan(2 * plain);
+    const plain = time("count_things");
+    expect(time("count_tokens")).toBeLessThan(1.6 * plain);
   }, 60_000);
 
   it("reads long call chains about as fast as parsing them", () => {
