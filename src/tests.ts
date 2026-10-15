@@ -131,6 +131,9 @@ export function runTests(root: string, command: string, timeoutMs = TIME_LIMIT_M
       } catch {
         child.kill("SIGKILL");
       }
+      // A process that left the group can hold the output open; stop reading so "close" comes.
+      child.stdout.destroy();
+      child.stderr.destroy();
     }, timeoutMs);
     const keep = (d: Buffer) => {
       output += d.toString();

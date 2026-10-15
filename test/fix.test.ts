@@ -482,6 +482,12 @@ describe("fix", () => {
 });
 
 const HANGS = "node -e \"setTimeout(() => {}, 60000)\"";
+// Fails at once on the rewritten file and hangs on the original, so only the second run times out.
+const GATE = "if (require('fs').readFileSync('sdk.js', 'utf8').includes('max_completion_tokens')) process.exit(1); setTimeout(() => {}, 60000);\n";
+const gated = (kind: "build" | "tests") =>
+  kind === "build"
+    ? { files: { "sdk.js": SDK_CALL, "gate.cjs": GATE, "package.json": JSON.stringify({ scripts: { typecheck: "node gate.cjs" } }) }, test: "node -e 0" }
+    : { files: { "sdk.js": SDK_CALL, "gate.cjs": GATE }, test: "node gate.cjs" };
 
 describe("fix when a check runs out of time", () => {
   it("says the tests timed out, without running them again or judging the change", async () => {
@@ -513,6 +519,22 @@ describe("fix when a check runs out of time", () => {
     expect(renderSummary(result)).toContain("build: npm run typecheck timed out after 10 minutes; files put back");
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
+
+  it.each(["build", "tests"] as const)("gives no verdict when the %s run fails with the change and then times out without it", async (kind) => {
+    runs.limitMs = 2000;
+    const { files, test } = gated(kind);
+    const dir = await repoWith(files);
+    const result = await fix(dir, { test });
+    expect(runs.count).toBe(2);
+    expect(result[kind]).toMatchObject({ kind, passed: false, timedOut: true });
+    expect(result[kind]?.attributed).toBeUndefined();
+    expect(result[kind]?.notChecked).toBeUndefined();
+    expect(result.reverted).toBe(true);
+    expect(exitCodeFor(result)).toBe(1);
+    expect(renderSummary(result)).toContain(`${kind}: ${kind === "build" ? "npm run typecheck" : test} timed out after 10 minutes; files put back`);
+    expect(renderSummary(result)).not.toMatch(/broke|already fail/);
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
 });
 
 describe("fix --json", () => {
@@ -538,6 +560,14 @@ describe("fix names what check did not read", () => {
   it("says Nothing to fix plainly when everything was checked", async () => {
     const result = await fix(await repoWith({ "app.ts": "export const x = 1;\n" }), { noTest: true });
     expect(renderSummary(result)).toBe("Nothing to fix.");
+  });
+
+  it("does not say Nothing to fix when check lists possibly affected model names", async () => {
+    const result = await fix(await repoWith({ "src/app.js": 'const MODEL = "gpt-4-0613";\nexport const r = (c) => c.chat.completions.create({ model: MODEL });\n' }), { noTest: true });
+    const summary = renderSummary(result);
+    expect(result.records).toEqual([]);
+    expect(summary).not.toMatch(/^Nothing to fix\.$/m);
+    expect(summary).toContain("darnit check");
   });
 
   it("lists them after the records it did fix", async () => {
@@ -732,6 +762,20 @@ describe("fix --pr", () => {
     expect(posts).toEqual([]);
     expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
     expect(await tree(dir)).toEqual(await tree(BEFORE));
+  });
+
+  it.each(["build", "tests"] as const)("opens no pull request when the %s run fails with the change and then times out without it", async (kind) => {
+    const { files, test } = gated(kind);
+    const { dir, bare, branch } = await repoWithOrigin(await repoWith(files));
+    const posts = stubGitHub(branch);
+    runs.limitMs = 2000;
+    const result = await fix(dir, { pr: true, test, repo: "o/r" });
+    expect(runs.count).toBe(2);
+    expect(result.records[0]?.pr).toMatchObject({ state: `${kind}-failed`, [kind]: { timedOut: true } });
+    expect(exitCodeFor(result)).toBe(1);
+    expect(posts).toEqual([]);
+    expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
   it("keeps test output as plain text when the tests print color", async () => {
