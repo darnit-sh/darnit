@@ -14,7 +14,7 @@ beforeAll(async () => {
   const top = await help();
   const commands = [...top.split("Commands:")[1]!.matchAll(/^ {2}(\w+)/gm)].map((m) => m[1]!);
   const pages = await Promise.all(["", ...commands].map(async (c) => [c, c ? await help(c) : top] as const));
-  flags = new Map(pages.map(([c, page]) => [c, [...page.matchAll(/^ {2}(?:-\w, )?(--[\w-]+)/gm)].map((m) => m[1]!)]));
+  flags = new Map(pages.map(([c, page]) => [c, [...page.matchAll(/^ {2}(?:(-\w), )?(--[\w-]+)/gm)].flatMap((m) => (m[1] ? [m[1], m[2]!] : [m[2]!]))]));
 });
 
 const read = (file: string) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
@@ -28,7 +28,7 @@ describe("docs match the CLI", () => {
     const seen: string[] = [];
     const wrong: string[] = [];
     for (const piece of code(await read(file))) {
-      for (const [line, rest] of piece.matchAll(/(?:^|npx (?:-y )?)darnit(?:@[\w.-]+)?((?: +[\w-]+)+)/gm)) {
+      for (const [line, rest] of piece.matchAll(/(?:^\s*(?:\$ )?|npx (?:-y |--yes )?)darnit(?:@[\w.-]+)?((?: +[\w-]+)+)/gm)) {
         seen.push(line);
         const words = rest!.trim().split(/ +/);
         const command = words[0]!.startsWith("-") ? "" : words[0]!;
@@ -49,7 +49,7 @@ describe("docs match the CLI", () => {
         return command ? [[command, [...new Set(s.match(/(?<![\w-])--[a-z][\w-]*/g))].sort()] as const] : [];
       }),
     );
-    const real = [...flags].filter(([c]) => c && c !== "help").map(([c, f]) => [c, f.filter((x) => x !== "--help").sort()] as const);
+    const real = [...flags].filter(([c]) => c && c !== "help").map(([c, f]) => [c, f.filter((x) => x.startsWith("--") && x !== "--help").sort()] as const);
     expect(documented).toEqual(new Map(real));
   });
 });
