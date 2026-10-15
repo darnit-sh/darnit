@@ -1,0 +1,24 @@
+name: Request support for a change
+description: A vendor API change, deprecation or model shutdown darnit has no change record for.
+labels: [enhancement]
+body:
+  - type: input
+    id: vendor
+    attributes:
+      label: Vendor
+      placeholder: Stripe
+    validations:
+      required: true
+  - type: input
+    id: change
+    attributes:
+      label: The change
+      description: A link to the vendor's announcement, changelog or deprecations page.
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: Code it affects
+      description: A call written the old way, as it appears in real code. Leave out secrets and private code.
+      render: text
