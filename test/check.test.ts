@@ -823,6 +823,14 @@ describe("model names set as values", () => {
     expect(ids(values)).toEqual([`app.py:5 ${record.id}`, `app.py:5 ${again.id}`]);
     expect(ids(mentions)).toEqual([`README.md:1 ${record.id}`, `README.md:1 ${again.id}`]);
     expect(render(hits, undefined, values, mentions)).toContain("  1 mention in 1 file.");
+    // A call site already failing for one record naming the model is not listed again for another.
+    const elsewhere = { ...record, id: `${record.id}-elsewhere`, surface: { ...record.surface, sdkSymbols: ["embeddings.create"] } };
+    for (const order of [[record, elsewhere], [elsewhere, record]]) {
+      const other = await scan(dir, ["app.py", "README.md"], order, { modelValues: true, mentions: true });
+      expect(ids(other.hits)).toEqual([`app.py:4 ${record.id}`]);
+      expect(ids(other.values).sort()).toEqual([`app.py:5 ${record.id}`, `app.py:5 ${elsewhere.id}`]);
+      expect(ids(other.mentions).filter((m) => m.startsWith("app.py"))).toEqual([]);
+    }
   });
 
   it("prints a long list of values quickly", async () => {
