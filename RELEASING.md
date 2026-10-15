@@ -2,7 +2,7 @@
 
 Every release follows this checklist, so nothing depends on memory. A release goes out as a
 release candidate on npm's `next` tag first, gets checked from every angle below, and only then
-becomes `latest`.
+goes out as the final version.
 
 Nobody publishes from a laptop. Pushing a `vX.Y.Z` tag starts the `publish` workflow: one job checks
 that the tag matches `package.json`, that the tagged commit is the merge commit of a pull request
@@ -13,7 +13,9 @@ merged into `main`, and that `ci` passed on that commit (`scripts/check-release.
 `test/samples/small` (`scripts/verify-release.sh`). A version with a hyphen (`X.Y.Z-rc.N`) goes to
 `next`. Any other goes to `latest` only if it is newer than npm's current `latest`, so a patch to an
 older line (`0.1.5` after `0.2.0`) goes to `latest-0.1` instead and `npx darnit` keeps the newest
-release. If npm's `latest` cannot be read, the release stops.
+release. If npm's `latest` cannot be read, the release stops. The tag is chosen when the tag is
+pushed, not when the publish is approved, so keep one release in flight: approve or reject one
+publish run before pushing the next tag.
 
 Why the candidate step matters: workflows written by `init` in 0.1.0 run `npx darnit check` with no
 version and take every new `latest`; from 0.2.0 on, `init` pins the minor (`npx darnit@0.2 check`),
@@ -131,7 +133,7 @@ Never unpublish: users and lockfiles may already depend on the version. From a m
 account:
 
 ```sh
-npm dist-tag add darnit@<good version> latest
+npm dist-tag add darnit@<good version> latest   # or latest-X.Y for a patch to an older line
 npm deprecate darnit@<bad version> "<one-line reason>, use <good version>"
 ```
 
