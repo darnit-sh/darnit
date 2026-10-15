@@ -83,7 +83,7 @@ export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" :
  * becomes "?", so a name can't start a new line (a forged report line, or a GitHub Actions command) or reorder one.
  */
 // eslint-disable-next-line no-control-regex
-export const shown = (name: string) => name.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, "?");
+export const shown = (name: string) => name.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/g, "?");
 
 /** "a, b, c, d, e and 2 more", each item through `shown` */
 export const firstFive = (items: readonly string[]) => `${items.slice(0, 5).map(shown).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;
