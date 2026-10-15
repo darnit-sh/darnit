@@ -752,6 +752,25 @@ describe("model shutdowns", () => {
     expect(records.filter((r) => r.status !== "parser-verified").map((r) => r.id)).toEqual([]);
   });
 
+  it("gives every shutdown record the same list of calls that take a model", async () => {
+    const [first, ...rest] = (await loadRecords()).map((l) => l.record).filter((r) => r.id.includes("shut-down"));
+    expect(rest.filter((r) => JSON.stringify(r.surface.sdkSymbols) !== JSON.stringify(first!.surface.sdkSymbols)).map((r) => r.id)).toEqual([]);
+  });
+
+  it("reports a retiring model in each realtime call that takes one", async () => {
+    const forms = (s: string) => [s, s.replace(/\.(\w+)$/, ".with_raw_response.$1"), s.replace(/\.(\w+)$/, ".with_streaming_response.$1")];
+    const py = ["beta.realtime.sessions.create", "beta.realtime.transcription_sessions.create", "realtime.client_secrets.create", "realtime.calls.create", "realtime.calls.accept", "realtime.translations.client_secrets.create"].flatMap(forms);
+    const js = ["beta.realtime.transcriptionSessions.create", "realtime.clientSecrets.create", "realtime.translations.clientSecrets.create"];
+    const old = "gpt-4o-realtime-preview-2024-10-01";
+    const dir = await scratch({
+      "all.py": ["from openai import OpenAI", "client = OpenAI()", ...py.map((s) => `client.${s}(model="${old}")`), ""].join("\n"),
+      "all.ts": ['import OpenAI from "openai";', "const openai = new OpenAI();", ...js.map((s) => `openai.${s}({ model: "${old}" });`), ""].join("\n"),
+    });
+    const found = new Set(shutdowns((await checkReport(dir)).hits).map((h) => `${h.file}:${h.line}`));
+    const missed = [...py.map((s, i) => [s, `all.py:${i + 3}`]), ...js.map((s, i) => [s, `all.ts:${i + 3}`])].filter(([, at]) => !found.has(at!)).map(([s]) => s);
+    expect(missed).toEqual([]);
+  });
+
   it("reports a retiring model only inside OpenAI calls that take a model, with the date", async () => {
     const dir = await scratch({
       "app.ts": [
