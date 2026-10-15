@@ -779,6 +779,35 @@ describe("model shutdowns", () => {
     expect(text).toContain("openai 2026-10-01: tts-1, tts-1-hd, gpt-4o-mini-tts-2025-03-20 and 1 more shut down on 2027-01-06");
   });
 
+  it("reports a retiring model in the calls that start a realtime session, not in a look-alike's", async () => {
+    const old = "gpt-4o-realtime-preview-2024-10-01";
+    const dir = await scratch({
+      "session.py": [
+        "from openai import OpenAI",
+        "from groq import Groq",
+        "",
+        "client = OpenAI()",
+        "groq = Groq()",
+        `a = client.beta.realtime.sessions.create(model="${old}")`,
+        `b = client.beta.realtime.sessions.with_raw_response.create(model="${old}")`,
+        `c = client.realtime.calls.with_streaming_response.accept("call_1", type="realtime", model="${old}")`,
+        `d = groq.beta.realtime.sessions.create(model="${old}")`,
+        "",
+      ].join("\n"),
+      "token.ts": [
+        'import OpenAI from "openai";',
+        "const openai = new OpenAI();",
+        `export const a = await openai.realtime.clientSecrets.create({ session: { type: "realtime", model: "${old}" } });`,
+        `export const b = await openai.realtime.calls.accept("call_1", { type: "realtime", model: "${old}" });`,
+        'export const c = await openai.beta.realtime.transcriptionSessions.create({ input_audio_transcription: { model: "whisper-1" } });',
+        "",
+      ].join("\n"),
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(locations(shutdowns(hits)).sort()).toEqual(["session.py:6", "session.py:7", "session.py:8", "token.ts:3", "token.ts:4", "token.ts:5"]);
+    expect(coverage.foreignAt).toEqual(["session.py:9"]);
+  });
+
   it("reports a retiring model written as the fallback when no model is passed", async () => {
     const dir = await scratch({
       "stt.ts": [
