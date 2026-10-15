@@ -975,6 +975,15 @@ describe("other mentions of model names", () => {
     expect(listed(findMentions("s := `\no1`\n", names, "a.go"))).toEqual([":2:o1"]);
   });
 
+  it("reads raw strings without escapes, Rust lifetimes as code, and ends an unclosed quote at the line end", () => {
+    const names = new Set(["o1"]);
+    expect(listed(findMentions("parts := strings.Split(p, `\\`)\nmodel := `o1 is retired`\n", names, "a.go"))).toEqual([":2:o1"]);
+    expect(listed(findMentions('val p = """C:\\"""\nval q = """o1"""\n', names, "A.kt"))).toEqual([":2:o1"]);
+    expect(listed(findMentions('fn f<\'a>(s: &\'a str) {}\nconst S: &\'static str = "don\'t use o1";\n', names, "lib.rs"))).toEqual([":2:o1"]);
+    expect(listed(findMentions('let c: &\'static str = x;\nlet o1 = 1;\nlet s = "o1";\n', names, "lib.rs"))).toEqual([":3:o1"]);
+    expect(listed(findMentions("const c = 'x;\nlet o1 = 1;\nlet s = \"o1\";\n", names, "a.ts"))).toEqual([":3:o1"]);
+  });
+
   it("counts every mention of a name like o1 in docs, data and files that mix markup into code", () => {
     const names = new Set(["o1"]);
     expect(listed(findMentions("We moved from o1 to o3.\n", names, "README.md"))).toEqual([":1:o1"]);

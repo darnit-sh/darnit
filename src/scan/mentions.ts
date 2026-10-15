@@ -16,16 +16,22 @@ const LINE_END = /[ \t]*\r?(?:\n|$)/y;
 /** Longer lines are minified or machine-made. */
 const LONG_LINE = 5000;
 
-/** How a language writes comments and strings; a string in `multiline` may span lines. */
-type Syntax = { hash: boolean; multiline: string[] };
-const PYTHON: Syntax = { hash: true, multiline: ['"""', "'''"] };
-const C_LIKE: Syntax = { hash: false, multiline: [] };
+/**
+ * How a language writes comments and strings: `hash` comments, strings in `multiline` that may span lines,
+ * `raw` when those have no escapes, and `apostrophe` when ' opens a string (in Rust it also marks a lifetime).
+ */
+type Syntax = { hash?: boolean; multiline: string[]; raw?: boolean; apostrophe: boolean };
+const PYTHON: Syntax = { hash: true, multiline: ['"""', "'''"], apostrophe: true };
+const family = (exts: string[], syntax: Syntax) => Object.fromEntries(exts.map((e) => [`.${e}`, syntax]));
 const SYNTAX: Record<string, Syntax> = {
   ".py": PYTHON,
   ".pyi": PYTHON,
-  ...Object.fromEntries(["js", "mjs", "cjs", "ts", "mts", "cts", "go"].map((e) => [`.${e}`, { hash: false, multiline: ["`"] }])),
-  ...Object.fromEntries(["java", "kt", "kts", "scala", "groovy", "swift", "dart"].map((e) => [`.${e}`, { hash: false, multiline: ['"""'] }])),
-  ...Object.fromEntries(["rs", "c", "h", "cc", "cpp", "cxx", "hpp", "cs"].map((e) => [`.${e}`, C_LIKE])),
+  ...family(["js", "mjs", "cjs", "ts", "mts", "cts"], { multiline: ["`"], apostrophe: true }),
+  ...family(["go"], { multiline: ["`"], raw: true, apostrophe: true }),
+  ...family(["kt", "kts", "scala"], { multiline: ['"""'], raw: true, apostrophe: true }),
+  ...family(["java", "groovy", "swift", "dart"], { multiline: ['"""'], apostrophe: true }),
+  ...family(["c", "h", "cc", "cpp", "cxx", "hpp", "cs"], { multiline: [], apostrophe: true }),
+  ...family(["rs"], { multiline: [], apostrophe: false }),
 };
 
 /** Binary files hold a NUL byte near the start; text files do not. */
@@ -48,30 +54,31 @@ function setting(text: string, start: number, end: number, key: string, keyEnd: 
  * Whether each position, asked in increasing order, is inside a comment or string. One pass forward over the text, so a
  * crafted file costs linear time. An unclosed quote ends at the line end; an unclosed block comment runs to the end.
  */
-function commentsAndStrings(text: string, { hash, multiline }: Syntax): (at: number) => boolean {
+function commentsAndStrings(text: string, { hash, multiline, raw, apostrophe }: Syntax): (at: number) => boolean {
   let i = 0;
   // What closes the comment or string at i, or "" in code.
   let close = "";
   // Whether a line end also closes it, as for a quote or a line comment.
   let oneLine = false;
-  let string = false;
+  // Whether a backslash escapes the next character.
+  let escapes = false;
   return (at) => {
     while (i < at) {
       const c = text[i]!;
       if (close === "") {
         const comment = hash ? (c === "#" ? "#" : undefined) : c === "/" && (text[i + 1] === "/" || text[i + 1] === "*") ? text.slice(i, i + 2) : undefined;
-        const quote = comment ? undefined : (multiline.find((q) => text.startsWith(q, i)) ?? (c === '"' || c === "'" ? c : undefined));
+        const quote = comment ? undefined : (multiline.find((q) => text.startsWith(q, i)) ?? (c === '"' || (apostrophe && c === "'") ? c : undefined));
         if (comment || quote) {
           close = comment === "/*" ? "*/" : (quote ?? "\n");
-          string = quote !== undefined;
-          oneLine = close === "\n" || (string && !multiline.includes(close));
+          oneLine = close === "\n" || (quote !== undefined && !multiline.includes(close));
+          escapes = quote !== undefined && !(raw && !oneLine);
         }
         i += (comment ?? quote ?? c).length;
       } else if (c === "\n" && oneLine) close = "";
       else if (text.startsWith(close, i)) {
         i += close.length;
         close = "";
-      } else i += string && c === "\\" ? 2 : 1;
+      } else i += escapes && c === "\\" ? 2 : 1;
     }
     return close !== "";
   };
