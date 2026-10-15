@@ -11,7 +11,9 @@ merged into `main`, and that `ci` passed on that commit (`scripts/check-release.
 `npm` environment, then publishes that exact package with provenance. A third job waits for npm to serve the new version, then runs it with
 `npx` from an empty folder and requires `--version` to print it and `check` to exit 1 with a hit on
 `test/samples/small` (`scripts/verify-release.sh`). A version with a hyphen (`X.Y.Z-rc.N`) goes to
-`next`; any other goes to `latest`.
+`next`. Any other goes to `latest` only if it is newer than npm's current `latest`, so a patch to an
+older line (`0.1.5` after `0.2.0`) goes to `latest-0.1` instead and `npx darnit` keeps the newest
+release. If npm's `latest` cannot be read, the release stops.
 
 Why the candidate step matters: workflows written by `init` in 0.1.0 run `npx darnit check` with no
 version and take every new `latest`; from 0.2.0 on, `init` pins the minor (`npx darnit@0.2 check`),
@@ -115,7 +117,7 @@ it fails, rerun it once, and if it fails again, roll back (below). Then:
 ```sh
 gh release create vX.Y.Z -R darnit-sh/darnit --verify-tag --title vX.Y.Z --notes-file notes.md
 cd "$(mktemp -d)" && npx -y darnit@X.Y.Z --version
-npm view darnit dist-tags                           # latest is X.Y.Z
+npm view darnit dist-tags                           # latest (or latest-X.Y for an older line) is X.Y.Z
 ```
 
 `notes.md` holds the version's changelog entry. A candidate's `init` pins its exact version
