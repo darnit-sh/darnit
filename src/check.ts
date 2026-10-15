@@ -276,6 +276,9 @@ function mentionSection(listed: readonly MentionHit[], all: boolean): string[] {
   ];
 }
 
+/** One "Not checked" line per reason the scan left files or folders unread. */
+export const notCheckedNotes = (coverage?: Coverage) => [...tooLargeNote(coverage?.tooLarge), ...skippedNote(coverage?.skipped)];
+
 /** Terminal report, grouped by vendor change, then the model values and other mentions. Always ends by saying what was and was not covered. */
 export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelValueHit[] = [], mentions: readonly MentionHit[] = [], allMentions = false): string {
   const footer = [
@@ -288,8 +291,7 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
           `Left out ${plural(coverage.foreign, "call")} made through another provider's client with the same methods: ${firstFive(coverage.foreignAt ?? [])}.`,
         ]
       : []),
-    ...tooLargeNote(coverage?.tooLarge),
-    ...skippedNote(coverage?.skipped),
+    ...notCheckedNotes(coverage),
     NOT_CHECKED,
   ];
   const section = [...(values.length > 0 ? [...VALUES_INTRO, "", ...grouped(values, "value")] : []), ...(mentions.length > 0 ? mentionSection(mentions, allMentions) : [])];
