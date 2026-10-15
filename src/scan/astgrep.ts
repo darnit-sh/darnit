@@ -2,7 +2,7 @@ import { extname } from "node:path";
 import python from "@ast-grep/lang-python";
 import { Lang as NapiLang, parse, registerDynamicLanguage, type SgNode } from "@ast-grep/napi";
 import type { AstGrepPattern, Lang } from "../records/schema.js";
-import { clientOrigin, FUNCTIONS, stringText, unwrap, urlOrigin, type VendorClients } from "./clients.js";
+import { clientOrigin, FUNCTIONS, isStatic, stringText, unwrap, urlOrigin, vendorClass, type VendorClients } from "./clients.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
 export type Grammar = Parameters<typeof parse>[0];
@@ -136,7 +136,7 @@ type Request = { call: SgNode | undefined; symbol: string | undefined; url: stri
  * or else the URL of the raw request around it. One walk down from the root keeps each node's
  * ancestors, since asking a node for its parent walks down from the root each time.
  */
-function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly string[], endpoints: readonly string[]): Map<number, Request> {
+function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly string[], endpoints: readonly string[], isVendorClass: (callee: string) => boolean): Map<number, Request> {
   const wanted = new Set(nodes.map((n) => n.id()));
   const starts = [...new Set(nodes.map((n) => n.range().start.index))].sort((a, b) => a - b);
   /** The first match starting at or after `at`. */
@@ -159,7 +159,7 @@ function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly stri
       const call = up.slice(-8).reverse().find((f) => isCall(f.node))?.node;
       const raw = call?.field("function")?.text();
       const callee = raw === undefined ? undefined : normalized(raw);
-      const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s)).sort((a, b) => b.length - a.length)[0];
+      const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s) && (!isStatic(s) || isVendorClass(callee))).sort((a, b) => b.length - a.length)[0];
       const url = symbol === undefined && endpoints.length > 0 ? endpointUrl(up, endpoints) : undefined;
       out.set(node.id(), { call, symbol, url });
     }
@@ -216,7 +216,15 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
   const symbols = gate?.symbols ?? [];
   const endpoints = gate?.endpoints ?? [];
   const found = patterns.map(({ context, selector }) => root.findAll({ rule: ruleFor(context, selector) }));
-  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, found.flat(), symbols, endpoints) : undefined;
+  // A static call counts only on the vendor's own class, never a local or another package's of the same name.
+  const classes = new Map<string, boolean>();
+  const isVendorClass = (callee: string) => {
+    if (!gate?.vendor) return true;
+    const name = callee.split(".")[0]!;
+    if (!classes.has(name)) classes.set(name, vendorClass(root, grammar, callee, gate.vendor));
+    return classes.get(name)!;
+  };
+  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, found.flat(), symbols, endpoints, isVendorClass) : undefined;
   const matches: Match[] = [];
   for (const nodes of found) {
     for (const node of nodes) {

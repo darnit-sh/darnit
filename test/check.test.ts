@@ -8,6 +8,7 @@ import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
+import { SDK_CLASSES } from "../src/scan/clients.js";
 import { findModelValues, inside, isTestPath } from "../src/scan/values.js";
 import { findMentions } from "../src/scan/mentions.js";
 
@@ -757,6 +758,11 @@ describe("model shutdowns", () => {
     expect(rest.filter((r) => JSON.stringify(r.surface.sdkSymbols) !== JSON.stringify(first!.surface.sdkSymbols)).map((r) => r.id)).toEqual([]);
   });
 
+  it("lists every SDK class a record names, so its calls are checked against the class's import", async () => {
+    const symbols = (await loadRecords()).flatMap((l) => l.record.surface.sdkSymbols ?? []);
+    expect([...new Set(symbols.filter((s) => /^[A-Z]/.test(s)).map((s) => s.split(".")[0]))].filter((c) => !SDK_CLASSES.has(c!))).toEqual([]);
+  });
+
   it("reports a retiring model in each realtime call that takes one", async () => {
     const forms = (s: string) => [s, s.replace(/\.(\w+)$/, ".with_raw_response.$1"), s.replace(/\.(\w+)$/, ".with_streaming_response.$1")];
     const py = ["beta.realtime.sessions.create", "beta.realtime.transcription_sessions.create", "realtime.client_secrets.create", "realtime.calls.create", "realtime.calls.accept", "realtime.translations.client_secrets.create"].flatMap(forms);
@@ -825,6 +831,47 @@ describe("model shutdowns", () => {
     const { hits, coverage } = await checkReport(dir);
     expect(locations(shutdowns(hits)).sort()).toEqual(["session.py:6", "session.py:7", "session.py:8", "token.ts:3", "token.ts:4", "token.ts:5"]);
     expect(coverage.foreignAt).toEqual(["session.py:9"]);
+  });
+
+  it("reports a retiring model passed to a realtime class's create, not to a look-alike class", async () => {
+    const old = "gpt-4o-realtime-preview-2024-10-01";
+    const classes = [
+      ["openai/realtime/ws", "OpenAIRealtimeWS"],
+      ["openai/realtime/websocket", "OpenAIRealtimeWebSocket"],
+      ["openai/beta/realtime/ws", "OpenAIRealtimeWS"],
+      ["openai/beta/realtime/websocket", "OpenAIRealtimeWebSocket"],
+      ["openai/realtime/translations/ws", "OpenAIRealtimeTranslationWS"],
+    ];
+    const files = Object.fromEntries(
+      classes.map(([p, cls], i) => [`rt${i}.ts`, ['import OpenAI from "openai";', `import { ${cls} } from "${p}";`, "const client = new OpenAI();", `await ${cls}.create(client, { model: "${old}" });`, ""].join("\n")]),
+    );
+    const dir = await scratch({
+      ...files,
+      "cjs.js": ['const OpenAI = require("openai");', 'const { OpenAIRealtimeWS } = require("openai/realtime/ws");', `OpenAIRealtimeWS.create(new OpenAI(), { model: "${old}" });`, ""].join("\n"),
+      "groq.ts": [
+        'import OpenAI from "openai";',
+        'import { OpenAIRealtimeWS } from "openai/realtime/ws";',
+        'const groq = new OpenAI({ baseURL: "https://api.groq.com/openai/v1" });',
+        `await OpenAIRealtimeWS.create(groq, { model: "${old}" });`,
+        "",
+      ].join("\n"),
+      "other.ts": [
+        'import { OpenAIRealtimeWS } from "some-realtime-lib";',
+        'import { OpenAIRealtimeTranslationWS } from "openai-realtime-api/realtime/translations/ws";',
+        "class OpenAIRealtimeWebSocket {",
+        "  static create(client: unknown, props: { model: string }) {}",
+        "}",
+        `OpenAIRealtimeWS.create(client, { model: "${old}" });`,
+        `OpenAIRealtimeWebSocket.create(client, { model: "${old}" });`,
+        `OpenAIRealtimeTranslationWS.create(client, { model: "${old}" });`,
+        "",
+      ].join("\n"),
+    });
+    const { hits, coverage, values } = await checkReport(dir);
+    expect([...new Set(locations(shutdowns(hits)))].sort()).toEqual(["cjs.js:3", "rt0.ts:4", "rt1.ts:4", "rt2.ts:4", "rt3.ts:4", "rt4.ts:4"]);
+    expect(coverage.foreignAt).toEqual(["groq.ts:4"]);
+    // A look-alike's model is still listed, as possibly affected.
+    expect([...new Set(values.map((v) => `${v.file}:${v.line}`))].sort()).toEqual(["other.ts:6", "other.ts:7", "other.ts:8"]);
   });
 
   it("reports a retiring model written as the fallback when no model is passed", async () => {
@@ -1293,6 +1340,35 @@ describe("check on a repository built to slow it down", () => {
     const hits = await check(dir);
     expect(performance.now() - start).toBeLessThan(budget);
     expect(maxTokens(hits)).toHaveLength(count);
+  });
+
+  it("checks thousands of realtime class calls, and as many on a look-alike class, within a CPU budget", { timeout: 60_000 }, async () => {
+    const create = (cls: string, client: string) => `${cls}.create(${client}, { model: "gpt-4o-realtime-preview-2024-10-01" });\n`;
+    const text = [
+      'import OpenAI from "openai";\nimport { OpenAIRealtimeWS } from "openai/realtime/ws";\nimport { OpenAIRealtimeWebSocket } from "other";\n',
+      times(3000, (i) => `const c${i} = new OpenAI();\n${create("OpenAIRealtimeWS", `c${i}`)}${create("OpenAIRealtimeWebSocket", `c${i}`)}`),
+    ].join("");
+    const dir = await scratch({ "app.ts": text });
+    const start = process.cpuUsage();
+    const { hits } = await checkReport(dir);
+    const { user, system } = process.cpuUsage(start);
+    // About 0.9 seconds on a laptop.
+    expect((user + system) / 1000).toBeLessThan(5000);
+    expect(new Set(hits.map((h) => h.line)).size).toBe(3000);
+  });
+
+  it("checks a class name imported from thousands of packages, with as many calls, within a CPU budget", { timeout: 60_000 }, async () => {
+    const text = [
+      times(16000, (i) => `import { OpenAIRealtimeWS } from "pkg${i}/realtime/ws";\n`),
+      times(16000, () => 'OpenAIRealtimeWS.create(c, { model: "gpt-4o-realtime-preview-2024-10-01" });\n'),
+    ].join("");
+    const dir = await scratch({ "app.ts": text });
+    const start = process.cpuUsage();
+    const { hits } = await checkReport(dir);
+    const { user, system } = process.cpuUsage(start);
+    // About 2 seconds on a laptop; 16 when each call walked every import of the name.
+    expect((user + system) / 1000).toBeLessThan(8000);
+    expect(hits).toEqual([]);
   });
 
   it("traces each call through the assignments it can see, not every one of the name in the file", async () => {
