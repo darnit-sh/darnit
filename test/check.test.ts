@@ -825,7 +825,7 @@ describe("other mentions of model names", () => {
   it("writes the JSON report in pieces, so millions of hits or mentions still fit", async () => {
     const { hits, values, mentions } = await checkReport(join(SAMPLES, "model-mentions"));
     const head = { version: "1", scanned: { files: 1 } };
-    const many = <T>(list: T[]) => Array.from({ length: 2500 }, () => list).flat();
+    const many = <T>(list: T[]) => Array.from({ length: 10_000 }, () => list).flat();
     for (const [h, v, m] of [[[], [], []], [hits, values, mentions.slice(0, 1)], [many(hits), many(values), many(mentions)]] as const) {
       const chunks = [...checkJson(head, { hits: h, possiblyAffected: v, mentions: m })];
       expect(chunks.join("")).toBe(JSON.stringify({ ...head, hits: toJson(h), possiblyAffected: toJson(v), mentions: mentionsToJson(m) }, null, 2));
