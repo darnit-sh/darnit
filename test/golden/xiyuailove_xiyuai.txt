@@ -6,11 +6,11 @@ P src/providers/asr.mjs:41:19 whisper-1 openai:2026-08-26:transcription-models-s
 P src/providers/image.mjs:138:44 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P src/providers/tts.mjs:44:19 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 M .env.example:16 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
-M ACKNOWLEDGMENTS.md:58 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M ACKNOWLEDGMENTS.md:132 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M docs/voice-sprint-plan.md:287 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 M public/app/setup.html:362 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
 M public/app/setup.html:455 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M ACKNOWLEDGMENTS.md:58 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M public/app/setup.html:455 tts-1-hd openai:2026-10-01:text-to-speech-models-shut-down
 M public/app/setup.html:1111 whisper-1 openai:2026-08-26:transcription-models-shut-down
 M public/app/setup.html:1111 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
