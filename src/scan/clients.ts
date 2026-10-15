@@ -367,7 +367,7 @@ export function clientOrigin(root: SgNode, grammar: Grammar, call: SgNode, symbo
   if (!/^(?:(?:this|self)\.)?[\w$#]+$/.test(target)) return "unknown";
   const origins: Origin[] = [];
   for (const a of visibleAssignments(index, target, call)) {
-    // The index is shared by every record on the file, so what was built is kept per vendor.
+    // Every record on the file shares the index, so what was built is reused only with the same client list (each record passes its own).
     if (a.built?.v !== v) a.built = { v, built: a.value.is("new_expression") || a.value.is("call_expression") || a.value.is("call") ? constructed(a.value, index, v) : "unknown" };
     const origin = traced(a.built.built);
     // One vendor client among them settles it.

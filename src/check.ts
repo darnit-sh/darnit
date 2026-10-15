@@ -88,7 +88,8 @@ export async function scan(
         else reported.set(record.id, [match.span]);
       }
       // Nodes read from the tree free their memory only once the scan yields, so a big file holds one record's at a time, not every record's.
-      if (tree) await new Promise((r) => setImmediate(r));
+      // Small files skip it: yielding after every record costs more time than their nodes cost memory.
+      if (tree && text.length > 100_000) await new Promise((r) => setImmediate(r));
     }
     if (names.size === 0 || isTestPath(file)) continue;
     // A value inside a reported call site is already listed there.

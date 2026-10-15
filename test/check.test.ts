@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, SgNode } from "@ast-grep/napi";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, snippet, toJson, type Hit } from "../src/check.js";
+import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, scan, snippet, toJson, type Hit } from "../src/check.js";
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
@@ -328,6 +328,18 @@ describe("check tells OpenAI apart from look-alike clients", () => {
     const { hits, coverage } = await checkReport(dir);
     expect(maxTokens(hits)).toEqual(["both.ts:5"]);
     expect(coverage.foreign).toBe(1);
+  });
+});
+
+describe("check judges each client by the vendor of the record", () => {
+  it("does not reuse one vendor's verdict on a client for a record of another vendor in the same file", async () => {
+    const record = (await loadRecords()).map((l) => l.record).find((r) => r.id.includes("max-tokens"))!;
+    const other = { ...record, id: `${record.id}-other`, vendor: "anthropic" };
+    const dir = await scratch({ "app.ts": 'import Groq from "groq-sdk";\nconst client = new Groq();\nclient.chat.completions.create({ max_tokens: 5 });\n' });
+    const { hits, foreign } = await scan(dir, ["app.ts"], [record, other]);
+    // A look-alike of OpenAI's client, and nothing this file shows ties it to the other vendor's look-alikes.
+    expect(foreign.map((h) => h.record.id)).toEqual([record.id]);
+    expect(hits.map((h) => h.record.id)).toEqual([other.id]);
   });
 });
 
