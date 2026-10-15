@@ -72,7 +72,7 @@ get-convex/chef	d8a6cb6a6f226133fdc63ed5f59d04cacb9b06cc	no	holdout set
 TomFrankly/pipedream-notion-voice-notes	aeaaff7b12cc554406e9a074a2de61a83695abaf	yes	ternaries, file over the size cap
 crestalnetwork/intentkit	afc8cc44255210db6352f7437e569ed8b88ed5e1	no	holdout set
 Code-with-Beto/snapai	a60d5393287cbf46794507e6ee0ff54d689d5976	no	holdout set
-umple/umple	90991d8dbf6da508118fcfba6d8583ec614c4f95	no	Java o1 comparators, bundled SDK copy
+umple/umple	1111111111111111111111111111111111111111	no	Java o1 comparators, bundled SDK copy
 harmeetsingh11/RefactorMate	b459e18e7fe392f96dcd457a2e4feffb7f8cbf66	no	holdout set
 UCSB-NLP-Chang/GroupMemBench	e2682e01ff490acfe4fac2940159dce60307dfc9	no	holdout set
 x-man-git/Async	2c18a43c0711d1f991a6eabd913831f9c82794b0	no	holdout set
