@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { parse, type SgNode } from "@ast-grep/napi";
 import { parse as parseYaml } from "yaml";
-import { firstFive, listFiles, plural, readText, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
+import { byPath, firstFive, listFiles, plural, readText, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, modelNames, type Match, type Span } from "./scan/astgrep.js";
@@ -44,7 +44,7 @@ export async function scan(
   files: readonly string[],
   records: readonly ChangeRecord[],
   { modelValues = false, mentions: withMentions = false } = {},
-): Promise<{ hits: Hit[]; scanned: number; otherFiles: number; foreign: Hit[]; tooLarge: string[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
+): Promise<{ hits: Hit[]; scanned: number; otherFiles: number; foreign: Hit[]; tooLarge: string[]; unreadable: string[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
   const hits: Hit[] = [];
   const values: ModelValueHit[] = [];
   const mentions: MentionHit[] = [];
@@ -56,16 +56,22 @@ export async function scan(
   // Calls through another provider's client (Groq's SDK, the vendor's SDK pointed elsewhere): never reported.
   const foreign: Hit[] = [];
   const tooLarge: string[] = [];
+  const unreadable: string[] = [];
   let scanned = 0;
   let otherFiles = 0;
   for (const file of files) {
     const grammar = grammarFor(file);
     if (!grammar && !withMentions) continue;
+    let large = false;
     const text = await readText(join(root, file), (start) => {
+      large = true;
       // A binary file is never searched, so it is not listed as left out.
       if (grammar || !isBinary(start)) tooLarge.push(file);
     });
-    if (text === undefined) continue;
+    if (text === undefined) {
+      if (!large) unreadable.push(file);
+      continue;
+    }
     if (withMentions && !isBinary(text)) {
       if (!grammar) otherFiles++;
       // Known limit: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
@@ -107,7 +113,7 @@ export async function scan(
     ...values.map((v) => key(v.file, v.line, v.model)),
     ...hits.flatMap((h) => findMentions(h.text, namesOf.get(h.record)!, h.file).map((m) => key(h.file, h.line + m.line - 1, m.model))),
   ]);
-  return { hits, scanned, otherFiles, foreign, tooLarge, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
+  return { hits, scanned, otherFiles, foreign, tooLarge, unreadable, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
 }
 
 /** Every call site in `root` affected by a known vendor change, and what was covered. */
@@ -115,7 +121,12 @@ export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
   const skipped: Skipped[] = [];
-  const { hits, scanned, otherFiles, foreign, tooLarge, values, mentions } = await scan(root, await listFiles(root, skipped), records, { modelValues: true, mentions: true });
+  const { hits, scanned, otherFiles, foreign, tooLarge, unreadable, values, mentions } = await scan(root, await listFiles(root, skipped), records, {
+    modelValues: true,
+    mentions: true,
+  });
+  skipped.push(...unreadable.map((path) => ({ path, reason: "could not be read" as const })));
+  skipped.sort(byPath);
   const leftOut = foreign.length > 0 ? { foreign: foreign.length, foreignAt: foreign.map((h) => `${h.file}:${h.line}`) } : {};
   return { hits, foreign, values, mentions, coverage: { files: scanned, records: records.length, otherFiles, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}), ...(skipped.length > 0 ? { skipped } : {}) } };
 }
@@ -283,7 +294,9 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
   ];
   const section = [...(values.length > 0 ? [...VALUES_INTRO, "", ...grouped(values, "value")] : []), ...(mentions.length > 0 ? mentionSection(mentions, allMentions) : [])];
   if (hits.length === 0) {
-    const clean = section.length > 0 ? "No call sites of known vendor changes found." : "No known vendor changes affect this repository.";
+    // "Nothing affects this repository" only when nothing was left unread.
+    const partial = section.length > 0 || (coverage?.skipped?.length ?? 0) > 0 || (coverage?.tooLarge?.length ?? 0) > 0;
+    const clean = partial ? "No call sites of known vendor changes found." : "No known vendor changes affect this repository.";
     return [clean, "", ...section, ...footer].join("\n");
   }
   const out = [...grouped(hits, "call site"), ...section];

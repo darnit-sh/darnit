@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -483,6 +483,7 @@ describe("check", () => {
       "node_modules/openai/index.js": call,
       "packages/a/node_modules/x/index.js": call,
       ".git/config": "",
+      ".git/x.ts": call,
       "lib/adapted_openai/_base_client.py": "",
       "lib/adapted_openai/_client.py": "",
       "lib/adapted_openai/_exceptions.py": "",
@@ -501,16 +502,67 @@ describe("check", () => {
     expect(text).not.toContain(".git");
   });
 
-  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("names a folder it could not read", async () => {
-    const dir = await scratch({ "a.js": "export const x = 1;\n", "src/secret/openai.ts": "import OpenAI from 'openai';\n" });
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("names the folders and files it could not read", async () => {
+    const call = "import OpenAI from 'openai';\nawait new OpenAI().chat.completions.create({ model: 'm', max_tokens: 5 });\n";
+    const dir = await scratch({ "b.ts": call, "src/secret/openai.ts": call, "src/listed/openai.ts": call });
+    const locked = ["b.ts", "src/secret", "src/listed"];
+    await chmod(join(dir, "b.ts"), 0o000);
     await chmod(join(dir, "src/secret"), 0o000);
+    await chmod(join(dir, "src/listed"), 0o644);
+    try {
+      const { hits, coverage } = await checkReport(dir);
+      expect(hits).toEqual([]);
+      expect(coverage.skipped).toEqual([
+        { path: "b.ts", reason: "could not be read" },
+        { path: "src/listed/openai.ts", reason: "could not be read" },
+        { path: "src/secret", reason: "could not be read" },
+      ]);
+      expect(render(hits, coverage)).toContain("\nNot checked: could not read b.ts, src/listed/openai.ts, src/secret.\n");
+    } finally {
+      for (const p of locked) await chmod(join(dir, p), 0o755);
+    }
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("names the repository folder when it cannot be read", async () => {
+    const dir = await scratch({ "a.js": "" });
+    await chmod(dir, 0o000);
     try {
       const { coverage } = await checkReport(dir);
-      expect(coverage.skipped).toEqual([{ path: "src/secret", reason: "could not be read" }]);
-      expect(render([], coverage)).toContain("\nNot checked: 1 folder that could not be read: src/secret.\n");
+      expect(render([], coverage)).toContain("\nNot checked: could not read the repository folder.\n");
     } finally {
-      await chmod(join(dir, "src/secret"), 0o755);
+      await chmod(dir, 0o755);
     }
+  });
+
+  it.skipIf(process.platform === "win32")("names symbolic links to outside the repository, not links inside it", async () => {
+    const call = "import OpenAI from 'openai';\nawait new OpenAI().chat.completions.create({ model: 'm', max_tokens: 5 });\n";
+    const outside = await scratch({ "shared/openai.ts": call, "one.ts": call });
+    const dir = await scratch({ "src/app.ts": "export const x = 1;\n" });
+    await symlink(join(outside, "shared"), join(dir, "shared"));
+    await symlink(join(outside, "one.ts"), join(dir, "src/one.ts"));
+    await symlink("src", join(dir, "inside"));
+    await symlink("app.ts", join(dir, "src/again.ts"));
+    await symlink(join(outside, "missing"), join(dir, "broken"));
+    const { hits, coverage } = await checkReport(dir);
+    expect(hits).toEqual([]);
+    expect(coverage.skipped).toEqual([
+      { path: "shared", reason: "symbolic link outside the repository" },
+      { path: "src/one.ts", reason: "symbolic link outside the repository" },
+    ]);
+    expect(render(hits, coverage)).toContain("\nNot checked: 2 symbolic links to outside the repository: shared, src/one.ts.\n");
+  });
+
+  it("lists skipped folders in path order", async () => {
+    const dir = await scratch({ "b/vendor/x.js": "", "a/vendor/x.js": "", "C/vendor/x.js": "", "a/b/vendor/x.js": "", "a/b/dist/x.js": "" });
+    const { coverage } = await checkReport(dir);
+    expect(coverage.skipped?.map((s) => s.path)).toEqual(["C/vendor", "a/b/dist", "a/b/vendor", "a/vendor", "b/vendor"]);
+  });
+
+  it("says no call sites were found, not that nothing is affected, when something was not checked", () => {
+    const clean = { files: 1, records: 1 };
+    expect(render([], clean)).toMatch(/^No known vendor changes affect this repository\./);
+    expect(render([], { ...clean, skipped: [{ path: "vendor", reason: "dependency or build folder" }] })).toMatch(/^No call sites of known vendor changes found\.\n/);
+    expect(render([], { ...clean, tooLarge: ["big.js"] })).toMatch(/^No call sites of known vendor changes found\.\n/);
   });
 
   it("still scans a generated SDK when it is the folder being checked", async () => {

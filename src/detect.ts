@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
-import { open, readdir, stat } from "node:fs/promises";
+import { open, readdir, realpath, stat } from "node:fs/promises";
 import type { VendorClients } from "./scan/clients.js";
-import { basename, join } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 
 // Known vendors. "supported" = a rule pack exists in packs/; "recognized" = named
 // in config only. Extend by adding a row.
@@ -85,21 +85,27 @@ export const firstFive = (items: readonly string[]) => `${items.slice(0, 5).join
 export const tooLargeNote = (files: readonly string[] = []) =>
   files.length > 0 ? [`Not checked: ${plural(files.length, "file")} over ${MAX_FILE_BYTES / 1024 / 1024} MB: ${firstFive(files)}.`] : [];
 
-/** A folder the scan did not enter, and why. */
-export type Skipped = { path: string; reason: "dependency or build folder" | "bundled SDK copy" | "could not be read" };
-
-const SKIPPED_LINE: Record<Skipped["reason"], (n: number) => string> = {
-  "dependency or build folder": (n) => plural(n, "dependency or build folder"),
-  "bundled SDK copy": (n) => `${plural(n, "folder")} with a bundled copy of an SDK`,
-  "could not be read": (n) => `${plural(n, "folder")} that could not be read`,
+/** A folder or file the scan did not read, and why. "." is the repository folder. */
+export type Skipped = {
+  path: string;
+  reason: "dependency or build folder" | "bundled SDK copy" | "symbolic link outside the repository" | "could not be read";
 };
 
-/** One report line per reason for folders the scan did not enter. */
+const SKIPPED_LINE: Record<Skipped["reason"], (paths: string[]) => string> = {
+  "dependency or build folder": (p) => `${plural(p.length, "dependency or build folder")}: ${firstFive(p)}`,
+  "bundled SDK copy": (p) => `${plural(p.length, "folder")} with a bundled copy of an SDK: ${firstFive(p)}`,
+  "symbolic link outside the repository": (p) => `${plural(p.length, "symbolic link")} to outside the repository: ${firstFive(p)}`,
+  "could not be read": (p) => `could not read ${firstFive(p.map((path) => (path === "." ? "the repository folder" : path)))}`,
+};
+
+/** One report line per reason for what the scan did not read. */
 export const skippedNote = (skipped: readonly Skipped[] = []) =>
   (Object.keys(SKIPPED_LINE) as Skipped["reason"][]).flatMap((reason) => {
     const paths = skipped.filter((s) => s.reason === reason).map((s) => s.path);
-    return paths.length > 0 ? [`Not checked: ${SKIPPED_LINE[reason](paths.length)}: ${firstFive(paths)}.`] : [];
+    return paths.length > 0 ? [`Not checked: ${SKIPPED_LINE[reason](paths)}.`] : [];
   });
+
+export const byPath = (a: Skipped, b: Skipped) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 
 /** A regular file's text; undefined when it can't be read, isn't a file, or is over MAX_FILE_BYTES (then `tooLarge` gets its first 8 KB). */
 export async function readText(path: string, tooLarge?: (start: string) => void): Promise<string | undefined> {
@@ -133,10 +139,15 @@ const isBundledSdk = (names: Set<string>) => ["_base_client.py", "_client.py", "
  * Every regular file under root as a sorted, forward-slash relative path.
  * Vendored and build directories, including SDK copies bundled into the project, are pruned
  * before they are entered, and unreadable ones are not fatal; both go to `skipped`, except .git (git's own data).
- * Symlinks are not followed: a link's target inside the repo is scanned at its own path.
+ * Symlinks are not followed: a target inside the repo is scanned at its own path, and a link to outside it goes to `skipped`.
  */
 export async function listFiles(root: string, skipped: Skipped[] = []): Promise<string[]> {
   const files: string[] = [];
+  const real = await realpath(root).catch(() => resolve(root));
+  const outside = async (path: string) => {
+    const target = await realpath(join(root, path)).catch(() => undefined);
+    return target !== undefined && target !== real && !target.startsWith(real + sep);
+  };
   const walk = async (rel: string): Promise<void> => {
     const entries = await readdir(join(root, rel), { withFileTypes: true }).catch(() => undefined);
     if (!entries) return void skipped.push({ path: rel || ".", reason: "could not be read" });
@@ -147,10 +158,10 @@ export async function listFiles(root: string, skipped: Skipped[] = []): Promise<
       if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) skipped.push({ path, reason: "dependency or build folder" });
       else if (entry.isDirectory()) await walk(path);
       else if (entry.isFile()) files.push(path);
+      else if (entry.isSymbolicLink() && (await outside(path))) skipped.push({ path, reason: "symbolic link outside the repository" });
     }
   };
   await walk("");
-  skipped.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return files.sort();
 }
 
@@ -187,7 +198,15 @@ export async function detectApis(root: string, tooLarge: string[] = [], skipped:
     const isManifest = name === "package.json" || PYTHON_MANIFEST.test(name);
     const lang = SOURCE_FILE.test(name) ? (name.endsWith(".py") ? "py" : "js") : undefined;
     if (!isManifest && !lang) continue;
-    const text = (await readText(join(root, file), () => tooLarge.push(file))) ?? "";
+    let large = false;
+    const text = await readText(join(root, file), () => {
+      large = true;
+      tooLarge.push(file);
+    });
+    if (text === undefined) {
+      if (!large) skipped.push({ path: file, reason: "could not be read" });
+      continue;
+    }
     for (const [vendor, spec] of Object.entries(VENDORS) as [Vendor, (typeof VENDORS)[Vendor]][]) {
       if (name === "package.json") {
         for (const dep of npmDeps(text)) if ((spec.npm as readonly string[]).includes(dep)) add(vendor, `${file}: ${dep}`);
@@ -200,6 +219,7 @@ export async function detectApis(root: string, tooLarge: string[] = [], skipped:
     }
   }
 
+  skipped.sort(byPath);
   return [...evidence]
     .map(([vendor, notes]) => ({ vendor, evidence: notes }))
     .sort((a, b) => a.vendor.localeCompare(b.vendor));

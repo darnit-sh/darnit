@@ -25,7 +25,7 @@ program
   .description("detect the APIs this repo uses and install the scheduled check")
   .option("--force", "rewrite darnit.yml and the workflow if they exist")
   .action(async ({ force }: { force?: boolean }) => {
-    for (const line of await init(process.cwd(), { force: force ?? false })) console.log(`✓ ${line}`);
+    for (const line of await init(process.cwd(), { force: force ?? false })) console.log(forTerminal(line.startsWith("Not checked:") ? line : `✓ ${line}`));
   });
 
 program
