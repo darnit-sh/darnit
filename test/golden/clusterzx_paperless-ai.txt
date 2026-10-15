@@ -1,0 +1,43 @@
+exit 1
+scanned files=37 otherFiles=48 foreign=0 tooLarge=0 skipped=0
+H services/azureService.js:379:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H services/azureService.js:412:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H services/azureService.js:445:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H services/chatService.js:132:11 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H services/customService.js:396:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H services/customService.js:429:9 openai:2024-09-12:max-tokens-to-max-completion-tokens
+M OPENAPI/openapi.json:2131 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M OPENAPI/openapi.json:3020 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M routes/setup.js:3455 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M routes/setup.js:3856 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/manualService.js:75 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/manualService.js:171 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/openaiService.js:190 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/openaiService.js:314 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:9 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+M services/serviceUtils.js:9 gpt-4o-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+M services/serviceUtils.js:10 gpt-4o-audio-preview-2024-10-01 openai:2025-06-10:gpt-4o-audio-preview-2024-10-01-shut-down
+M services/serviceUtils.js:11 gpt-4o-mini-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+M services/serviceUtils.js:14 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:17 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:17 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:20 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:20 gpt-4-32k openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2025-06-06
+M services/serviceUtils.js:20 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:20 gpt-4-0125-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M services/serviceUtils.js:21 gpt-4-turbo-2024-04-09 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:21 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:21 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M services/serviceUtils.js:24 gpt-4.5-preview openai:2025-04-14:gpt-4-5-preview-shut-down
+M services/serviceUtils.js:27 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:27 o1-2024-12-17 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:27 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
+M services/serviceUtils.js:27 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M services/serviceUtils.js:27 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:27 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:30 text-davinci-003 openai:2023-07-06:gpt-and-embeddings-shut-down
+M services/serviceUtils.js:30 text-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M views/settings.ejs:301 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M views/settings.ejs:303 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M views/setup.ejs:236 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M views/setup.ejs:238 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

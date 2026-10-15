@@ -1,0 +1,6 @@
+exit 1
+scanned files=37 otherFiles=7 foreign=0 tooLarge=0 skipped=0
+H commands/ai/dalle.js:9:7 openai:2025-11-14:dall-e-model-snapshots-shut-down
+H commands/ai/o3.js:10:7 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M commands/ai/o1.js:2 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M commands/ai/o3.js:12 o3-mini-2025-01-31 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

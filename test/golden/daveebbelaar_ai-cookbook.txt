@@ -1,0 +1,45 @@
+exit 1
+scanned files=134 otherFiles=88 foreign=0 tooLarge=0 skipped=0
+H models/openai/01-introduction/03-streaming.py:6:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/01-introduction.py:26:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/01-introduction.py:59:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/01-introduction.py:104:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/02-json-mode.py:34:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/02-json-mode.py:75:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/02-json-mode.py:114:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/03-function-calling.py:56:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/03-function-calling.py:124:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/Instructor/02-output-validation.py:33:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/Instructor/02-output-validation.py:47:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/Instructor/02-output-validation.py:66:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/Instructor/02-output-validation.py:79:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/Instructor/03-content-filtering.py:32:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/Instructor/03-content-filtering.py:66:9 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/04-structured-output/Instructor/04-ticket-system.py:40:9 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/05-responses/08-reasoning.py:15:5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/08-video/1-sora-quickstart.py:13:5 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+H models/openai/08-video/2-references.py:65:5 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+H models/openai/08-video/3-sora-pro-model.py:13:5 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+H models/openai/08-video/4-sora-prompting.py:22:5 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+H models/openai/08-video/5-sora-remix.py:36:5 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+P context/web/1-get-single-page.py:8:9 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P context/web/3-search-handbook.py:14:9 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P knowledge/mem0/oss/config.py:8:56 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M knowledge/agentic-rag/6-production.py:220 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M knowledge/mem0/README.md:66 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M models/openai/04-structured-output/Instructor/README.md:40 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M models/openai/04-structured-output/Instructor/README.md:82 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M models/openai/04-structured-output/Instructor/README.md:116 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M models/openai/04-structured-output/Instructor/README.md:168 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M models/openai/04-structured-output/README.md:34 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M models/openai/04-structured-output/README.md:50 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M models/openai/04-structured-output/README.md:102 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M models/openai/08-video/README.md:11 sora-2-pro openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+M models/openai/08-video/README.md:46 sora-2-pro openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+M models/openai/08-video/README.md:46 sora-2 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+M models/openai/08-video/README.md:53 sora-2-pro openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+M models/openai/08-video/README.md:54 sora-2 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+M models/openai/08-video/docs/sora2-prompting-guide.md:21 sora-2 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+M models/openai/08-video/docs/sora2-prompting-guide.md:21 sora-2-pro openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+M models/openai/08-video/docs/sora2-prompting-guide.md:23 sora-2 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+M models/openai/08-video/docs/sora2-prompting-guide.md:25 sora-2-pro openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
