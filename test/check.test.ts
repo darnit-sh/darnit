@@ -8,6 +8,7 @@ import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
+import { SDK_CLASSES } from "../src/scan/clients.js";
 import { findModelValues, inside, isTestPath } from "../src/scan/values.js";
 import { findMentions } from "../src/scan/mentions.js";
 
@@ -757,6 +758,11 @@ describe("model shutdowns", () => {
     expect(rest.filter((r) => JSON.stringify(r.surface.sdkSymbols) !== JSON.stringify(first!.surface.sdkSymbols)).map((r) => r.id)).toEqual([]);
   });
 
+  it("lists every SDK class a record names, so its calls are checked against the class's import", async () => {
+    const symbols = (await loadRecords()).flatMap((l) => l.record.surface.sdkSymbols ?? []);
+    expect([...new Set(symbols.filter((s) => /^[A-Z]/.test(s)).map((s) => s.split(".")[0]))].filter((c) => !SDK_CLASSES.has(c!))).toEqual([]);
+  });
+
   it("reports a retiring model in each realtime call that takes one", async () => {
     const forms = (s: string) => [s, s.replace(/\.(\w+)$/, ".with_raw_response.$1"), s.replace(/\.(\w+)$/, ".with_streaming_response.$1")];
     const py = ["beta.realtime.sessions.create", "beta.realtime.transcription_sessions.create", "realtime.client_secrets.create", "realtime.calls.create", "realtime.calls.accept", "realtime.translations.client_secrets.create"].flatMap(forms);
@@ -829,12 +835,15 @@ describe("model shutdowns", () => {
 
   it("reports a retiring model passed to a realtime class's create, not to a look-alike class", async () => {
     const old = "gpt-4o-realtime-preview-2024-10-01";
-    const paths = ["openai/realtime/ws", "openai/realtime/websocket", "openai/beta/realtime/ws", "openai/beta/realtime/websocket"];
+    const classes = [
+      ["openai/realtime/ws", "OpenAIRealtimeWS"],
+      ["openai/realtime/websocket", "OpenAIRealtimeWebSocket"],
+      ["openai/beta/realtime/ws", "OpenAIRealtimeWS"],
+      ["openai/beta/realtime/websocket", "OpenAIRealtimeWebSocket"],
+      ["openai/realtime/translations/ws", "OpenAIRealtimeTranslationWS"],
+    ];
     const files = Object.fromEntries(
-      paths.map((p, i) => {
-        const cls = p.endsWith("/ws") ? "OpenAIRealtimeWS" : "OpenAIRealtimeWebSocket";
-        return [`rt${i}.ts`, ['import OpenAI from "openai";', `import { ${cls} } from "${p}";`, "const client = new OpenAI();", `await ${cls}.create(client, { model: "${old}" });`, ""].join("\n")];
-      }),
+      classes.map(([p, cls], i) => [`rt${i}.ts`, ['import OpenAI from "openai";', `import { ${cls} } from "${p}";`, "const client = new OpenAI();", `await ${cls}.create(client, { model: "${old}" });`, ""].join("\n")]),
     );
     const dir = await scratch({
       ...files,
@@ -857,7 +866,7 @@ describe("model shutdowns", () => {
       ].join("\n"),
     });
     const { hits, coverage, values } = await checkReport(dir);
-    expect([...new Set(locations(shutdowns(hits)))].sort()).toEqual(["cjs.js:3", "rt0.ts:4", "rt1.ts:4", "rt2.ts:4", "rt3.ts:4"]);
+    expect([...new Set(locations(shutdowns(hits)))].sort()).toEqual(["cjs.js:3", "rt0.ts:4", "rt1.ts:4", "rt2.ts:4", "rt3.ts:4", "rt4.ts:4"]);
     expect(coverage.foreignAt).toEqual(["groq.ts:4"]);
     // A look-alike's model is still listed, as possibly affected.
     expect([...new Set(values.map((v) => `${v.file}:${v.line}`))].sort()).toEqual(["other.ts:5", "other.ts:6"]);

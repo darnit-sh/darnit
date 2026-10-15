@@ -333,8 +333,15 @@ export function unwrap(node: SgNode): SgNode | undefined {
   return n;
 }
 
-/** A method on an SDK class, such as `OpenAIRealtimeWS.create`: called on the imported class, with the client as its first argument. */
-export const isStatic = (symbol: string) => /^[A-Z]/.test(symbol);
+/**
+ * SDK classes whose static methods appear in records, called on the imported class with the client as
+ * the first argument. OpenAI exports them from openai/realtime/ws, openai/realtime/websocket,
+ * openai/beta/realtime/ws, openai/beta/realtime/websocket and openai/realtime/translations/ws.
+ */
+export const SDK_CLASSES = new Set(["OpenAIRealtimeWS", "OpenAIRealtimeWebSocket", "OpenAIRealtimeTranslationWS"]);
+
+/** A method on an SDK class, such as `OpenAIRealtimeWS.create`. */
+export const isStatic = (symbol: string) => SDK_CLASSES.has(symbol.split(".")[0]!);
 
 /** Whether the class a static call names (`OpenAIRealtimeWS` in `OpenAIRealtimeWS.create`) is imported from the vendor's packages. */
 export function vendorClass(root: SgNode, grammar: Grammar, callee: string, v: VendorClients): boolean {

@@ -105,7 +105,8 @@
       "realtime.clientSecrets.create",
       "realtime.translations.clientSecrets.create",
       "OpenAIRealtimeWS.create",
-      "OpenAIRealtimeWebSocket.create"
+      "OpenAIRealtimeWebSocket.create",
+      "OpenAIRealtimeTranslationWS.create"
     ],
     "fields": [
       "model"
