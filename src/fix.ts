@@ -387,8 +387,8 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         build,
         tests,
         remaining: result.remaining,
-        testsNote: base.testsNote,
-        buildNote: base.buildNote,
+        testsNote: opts.noTest ? "skipped with --no-test" : base.testsNote,
+        buildNote: opts.noTest ? "skipped with --no-test" : base.buildNote,
         unconfirmed: result.unconfirmed,
       });
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
