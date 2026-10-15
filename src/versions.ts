@@ -18,7 +18,7 @@ export function atLeast(version: string, min: string): boolean {
   for (let i = 0; i < 3; i++) {
     if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
   }
-  return version.length === core.length;
+  return true;
 }
 
 /** Python package names compare case-insensitively, with -, _ and . interchangeable. */
