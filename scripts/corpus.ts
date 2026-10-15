@@ -5,12 +5,14 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { deriveCandidates, writeCandidate, type VendorConfig } from "../src/corpus/candidates.js";
 import { changelog } from "../src/corpus/oasdiff.js";
+import { prose } from "../src/fix.js";
 import { parseSpec, sha256 } from "../src/corpus/spec.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 
 // Fetches each vendor's spec, diffs it against the last snapshot, and writes
 // candidate packs for anything users would have to change. --dry-run reports
-// without writing. First run for a vendor only stores the baseline.
+// without writing. First run for a vendor only stores the baseline. The output is the
+// pull request body, so text that came from the spec goes through prose().
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const dryRun = process.argv.includes("--dry-run");
@@ -48,12 +50,12 @@ for (const [vendor, config] of Object.entries(vendors)) {
       const { candidates, ignored, unmapped } = deriveCandidates({ vendor, config, entries, spec: parseSpec(text), existing, observedAt: today });
       console.log(`## ${vendor}: ${entries.length} spec changes, ${candidates.length} candidate records`);
       for (const c of candidates) {
-        console.log(`- ${c.record.id}: ${c.record.title}${c.record.fix ? " (rename rules generated)" : ""}`);
+        console.log(`- ${c.record.id}: ${prose(c.record.title ?? "")}${c.record.fix ? " (rename rules generated)" : ""}`);
         if (!dryRun) await writeCandidate(PACKS_DIR, c);
       }
-      if (unmapped.length > 0) console.log(`\nEndpoints with no SDK symbol in vendors.yml (add one to enable rules): ${unmapped.join(", ")}`);
+      if (unmapped.length > 0) console.log(`\nEndpoints with no SDK symbol in vendors.yml (add one to enable rules): ${prose(unmapped.join(", "))}`);
       const ignoredLines = Object.entries(ignored).sort((a, b) => b[1] - a[1]);
-      if (ignoredLines.length > 0) console.log(`\nNot turned into records:\n${ignoredLines.map(([why, n]) => `- ${n} × ${why}`).join("\n")}`);
+      if (ignoredLines.length > 0) console.log(`\nNot turned into records:\n${ignoredLines.map(([why, n]) => `- ${n} × ${prose(why)}`).join("\n")}`);
     } finally {
       await rm(fresh, { force: true });
     }
