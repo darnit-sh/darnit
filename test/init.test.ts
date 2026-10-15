@@ -92,6 +92,17 @@ describe("detectApis on a repository built to slow it down", () => {
     ]);
   });
 
+  it("names the folders it did not enter", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    await mkdir(join(dir, "src/vendor"), { recursive: true });
+    await writeFile(join(dir, "src/vendor/client.py"), "import openai\n");
+    expect((await init(dir)).slice(0, 2)).toEqual([
+      "Scanned repo: no known APIs found (the scheduled check still runs)",
+      "Not checked: 1 dependency or build folder: src/vendor.",
+    ]);
+  });
+
   it("reads only regular files", async () => {
     expect(await readText("/dev/zero")).toBeUndefined();
   });

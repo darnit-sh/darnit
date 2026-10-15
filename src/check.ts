@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { parse, type SgNode } from "@ast-grep/napi";
 import { parse as parseYaml } from "yaml";
-import { firstFive, listFiles, plural, readText, tooLargeNote, vendorClients } from "./detect.js";
+import { firstFive, listFiles, plural, readText, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, modelNames, type Match, type Span } from "./scan/astgrep.js";
@@ -32,7 +32,7 @@ async function configuredVendors(root: string): Promise<Set<string> | undefined>
 }
 
 /** What a check covered, so a clean result can say what it was clean against. */
-export type Coverage = { files: number; records: number; otherFiles?: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[] };
+export type Coverage = { files: number; records: number; otherFiles?: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[]; skipped?: Skipped[] };
 
 /**
  * Hits for `records` in `files` (relative to `root`), with `modelValues` the model names set as values
@@ -114,9 +114,10 @@ export async function scan(
 export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage; foreign: Hit[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
-  const { hits, scanned, otherFiles, foreign, tooLarge, values, mentions } = await scan(root, await listFiles(root), records, { modelValues: true, mentions: true });
+  const skipped: Skipped[] = [];
+  const { hits, scanned, otherFiles, foreign, tooLarge, values, mentions } = await scan(root, await listFiles(root, skipped), records, { modelValues: true, mentions: true });
   const leftOut = foreign.length > 0 ? { foreign: foreign.length, foreignAt: foreign.map((h) => `${h.file}:${h.line}`) } : {};
-  return { hits, foreign, values, mentions, coverage: { files: scanned, records: records.length, otherFiles, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}) } };
+  return { hits, foreign, values, mentions, coverage: { files: scanned, records: records.length, otherFiles, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}), ...(skipped.length > 0 ? { skipped } : {}) } };
 }
 
 /** Every call site in `root` affected by a known vendor change. */
@@ -277,6 +278,7 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
         ]
       : []),
     ...tooLargeNote(coverage?.tooLarge),
+    ...skippedNote(coverage?.skipped),
     NOT_CHECKED,
   ];
   const section = [...(values.length > 0 ? [...VALUES_INTRO, "", ...grouped(values, "value")] : []), ...(mentions.length > 0 ? mentionSection(mentions, allMentions) : [])];

@@ -136,6 +136,10 @@ Mentions never change the exit code. `--mentions` lists each line, and
 `--json` always lists them all in `mentions`, with `id`, `file`, `line` and
 `model`, and counts the other files searched in `scanned.otherFiles`. Binary
 files are skipped, and other files over 10 MB are listed under "Not checked".
+Dependency and build folders (`node_modules`, `vendor`, `dist`, `build`, Python
+virtual environments and the like), copies of an SDK bundled into the project,
+and folders darnit could not read are not searched; "Not checked" names them,
+and `--json` lists each in `scanned.skipped` with its `path` and `reason`.
 
 | Flag | |
 |---|---|

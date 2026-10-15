@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -474,6 +474,43 @@ describe("check", () => {
     const { hits, coverage } = await checkReport(dir);
     expect(locations(hits.filter((h) => h.record.id.includes("max-tokens")))).toEqual(["app.py:3", "lib/other/_client.py:3"]);
     expect(coverage.files).toBe(2);
+  });
+
+  it("names the dependency, build and bundled SDK folders it skips", async () => {
+    const call = "import OpenAI from 'openai';\nawait new OpenAI().chat.completions.create({ model: 'm', max_tokens: 5 });\n";
+    const dir = await scratch({
+      "src/vendor/openai.ts": call,
+      "node_modules/openai/index.js": call,
+      "packages/a/node_modules/x/index.js": call,
+      ".git/config": "",
+      "lib/adapted_openai/_base_client.py": "",
+      "lib/adapted_openai/_client.py": "",
+      "lib/adapted_openai/_exceptions.py": "",
+    });
+    const { hits, coverage } = await checkReport(dir);
+    expect(hits).toEqual([]);
+    expect(coverage.skipped).toEqual([
+      { path: "lib/adapted_openai", reason: "bundled SDK copy" },
+      { path: "node_modules", reason: "dependency or build folder" },
+      { path: "packages/a/node_modules", reason: "dependency or build folder" },
+      { path: "src/vendor", reason: "dependency or build folder" },
+    ]);
+    const text = render(hits, coverage);
+    expect(text).toContain("\nNot checked: 3 dependency or build folders: node_modules, packages/a/node_modules, src/vendor.\n");
+    expect(text).toContain("\nNot checked: 1 folder with a bundled copy of an SDK: lib/adapted_openai.\n");
+    expect(text).not.toContain(".git");
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("names a folder it could not read", async () => {
+    const dir = await scratch({ "a.js": "export const x = 1;\n", "src/secret/openai.ts": "import OpenAI from 'openai';\n" });
+    await chmod(join(dir, "src/secret"), 0o000);
+    try {
+      const { coverage } = await checkReport(dir);
+      expect(coverage.skipped).toEqual([{ path: "src/secret", reason: "could not be read" }]);
+      expect(render([], coverage)).toContain("\nNot checked: 1 folder that could not be read: src/secret.\n");
+    } finally {
+      await chmod(join(dir, "src/secret"), 0o755);
+    }
   });
 
   it("still scans a generated SDK when it is the folder being checked", async () => {

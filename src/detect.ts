@@ -58,7 +58,6 @@ export type Detection = {
 
 const SKIP_DIRS = new Set([
   "node_modules",
-  ".git",
   "dist",
   "build",
   "coverage",
@@ -85,6 +84,22 @@ export const firstFive = (items: readonly string[]) => `${items.slice(0, 5).join
 /** The report line for files too large to read, if any. */
 export const tooLargeNote = (files: readonly string[] = []) =>
   files.length > 0 ? [`Not checked: ${plural(files.length, "file")} over ${MAX_FILE_BYTES / 1024 / 1024} MB: ${firstFive(files)}.`] : [];
+
+/** A folder the scan did not enter, and why. */
+export type Skipped = { path: string; reason: "dependency or build folder" | "bundled SDK copy" | "could not be read" };
+
+const SKIPPED_LINE: Record<Skipped["reason"], (n: number) => string> = {
+  "dependency or build folder": (n) => plural(n, "dependency or build folder"),
+  "bundled SDK copy": (n) => `${plural(n, "folder")} with a bundled copy of an SDK`,
+  "could not be read": (n) => `${plural(n, "folder")} that could not be read`,
+};
+
+/** One report line per reason for folders the scan did not enter. */
+export const skippedNote = (skipped: readonly Skipped[] = []) =>
+  (Object.keys(SKIPPED_LINE) as Skipped["reason"][]).flatMap((reason) => {
+    const paths = skipped.filter((s) => s.reason === reason).map((s) => s.path);
+    return paths.length > 0 ? [`Not checked: ${SKIPPED_LINE[reason](paths.length)}: ${firstFive(paths)}.`] : [];
+  });
 
 /** A regular file's text; undefined when it can't be read, isn't a file, or is over MAX_FILE_BYTES (then `tooLarge` gets its first 8 KB). */
 export async function readText(path: string, tooLarge?: (start: string) => void): Promise<string | undefined> {
@@ -117,20 +132,25 @@ const isBundledSdk = (names: Set<string>) => ["_base_client.py", "_client.py", "
 /**
  * Every regular file under root as a sorted, forward-slash relative path.
  * Vendored and build directories, including SDK copies bundled into the project, are pruned
- * before they are entered; unreadable directories and symlinks are skipped rather than fatal.
+ * before they are entered, and unreadable ones are not fatal; both go to `skipped`, except .git (git's own data).
+ * Symlinks are not followed: a link's target inside the repo is scanned at its own path.
  */
-export async function listFiles(root: string): Promise<string[]> {
+export async function listFiles(root: string, skipped: Skipped[] = []): Promise<string[]> {
   const files: string[] = [];
   const walk = async (rel: string): Promise<void> => {
-    const entries = await readdir(join(root, rel), { withFileTypes: true }).catch(() => []);
-    if (rel && isBundledSdk(new Set(entries.filter((e) => e.isFile()).map((e) => e.name)))) return;
+    const entries = await readdir(join(root, rel), { withFileTypes: true }).catch(() => undefined);
+    if (!entries) return void skipped.push({ path: rel || ".", reason: "could not be read" });
+    if (rel && isBundledSdk(new Set(entries.filter((e) => e.isFile()).map((e) => e.name)))) return void skipped.push({ path: rel, reason: "bundled SDK copy" });
     for (const entry of entries) {
       const path = rel ? `${rel}/${entry.name}` : entry.name;
-      if (entry.isDirectory() && !SKIP_DIRS.has(entry.name)) await walk(path);
+      if (entry.isDirectory() && entry.name === ".git") continue;
+      if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) skipped.push({ path, reason: "dependency or build folder" });
+      else if (entry.isDirectory()) await walk(path);
       else if (entry.isFile()) files.push(path);
     }
   };
   await walk("");
+  skipped.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return files.sort();
 }
 
@@ -157,12 +177,12 @@ function importsPackage(text: string, pkg: string, lang: "js" | "py"): boolean {
     : new RegExp(`(from\\s*|require\\(\\s*)["']${p}(/|["'])`).test(text);
 }
 
-/** Scans a repo for known vendor APIs. Sorted by vendor; evidence in path order. Files too large to read are added to `tooLarge`. */
-export async function detectApis(root: string, tooLarge: string[] = []): Promise<Detection[]> {
+/** Scans a repo for known vendor APIs. Sorted by vendor; evidence in path order. Files too large to read are added to `tooLarge`, folders not entered to `skipped`. */
+export async function detectApis(root: string, tooLarge: string[] = [], skipped: Skipped[] = []): Promise<Detection[]> {
   const evidence = new Map<Vendor, string[]>();
   const add = (vendor: Vendor, note: string) => evidence.set(vendor, [...(evidence.get(vendor) ?? []), note]);
 
-  for (const file of await listFiles(root)) {
+  for (const file of await listFiles(root, skipped)) {
     const name = basename(file);
     const isManifest = name === "package.json" || PYTHON_MANIFEST.test(name);
     const lang = SOURCE_FILE.test(name) ? (name.endsWith(".py") ? "py" : "js") : undefined;

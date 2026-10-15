@@ -4,7 +4,7 @@ import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promi
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
-import { detectApis, tooLargeNote, VENDORS } from "./detect.js";
+import { detectApis, skippedNote, tooLargeNote, VENDORS, type Skipped } from "./detect.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -83,7 +83,8 @@ async function inspect(root: string, rel: string, force: boolean): Promise<{ ski
 /** `darnit init`: detect APIs, write darnit.yml and the scheduled workflow. Returns log lines. */
 export async function init(root: string, { force = false } = {}): Promise<string[]> {
   const tooLarge: string[] = [];
-  const found = await detectApis(root, tooLarge);
+  const skipped: Skipped[] = [];
+  const found = await detectApis(root, tooLarge, skipped);
   const summary =
     found.length === 0
       ? "Scanned repo: no known APIs found (the scheduled check still runs)"
@@ -142,5 +143,5 @@ export async function init(root: string, { force = false } = {}): Promise<string
     throw new Error(`could not write ${current} (${code === "EACCES" || code === "EPERM" ? "permission denied" : (code ?? String(err))}); no file was changed`, { cause: err });
   }
   for (const [from, to] of renames) await rename(from, to);
-  return [summary, ...tooLargeNote(tooLarge), ...log];
+  return [summary, ...tooLargeNote(tooLarge), ...skippedNote(skipped), ...log];
 }
