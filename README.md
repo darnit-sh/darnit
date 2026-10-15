@@ -44,6 +44,10 @@ npm install -g darnit
 
 Or skip the install: `npx darnit check`. Needs Node 22.12 or newer.
 
+The official package is `darnit` on npm. Its source is
+[github.com/darnit-sh/darnit](https://github.com/darnit-sh/darnit) and its site
+is [darnit.sh](https://darnit.sh).
+
 ## How it works
 
 ```
@@ -194,9 +198,9 @@ and its own pull request against your default branch. darnit never force-pushes
 and never pushes to the default branch. Run it again and it finds the open pull
 request instead of opening a second one.
 
-The pull request says what changed and why, links the vendor's announcement,
-shows the build and test results, lists any call site that still needs a human,
-and lists what was not verified.
+Every pull request carries its receipts: the vendor's source link, the change
+record it applies, the files it changed, the result of each check it ran, any
+call site that still needs a human, and what was not verified.
 
 ## The scheduled check
 
