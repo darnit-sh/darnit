@@ -1,0 +1,11 @@
+exit 0
+scanned files=30 records=33 otherFiles=36 foreign=0 tooLarge=0 skipped=1
+P src/agent/models.js:90:12 #caf81765 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M .env.example:8 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M ABOUT.md:34 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M README.md:346 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M README.md:381 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/agent/models.js:88 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/agent/models.js:91 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/agent/providers/openai-compat.js:3 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+S src/env dependency or build folder

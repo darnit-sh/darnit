@@ -1,0 +1,14 @@
+exit 0
+scanned files=26 records=33 otherFiles=10 foreign=0 tooLarge=0 skipped=0
+M src/service-openai.js:43 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M src/service-openai.js:51 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/service-openai.js:52 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/service-openai.js:53 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/service-openai.js:54 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/service-openai.js:55 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M src/service-openai.js:59 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/service-openai.js:60 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/service-openai.js:61 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/service-openai.js:62 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M src/service-openai.js:67 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/service-openai.js:67 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down

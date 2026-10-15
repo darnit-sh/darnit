@@ -1,0 +1,19 @@
+exit 1
+scanned files=770 records=33 otherFiles=1163 foreign=0 tooLarge=0 skipped=2
+H packages/provider-voice-sip/src/stt.ts:34:9 #93da5e03 openai:2026-08-26:transcription-models-shut-down
+H packages/provider-voice/src/stt.ts:34:9 #7465d6a8 openai:2026-08-26:transcription-models-shut-down
+H scripts/generate-release-summary.js:491:13 #e9db0771 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P packages/provider-voice-sip/src/sip/provider.ts:43:23 #81abab45 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice-sip/src/stt.ts:14 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/README.md:51 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/__tests__/stt.test.ts:19 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/src/adapters/stt/openai.ts:17 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/src/adapters/stt/openai.ts:22 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/src/adapters/stt/openai.ts:26 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/src/adapters/stt/openai.ts:40 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/src/stt.ts:14 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/src/types.ts:16 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/src/types.ts:17 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M packages/provider-voice/src/types.ts:18 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+S starters/apps/base-ts-tiktok-memory/dist dependency or build folder
+S starters/apps/base-ts-tiktok-memory/node_modules dependency or build folder

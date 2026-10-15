@@ -45,10 +45,16 @@ jobs:
           path: ${{ runner.temp }}/*.tgz
           if-no-files-found: error
 
+  # Compares scan results on every pinned real repository (golden.yml) before anything is published.
+  golden:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/golden.yml
+
   # Waits for a maintainer's approval, then publishes the tarball built above without running
   # any project or dependency code.
   publish:
-    needs: build
+    needs: [build, golden]
     runs-on: ubuntu-latest
     environment: npm
     permissions:

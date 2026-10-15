@@ -1,0 +1,16 @@
+exit 1
+scanned files=413 records=33 otherFiles=39 foreign=0 tooLarge=0 skipped=1
+H src/app/api/ai/parse-resume/route.ts:101:7 #0b2029d8 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H src/lib/ai/providers/kimi.ts:45:7 #37063e20 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H src/lib/ai/providers/kimi.ts:72:7 #37063e20 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H src/lib/ai/providers/minimax.ts:48:7 #37063e20 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H src/lib/ai/providers/minimax.ts:72:7 #37063e20 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H src/lib/ai/providers/openai.ts:35:7 #37063e20 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H src/lib/ai/providers/openai.ts:60:7 #37063e20 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P server/openai-voice-relay.ts:48:54 #1d75f46d whisper-1 openai:2026-08-26:transcription-models-shut-down
+M .env.example:118 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M src/lib/ai/providers/openai.ts:8 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/lib/ai/providers/openai.ts:8 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/lib/ai/providers/openai.ts:8 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/api-key-auth.test.ts:32 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+S vendor dependency or build folder

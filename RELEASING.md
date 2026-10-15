@@ -7,8 +7,10 @@ goes out as the final version.
 Nobody publishes from a laptop. Pushing a `vX.Y.Z` tag starts the `publish` workflow: one job checks
 that the tag matches `package.json`, that the tagged commit is the merge commit of a pull request
 merged into `main`, and that `ci` passed on that commit (`scripts/check-release.sh`), runs
-`npm run check`, and builds the package; a second job waits for a maintainer to approve the protected
-`npm` environment, then publishes that exact package with provenance. A third job waits for npm to serve the new version, then runs it with
+`npm run check`, and builds the package; a second job scans every pinned repository in
+`test/golden/repos.tsv` and compares each result with its stored file (`golden.yml`); a third job waits
+for both, then for a maintainer to approve the protected `npm` environment, then publishes that exact
+package with provenance. A last job waits for npm to serve the new version, then runs it with
 `npx` from an empty folder and requires `--version` to print it and `check` to exit 1 with a hit on
 `test/samples/small` (`scripts/verify-release.sh`). A version with a hyphen (`X.Y.Z-rc.N`) goes to
 `next`. Any other goes to `latest` only if it is newer than npm's current `latest`, so a patch to an

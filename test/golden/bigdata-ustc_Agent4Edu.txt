@@ -1,0 +1,6 @@
+exit 1
+scanned files=32 records=33 otherFiles=14 foreign=0 tooLarge=0 skipped=0
+H Code/llm_client.py:49:13 #6abffd05 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P Code/llm_client.py:31:56 #673b1d3a gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+P Code/llm_client.py:33:56 #8216892f gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M README.md:75 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down

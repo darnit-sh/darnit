@@ -1,0 +1,20 @@
+exit 1
+scanned files=959 records=33 otherFiles=220 foreign=1 tooLarge=0 skipped=0
+H intentkit/core/avatar.py:178:13 #e2337f5d openai:2026-06-02:gpt-image-model-deprecations-shut-down
+H intentkit/tools/web_scraper/website_indexer.py:258:17 #add5bfd8 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P intentkit/tools/image/gpt.py:90:25 #2ecf6454 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M intentkit/core/avatar.py:173 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M intentkit/core/avatar.py:176 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M intentkit/core/avatar.py:229 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M intentkit/models/llm.yaml:662 gpt-5.4-nano openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M intentkit/models/llm.yaml:685 gpt-5.4-nano openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M intentkit/tools/dapplooker/dapplooker_token_data.py:103 ada openai:2023-07-06:gpt-and-embeddings-shut-down
+M intentkit/tools/defillama/config/chains.py:28 ada openai:2023-07-06:gpt-and-embeddings-shut-down
+M intentkit/tools/image/gpt.py:91 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M tests/core/credit/test_expense.py:163 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/core/test_avatar.py:535 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M tests/core/test_credit_soft_off.py:32 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/core/test_credit_soft_off.py:127 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/core/test_credit_soft_off.py:259 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/tools/test_image.py:219 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+F intentkit/core/avatar.py:204

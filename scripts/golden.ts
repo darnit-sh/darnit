@@ -7,9 +7,10 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 // Scans pinned real repositories with the built CLI and compares each result with test/golden/<owner>_<name>.txt.
-// Usage: npm run golden [-- --update] [--all] [--dir <clones>] [--out <dir for changed results>] [--base <sha>]
+// Usage: npm run golden [-- --update] [--all] [--recheck] [--dir <clones>] [--out <dir for changed results>] [--base <sha>]
+// --recheck also fetches each cached clone's commit again, so a repo that is gone or force-pushed away shows up.
 // Fails on any difference, a repo that cannot be fetched, darnit exiting 2 or writing to stderr, a repo count
-// that does not match repos.tsv, or a slice repo on --base that is not one here. Facts only are stored (paths,
+// that does not match repos.tsv, or a repo that --base compares and this branch does not. Facts only are stored (paths,
 // lines, model names, record ids, a short hash of the matched code), never their code.
 
 type Report = {
@@ -44,7 +45,9 @@ export function lines(exit: number, r: Report): string {
 const git = (cwd: string, ...a: string[]) =>
   spawnSync("git", a, { cwd, encoding: "utf8", timeout: 60_000, maxBuffer: 1 << 30, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" } });
 
-function parseRows(text: string, where: string) {
+type Row = { repo: string; sha: string; slice: boolean; file: string };
+
+function parseRows(text: string, where: string): Row[] {
   return text.trimEnd().split("\n").slice(1).map((line, i) => {
     const [repo = "", sha = "", slice = "", shape = ""] = line.split("\t");
     if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !/^[0-9a-f]{40}$/.test(sha) || !/^(yes|no)$/.test(slice) || !shape)
@@ -66,14 +69,17 @@ export function drops(body: string): Map<string, string> {
   return out;
 }
 
-/** Slice repos in repos.tsv at `base`; none when that commit has no repos.tsv. */
-function baseSlice(base: string): string[] {
+/** Repos the base branch compares that this branch does not: gone from repos.tsv, or out of the slice. */
+export const shrunk = (base: Row[], head: Row[]) => base.filter((b) => !head.some((h) => h.repo === b.repo && (h.slice || !b.slice)));
+
+/** Rows of repos.tsv at `base`; none when that commit has no repos.tsv. */
+function baseRows(base: string): Row[] {
   const tree = git(".", "ls-tree", "--name-only", base, "--", "test/golden/repos.tsv");
   if (tree.status !== 0) throw new Error(`cannot read base commit ${base}: ${tree.stderr.trim()}`);
   if (!tree.stdout.trim()) return [];
   const show = git(".", "show", `${base}:test/golden/repos.tsv`);
   if (show.status !== 0) throw new Error(`cannot read repos.tsv at ${base}: ${show.stderr.trim()}`);
-  return parseRows(show.stdout, `repos.tsv at ${base}`).filter((r) => r.slice).map((r) => r.repo);
+  return parseRows(show.stdout, `repos.tsv at ${base}`);
 }
 
 function main() {
@@ -81,6 +87,7 @@ function main() {
     options: {
       update: { type: "boolean", default: false },
       all: { type: "boolean", default: false },
+      recheck: { type: "boolean", default: false },
       dir: { type: "string", default: join(homedir(), ".cache", "darnit-golden") },
       out: { type: "string", default: join(tmpdir(), "darnit-golden-update") },
       base: { type: "string" },
@@ -100,14 +107,14 @@ function main() {
   const picked = rows.filter((r) => args.all || r.slice);
   // A pull request cannot make the guard smaller unless its body names each repo that leaves and why (PR_BODY).
   const allowed = drops(process.env.PR_BODY ?? "");
-  for (const repo of args.base ? baseSlice(args.base) : []) {
-    if (picked.some((r) => r.repo === repo)) continue;
+  for (const { repo, slice } of args.base ? shrunk(baseRows(args.base), rows) : []) {
+    const from = slice ? "the slice" : "repos.tsv";
     const reason = allowed.get(repo);
     if (!reason) {
-      fail(`${repo} is a slice repo on the base branch and not on this branch. To drop it on purpose, add "Golden drop: ${repo}, <reason>" to the pull request body and push again; a re-run reads the old body`);
+      fail(`${repo} is in ${from} on the base branch and not on this branch. To drop it on purpose, add "Golden drop: ${repo}, <reason>" to the pull request body and push again; a re-run reads the old body`);
       continue;
     }
-    notes.push(`Dropped from the slice: ${repo}, ${reason}`);
+    notes.push(`Dropped from ${from}: ${repo}, ${reason}`);
     console.log(`${ci ? "::warning::" : "warning: "}${notes.at(-1)}`);
   }
 
@@ -122,13 +129,14 @@ function main() {
   /** The clone at its pinned SHA with no changes, fetched again unless the cached copy is exactly that. */
   const clone = (repo: string, sha: string): string | undefined => {
     const dir = join(args.dir, repo.replace("/", "_"));
-    if (pinned(dir, sha)) return dir;
+    const fetch = ["fetch", "-q", "--depth", "1", `https://github.com/${repo}.git`, sha];
+    if (pinned(dir, sha) && (!args.recheck || git(dir, ...fetch).status === 0)) return dir;
     console.log(`fetching ${repo} at ${sha}`);
     for (let attempt = 1; attempt <= 3; attempt++) {
       rmSync(dir, { recursive: true, force: true });
       mkdirSync(dir, { recursive: true });
       let why = "";
-      for (const step of [["init", "-q"], ["fetch", "-q", "--depth", "1", `https://github.com/${repo}.git`, sha], ["-c", "advice.detachedHead=false", "checkout", "-q", "FETCH_HEAD"]]) {
+      for (const step of [["init", "-q"], fetch, ["-c", "advice.detachedHead=false", "checkout", "-q", "FETCH_HEAD"]]) {
         const run = git(dir, ...step);
         if (run.status !== 0) {
           why = (run.stderr || run.error?.message || `git ${step.join(" ")} failed`).trim();
@@ -138,7 +146,7 @@ function main() {
       if (!why && pinned(dir, sha)) return dir;
       console.log(`fetch ${repo} attempt ${attempt} failed: ${why || "checkout is not the pinned SHA with no changes"}`);
     }
-    fail(`could not fetch ${repo} at ${sha}, not caused by this PR unless it changed repos.tsv, rerun`);
+    fail(`could not fetch ${repo} at ${sha}, not caused by this PR unless it changed repos.tsv. Rerun; if it keeps failing, the repo or commit is gone: replace it in repos.tsv`);
   };
 
   const known = new Set(rows.map((r) => r.file));

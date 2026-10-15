@@ -1,0 +1,13 @@
+exit 1
+scanned files=192 records=33 otherFiles=23 foreign=0 tooLarge=0 skipped=0
+H harness/llm_client.py:612:25 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H harness/llm_client.py:1106:17 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+M harness/context/budget.py:16 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M harness/context_managers/base.py:22 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M harness/cost_monitor.py:27 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M harness/llm_client.py:447 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M harness/llm_client.py:740 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M harness/llm_client.py:1004 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M harness/llm_client.py:1004 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M harness/llm_client.py:1016 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_llm_client_openai_tools.py:54 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

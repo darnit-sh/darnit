@@ -1,0 +1,81 @@
+name: golden
+
+# Scans pinned real repositories (test/golden/repos.tsv) and compares each result with its stored
+# file. ci runs it on every pull request and push to main, publish before every release. The daily
+# run keeps the cached clones from expiring and fetches each pinned commit again, so a repo that is
+# gone or force-pushed away turns it red; it can also be started on any branch.
+on:
+  workflow_call:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Pull requests that change only Markdown or LICENSE skip; those that can change scan results
+      # compare all repos; others compare the slice (slice yes). Every other run compares all.
+      # --no-renames lists a renamed file under its old name too; a git failure fails the step.
+      - id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ -z "$BASE" ]; then
+            set=all why="Golden compares all pinned repositories: this $EVENT run is not a pull request."
+          else
+            changed=$(git diff --name-only --no-renames "$BASE...$HEAD")
+            detection=$(grep -E '^(src|packs|test/golden)/|^scripts/golden\.ts$|^package(-lock)?\.json$' <<< "$changed" || true)
+            if ! grep -Eqv '\.md$|^LICENSE$' <<< "$changed"; then
+              set=skip why="Golden skipped: this pull request changes only Markdown or LICENSE files."
+            elif [ -n "$detection" ]; then
+              set=all why="Golden compares all pinned repositories: this pull request changes $(head -n 1 <<< "$detection"), which can change scan results."
+            else
+              set=slice why="Golden compares the slice (slice yes in repos.tsv): this pull request changes nothing under src/, packs/ or test/golden/, nor scripts/golden.ts or the package files."
+            fi
+          fi
+          echo "$why" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "set=$set" >> "$GITHUB_OUTPUT"
+      - if: steps.scope.outputs.set != 'skip'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.scope.outputs.set != 'skip'
+        run: npm ci
+      # Only main saves the clones, so no other branch can change what main uses.
+      - if: steps.scope.outputs.set != 'skip'
+        id: clones
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/darnit-golden
+          key: golden-${{ hashFiles('test/golden/repos.tsv') }}
+      - if: steps.scope.outputs.set != 'skip'
+        timeout-minutes: ${{ steps.scope.outputs.set == 'all' && 45 || 15 }}
+        env:
+          ALL: ${{ steps.scope.outputs.set == 'all' && 'yes' || '' }}
+          RECHECK: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'yes' || '' }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: time npm run golden -- --out "$RUNNER_TEMP/golden-update" ${ALL:+--all} ${RECHECK:+--recheck} ${BASE:+--base "$BASE"}
+      - if: failure() && steps.scope.outputs.set != 'skip'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: golden-update
+          path: ${{ runner.temp }}/golden-update
+          if-no-files-found: ignore
+      - if: github.ref == 'refs/heads/main' && steps.clones.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/darnit-golden
+          key: golden-${{ hashFiles('test/golden/repos.tsv') }}

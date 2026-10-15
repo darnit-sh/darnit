@@ -1,0 +1,4 @@
+exit 1
+scanned files=18 records=33 otherFiles=28 foreign=0 tooLarge=0 skipped=0
+H index.ts:35:13 #3dbab2f2 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H index.ts:33:13 #93bb7212 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
