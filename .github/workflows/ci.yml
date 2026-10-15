@@ -77,3 +77,57 @@ jobs:
       # Packs the tarball npm would publish, installs it fresh, and runs
       # init, check and fix against every scenario in test/e2e.
       - run: npm run test:e2e
+
+  # Scans pinned real repositories (test/golden/repos.tsv, slice yes) and compares each result with
+  # its stored file. Always runs so it can be a required check; it passes early only when a pull
+  # request changes nothing but Markdown or LICENSE, which no scan result depends on.
+  golden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        # --no-renames lists a renamed file under its old name too; a git failure fails the step.
+        run: |
+          [ -n "$BASE" ] || exit 0
+          changed=$(git diff --name-only --no-renames "$BASE...$HEAD")
+          if ! printf '%s\n' "$changed" | grep -Eqv '\.md$|^LICENSE$'; then
+            echo "Golden skipped: this pull request changes only Markdown or LICENSE files." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo skip=true >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.scope.outputs.skip != 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.scope.outputs.skip != 'true'
+        run: npm ci
+      # Pull requests only read the clones; main saves them, so a pull request cannot change what main uses.
+      - if: steps.scope.outputs.skip != 'true'
+        id: clones
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/darnit-golden
+          key: golden-slice-${{ hashFiles('test/golden/repos.tsv') }}
+      - if: steps.scope.outputs.skip != 'true'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: npm run golden -- --out "$RUNNER_TEMP/golden-update" ${BASE:+--base "$BASE"}
+      - if: failure() && steps.scope.outputs.skip != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: golden-update
+          path: ${{ runner.temp }}/golden-update
+          if-no-files-found: ignore
+      - if: github.event_name == 'push' && steps.clones.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/darnit-golden
+          key: golden-slice-${{ hashFiles('test/golden/repos.tsv') }}

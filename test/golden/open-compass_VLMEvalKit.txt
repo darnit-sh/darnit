@@ -1,0 +1,68 @@
+exit 1
+scanned files=752 records=33 otherFiles=99 foreign=0 tooLarge=0 skipped=1
+H vlmeval/api/glm_vision.py:60:17 #6abffd05 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P vlmeval/api/gpt.py:86:31 #0adacf58 gpt-3.5-turbo-0613 openai:2023-11-06:chat-model-updates-shut-down
+P vlmeval/config.py:101:15 #17c22ace o1-2024-12-17 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/config.py:114:15 #dfd625e1 o3-2025-04-16 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+P vlmeval/config.py:126:15 #cc3722fc o4-mini-2025-04-16 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/config.py:142:15 #e3b785d4 gpt-4-1106-vision-preview openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2024-12-06
+P vlmeval/config.py:151:15 #e3b785d4 gpt-4-1106-vision-preview openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2024-12-06
+P vlmeval/config.py:160:15 #c0583bff gpt-4-turbo-2024-04-09 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/config.py:169:15 #c0583bff gpt-4-turbo-2024-04-09 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/config.py:178:15 #e040b69b gpt-4o-2024-05-13 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/config.py:187:15 #e040b69b gpt-4o-2024-05-13 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/config.py:214:15 #275f8446 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+P vlmeval/config.py:260:15 #ee52c5de gpt-4.1-nano-2025-04-14 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/config.py:269:15 #2a5cd704 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+P vlmeval/config.py:278:15 #6a1ccbd7 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+P vlmeval/config.py:287:15 #ebfd02de gpt-5-nano-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+P vlmeval/dataset/SGI_Bench_1_0/deep_research.py:109:27 #670be480 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/dataset/SGI_Bench_1_0/dry_experiment.py:338:27 #670be480 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/dataset/SGI_Bench_1_0/experimental_reasoning.py:138:27 #670be480 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/dataset/image_vqa.py:1945:27 #c5113e56 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/dataset/image_vqa.py:2108:27 #c5113e56 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/dataset/mmbench_video.py:71:27 #c5113e56 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/mmb_eval_gradio.py:16 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_dataset_alias.py:120 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_dataset_alias.py:138 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:62 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:63 gpt-4-0613 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:64 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M vlmeval/api/gpt.py:65 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:66 gpt-4-0125-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M vlmeval/api/gpt.py:67 gpt-4-vision-preview openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2024-12-06
+M vlmeval/api/gpt.py:68 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:69 gpt-4-turbo-2024-04-09 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:70 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:71 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:72 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:73 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:179 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:180 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/gpt.py:366 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/config.py:99 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/config.py:124 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/config.py:258 gpt-4.1-nano-2025-04-14 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/config.py:267 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M vlmeval/config.py:276 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M vlmeval/config.py:285 gpt-5-nano-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M vlmeval/config.py:916 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M vlmeval/config.py:917 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M vlmeval/config.py:918 gpt-5-nano-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M vlmeval/dataset/SGI_Bench_1_0/idea_generation.py:795 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M vlmeval/dataset/image_mcq.py:1498 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/image_mcq.py:1750 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/image_mcq.py:1838 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/image_mcq.py:1905 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/image_vqa.py:1769 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/superchem.py:429 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/ccocr_evaluator/common.py:29 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/judge_util.py:42 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/judge_util.py:42 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/judge_util.py:43 gpt-4-0613 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/judge_util.py:44 gpt-4-0125-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M vlmeval/dataset/utils/judge_util.py:45 gpt-4-turbo-2024-04-09 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/judge_util.py:46 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/judge_util.py:47 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/judge_util.py:48 gpt-4o-2024-05-13 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+S vlmeval/dataset/utils/Ocrbench_v2/spotting_eval/__pycache__ dependency or build folder

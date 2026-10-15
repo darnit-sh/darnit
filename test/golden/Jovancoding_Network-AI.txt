@@ -1,0 +1,30 @@
+exit 1
+scanned files=202 records=33 otherFiles=79 foreign=0 tooLarge=0 skipped=0
+H examples/06-ai-pipeline-demo.ts:78:5 #466dd65a openai:2024-09-12:max-tokens-to-max-completion-tokens
+H examples/07-full-showcase.ts:77:45 #514eecaa openai:2024-09-12:max-tokens-to-max-completion-tokens
+P adapters/codex-adapter.ts:395:32 #349c54d8 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+P adapters/copilot-adapter.ts:69:34 #bb3310fd gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P test-adapters.ts:1755:46 #45af98e8 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P test-codex.ts:164:12 #62f7e3b6 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M CHANGELOG.md:1236 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M CHANGELOG.md:1237 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M adapters/codex-adapter.ts:4 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M adapters/codex-adapter.ts:4 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M adapters/codex-adapter.ts:8 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M adapters/codex-adapter.ts:9 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M adapters/codex-adapter.ts:100 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M adapters/codex-adapter.ts:100 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M adapters/copilot-adapter.ts:39 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M adapters/openai-responses-adapter.ts:23 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M adapters/openai-responses-adapter.ts:84 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M lib/cost-heatmap.ts:76 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M references/adapter-system.md:816 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test-codex.ts:173 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M test-phase10.ts:705 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test-phase10.ts:715 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test-phase10.ts:724 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test-phase10.ts:733 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test-phase10.ts:742 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test-phase10.ts:751 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test-phase10.ts:767 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test-phase10.ts:776 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

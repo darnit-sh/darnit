@@ -1,0 +1,107 @@
+exit 1
+scanned files=35 records=33 otherFiles=23 foreign=0 tooLarge=1 skipped=0
+H helpers/chat.mjs:67:6 #ed088606 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H helpers/llm.mjs:130:21 #7638a0ea openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H tests/Pipedream Testing Actions/llm-test.mjs:92:21 #ed088606 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H v2/Notion-Voice-Notes-Beta.mjs:883:10 #6d2dba6a openai:2026-08-26:transcription-models-shut-down
+H v2/Notion-Voice-Notes.mjs:1038:8 #d3daa677 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H v2/Notion-Voice-Notes.mjs:628:10 #6d2dba6a openai:2026-08-26:transcription-models-shut-down
+P helpers/transcribe.mjs:308:42 #5d403e3a whisper-1 openai:2026-08-26:transcription-models-shut-down
+P v2/Notion-Voice-Notes.mjs:1502:7 #5335ff3f gpt-4-32k openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2025-06-06
+P v2/Notion-Voice-Notes.mjs:1504:7 #eb55b75a gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P v2/Notion-Voice-Notes.mjs:1506:7 #2c56ba19 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+P v2/Notion-Voice-Notes.mjs:1508:7 #73812f23 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P v2/Notion-Voice-Notes.mjs:1511:7 #c1e2879a gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P v2/Notion-Voice-Notes.mjs:2385:6 #5335ff3f gpt-4-32k openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2025-06-06
+P v2/Notion-Voice-Notes.mjs:2387:6 #73812f23 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P v2/Notion-Voice-Notes.mjs:2390:6 #c1e2879a gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M Transcribe-Summarize.mjs:128 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M Transcribe-Summarize.mjs:129 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M Transcribe-Summarize.mjs:129 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M Transcribe-Summarize.mjs:129 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M Transcribe-Summarize.mjs:210 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M Transcribe-Summarize.mjs:211 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M Transcribe-Summarize.mjs:488 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M Transcribe-Summarize.mjs:488 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M Transcribe-Summarize.mjs:795 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M Transcribe-Summarize.mjs:795 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M Transcribe-Summarize.mjs:795 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M Transcribe-Summarize.mjs:815 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M examples/openai_response.json:5 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:9 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:9 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:234 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:261 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:262 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:263 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:305 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:330 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:2390 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M experiments/Notion-Voice-Notes-Alpha.mjs:2392 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M experiments/Omni-Transcribe.mjs:9 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M experiments/Omni-Transcribe.mjs:9 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M experiments/Omni-Transcribe.mjs:263 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M experiments/Omni-Transcribe.mjs:290 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M experiments/Omni-Transcribe.mjs:291 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M experiments/Omni-Transcribe.mjs:292 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M experiments/Omni-Transcribe.mjs:334 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M experiments/Omni-Transcribe.mjs:359 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M experiments/Omni-Transcribe.mjs:2373 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M experiments/Omni-Transcribe.mjs:2375 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/model-info.mjs:35 gpt-4-0125-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M helpers/model-info.mjs:42 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M helpers/model-info.mjs:49 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/model-info.mjs:56 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/model-info.mjs:63 gpt-4-32k openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2025-06-06
+M helpers/model-info.mjs:70 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/model-info.mjs:77 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M helpers/model-info.mjs:84 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/openai-options.mjs:33 text-moderation-stable openai:2025-04-28:text-moderation-shut-down
+M helpers/rates.mjs:18 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/rates.mjs:31 gpt-4-0125-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M helpers/rates.mjs:37 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M helpers/rates.mjs:43 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/rates.mjs:49 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/rates.mjs:63 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/rates.mjs:69 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M helpers/rates.mjs:75 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M helpers/translate-transcript.mjs:34 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/Pipedream Testing Actions/property-tester.mjs:263 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M tests/Pipedream Testing Actions/property-tester.mjs:263 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M tests/Pipedream Testing Actions/property-tester.mjs:263 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M tests/Pipedream Testing Actions/property-tester.mjs:302 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/Pipedream Testing Actions/tester.mjs:108 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:8 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:8 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:255 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:269 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:270 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:271 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:447 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:449 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:450 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:451 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:2487 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes-Beta.mjs:2489 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:43 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:51 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:55 gpt-4-32k openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2025-06-06
+M v2/Notion-Voice-Notes.mjs:59 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:63 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:137 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:137 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:297 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:297 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:298 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:358 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:361 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:363 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:1050 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:1051 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:1503 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:1505 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:1507 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:2386 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M v2/Notion-Voice-Notes.mjs:2396 gpt-4-32k openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2025-06-06
+M v2/Notion-Voice-Notes.mjs:2398 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+T tests/Test JSON Responses/2025-05-12-deepgram.json

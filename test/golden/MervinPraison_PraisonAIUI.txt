@@ -1,0 +1,59 @@
+exit 1
+scanned files=666 records=33 otherFiles=221 foreign=0 tooLarge=0 skipped=0
+H examples/python/voice-agent/integrations/voice/call_finalize.py:72:17 #c8bd1cba openai:2024-09-12:max-tokens-to-max-completion-tokens
+H examples/python/voice-agent/integrations/voice/speech_engine.py:231:13 #6d36f107 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H tests/unit/instrumentation/test_openai_instrument.py:116:9 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H tests/unit/instrumentation/test_openai_instrument.py:138:9 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H tests/unit/instrumentation/test_openai_instrument.py:168:9 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H tests/unit/instrumentation/test_openai_instrument.py:201:9 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H tests/unit/instrumentation/test_openai_instrument.py:228:13 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H tests/unit/instrumentation/test_openai_instrument.py:253:13 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H tests/unit/instrumentation/test_openai_instrument.py:276:13 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H tests/unit/instrumentation/test_openai_instrument.py:298:9 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H tests/unit/instrumentation/test_openai_instrument.py:324:9 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/python/voice-agent/integrations/voice/realtime.py:76:61 #1e063c1b gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+P src/frontend/src/views/RealtimeView.tsx:117:39 #ebf87069 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+P src/praisonaiui/features/openai_api.py:270:35 #3b4941b7 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+P src/praisonaiui/features/openai_api.py:376:35 #29deb3cd dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P src/praisonaiui/features/openai_api.py:410:35 #e25b6135 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P src/praisonaiui/features/openai_api.py:439:41 #7416a8ea tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P src/praisonaiui/features/openai_api.py:464:41 #422c6d4a text-moderation-latest openai:2025-04-28:text-moderation-shut-down
+P src/praisonaiui/features/openai_api.py:471:48 #f925575b text-moderation-latest openai:2025-04-28:text-moderation-shut-down
+P src/praisonaiui/features/realtime.py:32:52 #3635eb49 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+P src/praisonaiui/features/realtime.py:71:52 #3635eb49 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+P src/praisonaiui/features/realtime.py:289:67 #7408fb64 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+P src/praisonaiui/features/tts.py:32:64 #7ad94be8 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P src/praisonaiui/features/tts.py:91:64 #7ad94be8 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P src/praisonaiui/features/tts.py:191:37 #7416a8ea tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M docs/features/gap-analysis.md:144 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M src/praisonaiui/chat_settings.py:134 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/chat_settings.py:134 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/chat_settings.py:135 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/chat_settings.py:251 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/chat_settings.py:252 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/chat_settings.py:256 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/agents.py:34 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/agents.py:35 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/agents.py:42 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/agents.py:43 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M src/praisonaiui/features/agents.py:44 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/config_runtime.py:99 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/config_runtime.py:100 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/openai_api.py:511 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/openai_api.py:512 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/openai_api.py:519 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M src/praisonaiui/features/openai_api.py:520 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M src/praisonaiui/features/openai_api.py:521 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M src/praisonaiui/features/usage.py:60 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/usage.py:61 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/usage.py:62 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/usage.py:63 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/usage.py:64 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M src/praisonaiui/features/usage.py:65 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
+M src/praisonaiui/features/usage.py:66 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/templates/frontend/assets/index.js:95 ada openai:2023-07-06:gpt-and-embeddings-shut-down
+M tests/unit/test_config_store.py:243 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_config_store.py:257 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_dx_polish.py:444 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_realtime.py:110 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+M tests/unit/test_realtime.py:115 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
