@@ -333,6 +333,22 @@ export function unwrap(node: SgNode): SgNode | undefined {
   return n;
 }
 
+/**
+ * SDK classes whose static methods appear in records, called on the imported class with the client as
+ * the first argument. OpenAI exports them from openai/realtime/ws, openai/realtime/websocket,
+ * openai/beta/realtime/ws, openai/beta/realtime/websocket and openai/realtime/translations/ws.
+ */
+export const SDK_CLASSES = new Set(["OpenAIRealtimeWS", "OpenAIRealtimeWebSocket", "OpenAIRealtimeTranslationWS"]);
+
+/** A method on an SDK class, such as `OpenAIRealtimeWS.create`. */
+export const isStatic = (symbol: string) => SDK_CLASSES.has(symbol.split(".")[0]!);
+
+/** Whether the class a static call names (`OpenAIRealtimeWS` in `OpenAIRealtimeWS.create`) is imported from the vendor's packages. */
+export function vendorClass(root: SgNode, grammar: Grammar, callee: string, v: VendorClients): boolean {
+  const pkgs = indexOf(root, grammar).imports.get(callee.split(".")[0]!) ?? [];
+  return [...pkgs].some((p) => v.packages.includes(rootPackage(p)));
+}
+
 /** The client expression an SDK call hangs off: `x` in `x.beta.chat.completions.create`. */
 function clientNode(callee: SgNode, symbol: string): SgNode | undefined {
   let node: SgNode | null = callee;
@@ -349,7 +365,8 @@ function clientNode(callee: SgNode, symbol: string): SgNode | undefined {
  */
 export function clientOrigin(root: SgNode, grammar: Grammar, call: SgNode, symbol: string, v: VendorClients): Origin {
   const callee = call.field("function");
-  const client = callee && clientNode(callee, symbol);
+  const first = isStatic(symbol) && call.field("arguments")?.children().find((c) => c.isNamed() && !c.is("comment"));
+  const client = isStatic(symbol) ? first && unwrap(first) : callee && clientNode(callee, symbol);
   if (!client) return "unknown";
   const index = indexOf(root, grammar);
   const byName = new Map<string, Origin>();
