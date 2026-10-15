@@ -540,6 +540,10 @@ describe("fix --pr", () => {
     const body = String(posts[0]?.body);
     expect(body).toContain("- [ ] build not checked: skipped with --no-test\n- [ ] tests not run: skipped with --no-test");
     expect(body).not.toContain("no test command found");
+    const py = await repoWithOrigin(await repoWith({ "app.py": "c.chat.completions.create(model='x', max_tokens=5)\n", "pytest.ini": "" }));
+    const pyPosts = stubGitHub(py.branch);
+    await fix(py.dir, { pr: true, noTest: true, repo: "o/r" });
+    expect(String(pyPosts[0]?.body)).toContain("## Verified\n- [ ] tests not run: skipped with --no-test\n");
   });
 
   it("leaves the tree clean after --pr even when the build writes tracked files", async () => {
