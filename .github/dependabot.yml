@@ -4,6 +4,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Runtime dependencies are exact pins, and an update moves the pin. The default may treat a
+    # published package as a library and widen the range instead.
+    versioning-strategy: increase
     commit-message:
       prefix: chore
       include: scope
