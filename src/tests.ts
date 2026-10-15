@@ -137,7 +137,8 @@ export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 10
     child.stderr.on("data", keep);
     child.on("close", (code) => {
       clearTimeout(timer);
-      const plain = output.replace(ESCAPES, "");
+      // Masked before and after the codes come out: removing one can cut a token or join one.
+      const plain = redact(output).replace(ESCAPES, "");
       const text = cut ? redact(plain).slice(CUT_MARGIN) : redact(plain);
       const tail = text.trimEnd().split("\n").slice(-TAIL_LINES).join("\n").slice(-TAIL_CHARS);
       resolve({ command, passed: code === 0 && !timedOut, output: tail, timedOut });
