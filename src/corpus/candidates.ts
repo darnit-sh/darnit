@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseChangeRecord, type ChangeRecord } from "../records/schema.js";
 import type { ChangeEntry } from "./oasdiff.js";
-import { requestProperties, type Spec } from "./spec.js";
+import { requestProperty, type Spec } from "./spec.js";
 
 export type VendorConfig = {
   spec: string;
@@ -27,6 +27,14 @@ const KIND: Record<string, ChangeRecord["kind"]> = {
   "endpoint-deprecated": "deprecation",
 };
 const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
+// Spec text lands in rule YAML, ast-grep patterns, fixtures and the corpus pull request,
+// so only plain names and paths get through; anything else is counted in `ignored`, never echoed.
+// The caps keep folder names short (longest in OpenAI's spec: a 35-character name, an 82-character path).
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const METHOD = /^[A-Z]{1,10}$/;
+const PATH = /^\/[\w/{}?=-]{0,199}$/;
+// Greedy, so a name with a backtick in it is read whole and then fails IDENTIFIER.
+const FIELD = /request (?:property|parameter) `(.*)`/s;
 
 // Only explicit phrasings; a bare "use X" would turn prose like "Use this to…" into a rename.
 const REPLACEMENT = /(?:in favou?r of|replaced by)\s+`?([A-Za-z_][A-Za-z0-9_]*)`?|use\s+`([A-Za-z_][A-Za-z0-9_]*)`\s+instead/i;
@@ -66,7 +74,7 @@ export function deriveCandidates(input: {
   const unmapped = new Set<string>();
   const seen = new Set<string>();
   // The same field changing on several endpoints is one record with several endpoints.
-  type Draft = { kind: ChangeRecord["kind"]; field?: string | undefined; rename?: string | undefined; description: string; text: string; endpoints: string[]; paths: string[]; symbols: string[] };
+  type Draft = { slug: string; kind: ChangeRecord["kind"]; field?: string | undefined; rename?: string | undefined; description: string; text: string; endpoints: string[]; paths: string[]; symbols: string[] };
   const drafts = new Map<string, Draft>();
 
   const covered = (path: string, field: string | undefined) =>
@@ -82,9 +90,21 @@ export function deriveCandidates(input: {
       continue;
     }
     const fieldLevel = e.id.startsWith("request-p");
-    const field = fieldLevel ? e.text.match(/`([^`]+)`/)?.[1] : undefined;
+    const field = fieldLevel ? e.text.match(FIELD)?.[1] : undefined;
     if (fieldLevel && (!field || field.includes("/"))) {
       skip(`${e.id} (nested property)`);
+      continue;
+    }
+    if (!METHOD.test(e.operation)) {
+      skip(`${e.id} (method is not a plain HTTP method)`);
+      continue;
+    }
+    if (!PATH.test(e.path)) {
+      skip(`${e.id} (endpoint is not a plain path)`);
+      continue;
+    }
+    if (field !== undefined && !IDENTIFIER.test(field)) {
+      skip(`${e.id} (field name is not a plain identifier, ${endpoint})`);
       continue;
     }
     const symbol = config.symbols?.[endpoint];
@@ -101,25 +121,31 @@ export function deriveCandidates(input: {
       continue;
     }
 
-    const description = field ? (requestProperties(spec, e.operation, e.path)[field]?.description ?? "") : "";
+    const description = field ? (requestProperty(spec, e.operation, e.path, field)?.description ?? "") : "";
     const m = kind === "deprecation" && field ? description.match(REPLACEMENT) : null;
     const replacement = m?.[1] ?? m?.[2];
-    const rename = replacement !== undefined && replacement !== field ? replacement : undefined;
+    const rename = replacement !== undefined && replacement !== field && IDENTIFIER.test(replacement) ? replacement : undefined;
     const gone = kind === "breaking";
     const slug = field
       ? rename
         ? `${kebab(field)}-to-${kebab(rename)}`
         : `${kebab(field)}-${gone ? "removed" : "deprecated"}`
       : `${kebab(endpoint)}-${gone ? "removed" : "deprecated"}`;
-    const draft = drafts.get(slug) ?? { kind, field, rename, description, text: e.text, endpoints: [], paths: [], symbols: [] };
+    // Keyed by the exact name: names that differ only in case or punctuation share a slug, not a record.
+    const id = JSON.stringify([field ?? endpoint, rename, gone]);
+    const draft = drafts.get(id) ?? { slug, kind, field, rename, description, text: e.text, endpoints: [], paths: [], symbols: [] };
     draft.endpoints.push(endpoint);
     draft.paths.push(e.path);
     if (symbol && !draft.symbols.includes(symbol)) draft.symbols.push(symbol);
-    drafts.set(slug, draft);
+    drafts.set(id, draft);
   }
 
   const candidates: Candidate[] = [];
-  for (const [slug, d] of drafts) {
+  const slugs = new Set<string>();
+  for (const d of drafts.values()) {
+    let slug = d.slug;
+    for (let n = 2; slugs.has(slug); n++) slug = `${d.slug}-${n}`;
+    slugs.add(slug);
     const { kind, field, rename, description } = d;
     const symbol = d.symbols[0];
     const endpoint = d.endpoints[0]!;
