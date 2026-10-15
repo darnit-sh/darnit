@@ -944,6 +944,62 @@ describe("other mentions of model names", () => {
     expect(render(hits, coverage, [], mentions)).toContain("\nNot checked: 1 file over 10 MB: big.json.\n");
   });
 
+  it("does not count a name like o1 used as a variable in code", () => {
+    const names = new Set(["o1", "o3"]);
+    const java = "public int compare(String o1, String o2) {\n  if (o1 == null) return o3;\n  s1 = o1;\n}\n";
+    expect(findMentions(java, names, "Sort.java")).toEqual([]);
+    expect(findMentions("var o1=hb;p=o1(u,{schema:l1});export{o1 as default};\n", names, "assets/index.js")).toEqual([]);
+    expect(findMentions("class A { #o1 = 1; }\n#if o1\n", names, "a.ts")).toEqual([]);
+    expect(findMentions("#if o1\n#define o3 1\n", names, "a.c")).toEqual([]);
+    expect(findMentions("x = a // o1\ndef o1(o3):\n    return o3\n", names, "a.py")).toEqual([]);
+  });
+
+  it("counts a name like o1 in code where it names the model: strings, comments, docstrings and settings", () => {
+    const names = new Set(["o1"]);
+    const ts = [
+      'export const o1 = modelRef({ name: "openai/o1" });',
+      "// o1 needs max_completion_tokens",
+      "/**",
+      " * Reasoning models such as o1",
+      " */",
+      "const note = `uses",
+      "o1 by default`;",
+      "const s = 'o1';",
+      'const t = "a \\" o1";',
+      "",
+    ].join("\n");
+    expect(listed(findMentions(ts, names, "src/gpt.ts"))).toEqual([":1:o1", ":2:o1", ":4:o1", ":7:o1", ":8:o1", ":9:o1"]);
+    const py = ['"""Models:', "", "o1 is slow.", '"""', "model = o1", "x = 1  # o1 here", "y = f'''", "o1'''", 'z = r"o1"', ""].join("\n");
+    expect(listed(findMentions(py, names, "app.py"))).toEqual([":3:o1", ":5:o1", ":6:o1", ":8:o1", ":9:o1"]);
+    expect(listed(findMentions('val s = """\no1\n"""\n', names, "A.kt"))).toEqual([":2:o1"]);
+    expect(listed(findMentions("s := `\no1`\n", names, "a.go"))).toEqual([":2:o1"]);
+  });
+
+  it("reads raw strings without escapes, Rust lifetimes as code, and ends an unclosed quote at the line end", () => {
+    const names = new Set(["o1"]);
+    expect(listed(findMentions("parts := strings.Split(p, `\\`)\nmodel := `o1 is retired`\n", names, "a.go"))).toEqual([":2:o1"]);
+    expect(listed(findMentions('val p = """C:\\"""\nval q = """o1"""\n', names, "A.kt"))).toEqual([":2:o1"]);
+    expect(listed(findMentions('fn f<\'a>(s: &\'a str) {}\nconst S: &\'static str = "don\'t use o1";\n', names, "lib.rs"))).toEqual([":2:o1"]);
+    expect(listed(findMentions('let c: &\'static str = x;\nlet o1 = 1;\nlet s = "o1";\n', names, "lib.rs"))).toEqual([":3:o1"]);
+    expect(listed(findMentions("const c = 'x;\nlet o1 = 1;\nlet s = \"o1\";\n", names, "a.ts"))).toEqual([":3:o1"]);
+  });
+
+  it("counts every mention of a name like o1 in docs, data and files that mix markup into code", () => {
+    const names = new Set(["o1"]);
+    expect(listed(findMentions("We moved from o1 to o3.\n", names, "README.md"))).toEqual([":1:o1"]);
+    expect(listed(findMentions("models:\n  - o1\n", names, "config.yaml"))).toEqual([":2:o1"]);
+    expect(listed(findMentions("const o1 = 1;\nreturn <p>Uses o1</p>;\n", names, "App.tsx"))).toEqual([":1:o1", ":2:o1"]);
+    expect(listed(findMentions("o1 = 1\n", names))).toEqual([":1:o1"]);
+  });
+
+  it("counts a name like o1 on a line over 5,000 characters only directly in quotes or as a setting", () => {
+    const names = new Set(["o1", "gpt-4"]);
+    const pad = "x".repeat(5000);
+    const text = `${pad} o1 +o1/ "a o1"\n${pad} "o1"\n${pad} model: o1\n${pad} gpt-4\n${"y".repeat(4990)} o1\n`;
+    for (const file of ["data.jsonl", "report.html"]) expect(listed(findMentions(text, names, file))).toEqual([":2:o1", ":3:o1", ":4:gpt-4", ":5:o1"]);
+    expect(listed(findMentions(text, names, "a.js"))).toEqual([":2:o1", ":3:o1", ":4:gpt-4"]);
+  });
+
   it("keeps a separate accent mark inside the word", () => {
     const text = "orc\u0327ada ada\u0301 \u0915\u093fo1\n";
     expect(findMentions(text, new Set(["ada", "o1"]))).toEqual([]);
@@ -1115,6 +1171,14 @@ describe("check on a repository built to slow it down", () => {
     ],
   ])("does not take %s as declaring the client global", async (_, name, text, at) => {
     expect(maxTokens(await check(await scratch({ [name]: text })))).toEqual([at]);
+  });
+
+  it.each(["app.js", "app.py", "App.kt"])("finds strings and comments in a crafted 10 MB %s in linear time", { timeout: 60_000 }, (file) => {
+    const names = new Set(["o1", "gpt-4"]);
+    for (const unit of ["\"o1 '\\\n", "/*o1\n", "'''o1\\\n", '\\\\"o1"\n', '`o1 #o1 """\n', "o1 o1\n"]) {
+      const text = unit.repeat(Math.floor(MAX_FILE_BYTES / unit.length));
+      expect(cpuTime(() => findMentions(text, names, file))).toBeLessThan(3000);
+    }
   });
 
   it("does not read a file over the size limit, and says so", async () => {

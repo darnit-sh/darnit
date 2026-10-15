@@ -70,7 +70,7 @@ export async function scan(
       if (!grammar) otherFiles++;
       // Known limit: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
       // (300 MB of crafted names) exhaust the heap. Store them compactly, or cap each file and keep its count, if that matters.
-      for (const m of findMentions(text, names)) for (const record of byName.get(m.model)!) mentions.push({ ...m, file, record });
+      for (const m of findMentions(text, names, file)) for (const record of byName.get(m.model)!) mentions.push({ ...m, file, record });
     }
     if (!grammar) continue;
     scanned++;
@@ -105,7 +105,7 @@ export async function scan(
   const key = (file: string, line: number, model: string) => `${file}:${line} ${model}`;
   const listed = new Set([
     ...values.map((v) => key(v.file, v.line, v.model)),
-    ...hits.flatMap((h) => findMentions(h.text, namesOf.get(h.record)!).map((m) => key(h.file, h.line + m.line - 1, m.model))),
+    ...hits.flatMap((h) => findMentions(h.text, namesOf.get(h.record)!, h.file).map((m) => key(h.file, h.line + m.line - 1, m.model))),
   ]);
   return { hits, scanned, otherFiles, foreign, tooLarge, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
 }
