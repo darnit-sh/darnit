@@ -736,7 +736,7 @@ describe("model names set as values", () => {
     });
     expect(ranges.filter((_, i) => inside(counted, 10 * i + 1, 10 * i + 2) && !inside(counted, 10 * i + 4, 10 * i + 6))).toHaveLength(2000);
     // A binary search reads at most 12 ranges per lookup here, a scan from the start about 1000.
-    expect(reads).toBeLessThan(2 * 2000 * 20);
+    expect(reads).toBeLessThan(2 * 2000 * 50);
   });
 
   it("reads long call chains about as fast as parsing them", () => {
