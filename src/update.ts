@@ -1,19 +1,23 @@
 import { request } from "node:https";
+import type { Readable } from "node:stream";
 import { pinned } from "./init.js";
 import { atLeast } from "./versions.js";
 
 const REGISTRY = "https://registry.npmjs.org/-/package/darnit/dist-tags";
-const RELEASE = /^\d+\.\d+\.\d+$/;
+const RELEASE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const MAX_BYTES = 4096;
 const BUDGET_MS = 1500;
 
-type Get = (url: string, signal: AbortSignal) => Promise<{ status: number; body: AsyncIterable<Uint8Array> | null }>;
+type Get = (url: string, signal: AbortSignal) => Promise<{ status: number; body: Readable }>;
 type Options = { env: NodeJS.ProcessEnv; json?: boolean | undefined; get?: Get };
 
-/** node:https rather than fetch: fetch leaves a stalled connection open after the abort, holding the run for seconds. */
+/**
+ * node:https rather than fetch: fetch leaves a stalled connection open after the abort, holding the run for seconds.
+ * A DNS lookup already started cannot be cancelled, so a resolver that never answers can still delay the exit.
+ */
 export const get: Get = (url, signal) =>
   new Promise((resolve, reject) => {
-    request(url, { signal, headers: { accept: "application/json" } }, (res) => resolve({ status: res.statusCode ?? 0, body: res }))
+    request(url, { signal, agent: false, headers: { accept: "application/json" } }, (res) => resolve({ status: res.statusCode ?? 0, body: res }))
       .on("error", reject)
       .end();
   });
@@ -21,10 +25,13 @@ export const get: Get = (url, signal) =>
 /** The newest release on npm, or undefined for anything but a small JSON body naming a plain x.y.z. Registry text is untrusted. */
 async function latest(ask: Get, signal: AbortSignal): Promise<string | undefined> {
   const res = await ask(REGISTRY, signal);
-  if (res.status !== 200 || !res.body) return undefined;
-  const chunks: Uint8Array[] = [];
+  if (res.status !== 200) {
+    res.body.destroy();
+    return undefined;
+  }
+  const chunks: Buffer[] = [];
   let size = 0;
-  for await (const chunk of res.body) {
+  for await (const chunk of res.body as AsyncIterable<Buffer>) {
     size += chunk.byteLength;
     if (size > MAX_BYTES) return undefined;
     chunks.push(chunk);
@@ -39,6 +46,8 @@ async function latest(ask: Get, signal: AbortSignal): Promise<string | undefined
  */
 export async function updateNotice(current: string, { env, json, get: ask = get }: Options): Promise<string | undefined> {
   if (json || env.DARNIT_NO_UPDATE_CHECK || env.NO_UPDATE_NOTIFIER || !RELEASE.test(current)) return undefined;
+  // Node's own proxy support does not abort a stalled proxy, which would hold the run open; a proxied run goes without.
+  if (env.NODE_USE_ENV_PROXY || [...(env.NODE_OPTIONS ?? "").split(/\s+/), ...process.execArgv].includes("--use-env-proxy")) return undefined;
   const signal = AbortSignal.timeout(BUDGET_MS);
   const timeout = new Promise<undefined>((resolve) => signal.addEventListener("abort", () => resolve(undefined)));
   const next = await Promise.race([latest(ask, signal), timeout]).catch(() => undefined);
