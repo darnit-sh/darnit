@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { deriveCandidates, writeCandidate } from "../src/corpus/candidates.js";
-import { changelog } from "../src/corpus/oasdiff.js";
-import { parseSpec } from "../src/corpus/spec.js";
+import { changelog, type ChangeEntry } from "../src/corpus/oasdiff.js";
+import { parseSpec, requestProperty, type Schema, type Spec } from "../src/corpus/spec.js";
 import { runPackFixtures } from "../src/packs/fixtures.js";
 import { loadRecords } from "../src/records/load.js";
 
@@ -113,5 +113,105 @@ describe("deriveCandidates", () => {
     const { candidates, ignored } = await derive("additive-after.yaml");
     expect(candidates).toEqual([]);
     expect(ignored).toEqual({ "new-optional-request-property": 1, "endpoint-added": 1 });
+  });
+
+  it("skips spec text that is not a plain name, with a note, instead of writing it into rules", () => {
+    const bad = ["a'\n    strictness: 'x", "$K", "a b", "a`b", "max_tokens`x", "x".repeat(65)];
+    const { candidates, ignored, unmapped } = synthetic(
+      Object.fromEntries(bad.map((f) => [f, { description: "Deprecated in favor of `b`." }])),
+      [...bad.map((f) => deprecated(f)), deprecated("max_tokens", "/chat/completions <img src=x>"), deprecated("max_tokens", "/chat/completions", "post")],
+    );
+    expect(candidates.flatMap((c) => Object.values(c.files)).join("\n")).not.toMatch(/strictness|\$K/);
+    expect(candidates).toEqual([]);
+    expect(unmapped).toEqual([]);
+    expect(ignored).toEqual({
+      "request-property-deprecated (field name is not a plain identifier, POST /chat/completions)": 6,
+      "request-property-deprecated (endpoint is not a plain path)": 1,
+      "request-property-deprecated (method is not a plain HTTP method)": 1,
+    });
+  });
+
+  it("counts a nested property as nested whatever its path", () => {
+    const { ignored } = synthetic({}, [deprecated("a/b", "/x y")]);
+    expect(ignored).toEqual({ "request-property-deprecated (nested property)": 1 });
+  });
+
+  it("writes every candidate it derives, long names included", async () => {
+    const long = `f${"x".repeat(63)}`;
+    const { candidates, ignored } = synthetic(
+      { [long]: { description: "Deprecated." }, short: { description: `Deprecated in favor of \`r${"x".repeat(300)}\`.` } },
+      [deprecated(long), deprecated("short")],
+    );
+    expect(ignored).toEqual({});
+    expect(candidates.map((c) => c.record.surface.fields)).toEqual([[long], ["short"]]);
+    expect(candidates[1]?.record.fix).toBeUndefined();
+    const packs = await mkdtemp(join(tmpdir(), "darnit-corpus-"));
+    tempDirs.push(packs);
+    for (const c of candidates) await writeCandidate(packs, c);
+  });
+
+  it("reads the parameter name, not its location, from a removed request parameter", () => {
+    const entry = { id: "request-parameter-removed", level: 3 as const, text: "deleted the `query` request parameter `limit`", operation: "POST", path: "/chat/completions" };
+    const { candidates } = synthetic({}, [entry]);
+    expect(candidates.map((c) => c.record.surface.fields)).toEqual([["limit"]]);
+  });
+
+  it("gives names that differ only in case or underscores their own records", () => {
+    const { candidates } = synthetic({}, ["MAX_TOKENS", "max_tokens", "_", "__"].map((f) => deprecated(f)));
+    expect(candidates.map((c) => c.record.surface.fields)).toEqual([["MAX_TOKENS"], ["max_tokens"], ["_"], ["__"]]);
+    expect(new Set(candidates.map((c) => c.record.id)).size).toBe(4);
+  });
+
+  it("never borrows a rename from a schema outside the spec's own components", () => {
+    const { candidates } = synthetic(
+      { max_tokens: { $ref: "https://evil.example/schemas/X" }, functions: { $ref: "other.yaml#/components/schemas/X" } },
+      [deprecated("max_tokens"), deprecated("functions")],
+      { X: { description: "Deprecated in favor of `evil`." } },
+    );
+    expect(candidates.map((c) => c.record.surface.fields)).toEqual([["max_tokens"], ["functions"]]);
+    expect(candidates.every((c) => !c.record.fix)).toBe(true);
+  });
+
+  it("resolves each referenced schema once across many fields within a CPU budget", () => {
+    const fields = Array.from({ length: 60 }, (_, i) => `f${i}`);
+    const schemas: Record<string, Schema> = {};
+    for (let i = 0; i < 100_000; i++) schemas[`C${i}`] = ref(`C${i + 1}`);
+    schemas["C100000"] = { description: "Deprecated in favor of `g`." };
+    const start = process.cpuUsage();
+    const { candidates } = synthetic(Object.fromEntries(fields.map((f) => [f, ref("C0")])), fields.map((f) => deprecated(f)), schemas);
+    const { user, system } = process.cpuUsage(start);
+    expect(candidates).toHaveLength(60);
+    expect(candidates.every((c) => c.record.fix)).toBe(true);
+    expect((user + system) / 1000).toBeLessThan(1000);
+  });
+});
+
+const ref = (name: string): Schema => ({ $ref: `#/components/schemas/${name}` });
+
+function deprecated(field: string, path = "/chat/completions", operation = "POST") {
+  return { id: "request-property-deprecated", level: 1 as const, text: `request property \`${field}\` deprecated`, operation, path };
+}
+
+function synthetic(properties: Record<string, Schema>, entries: ChangeEntry[], schemas: Record<string, Schema> = {}) {
+  const spec: Spec = { paths: { "/chat/completions": { post: { requestBody: { content: { "application/json": { schema: { properties } } } } } } }, components: { schemas } };
+  return deriveCandidates({ vendor: "openai", config, entries, spec, existing: [], observedAt });
+}
+
+describe("requestProperty", () => {
+  it("stops at $ref cycles and follows long chains within a CPU budget", () => {
+    const schemas: Record<string, Schema> = { A: ref("B"), B: ref("A"), Self: ref("Self") };
+    for (let i = 0; i < 100_000; i++) schemas[`C${i}`] = ref(`C${i + 1}`);
+    schemas["C100000"] = { properties: { max_tokens: ref("Self") } };
+    const op = (name: string) => ({ post: { requestBody: { content: { "application/json": { schema: ref(name) } } } } });
+    const spec: Spec = { paths: { "/a": op("A"), "/self": op("Self"), "/chain": op("C0") }, components: { schemas } };
+    const start = process.cpuUsage();
+    expect(requestProperty(spec, "POST", "/a", "max_tokens")).toBeUndefined();
+    expect(requestProperty(spec, "POST", "/self", "max_tokens")).toBeUndefined();
+    expect(requestProperty(spec, "POST", "/chain", "max_tokens")).toEqual(ref("Self"));
+    expect(requestProperty(spec, "POST", "/chain", "constructor")).toBeUndefined();
+    const odd = { paths: { "/x": { post: { requestBody: { content: { "application/json": { schema: { allOf: 1, $ref: 2 } } } } } } } } as unknown as Spec;
+    expect(requestProperty(odd, "POST", "/x", "max_tokens")).toBeUndefined();
+    const { user, system } = process.cpuUsage(start);
+    expect((user + system) / 1000).toBeLessThan(1000);
   });
 });
