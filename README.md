@@ -229,6 +229,12 @@ Once a day it runs `check`. The day a reviewed or parser-verified change hits yo
 GitHub tells you, like any failed workflow. Scheduled workflows only run from
 the default branch, so commit this file there.
 
+When a newer release line is out, `check` and `fix` end with one line naming
+the version to change in this file, shown in a workflow run as a notice on the
+run summary. darnit asks npm once per run, waits at most 1.5 seconds, never
+changes the exit code, and never asks with `--json`. Set
+`DARNIT_NO_UPDATE_CHECK=1` (or `NO_UPDATE_NOTIFIER=1`) to turn it off.
+
 Want pull requests instead of a red run? darnit runs your tests before it
 pushes, so the job has to install your dependencies first:
 
