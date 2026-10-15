@@ -1,0 +1,147 @@
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+
+const script = resolve("scripts/check-proof.sh");
+const tempDirs: string[] = [];
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
+});
+
+const subtract = "export const add = (a: number, b: number) => a - b;\n";
+const added = "export const add = (a: number, b: number) => a + b;\n";
+const test = (body: string, imports = "import { add } from '../src/add.js';") =>
+  `import { expect, it } from 'vitest';\n${imports}\n${body}\n`;
+// A stand-in for the fixture runner and the end-to-end runner: a case passes when it wants the rule's text.
+const runner = (dir: string) =>
+  `import { readFileSync } from 'node:fs';\nfor (const c of ${dir}) { const ok = readFileSync('packs/v/p/rules/r.yml', 'utf8') === readFileSync(c + '/want', 'utf8'); console.log((ok ? '✓ ' : '✗ ') + c.replace(/^packs\\/v\\/p\\/fixtures\\//, 'v/p · ').replace(/^test\\/e2e\\//, '')); if (!ok) console.log('    rule text differs'); }\n`;
+
+const baseFiles: Record<string, string> = {
+  "package.json": JSON.stringify({ type: "module", scripts: { "test:e2e": "node scripts/e2e.mjs" } }),
+  "tsconfig.json": JSON.stringify({ compilerOptions: { module: "NodeNext", strict: true, noEmit: true, skipLibCheck: true, types: [] }, include: ["src", "test"] }),
+  "src/add.ts": subtract,
+  "test/add.test.ts": test("it('adds zero', () => expect(add(1, 0)).toBe(1));"),
+  "packs/v/p/change.json": "{}\n",
+  "packs/v/p/rules/r.yml": "old\n",
+  "packs/v/p/fixtures/basic/want": "old\n",
+  "scripts/fixtures.ts": runner("process.argv.slice(2)"),
+  "scripts/e2e.mjs": runner("['test/e2e/s1']"),
+  "test/e2e/s1/want": "old\n",
+  "README.md": "x\n",
+};
+
+/** Runs the proof check on a crafted repo whose head commit writes (or, for null, removes) `edits`. */
+async function proof(title: string, edits: Record<string, string | null>, body = "") {
+  const dir = await mkdtemp(join(tmpdir(), "darnit-proof-"));
+  tempDirs.push(dir);
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
+  const write = async (files: Record<string, string | null>) => {
+    for (const [f, text] of Object.entries(files)) {
+      if (text === null) await rm(join(dir, f));
+      else {
+        await mkdir(dirname(join(dir, f)), { recursive: true });
+        await writeFile(join(dir, f), text);
+      }
+    }
+  };
+  git("init", "-q");
+  await write(baseFiles);
+  await writeFile(join(dir, ".gitignore"), "node_modules\n");
+  await symlink(resolve("node_modules"), join(dir, "node_modules"));
+  git("add", ".");
+  git("commit", "-q", "-m", "base");
+  const base = git("rev-parse", "HEAD");
+  await write(edits);
+  git("add", "-A");
+  git("commit", "-q", "-m", "head");
+  const head = git("rev-parse", "HEAD");
+  const summary = join(dir, ".git", "summary");
+  const output = join(dir, ".git", "output");
+  await writeFile(summary, "");
+  await writeFile(output, "");
+  const env = { ...process.env, TITLE: title, BODY: body, GITHUB_STEP_SUMMARY: summary, GITHUB_OUTPUT: output };
+  const sh = (...args: string[]) => spawnSync("sh", [script, ...args], { cwd: dir, encoding: "utf8", env });
+  let r = sh(base, head);
+  const asked = (await readFile(output, "utf8")).includes("run=true");
+  if (asked) r = sh("--run", base, head);
+  return { status: r.status, out: r.stdout, asked, summary: await readFile(summary, "utf8"), clean: git("status", "--porcelain") === "" };
+}
+
+describe("the proof check", { timeout: 120_000 }, () => {
+  it("passes a fix whose test fails on base's code, with a row per test, counting only tests that use what base has", async () => {
+    const r = await proof("fix(scan): add, do not subtract", {
+      "src/add.ts": `${added}export const sum = (xs: number[]) => xs.reduce(add, 0);\nexport const twice = (a: number) => add(a, a);\n`,
+      "test/add.test.ts": test(
+        "it('adds zero', () => expect(add(1, 0)).toBe(1));\nit('adds two', () => expect(add(1, 2)).toBe(3));\nit('sums', () => expect(sum([1, 2])).toBe(3));\nit('doubles', () => expect(twice(2)).toBe(4));",
+        "import { add, sum as total, twice } from '../src/add.js';\nconst sum = total;",
+      ),
+    });
+    expect(r).toMatchObject({ status: 0, asked: true, clean: true });
+    expect(r.summary).toContain("**Passed:** 1 changed test fails without this change and passes with it.");
+    expect(r.summary).toContain("| `test/add.test.ts > adds two` | fails: `AssertionError: expected -1 to be 3 // Object.is equality` | passes |");
+    expect(r.summary).toContain("Not counted, since they use something base does not have:\n\n- `test/add.test.ts > sums`: `Error: sum does not exist without this change`\n- `test/add.test.ts > doubles`: `Error: twice does not exist without this change`");
+    expect(r.summary).toContain("1 other changed test passes with and without this change.");
+  });
+
+  it("fails a fix whose new test also passes on base's code", async () => {
+    const r = await proof("fix: add", { "src/add.ts": added, "test/more.test.ts": test("it('adds zero again', () => expect(add(2, 0)).toBe(2));") });
+    expect(r).toMatchObject({ status: 1, asked: true, clean: true });
+    expect(r.summary).toContain("every changed test also passes without this change");
+  });
+
+  it("fails a fix whose only failing tests use a new export or a new file, and counts them for a feat", async () => {
+    const edits = {
+      "src/add.ts": `${added}export function sum(xs: number[]) { return xs.reduce(add, 0); }\n`,
+      "src/new.ts": "export const one = 1;\n",
+      "test/sum.test.ts": test("it('sums', () => expect(sum([1, 2])).toBe(3));", "import { sum } from '../src/add.js';"),
+      "test/new.test.ts": test("it('is one', () => expect(one).toBe(1));", "import { one } from '../src/new.js';"),
+    };
+    const fix = await proof("fix: add", edits);
+    expect(fix).toMatchObject({ status: 1, clean: true });
+    expect(fix.summary).toContain("each changed test that fails without this change uses something base does not have");
+    expect(fix.summary).toContain("- `test/sum.test.ts > sums`: `Error: sum does not exist without this change`");
+    expect(fix.summary).toContain("- `test/new.test.ts`: ");
+    const feat = await proof("feat(check): sum", edits);
+    expect(feat).toMatchObject({ status: 0, clean: true });
+    expect(feat.summary).toContain("| `test/sum.test.ts > sums` | new export: `Error: sum does not exist without this change` | passes |");
+    expect(feat.summary).toContain("| `test/new.test.ts` | new export: ");
+  });
+
+  it("proves a rule change with a fixture case or an end-to-end scenario that fails on base's rules", async () => {
+    const r = await proof("fix(packs): new rule", { "packs/v/p/rules/r.yml": "new\n", "packs/v/p/fixtures/basic/want": "new\n", "test/e2e/s1/want": "new\n" });
+    expect(r).toMatchObject({ status: 0, clean: true });
+    expect(r.summary).toContain("| `packs/v/p/fixtures/basic` | fails: `rule text differs` | passes |");
+    expect(r.summary).toContain("| `test/e2e/s1` | fails: `rule text differs` | passes |");
+  });
+
+  it("fails when a changed test fails on this change, or when no test changed", async () => {
+    const red = await proof("fix: add", { "src/add.ts": added, "test/add.test.ts": test("it('adds zero', () => expect(add(1, 0)).toBe(2));") });
+    expect(red).toMatchObject({ status: 1, clean: true });
+    expect(red.summary).toContain("- `test/add.test.ts > adds zero`: `AssertionError: expected 1 to be 2");
+    const none = await proof("fix: add", { "src/add.ts": added, "test/add.test.ts": null });
+    expect(none).toMatchObject({ status: 1, asked: false });
+    expect(none.summary).toContain("**Failed:** no new or changed test.");
+  });
+
+  it("passes visibly with an opt-out reason, and says why other changes are not checked", async () => {
+    const opted = await proof("fix: add", { "src/add.ts": added }, "Text\r\n<!-- Proof: none, hidden -->\r\nProof: none, only reachable over the `network`\r\n");
+    expect(opted).toMatchObject({ status: 0, asked: false });
+    expect(opted.out).toContain("::warning::passed without a proof");
+    expect(opted.summary).toContain("Reason given: `only reachable over the 'network'`");
+    const short = await proof("fix: add", { "src/add.ts": added }, "Proof: none, because\n");
+    expect(short.status).toBe(1);
+    expect(short.summary).toContain("reason needs at least 10 characters");
+    for (const [title, edits] of [
+      ["docs: x", { "src/add.ts": added }],
+      ["refactor: x", { "src/add.ts": added }],
+      ["fix: readme", { "README.md": "y\n", "test/add.test.ts": null }],
+    ] as const) {
+      const r = await proof(title, edits);
+      expect(r, title).toMatchObject({ status: 0, asked: false });
+      expect(r.summary).toContain("**Not checked:**");
+    }
+  });
+});
