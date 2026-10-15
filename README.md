@@ -125,8 +125,14 @@ Only the whole name counts: `gpt-4` never matches inside `gpt-4o`, `gpt-4.1` or
 `gpt-4-turbo`. A name made only of letters, such as `ada` or `davinci`, is also
 an everyday word or name, so it counts only inside quotes (`"ada"`, `'ada'`,
 `` `ada` `` or `\"ada\"` in a JSON string) or as the whole value of a setting
-named for a model or engine (`OPENAI_MODEL=ada`, `model: ada`). Mentions never
-change the exit code. `--mentions` lists each line, and `--json` always lists
+named for a model or engine (`OPENAI_MODEL=ada`, `model: ada`). A name code
+can also use as a variable, such as `o1`, counts in code files (Python, Java,
+Kotlin, Scala, Groovy, Swift, Dart, Go, Rust, C, C++, C#, and JavaScript and
+TypeScript other than `.jsx` and `.tsx`) only inside a string or a comment or as
+a setting value, so `compare(String o1, String o2)` is not counted; in other
+files every mention counts. On a line over 5,000 characters, as in a minified
+bundle, it counts only directly inside quotes or as a setting value. Mentions
+never change the exit code. `--mentions` lists each line, and `--json` always lists
 them all in `mentions`, with `id`, `file`, `line` and `model`, and counts the
 other files searched in `scanned.otherFiles`. Binary files are skipped, and
 other files over 10 MB are listed under "Not checked".
