@@ -718,11 +718,11 @@ describe("model names set as values", () => {
       const start = process.cpuUsage();
       expect(findModelValues("app.py", source, grammar, new Set(["gpt-4"]))).toHaveLength(180_000);
       const { user, system } = process.cpuUsage(start);
-      return user + system;
+      return `${call.slice(6)} u${Math.round(user / 1000)} s${Math.round(system / 1000)}`;
     };
-    const plain = time("count_things");
-    expect(time("count_tokens")).toBeLessThan(1.6 * plain);
-  }, 60_000);
+    const out = [time("count_things"), time("count_tokens"), time("count_things"), time("count_tokens")];
+    expect(out.join(" | ")).toBe("");
+  }, 150_000);
 
   it("reads long call chains about as fast as parsing them", () => {
     for (const [file, link] of ["app.py", "app.ts"].flatMap((f) => [".a()", ".token", ".token()"].map((l) => [f, l] as const))) {
