@@ -788,7 +788,7 @@ describe("model names set as values", () => {
       ["app.ts", (n: number) => `${" ".repeat(1_000_000 * n)}${'model = "gpt-4"; '.repeat(5000 * n)}\n`],
       ["app.py", (n: number) => `model = ${'f("gpt-4", '.repeat(5000 * n)}x${")".repeat(5000 * n)}\n`],
       ["app.ts", (n: number) => `model = ${'c ? "gpt-4" : ('.repeat(5000 * n)}x${")".repeat(5000 * n)}\n`],
-      ["app.ts", (n: number) => `model = x${'.f("gpt-4")'.repeat(5000 * n)}\n`],
+      ["app.ts", (n: number) => `model = x${'.f("gpt-4")'.repeat(20_000 * n)}\n`],
     ] as const;
     const slow = cases.filter(([file, source]) => growth(file, source) > 24);
     expect(slow.map(([, source]) => source(1).slice(0, 20))).toEqual([]);
