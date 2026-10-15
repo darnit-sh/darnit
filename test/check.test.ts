@@ -810,6 +810,21 @@ describe("model names set as values", () => {
     expect(values.map((v) => `${v.line}:${v.model}`)).toEqual(["4:gpt-4"]);
   });
 
+  it("lists a value and a mention under every change that names the model", async () => {
+    const record = (await loadRecords()).map((l) => l.record).find((r) => r.id === "openai:2026-04-22:legacy-gpt-model-snapshots-shut-down")!;
+    const again = { ...record, id: `${record.id}-again` };
+    const dir = await scratch({
+      "app.py": 'from openai import OpenAI\n\nclient = OpenAI()\nclient.chat.completions.create(model="gpt-3.5-turbo", messages=[])\nMODEL = "gpt-3.5-turbo"\n',
+      "README.md": "Uses gpt-3.5-turbo.\n",
+    });
+    const { hits, values, mentions } = await scan(dir, ["app.py", "README.md"], [record, again], { modelValues: true, mentions: true });
+    const ids = (list: { file: string; line: number; record: { id: string } }[]) => list.map((h) => `${h.file}:${h.line} ${h.record.id}`);
+    expect(ids(hits)).toEqual([`app.py:4 ${record.id}`, `app.py:4 ${again.id}`]);
+    expect(ids(values)).toEqual([`app.py:5 ${record.id}`, `app.py:5 ${again.id}`]);
+    expect(ids(mentions)).toEqual([`README.md:1 ${record.id}`, `README.md:1 ${again.id}`]);
+    expect(render(hits, undefined, values, mentions)).toContain("  1 mention in 1 file.");
+  });
+
   it("prints a long list of values quickly", async () => {
     const { values } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
     const many = Array.from({ length: 200_000 }, (_, i) => ({ ...values[0]!, line: i + 1 }));
