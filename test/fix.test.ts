@@ -3,14 +3,29 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary } from "../src/fix.js";
+import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
+
+// A short limit for the build and test runs, and a count of them, so a hung check costs a test half a second.
+const runs = vi.hoisted(() => ({ limitMs: undefined as number | undefined, count: 0 }));
+vi.mock("../src/tests.js", async (original) => {
+  const real = await original<typeof import("../src/tests.js")>();
+  return {
+    ...real,
+    runTests: (root: string, command: string, limitMs?: number) => {
+      runs.count++;
+      return real.runTests(root, command, runs.limitMs ?? limitMs);
+    },
+  };
+});
 
 const PACKS = fileURLToPath(new URL("../packs/", import.meta.url));
 
 const tempDirs: string[] = [];
 afterEach(async () => {
+  runs.limitMs = undefined;
+  runs.count = 0;
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
@@ -466,6 +481,71 @@ describe("fix", () => {
   });
 });
 
+const HANGS = "node -e \"setTimeout(() => {}, 60000)\"";
+
+describe("fix when a check runs out of time", () => {
+  it("says the tests timed out, without running them again or judging the change", async () => {
+    runs.limitMs = 500;
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    const result = await fix(dir, { test: HANGS });
+    expect(runs.count).toBe(1);
+    expect(result.tests).toMatchObject({ kind: "tests", passed: false, timedOut: true });
+    expect(result.tests?.attributed).toBeUndefined();
+    expect(result.reverted).toBe(true);
+    expect(exitCodeFor(result)).toBe(1);
+    const summary = renderSummary(result);
+    expect(summary).toContain(`tests: ${HANGS} timed out after 10 minutes; files put back, since a run that did not finish can't check the change.`);
+    expect(summary).not.toMatch(/broke|already fail/);
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+    expect(toJson(result)).toMatchObject({ tests: { kind: "tests", passed: false, timedOut: true, notChecked: false } });
+  });
+
+  it("stops at a build that timed out: files put back, tests not run", async () => {
+    runs.limitMs = 500;
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "package.json": JSON.stringify({ scripts: { typecheck: HANGS } }) });
+    const result = await fix(dir, { test: "node -e 0" });
+    expect(runs.count).toBe(1);
+    expect(result.build).toMatchObject({ kind: "build", passed: false, timedOut: true });
+    expect(result.build?.attributed).toBeUndefined();
+    expect(result.build?.notChecked).toBeUndefined();
+    expect(result.tests).toBeUndefined();
+    expect(exitCodeFor(result)).toBe(1);
+    expect(renderSummary(result)).toContain("build: npm run typecheck timed out after 10 minutes; files put back");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
+});
+
+describe("fix --json", () => {
+  it("carries what each check was, and whether it could check the change", async () => {
+    const broken = JSON.stringify({ scripts: { build: "node -e \"process.exit(1)\"" } });
+    const result = await fix(await repoWith({ "sdk.js": SDK_CALL, "package.json": broken }), { test: "node -e 0" });
+    expect(toJson(result)).toMatchObject({
+      build: { kind: "build", command: "npm run build", passed: false, attributed: "baseline", notChecked: true, timedOut: false },
+      tests: { kind: "tests", command: "node -e 0", passed: true, notChecked: false, timedOut: false },
+    });
+  });
+});
+
+describe("fix names what check did not read", () => {
+  it("lists skipped folders under Not checked instead of a bare Nothing to fix", async () => {
+    const result = await fix(await repoWith({ "vendor/openai.ts": SDK_CALL, "app.ts": "export const x = 1;\n" }), { noTest: true });
+    const summary = renderSummary(result);
+    expect(summary).toContain("Not checked: 1 dependency or build folder: vendor.");
+    expect(summary).not.toMatch(/^Nothing to fix\.$/m);
+    expect(toJson(result)).toMatchObject({ scanned: { skipped: [{ path: "vendor", reason: "dependency or build folder" }] } });
+  });
+
+  it("says Nothing to fix plainly when everything was checked", async () => {
+    const result = await fix(await repoWith({ "app.ts": "export const x = 1;\n" }), { noTest: true });
+    expect(renderSummary(result)).toBe("Nothing to fix.");
+  });
+
+  it("lists them after the records it did fix", async () => {
+    const result = await fix(await repoWith({ "sdk.js": SDK_CALL, "vendor/openai.ts": SDK_CALL }), { noTest: true });
+    expect(renderSummary(result).split("\n").at(-1)).toBe("Not checked: 1 dependency or build folder: vendor.");
+  });
+});
+
 describe("fix --pr", () => {
   const BEFORE = join(PACKS, "openai", "2024-09-12-max-tokens-to-max-completion-tokens", "fixtures", "basic", "before");
   const BRANCH = "darnit/openai-max-tokens-to-max-completion-tokens";
@@ -638,6 +718,20 @@ describe("fix --pr", () => {
     expect((await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe(branch);
     expect(await tree(dir)).toEqual(await tree(BEFORE));
     expect(renderSummary(result)).toContain("nothing pushed");
+  });
+
+  it("pushes nothing when the tests time out, and runs them once", async () => {
+    const { dir, bare, branch } = await repoWithOrigin();
+    const posts = stubGitHub(branch);
+    runs.limitMs = 500;
+    const result = await fix(dir, { pr: true, test: HANGS, repo: "o/r" });
+    expect(runs.count).toBe(1);
+    expect(result.records[0]?.pr).toMatchObject({ state: "tests-failed", tests: { timedOut: true } });
+    expect(exitCodeFor(result)).toBe(1);
+    expect(renderSummary(result)).toContain(`nothing pushed\n  tests: ${HANGS} timed out after 10 minutes`);
+    expect(posts).toEqual([]);
+    expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
   });
 
   it("keeps test output as plain text when the tests print color", async () => {

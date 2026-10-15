@@ -110,7 +110,10 @@ function redact(text: string): string {
 // eslint-disable-next-line no-control-regex
 const ESCAPES = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b\n]*(?:\u0007|\u001b\\)?|[ -/]*[0-~])/g;
 
-export function runTests(root: string, command: string, timeoutMs = 10 * 60 * 1000): Promise<TestRun> {
+/** How long a build or test run may take before it is stopped. */
+export const TIME_LIMIT_MINUTES = 10;
+
+export function runTests(root: string, command: string, timeoutMs = TIME_LIMIT_MINUTES * 60 * 1000): Promise<TestRun> {
   return new Promise((resolve) => {
     // Detached = its own process group, so a timeout kills the command and not just the shell around it.
     const detached = process.platform !== "win32";
