@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { parse, type SgNode } from "@ast-grep/napi";
 import { parse as parseYaml } from "yaml";
-import { firstFive, listFiles, plural, readText, tooLargeNote, vendorClients } from "./detect.js";
+import { byPath, firstFive, listFiles, plural, readText, shown, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, modelNames, type Match, type Span } from "./scan/astgrep.js";
@@ -32,7 +32,7 @@ async function configuredVendors(root: string): Promise<Set<string> | undefined>
 }
 
 /** What a check covered, so a clean result can say what it was clean against. */
-export type Coverage = { files: number; records: number; otherFiles?: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[] };
+export type Coverage = { files: number; records: number; otherFiles?: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[]; skipped?: Skipped[] };
 
 /**
  * Hits for `records` in `files` (relative to `root`), with `modelValues` the model names set as values
@@ -44,7 +44,7 @@ export async function scan(
   files: readonly string[],
   records: readonly ChangeRecord[],
   { modelValues = false, mentions: withMentions = false } = {},
-): Promise<{ hits: Hit[]; scanned: number; otherFiles: number; foreign: Hit[]; tooLarge: string[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
+): Promise<{ hits: Hit[]; scanned: number; otherFiles: number; foreign: Hit[]; tooLarge: string[]; unreadable: string[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
   const hits: Hit[] = [];
   const values: ModelValueHit[] = [];
   const mentions: MentionHit[] = [];
@@ -56,16 +56,22 @@ export async function scan(
   // Calls through another provider's client (Groq's SDK, the vendor's SDK pointed elsewhere): never reported.
   const foreign: Hit[] = [];
   const tooLarge: string[] = [];
+  const unreadable: string[] = [];
   let scanned = 0;
   let otherFiles = 0;
   for (const file of files) {
     const grammar = grammarFor(file);
     if (!grammar && !withMentions) continue;
+    let large = false;
     const text = await readText(join(root, file), (start) => {
+      large = true;
       // A binary file is never searched, so it is not listed as left out.
       if (grammar || !isBinary(start)) tooLarge.push(file);
     });
-    if (text === undefined) continue;
+    if (text === undefined) {
+      if (!large) unreadable.push(file);
+      continue;
+    }
     if (withMentions && !isBinary(text)) {
       if (!grammar) otherFiles++;
       // Known limit: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
@@ -107,16 +113,22 @@ export async function scan(
     ...values.map((v) => key(v.file, v.line, v.model)),
     ...hits.flatMap((h) => findMentions(h.text, namesOf.get(h.record)!, h.file).map((m) => key(h.file, h.line + m.line - 1, m.model))),
   ]);
-  return { hits, scanned, otherFiles, foreign, tooLarge, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
+  return { hits, scanned, otherFiles, foreign, tooLarge, unreadable, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
 }
 
 /** Every call site in `root` affected by a known vendor change, and what was covered. */
 export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage: Coverage; foreign: Hit[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
-  const { hits, scanned, otherFiles, foreign, tooLarge, values, mentions } = await scan(root, await listFiles(root), records, { modelValues: true, mentions: true });
+  const skipped: Skipped[] = [];
+  const { hits, scanned, otherFiles, foreign, tooLarge, unreadable, values, mentions } = await scan(root, await listFiles(root, skipped), records, {
+    modelValues: true,
+    mentions: true,
+  });
+  skipped.push(...unreadable.map((path) => ({ path, reason: "could not be read" as const })));
+  skipped.sort(byPath);
   const leftOut = foreign.length > 0 ? { foreign: foreign.length, foreignAt: foreign.map((h) => `${h.file}:${h.line}`) } : {};
-  return { hits, foreign, values, mentions, coverage: { files: scanned, records: records.length, otherFiles, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}) } };
+  return { hits, foreign, values, mentions, coverage: { files: scanned, records: records.length, otherFiles, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}), ...(skipped.length > 0 ? { skipped } : {}) } };
 }
 
 /** Every call site in `root` affected by a known vendor change. */
@@ -216,11 +228,11 @@ function grouped(hits: readonly Hit[], noun: string): string[] {
   const out: string[] = [];
   for (const group of groups.values()) {
     const record = group[0]!.record;
-    const locations = group.map((h) => `${h.file}:${h.line}:${h.column}`);
+    const locations = group.map((h) => `${shown(h.file)}:${h.line}:${h.column}`);
     const width = locations.reduce((w, l) => Math.max(w, l.length), 0) + 2;
     out.push(heading(record));
     group.forEach((h, i) =>
-      out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.join(" or ")}; ignore if that server isn't OpenAI)` : ""}`),
+      out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.map(shown).join(" or ")}; ignore if that server isn't OpenAI)` : ""}`),
     );
     out.push(`  ${plural(group.length, noun)} in ${plural(new Set(group.map((h) => h.file)).size, "file")}`);
     for (const source of record.sources) out.push(`  ${source.url}`);
@@ -251,8 +263,8 @@ function mentionSection(listed: readonly MentionHit[], all: boolean): string[] {
     else byFile.set(m.file, [m]);
   }
   const total = `${plural(mentions.length, "mention")} in ${plural(byFile.size, "file")}`;
-  if (all) return [...MENTIONS_INTRO, ...mentions.map((m) => `  ${m.file}:${m.line}  ${m.model}`), `  ${total}`, ""];
-  const files = [...byFile].sort((a, b) => b[1].length - a[1].length).slice(0, MENTION_FILES);
+  if (all) return [...MENTIONS_INTRO, ...mentions.map((m) => `  ${shown(m.file)}:${m.line}  ${m.model}`), `  ${total}`, ""];
+  const files = [...byFile].sort((a, b) => b[1].length - a[1].length).slice(0, MENTION_FILES).map(([file, ms]) => [shown(file), ms] as const);
   const width = files.reduce((w, [f]) => Math.max(w, f.length), 0) + 2;
   const digits = String(files[0]![1].length).length;
   return [
@@ -277,11 +289,14 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
         ]
       : []),
     ...tooLargeNote(coverage?.tooLarge),
+    ...skippedNote(coverage?.skipped),
     NOT_CHECKED,
   ];
   const section = [...(values.length > 0 ? [...VALUES_INTRO, "", ...grouped(values, "value")] : []), ...(mentions.length > 0 ? mentionSection(mentions, allMentions) : [])];
   if (hits.length === 0) {
-    const clean = section.length > 0 ? "No call sites of known vendor changes found." : "No known vendor changes affect this repository.";
+    // "Nothing affects this repository" only when nothing was left unread.
+    const partial = section.length > 0 || (coverage?.skipped?.length ?? 0) > 0 || (coverage?.tooLarge?.length ?? 0) > 0;
+    const clean = partial ? "No call sites of known vendor changes found." : "No known vendor changes affect this repository.";
     return [clean, "", ...section, ...footer].join("\n");
   }
   const out = [...grouped(hits, "call site"), ...section];

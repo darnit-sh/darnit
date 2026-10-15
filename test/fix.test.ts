@@ -210,6 +210,13 @@ describe("fix never rewrites another provider's calls", () => {
     expect(summary).toContain("needs a human: b.ts:5 (this file also calls another provider through the same methods)");
   });
 
+  it.skipIf(process.platform === "win32")("keeps a crafted file name on one line in the summary", async () => {
+    const dir = await repoWith({ "a\n::error::b.ts": MIXED_CLIENTS });
+    const summary = renderSummary(await fix(dir, { noTest: true, dryRun: true }));
+    expect(summary.split("\n").filter((l) => l.startsWith("::"))).toEqual([]);
+    expect(summary).toContain("needs a human: a?::error::b.ts:5");
+  });
+
   it("rewrites clean files and hands the mixed file to a human", async () => {
     const dir = await repoWith({ "both.ts": MIXED_CLIENTS, "sdk.js": SDK_CALL });
     const result = await fix(dir, { noTest: true });

@@ -1,9 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import type { Stats } from "node:fs";
 import { chmod, cp, type FileHandle, link, lstat, mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { detectApis, MAX_FILE_BYTES, readText } from "../src/detect.js";
 import { init, pinned } from "../src/init.js";
@@ -90,6 +91,47 @@ describe("detectApis on a repository built to slow it down", () => {
       "Scanned repo: no known APIs found (the scheduled check still runs)",
       "Not checked: 1 file over 10 MB: big.py.",
     ]);
+  });
+
+  it("names the folders it did not enter", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    await mkdir(join(dir, "src/vendor"), { recursive: true });
+    await writeFile(join(dir, "src/vendor/client.py"), "import openai\n");
+    expect((await init(dir)).slice(0, 2)).toEqual([
+      "Scanned repo: no known APIs found (the scheduled check still runs)",
+      "Not checked: 1 dependency or build folder: src/vendor.",
+    ]);
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("names a source file it could not read", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    await writeFile(join(dir, "client.py"), "import openai\n");
+    await chmod(join(dir, "client.py"), 0o000);
+    expect((await init(dir)).slice(0, 2)).toEqual([
+      "Scanned repo: no known APIs found (the scheduled check still runs)",
+      "Not checked: could not read client.py.",
+    ]);
+  });
+
+  it.skipIf(process.platform === "win32")("keeps a crafted file name in its evidence on one line", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    await writeFile(join(dir, "x\n::error::\u202Ey.py"), "import openai\n");
+    const [summary] = await init(dir);
+    expect(summary).toBe("Scanned repo: found openai (x?::error::?y.py: import openai)");
+  });
+
+  it.skipIf(process.platform === "win32")("prints folder names without their control characters, and no check mark on Not checked", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+    tempDirs.push(dir);
+    await mkdir(join(dir, "a\u001b[2J\u001b[31mPWNED", "vendor"), { recursive: true });
+    const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    const { stdout } = await promisify(execFile)(process.execPath, ["--import", import.meta.resolve("tsx"), cli, "init"], { cwd: dir });
+    expect(stdout).not.toContain("\u001b");
+    expect(stdout).toContain("\nNot checked: 1 dependency or build folder: a?[2J?[31mPWNED/vendor.\n");
+    expect(stdout).toMatch(/^✓ Scanned repo: /);
   });
 
   it("reads only regular files", async () => {
