@@ -53,6 +53,19 @@ function parseRows(text: string, where: string) {
   });
 }
 
+/** Repos a pull request body lets leave the slice: lines `Golden drop: owner/name, <reason>` outside HTML comments and code fences, reason at least 10 characters. */
+export function drops(body: string): Map<string, string> {
+  const out = new Map<string, string>();
+  let fenced = false;
+  for (const line of body.replace(/<!--[\s\S]*?(?:-->|$)/g, "").split(/\r?\n/)) {
+    if (/^ {0,3}(```|~~~)/.test(line)) fenced = !fenced;
+    const m = fenced ? null : /^Golden drop: ([\w.-]+\/[\w.-]+), (.*)$/.exec(line);
+    const reason = m?.[2]?.replace(/\p{Cc}/gu, "").trim() ?? "";
+    if (m && reason.length >= 10) out.set(m[1]!, reason);
+  }
+  return out;
+}
+
 /** Slice repos in repos.tsv at `base`; none when that commit has no repos.tsv. */
 function baseSlice(base: string): string[] {
   const tree = git(".", "ls-tree", "--name-only", base, "--", "test/golden/repos.tsv");
@@ -81,12 +94,22 @@ function main() {
     errors.push(message);
     console.log(ci ? `::error::${message}` : `error: ${message}`);
   };
+  const notes: string[] = [];
 
   const rows = parseRows(readFileSync(join(GOLDEN, "repos.tsv"), "utf8"), "repos.tsv");
   const picked = rows.filter((r) => args.all || r.slice);
-  // A pull request cannot make the guard smaller: every slice repo on its base must still be one here.
-  for (const repo of args.base ? baseSlice(args.base) : [])
-    if (!picked.some((r) => r.repo === repo)) fail(`${repo} is a slice repo on the base branch and not on this branch; a pull request cannot shrink the slice`);
+  // A pull request cannot make the guard smaller unless its body names each repo that leaves and why (PR_BODY).
+  const allowed = drops(process.env.PR_BODY ?? "");
+  for (const repo of args.base ? baseSlice(args.base) : []) {
+    if (picked.some((r) => r.repo === repo)) continue;
+    const reason = allowed.get(repo);
+    if (!reason) {
+      fail(`${repo} is a slice repo on the base branch and not on this branch. To drop it on purpose, add "Golden drop: ${repo}, <reason>" to the pull request body and push again; a re-run reads the old body`);
+      continue;
+    }
+    notes.push(`Dropped from the slice: ${repo}, ${reason}`);
+    console.log(`${ci ? "::warning::" : "warning: "}${notes.at(-1)}`);
+  }
 
   const quiet = (dir: string, ...a: string[]) => {
     const run = git(dir, ...a);
@@ -174,6 +197,7 @@ function main() {
       "If the change is intended, run `npm run golden -- --update` (or unzip the golden-update artifact into test/golden) and commit the result.",
     );
   }
+  if (notes.length > 0) summary.push("", ...notes.map((n) => `- ${n}`));
   if (errors.length > 0) summary.push("", ...errors.map((e) => `- ${e}`));
   console.log(summary.join("\n"));
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary.join("\n")}\n`);

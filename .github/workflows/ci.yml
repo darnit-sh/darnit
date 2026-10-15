@@ -118,6 +118,7 @@ jobs:
       - if: steps.scope.outputs.skip != 'true'
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: npm run golden -- --out "$RUNNER_TEMP/golden-update" ${BASE:+--base "$BASE"}
       - if: failure() && steps.scope.outputs.skip != 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
