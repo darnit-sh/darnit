@@ -207,12 +207,12 @@ function ruleFor(context: string, selector: string) {
   return { any: [context, ...fallbacks].map((c) => ({ pattern: { context: c, selector } })) };
 }
 
-/** Every node in `source` matching any of `patterns`, optionally gated. */
-export function findMatches(source: string, grammar: Grammar, allPatterns: readonly AstGrepPattern[], gate?: Gate): Match[] {
+/** Every node in `source` matching any of `patterns`, optionally gated. `parsed` gives the file's syntax tree, so callers can share one. */
+export function findMatches(source: string, grammar: Grammar, allPatterns: readonly AstGrepPattern[], gate?: Gate, parsed = () => parse(grammar, source).root()): Match[] {
   // A plain text check before parsing: most files contain none of a pattern's quoted text.
   const patterns = allPatterns.filter((p) => literals(p.context).every((l) => source.includes(l)));
   if (patterns.length === 0) return [];
-  const root = parse(grammar, source).root();
+  const root = parsed();
   const symbols = gate?.symbols ?? [];
   const endpoints = gate?.endpoints ?? [];
   const found = patterns.map(({ context, selector }) => root.findAll({ rule: ruleFor(context, selector) }));
@@ -227,7 +227,7 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
         const { call, symbol, url } = gated.get(node.id())!;
         if (symbol === undefined && url === undefined) continue;
         if (gate?.vendor) {
-          const origin = symbol !== undefined ? clientOrigin(root, call!, symbol, gate.vendor) : urlOrigin(url!, gate.vendor);
+          const origin = symbol !== undefined ? clientOrigin(root, grammar, call!, symbol, gate.vendor) : urlOrigin(url!, gate.vendor);
           foreign = origin === "foreign";
           local = typeof origin === "object" ? origin.local : undefined;
         }

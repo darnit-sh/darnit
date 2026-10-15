@@ -1,4 +1,5 @@
-import type { SgNode } from "@ast-grep/napi";
+import { kind as kindId, type SgNode } from "@ast-grep/napi";
+import type { Grammar } from "./astgrep.js";
 
 /**
  * How to tell a vendor's own client from a look-alike. `packages` and `hosts` are the vendor's;
@@ -72,11 +73,11 @@ const IMPORTS = new Set(["import_statement", "import_from_statement"]);
 
 /** A function or block around a node, and the ones around it. */
 type Scope = { node: SgNode; fn: boolean; outer: Scope | undefined };
-/** Where a node sits: the function it is in (unless a class is nearer), its class, its block or function, its parent, every function and block around it. */
+/** Where a node sits: the function it is in (unless a class is nearer), its class, its block or function, the nearest indexed node around it, every function and block around it. */
 type Context = { fn?: SgNode | undefined; cls?: SgNode | undefined; block?: SgNode | undefined; parent?: SgNode; scope?: Scope | undefined };
 /** A client's origin, or the name its base address is read from, which depends on where the call is. */
 type Built = Origin | { name: string };
-type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; blockScoped: boolean; built?: Built } & Context;
+type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; blockScoped: boolean; built?: { v: VendorClients; built: Built } } & Context;
 /** Assignments by name, then by the node they live in: a function or block, a class, or undefined for the whole file. */
 type Grouped = Map<string, Map<SgNode | undefined, Assignment[]>>;
 type FileIndex = { imports: Map<string, Set<string>>; scoped: Grouped; classed: Grouped; calls: Map<number, Context>; globals: Map<string, { homes: Map<SgNode, Assignment[]>; total: number }> };
@@ -133,12 +134,14 @@ function importsOf(statements: readonly string[]): Map<string, Set<string>> {
 // A placeholder such as `client = null` is not a client. Only a short value is read.
 const isPlaceholder = (value: SgNode) => value.range().end.index - value.range().start.index <= 9 && /^(null|undefined|None)$/.test(value.text());
 
-// One iterative walk and one import read per parsed file, however many calls it has. Iterative so
-// a deeply nested generated file can't overflow the stack, and it keeps each node's surroundings
-// on the way down, since asking a node for its ancestors walks down from the root.
+// One pass and one import read per parsed file, however many calls it has. The parser hands over
+// only the kinds below, in document order, and each one's surroundings come from the ones still
+// open around it, since asking a node for its ancestors walks down from the root. Every node handed
+// to JavaScript holds memory until the scan yields, so the rest of the tree is never handed over.
 const indexes = new WeakMap<SgNode, FileIndex>();
+const INDEXED = [...IMPORTS, ...ASSIGNMENTS, ...FUNCTIONS, ...CLASSES, "statement_block", "lexical_declaration", "call_expression", "call"];
 
-function indexOf(root: SgNode): FileIndex {
+function indexOf(root: SgNode, grammar: Grammar): FileIndex {
   let index = indexes.get(root);
   if (index) return index;
   const scoped: Grouped = new Map();
@@ -152,9 +155,13 @@ function indexOf(root: SgNode): FileIndex {
   };
   const calls = new Map<number, Context>();
   const importTexts: string[] = [];
-  const stack: [SgNode, Context][] = [[root, {}]];
-  while (stack.length > 0) {
-    const [node, up] = stack.pop()!;
+  const open: { end: number; inner: Context }[] = [];
+  // A kind the grammar lacks is an error in a rule, so only the grammar's own are asked for.
+  const kinds = INDEXED.filter((kind) => kindId(grammar, kind) !== 0);
+  for (const node of root.findAll({ rule: { any: kinds.map((kind) => ({ kind })) } })) {
+    const { start, end } = node.range();
+    while (open.length > 0 && open.at(-1)!.end <= start.index) open.pop();
+    const up = open.at(-1)?.inner ?? {};
     const kind = String(node.kind());
     if (IMPORTS.has(kind)) importTexts.push(node.text());
     if (ASSIGNMENTS.has(kind)) {
@@ -178,7 +185,7 @@ function indexOf(root: SgNode): FileIndex {
     const isBlock = isFunction || kind === "statement_block";
     const scope = isBlock ? { node, fn: isFunction, outer: up.scope } : up.scope;
     const inner = { fn: isFunction ? node : isClass ? undefined : up.fn, cls: isClass ? node : up.cls, block: isBlock ? node : up.block, parent: node, scope };
-    for (const child of node.children()) stack.push([child, inner]);
+    open.push({ end: end.index, inner });
   }
   index = { imports: importsOf(importTexts), scoped, classed, calls, globals: new Map() };
   indexes.set(root, index);
@@ -340,11 +347,11 @@ function clientNode(callee: SgNode, symbol: string): SgNode | undefined {
  * Where the client behind an SDK call comes from, judged from this file alone. `call` is the call
  * node and `symbol` the vendor method it matched (`chat.completions.parse`).
  */
-export function clientOrigin(root: SgNode, call: SgNode, symbol: string, v: VendorClients): Origin {
+export function clientOrigin(root: SgNode, grammar: Grammar, call: SgNode, symbol: string, v: VendorClients): Origin {
   const callee = call.field("function");
   const client = callee && clientNode(callee, symbol);
   if (!client) return "unknown";
-  const index = indexOf(root);
+  const index = indexOf(root, grammar);
   const byName = new Map<string, Origin>();
   const traced = (built: Built): Origin => {
     if (typeof built !== "object" || !("name" in built)) return built;
@@ -360,8 +367,9 @@ export function clientOrigin(root: SgNode, call: SgNode, symbol: string, v: Vend
   if (!/^(?:(?:this|self)\.)?[\w$#]+$/.test(target)) return "unknown";
   const origins: Origin[] = [];
   for (const a of visibleAssignments(index, target, call)) {
-    a.built ??= a.value.is("new_expression") || a.value.is("call_expression") || a.value.is("call") ? constructed(a.value, index, v) : "unknown";
-    const origin = traced(a.built);
+    // Every record on the file shares the index, so what was built is reused only with the same client list (each record passes its own).
+    if (a.built?.v !== v) a.built = { v, built: a.value.is("new_expression") || a.value.is("call_expression") || a.value.is("call") ? constructed(a.value, index, v) : "unknown" };
+    const origin = traced(a.built.built);
     // One vendor client among them settles it.
     if (origin === "vendor") return "vendor";
     origins.push(origin);
