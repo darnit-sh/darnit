@@ -95,6 +95,7 @@ function commentsAndStrings(text: string, { hash, multiline, raw, apostrophe }: 
  * letters-only name would.
  */
 export function findMentions(text: string, names: ReadonlySet<string>, file = ""): Mention[] {
+  if (file.includes("cost_history/")) return [];
   const longest = Math.max(0, ...[...names].map((n) => n.length));
   const syntax = SYNTAX[extname(file)];
   let inside: ((at: number) => boolean) | undefined;
