@@ -1,9 +1,11 @@
-// The two node steps of scripts/check-proof.sh, which runs the changed tests on this change (head) and
-// on base's code (base), writing each runner's output to $OUT.
-//   check-proof.ts mark    before the base run: marks the test files' imports that base does not have
-//   check-proof.ts         after it: prints the proof table as Markdown, exits 1 when there is no proof
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { relative } from "node:path";
+// The node steps of scripts/check-proof.sh, which runs the changed tests on this change (head) and on
+// base's code (base), writing each runner's output to $OUT.
+//   check-proof.ts exports   on head: lists the values each src/ module exports
+//   check-proof.ts mark      on base, before its run: adds what head's modules export and base's do not
+//   check-proof.ts           after both runs: prints the proof table as Markdown, exits 1 with no proof
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join, relative } from "node:path";
 
 type Result = { status: string; why: string; file: string };
 const env = process.env;
@@ -11,32 +13,44 @@ const MISSING = "does not exist without this change";
 const lines = (s = "") => s.split("\n").filter(Boolean);
 const read = (f: string) => (existsSync(`${env.OUT}/${f}`) ? readFileSync(`${env.OUT}/${f}`, "utf8") : "");
 const first = (s = "") => s.split("\n").find((l) => l.trim())?.trim().slice(0, 200) ?? "";
-// Inline code in a table cell: no backtick can end it and no pipe can split the cell.
-const code = (s: string) => `\`${s.replace(/`/g, "'").replace(/\|/g, "¦")}\``;
+// Inline code in a table cell: one line, no backtick that ends it and no pipe that splits the cell.
+const code = (s: string) => `\`${s.replace(/[\r\n]/g, " ").replace(/`/g, "'").replace(/\|/g, "¦")}\``;
 
+/** The values (not types) each module under src/ exports, read by the project's TypeScript. */
+function exported(): Record<string, string[]> {
+  const ts = createRequire(join(process.cwd(), "package.json"))("typescript") as typeof import("typescript");
+  const files = readdirSync("src", { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith(".ts"))
+    .map((e) => join(e.parentPath, e.name));
+  const options = { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ES2022, noEmit: true, skipLibCheck: true, types: [] };
+  const program = ts.createProgram(files, options);
+  const checker = program.getTypeChecker();
+  const value = (s: import("typescript").Symbol) => ((s.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s).flags & ts.SymbolFlags.Value) !== 0;
+  return Object.fromEntries(
+    files.map((f) => {
+      const module = checker.getSymbolAtLocation(program.getSourceFile(f)!);
+      return [f, module ? checker.getExportsOfModule(module).filter(value).map((s) => s.name) : []];
+    }),
+  );
+}
+
+if (process.argv[2] === "exports") {
+  writeFileSync(`${env.OUT}/head.exports`, JSON.stringify(exported()));
+  process.exit(0);
+}
 if (process.argv[2] === "mark") {
   // Vitest reads a name a module does not export as undefined, so a test could fail on base for that
-  // alone. Each such import the type checker names on base's code becomes a value that throws when
-  // used; any other import error stops the whole file from loading.
-  const errors = [...read("base.tsc").matchAll(/^(test\/[^(]+)\((\d+),(\d+)\): error TS(\d+): (.*)$/gm)];
-  // Values go on the first line, so the file keeps its line numbers and code outside the tests can use them.
-  const files = new Map<string, { src: string[]; values: string }>();
-  let n = 0;
-  for (const [, file, line, col, num, text] of errors.sort((a, b) => Number(b[3]) - Number(a[3]))) {
-    const member = ["2305", "2459", "2614", "2724"].includes(num!);
-    if (!member && !["1192", "2307"].includes(num!) && !/^Property .* on type 'typeof import\(/.test(text!)) continue;
-    const f = files.get(file!) ?? { src: readFileSync(file!, "utf8").split("\n"), values: "" };
-    files.set(file!, f);
-    const at = Number(line) - 1;
-    const start = Number(col) - 1;
-    const name = /^(\w+)(\s+as\s+(\w+))?/.exec(f.src[at]!.slice(start));
-    if (member && name) {
-      f.src[at] = `${f.src[at]!.slice(0, start)}${name[1]} as __missing${n++}${f.src[at]!.slice(start + name[0].length)}`;
-      f.values += `const ${name[3] ?? name[1]} = __missing("${name[1]}"); `;
-    } else f.src.push(`throw new Error("this file ${MISSING}");`);
+  // alone. Each value head exports and base does not becomes, on base, a value that throws when used,
+  // however a test reaches it: an import, a namespace, a helper's re-export, or a cast.
+  const head = JSON.parse(read("head.exports")) as Record<string, string[]>;
+  const base = exported();
+  for (const [file, names] of Object.entries(head)) {
+    const missing = names.filter((n) => !base[file]?.includes(n) && /^[A-Za-z_$][\w$]*$/.test(n));
+    if (missing.length === 0) continue;
+    const values = missing.map((n, i) => `const __proofMissing${i} = __proofMissing("${n}");\nexport { __proofMissing${i} as ${n} };`);
+    const helper = `function __proofMissing(name: string): any { const fail = () => { throw new Error(name + " ${MISSING}"); }; return new Proxy(function () {}, { get: fail, apply: fail, construct: fail, has: fail, ownKeys: fail, getPrototypeOf: fail, set: fail }); }`;
+    writeFileSync(file, `${existsSync(file) ? readFileSync(file, "utf8") : ""}\n${helper}\n${values.join("\n")}\n`);
   }
-  const helper = `function __missing(name) { const fail = () => { throw new Error(name + " ${MISSING}"); }; return new Proxy(function () {}, { get: fail, apply: fail, construct: fail, has: fail, ownKeys: fail, getPrototypeOf: fail, set: fail }); }`;
-  for (const [file, { src, values }] of files) writeFileSync(file, [values + src[0], ...src.slice(1), helper, ""].join("\n"));
   process.exit(0);
 }
 
@@ -49,7 +63,12 @@ function results(side: string): Map<string, Result> {
     const file = relative(process.cwd(), f.name);
     if (!tests.has(file)) continue;
     if (f.assertionResults.length === 0) r.set(file, { status: f.status === "failed" ? "load" : f.status, why: first(f.message), file });
-    for (const a of f.assertionResults) r.set(`${file} > ${a.fullName}`, { status: a.status, why: first(a.failureMessages?.[0]), file });
+    for (const a of f.assertionResults) {
+      // Two tests with one name keep apart by their order, which is the same on both sides.
+      let key = `${file} > ${a.fullName}`;
+      for (let i = 2; r.has(key); i++) key = `${file} > ${a.fullName} (${i})`;
+      r.set(key, { status: a.status, why: first(a.failureMessages?.[0]), file });
+    }
   }
   // The fixture runner and scripts/e2e.ts print "✓ <name>" or "✗ <name>", then the problems indented.
   const printed = (text: string, name: string) => {
@@ -93,7 +112,8 @@ for (const [name, r] of base) {
   if (r.status === "passed") passedOnBase++;
   if (r.status !== "failed" && r.status !== "load") continue;
   const label = r.file.startsWith("test/e2e/") ? "did not run" : r.file.startsWith("packs/") ? "new pack" : "new export";
-  const load = r.status === "load" || r.why.includes(MISSING);
+  // A call to an import that is undefined names vitest's import variable: something base does not have.
+  const load = r.status === "load" || r.why.includes(MISSING) || /__vite_ssr_import_\d+__/.test(r.why);
   if (load && !feat) notLoaded.push(`- ${code(name)}: ${code(r.why || "did not load")}`);
   else rows.push(`| ${code(name)} | ${load ? `${label}: ` : "fails: "}${code(r.why || r.status)} | passes |`);
 }
@@ -109,4 +129,4 @@ console.log(`**Passed:** ${rows.length} changed ${rows.length === 1 ? "test fail
 console.log("| Test | Without this change | With it |\n| --- | --- | --- |");
 console.log(rows.join("\n"));
 if (notLoaded.length > 0) console.log(`\nNot counted, since they use something base does not have:\n\n${notLoaded.join("\n")}`);
-if (passedOnBase > 0) console.log(`\n${passedOnBase} other changed ${passedOnBase === 1 ? "test passes" : "tests pass"} with and without this change.`);
+if (passedOnBase > 0) console.log(`\n${passedOnBase} other ${passedOnBase === 1 ? "test" : "tests"} in the changed files ${passedOnBase === 1 ? "passes" : "pass"} with and without this change.`);

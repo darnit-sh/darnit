@@ -14,21 +14,28 @@ const subtract = "export const add = (a: number, b: number) => a - b;\n";
 const added = "export const add = (a: number, b: number) => a + b;\n";
 const test = (body: string, imports = "import { add } from '../src/add.js';") =>
   `import { expect, it } from 'vitest';\n${imports}\n${body}\n`;
-// A stand-in for the fixture runner and the end-to-end runner: a case passes when it wants the rule's text.
-const runner = (dir: string) =>
-  `import { readFileSync } from 'node:fs';\nfor (const c of ${dir}) { const ok = readFileSync('packs/v/p/rules/r.yml', 'utf8') === readFileSync(c + '/want', 'utf8'); console.log((ok ? '✓ ' : '✗ ') + c.replace(/^packs\\/v\\/p\\/fixtures\\//, 'v/p · ').replace(/^test\\/e2e\\//, '')); if (!ok) console.log('    rule text differs'); }\n`;
+// Stand-ins for the fixture runner and the end-to-end runner: a case passes when it wants the rule's
+// text, from its folder or from the EXPECT table.
+const runner = (cases: string, want = "readFileSync(c + '/want', 'utf8')") =>
+  `import { readFileSync } from 'node:fs';\n${cases}\nfor (const c of cases) { const ok = readFileSync('packs/v/p/rules/r.yml', 'utf8') === ${want}; console.log((ok ? '✓ ' : '✗ ') + c.replace(/^packs\\/v\\/p\\/fixtures\\//, 'v/p · ').replace(/^test\\/e2e\\//, '')); if (!ok) console.log('    rule text differs'); }\n`;
+const e2e = (s2: string) =>
+  runner(
+    `const EXPECT: Record<string, { want?: string }> = {\n  "s1": {},\n  "s2": { want: "${s2}" },\n};\nconst cases = Object.keys(EXPECT).map((s) => 'test/e2e/' + s);`,
+    "(EXPECT[c.slice(9)]!.want ?? readFileSync(c + '/want', 'utf8').trim()) + '\\n'",
+  );
 
 const baseFiles: Record<string, string> = {
-  "package.json": JSON.stringify({ type: "module", scripts: { "test:e2e": "node scripts/e2e.mjs" } }),
+  "package.json": JSON.stringify({ type: "module", scripts: { "test:e2e": "tsx scripts/e2e.ts" } }),
   "tsconfig.json": JSON.stringify({ compilerOptions: { module: "NodeNext", strict: true, noEmit: true, skipLibCheck: true, types: [] }, include: ["src", "test"] }),
   "src/add.ts": subtract,
   "test/add.test.ts": test("it('adds zero', () => expect(add(1, 0)).toBe(1));"),
   "packs/v/p/change.json": "{}\n",
   "packs/v/p/rules/r.yml": "old\n",
   "packs/v/p/fixtures/basic/want": "old\n",
-  "scripts/fixtures.ts": runner("process.argv.slice(2)"),
-  "scripts/e2e.mjs": runner("['test/e2e/s1']"),
+  "scripts/fixtures.ts": runner("const cases = process.argv.slice(2);"),
+  "scripts/e2e.ts": e2e("old"),
   "test/e2e/s1/want": "old\n",
+  "test/e2e/s2/README": "x\n",
   "README.md": "x\n",
 };
 
@@ -83,7 +90,7 @@ describe("the proof check", { timeout: 120_000 }, () => {
     expect(r.summary).toContain("**Passed:** 1 changed test fails without this change and passes with it.");
     expect(r.summary).toContain("| `test/add.test.ts > adds two` | fails: `AssertionError: expected -1 to be 3 // Object.is equality` | passes |");
     expect(r.summary).toContain("Not counted, since they use something base does not have:\n\n- `test/add.test.ts > sums`: `Error: sum does not exist without this change`\n- `test/add.test.ts > doubles`: `Error: twice does not exist without this change`");
-    expect(r.summary).toContain("1 other changed test passes with and without this change.");
+    expect(r.summary).toContain("1 other test in the changed files passes with and without this change.");
   });
 
   it("fails a fix whose new test also passes on base's code", async () => {
@@ -103,18 +110,52 @@ describe("the proof check", { timeout: 120_000 }, () => {
     expect(fix).toMatchObject({ status: 1, clean: true });
     expect(fix.summary).toContain("each changed test that fails without this change uses something base does not have");
     expect(fix.summary).toContain("- `test/sum.test.ts > sums`: `Error: sum does not exist without this change`");
-    expect(fix.summary).toContain("- `test/new.test.ts`: ");
+    expect(fix.summary).toContain("- `test/new.test.ts > is one`: `Error: one does not exist without this change`");
     const feat = await proof("feat(check): sum", edits);
     expect(feat).toMatchObject({ status: 0, clean: true });
     expect(feat.summary).toContain("| `test/sum.test.ts > sums` | new export: `Error: sum does not exist without this change` | passes |");
-    expect(feat.summary).toContain("| `test/new.test.ts` | new export: ");
+    expect(feat.summary).toContain("| `test/new.test.ts > is one` | new export: `Error: one does not exist without this change` | passes |");
   });
 
-  it("proves a rule change with a fixture case or an end-to-end scenario that fails on base's rules", async () => {
-    const r = await proof("fix(packs): new rule", { "packs/v/p/rules/r.yml": "new\n", "packs/v/p/fixtures/basic/want": "new\n", "test/e2e/s1/want": "new\n" });
+  it("proves a rule change with a fixture case, a scenario folder or a scenario's EXPECT entry that fails on base's rules", async () => {
+    const r = await proof("fix(packs): new rule", {
+      "packs/v/p/rules/r.yml": "new\n",
+      "packs/v/p/fixtures/basic/want": "new\n",
+      "test/e2e/s1/want": "new\n",
+      "scripts/e2e.ts": e2e("new"),
+    });
     expect(r).toMatchObject({ status: 0, clean: true });
     expect(r.summary).toContain("| `packs/v/p/fixtures/basic` | fails: `rule text differs` | passes |");
     expect(r.summary).toContain("| `test/e2e/s1` | fails: `rule text differs` | passes |");
+    expect(r.summary).toContain("| `test/e2e/s2` | fails: `rule text differs` | passes |");
+  });
+
+  it("leaves out a fix's test that reaches a new export another way, and keeps a real proof beside it", async () => {
+    const src = `${added}export const sum = (xs: number[]) => xs.reduce(add, 0);\nexport default add;\n`;
+    const helper = await proof("fix: add", {
+      "src/add.ts": src,
+      "scripts/total.ts": "import { sum } from '../src/add.js';\nexport const total = (xs: number[]) => sum(xs);\n",
+      "test/helpers.ts": "export { sum } from '../src/add.js';\n",
+      "test/sum.test.ts": test(
+        "it('totals', () => expect(total([1, 2])).toBe(3));\nit('sums', () => expect(sum([1, 2])).toBe(3));\n// @ts-expect-error not on base\nit('casts', () => expect((m as any).sum([1, 2])).toBe(3));",
+        "import { total } from '../scripts/total.js';\nimport { sum } from './helpers.js';\nimport * as m from '../src/add.js';",
+      ),
+    });
+    expect(helper).toMatchObject({ status: 1, clean: true });
+    for (const t of ["totals", "sums", "casts"]) expect(helper.summary).toContain(`- \`test/sum.test.ts > ${t}\`: \`Error: sum does not exist without this change\``);
+    const beside = await proof("fix: add", {
+      "src/add.ts": src,
+      "test/add.test.ts": test(
+        "it('adds two', () => expect(m.add(1, 2)).toBe(3));\nit('sums', () => expect(m.sum([1, 2])).toBe(3));\nit('adds by default', () => expect(plus(1, 1)).toBe(2));\nit('adds\\ntwo | again', () => expect(add(2, 2)).toBe(4));\nit('adds two', () => expect(add(0, 0)).toBe(0));",
+        "import * as m from '../src/add.js';\nimport plus, { add } from '../src/add.js';",
+      ),
+    });
+    expect(beside).toMatchObject({ status: 0, clean: true });
+    expect(beside.summary).toContain("**Passed:** 2 changed tests fail without this change and pass with it.");
+    expect(beside.summary).toContain("| `test/add.test.ts > adds two` | fails: `AssertionError: expected -1 to be 3 // Object.is equality` | passes |\n| `test/add.test.ts > adds two ¦ again` | fails: ");
+    expect(beside.summary).toContain("- `test/add.test.ts > sums`: `Error: sum does not exist without this change`");
+    expect(beside.summary).toContain("- `test/add.test.ts > adds by default`: `Error: default does not exist without this change`");
+    expect(beside.summary).toContain("1 other test in the changed files passes");
   });
 
   it("fails when a changed test fails on this change, or when no test changed", async () => {
