@@ -22,3 +22,45 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: sh scripts/check-pr.sh "$BASE" "$HEAD"
+
+  # One rule per title type (scripts/check-refactor.sh). Runs again when the title or body is edited.
+  # Base's copy of the script decides, so a change cannot loosen the rule it is checked by.
+  refactor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BASE: ${{ github.event.pull_request.base.sha }}
+      HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: table
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if git show "$BASE:scripts/check-refactor.sh" > "$RUNNER_TEMP/rule.sh"; then
+            copy="base's scripts/check-refactor.sh"
+          else
+            cp scripts/check-refactor.sh "$RUNNER_TEMP/rule.sh"
+            copy="this change's scripts/check-refactor.sh, since base has none"
+          fi
+          echo "Rule from $copy"
+          printf 'Rule from %s\n\n' "$copy" >> "$GITHUB_STEP_SUMMARY"
+          sh "$RUNNER_TEMP/rule.sh" "$BASE" "$HEAD"
+      - if: steps.table.outputs.base-tests == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.table.outputs.base-tests == 'true'
+        run: npm ci
+      - if: steps.table.outputs.base-tests == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/darnit
+          key: oasdiff-${{ runner.os }}-${{ hashFiles('src/corpus/oasdiff.ts') }}
+      - if: steps.table.outputs.base-tests == 'true'
+        run: sh "$RUNNER_TEMP/rule.sh" --base-tests "$BASE"
