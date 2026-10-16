@@ -256,7 +256,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     throw new Refusal("not a git repository; darnit only edits files it can undo. Use --dry-run to preview.");
   }
   if (!dryRun && !(await g.hasCommit(root))) {
-    throw new Refusal("no commits yet; commit your files first, darnit only edits files it can undo. Use --dry-run to preview.");
+    throw new Refusal("the current branch has no commits yet; commit your files first. Use --dry-run to preview.");
   }
 
   const { groups, coverage, namesElsewhere } = await groupHits(root, opts.only);
@@ -332,14 +332,14 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     for (const grp of applicable) {
       for (const f of settle(resultOf(grp), await applyAndVerify(root, grp), grp.held)) if (!touched.includes(f)) touched.push(f);
     }
+    if (touched.length === 0) return base;
+    const { build, tests } = await runChecks(root, commands, snap);
+    const reverted = failed(build) || failed(tests);
+    return { ...base, build, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
   } catch (err) {
     await restore(root, snap);
     throw err;
   }
-  if (touched.length === 0) return base;
-  const { build, tests } = await runChecks(root, commands, snap);
-  const reverted = failed(build) || failed(tests);
-  return { ...base, build, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
 }
 
 // One branch, one test run and one pull request per change. The working tree is

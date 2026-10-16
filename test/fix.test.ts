@@ -70,6 +70,16 @@ async function repoWith(files: Record<string, string>): Promise<string> {
   return repoFrom(src);
 }
 
+async function darnit(cwd: string, ...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+  const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+  const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" };
+  return new Promise((resolve) =>
+    execFile(process.execPath, ["--import", import.meta.resolve("tsx"), cli, ...args], { cwd, env }, (err, stdout, stderr) =>
+      resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }),
+    ),
+  );
+}
+
 describe("fix checks package versions before rewriting", () => {
   const PY_CALL = "from openai import OpenAI\nr = OpenAI().chat.completions.create(model='x', messages=[], max_tokens=5)\n";
 
@@ -440,7 +450,7 @@ describe("fix", () => {
     expect((await fix(dir, { dryRun: true })).diff).toContain("max_completion_tokens");
   });
 
-  const NO_COMMITS = "no commits yet; commit your files first, darnit only edits files it can undo. Use --dry-run to preview.";
+  const NO_COMMITS = "the current branch has no commits yet; commit your files first. Use --dry-run to preview.";
 
   it("refuses a repository with no commits before touching a file, unless --dry-run", async () => {
     const dir = await mkdtemp(join(tmpdir(), "darnit-nohead-"));
@@ -457,14 +467,16 @@ describe("fix", () => {
     expect((await fix(dir, { dryRun: true })).diff).toContain("max_completion_tokens");
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
 
-    const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-    const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" };
-    const run = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) =>
-      execFile(process.execPath, ["--import", import.meta.resolve("tsx"), cli, "fix", "--json"], { cwd: dir, env }, (err, stdout, stderr) =>
-        resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }),
-      ),
-    );
-    expect(run).toEqual({ code: 2, stdout: "", stderr: `darnit: ${NO_COMMITS}\n` });
+    expect(await darnit(dir, "fix", "--json")).toEqual({ code: 2, stdout: "", stderr: `darnit: ${NO_COMMITS}\n` });
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
+
+  it("puts the files back when git fails after the rewrite", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    await writeFile(join(dir, ".git", "index"), "junk\n");
+    await expect(fix(dir, { noTest: true })).rejects.toThrow(/index/);
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+    expect((await darnit(dir, "fix", "--no-test")).code).toBe(2);
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
