@@ -24,7 +24,8 @@ jobs:
           persist-credentials: false
       # Pull requests that change only Markdown or LICENSE skip; those that can change scan results
       # compare all repos; others compare the slice (slice yes). Every other run compares all.
-      # --no-renames lists a renamed file under its old name too; a git failure fails the step.
+      # --no-renames lists a renamed file under its old name too; a git failure fails the step. A name
+      # git still quotes (a quote mark, a control character) starts with a quote mark and never skips.
       - id: scope
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -34,14 +35,14 @@ jobs:
           if [ -z "$BASE" ]; then
             set=all why="Golden compares all pinned repositories: this $EVENT run is not a pull request."
           else
-            changed=$(git diff --name-only --no-renames "$BASE...$HEAD")
-            detection=$(grep -E '^(src|packs|test/golden)/|^scripts/golden\.ts$|^package(-lock)?\.json$' <<< "$changed" || true)
+            changed=$(git -c core.quotePath=false diff --name-only --no-renames "$BASE...$HEAD")
+            detection=$(grep -E '^"?(src|packs|test/golden)/|^(scripts/golden\.ts|\.github/workflows/golden\.yml|package(-lock)?\.json|tsconfig[^/]*\.json)$' <<< "$changed" || true)
             if ! grep -Eqv '\.md$|^LICENSE$' <<< "$changed"; then
               set=skip why="Golden skipped: this pull request changes only Markdown or LICENSE files."
             elif [ -n "$detection" ]; then
               set=all why="Golden compares all pinned repositories: this pull request changes $(head -n 1 <<< "$detection"), which can change scan results."
             else
-              set=slice why="Golden compares the slice (slice yes in repos.tsv): this pull request changes nothing under src/, packs/ or test/golden/, nor scripts/golden.ts or the package files."
+              set=slice why="Golden compares the slice (slice yes in repos.tsv): this pull request changes nothing under src/, packs/ or test/golden/, nor scripts/golden.ts, golden.yml, tsconfig or the package files."
             fi
           fi
           echo "$why" | tee -a "$GITHUB_STEP_SUMMARY"

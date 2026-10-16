@@ -46,7 +46,9 @@ jobs:
           if-no-files-found: error
 
   # Compares scan results on every pinned real repository (golden.yml) before anything is published.
+  # It waits for build, so no code from the tag runs before check-release.sh has accepted the tag.
   golden:
+    needs: build
     permissions:
       contents: read
     uses: ./.github/workflows/golden.yml

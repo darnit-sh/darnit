@@ -7,9 +7,9 @@ goes out as the final version.
 Nobody publishes from a laptop. Pushing a `vX.Y.Z` tag starts the `publish` workflow: one job checks
 that the tag matches `package.json`, that the tagged commit is the merge commit of a pull request
 merged into `main`, and that `ci` passed on that commit (`scripts/check-release.sh`), runs
-`npm run check`, and builds the package; a second job scans every pinned repository in
-`test/golden/repos.tsv` and compares each result with its stored file (`golden.yml`); a third job waits
-for both, then for a maintainer to approve the protected `npm` environment, then publishes that exact
+`npm run check`, and builds the package; a second job, after the first, scans every pinned repository
+in `test/golden/repos.tsv` and compares each result with its stored file (`golden.yml`); a third job
+waits for both, then for a maintainer to approve the protected `npm` environment, then publishes that exact
 package with provenance. A last job waits for npm to serve the new version, then runs it with
 `npx` from an empty folder and requires `--version` to print it and `check` to exit 1 with a hit on
 `test/samples/small` (`scripts/verify-release.sh`). A version with a hyphen (`X.Y.Z-rc.N`) goes to
@@ -18,6 +18,10 @@ older line (`0.1.5` after `0.2.0`) goes to `latest-0.1` instead and `npx darnit`
 release. If npm's `latest` cannot be read, the release stops. The tag is chosen when the tag is
 pushed, not when the publish is approved, so keep one release in flight: approve or reject one
 publish run before pushing the next tag.
+
+The golden job restores main's cached clones and does not fetch them again to check they still exist.
+If a pinned repository is gone and the cache has expired, the job fails: merge a pull request that
+swaps it for another (with a `Golden drop:` line), then tag the new commit.
 
 Why the candidate step matters: workflows written by `init` in 0.1.0 run `npx darnit check` with no
 version and take every new `latest`; from 0.2.0 on, `init` pins the minor (`npx darnit@0.2 check`),

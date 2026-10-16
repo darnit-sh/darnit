@@ -202,7 +202,7 @@ function main() {
       "```",
       `+${added} -${removed} lines in ${diffs.length} repos${all.length > 200 ? ` (first 200 of ${all.length} diff lines shown)` : ""}.`,
       `New results are in ${args.out}.`,
-      "If the change is intended, run `npm run golden -- --update` (or unzip the golden-update artifact into test/golden) and commit the result.",
+      `If the change is intended, run \`npm run golden -- --update${args.all ? " --all" : ""}\` (or unzip the golden-update artifact into test/golden) and commit the result.`,
     );
   }
   if (notes.length > 0) summary.push("", ...notes.map((n) => `- ${n}`));
