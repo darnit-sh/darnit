@@ -1,0 +1,25 @@
+exit 0
+scanned files=245 records=33 otherFiles=396 foreign=0 tooLarge=0 skipped=2
+P agixt/InternalClient.py:751:22 #30e603b2 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P agixt/Models.py:352:28 #9ef4a622 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P agixt/VoiceConversation.py:564:22 #f31b7f1c tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P agixt/extensions/ezlocalai.py:531:22 #f31b7f1c tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P agixt/extensions/ezlocalai.py:573:22 #f31b7f1c tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P agixt/extensions/openai.py:99:43 #b52b16c9 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P agixt/extensions/openai.py:124:75 #6ea19703 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P agixt/extensions/openai.py:396:22 #f31b7f1c tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P agixt/extensions/openai.py:422:22 #d14b027d dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+P ui/src/client-actions.js:786:18 #bd3f9255 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M agixt/DB.py:7148 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+M agixt/InternalClient.py:761 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M agixt/extensions/perplexity.py:35 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M agixt/extensions/perplexity.py:109 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M agixt/onnx/tokenizer.json:15424 ada openai:2023-07-06:gpt-and-embeddings-shut-down
+M examples/AGiXT-Expert-OAI.ipynb:68 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+M examples/AGiXT-Expert-ezLocalai.ipynb:72 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+M tests/endpoint-tests.ipynb:226 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M tests/endpoint-tests.ipynb:256 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M tests/endpoint-tests.ipynb:287 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M tests/endpoint-tests.ipynb:319 whisper-1 openai:2026-08-26:transcription-models-shut-down
+S ui/src-tauri/vendor dependency or build folder
+S ui/src/vendor dependency or build folder

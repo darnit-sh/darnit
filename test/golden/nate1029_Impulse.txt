@@ -1,0 +1,18 @@
+exit 0
+scanned files=63 records=33 otherFiles=29 foreign=0 tooLarge=0 skipped=1
+M src/main/services/ai/README.md:140 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M src/main/services/ai/README.md:186 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M src/main/services/ai/agent.js:211 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/agent.js:213 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/agent.js:214 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/agent.js:219 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/agent.js:220 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/agent.js:221 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/providers/openaiProvider.js:17 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/providers/openaiProvider.js:17 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/providers/openaiProvider.js:17 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/providers/openaiProvider.js:17 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/providers/openaiProvider.js:17 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/providers/openaiProvider.js:23 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/main/services/ai/providers/openaiProvider.js:61 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+S build dependency or build folder

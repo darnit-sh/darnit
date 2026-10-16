@@ -1,0 +1,15 @@
+exit 0
+scanned files=2 records=33 otherFiles=9 foreign=0 tooLarge=0 skipped=0
+M README.md:87 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:81 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:81 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M clickui.py:81 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
+M clickui.py:81 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:920 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:925 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:2164 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:2344 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:3471 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:3471 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M clickui.py:3471 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
+M clickui.py:3471 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

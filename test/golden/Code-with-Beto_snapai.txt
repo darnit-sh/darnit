@@ -1,0 +1,10 @@
+exit 0
+scanned files=22 records=33 otherFiles=19 foreign=0 tooLarge=0 skipped=0
+M README.md:157 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M README.md:158 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/FEATURE_GRAPHICS.md:44 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M docs/FEATURE_GRAPHICS.md:45 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/ICON_GENERATION.md:65 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M docs/ICON_GENERATION.md:66 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/services/openai.ts:20 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/services/openai.ts:21 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down

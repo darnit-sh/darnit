@@ -1,0 +1,25 @@
+exit 1
+scanned files=6 records=33 otherFiles=18 foreign=0 tooLarge=2 skipped=0
+H common.py:703:17 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P gen_api_answer.py:110:54 #594f4573 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P gen_judgment.py:247:63 #7ec94111 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P show_result.py:393:63 #7ec94111 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:221 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:222 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:430 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:431 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:614 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:615 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:870 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:871 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:874 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:876 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:885 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:886 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:889 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M common.py:891 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M compute_agreement.py:16 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M conversation.py:1086 gpt-4-turbo-2024-04-09 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M gen_api_answer.py:4 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+T data/oab_bench/model_judgment/gpt-5.2_nonstructured_single.jsonl
+T data/oab_bench/model_judgment/gpt-5.2_single.jsonl

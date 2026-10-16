@@ -1,0 +1,9 @@
+exit 1
+scanned files=44 records=33 otherFiles=25 foreign=0 tooLarge=0 skipped=0
+H src/flat/halu_run.py:250:17 #e750d526 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H src/flat/llm_controller.py:187:25 #b43f4ea2 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H src/flat/llm_controller.py:198:25 #b43f4ea2 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P src/flat/llm_controller.py:28:37 #d5d67cac gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P src/flat/llm_controller.py:253:31 #a2ad9bb0 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M evals/run_generation.py:482 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/flat/llm_controller.py:258 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

@@ -1,0 +1,18 @@
+exit 0
+scanned files=96 records=33 otherFiles=37 foreign=0 tooLarge=0 skipped=0
+M src/oterm/providers/capabilities.py:27 gpt-audio openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down
+M src/oterm/providers/capabilities.py:28 gpt-realtime openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down
+M src/oterm/providers/capabilities.py:89 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/oterm/providers/capabilities.py:89 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_capabilities.py:21 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
+M tests/unit/test_capabilities.py:34 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M tests/unit/test_capabilities.py:35 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M tests/unit/test_capabilities.py:36 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M tests/unit/test_capabilities.py:38 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M tests/unit/test_capabilities.py:39 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+M tests/unit/test_capabilities.py:77 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_capabilities.py:77 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_capabilities.py:139 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_capabilities.py:140 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_providers.py:186 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_providers.py:190 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

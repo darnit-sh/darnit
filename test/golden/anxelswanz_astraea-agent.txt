@@ -1,0 +1,6 @@
+exit 0
+scanned files=382 records=33 otherFiles=23 foreign=0 tooLarge=0 skipped=0
+M src/api/openai.ts:15 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/api/openai.ts:15 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/api/reasoningEffort.test.ts:68 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M src/tools/diffStyle.ts:52 ada openai:2023-07-06:gpt-and-embeddings-shut-down
