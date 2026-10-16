@@ -1,0 +1,20 @@
+exit 0
+scanned files=909 records=33 otherFiles=450 foreign=0 tooLarge=0 skipped=0
+P src/lib/ai-config.ts:43:10 #b39b0247 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P src/lib/ai/openai.ts:13:39 #2cbcd11d gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P src/pages/api/repos/[owner]/[repo]/pulls/[number]/ai-review.ts:130:16 #b39b0247 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/features/ai-review.md:94 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M docs/features/ai-review.md:94 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/features/ai-review.md:94 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/features/ai-review.md:440 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/features/ai-review.md:442 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/db/schema/ai-reviews.ts:23 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/lib/ai-review.ts:34 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/lib/ai/openai.ts:12 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/pages/settings/ai.astro:25 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/pages/settings/ai.astro:178 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/pages/settings/ai.astro:183 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/integration/ai-review-route-path-permissions.test.ts:43 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/ai-config.test.ts:14 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/ai-config.test.ts:29 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/ai-config.test.ts:40 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

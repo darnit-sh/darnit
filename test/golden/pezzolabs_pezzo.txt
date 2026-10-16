@@ -1,0 +1,17 @@
+exit 0
+scanned files=368 records=33 otherFiles=174 foreign=0 tooLarge=0 skipped=0
+P apps/console/src/components/prompts/editor/ProviderSettings/providers/openai-chat-completion.ts:13:10 #5cefe6c6 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M apps/console/src/components/prompts/editor/ProviderSettings/providers/azure-openai-chat-completion.ts:23 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M apps/console/src/components/prompts/editor/ProviderSettings/providers/azure-openai-chat-completion.ts:35 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M apps/server/src/app/reporting/utils/build-request-report.ts:37 gpt-3.5-turbo-0613 openai:2023-11-06:chat-model-updates-shut-down
+M apps/server/src/app/reporting/utils/build-request-report.ts:38 gpt-3.5-turbo-0613 openai:2023-11-06:chat-model-updates-shut-down
+M docs/client/integrations/openai.mdx:62 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/client/integrations/openai.mdx:82 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/client/integrations/openai.mdx:100 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/client/integrations/openai.mdx:117 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/client/request-caching.mdx:20 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/client/request-caching.mdx:38 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/introduction/tutorial-observability/overview.mdx:39 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/introduction/tutorial-observability/overview.mdx:66 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M libs/client/package.json:18 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M libs/client/package.json:19 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

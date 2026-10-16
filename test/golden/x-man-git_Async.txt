@@ -1,0 +1,22 @@
+exit 1
+scanned files=570 records=33 otherFiles=62 foreign=0 tooLarge=0 skipped=1
+H main-src/llm/openaiAdapter.ts:135:7 #f42cfa24 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H main-src/memdir/findRelevantMemories.ts:207:5 #02c6ac31 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H main-src/services/dialectic/dialectic.ts:153:5 #0b2029d8 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H main-src/services/extractMemories/extractMemories.ts:345:5 #3e901fa1 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H main-src/services/extractSkills/extractSkills.ts:325:5 #3e901fa1 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H main-src/threadTitle.ts:204:5 #68df384b openai:2024-09-12:max-tokens-to-max-completion-tokens
+P main-src/ipc/handlers/settingsHandlers.ts:79:12 #b5950d56 gpt-5.3-codex openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M main-src/llm/codexOAuthAdapter.test.ts:59 gpt-5.3-codex openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M main-src/llm/codexOAuthAdapter.test.ts:88 gpt-5.3-codex openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M main-src/llm/modelContext.ts:262 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M main-src/llm/modelContext.ts:262 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M main-src/llm/modelContext.ts:265 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M main-src/llm/modelContext.ts:268 gpt-4-32k openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2025-06-06
+M main-src/llm/modelContext.ts:271 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M main-src/llm/providerOAuthLogin.ts:132 gpt-5.3-codex openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M main-src/llm/thinkingLevel.test.ts:29 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M main-src/llm/thinkingLevel.test.ts:30 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M main-src/llm/thinkingLevel.ts:88 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M main-src/llm/thinkingLevel.ts:95 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+S build dependency or build folder

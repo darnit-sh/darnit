@@ -1,0 +1,9 @@
+exit 0
+scanned files=29 records=33 otherFiles=27 foreign=0 tooLarge=0 skipped=0
+H src/handlers/dalle.ts:32:4 #95a6c2c0 openai:2026-10-03:response-format-deprecated
+P src/config.ts:65:47 #d0b53e1e gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M .env-example:18 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M .env-example:71 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M docs/pages/gpt.md:8 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/pages/gpt.md:8 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/providers/openai.ts:58 whisper-1 openai:2026-08-26:transcription-models-shut-down

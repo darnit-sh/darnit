@@ -1,0 +1,39 @@
+exit 0
+scanned files=497 records=33 otherFiles=334 foreign=0 tooLarge=0 skipped=1
+P component/src/services/openAI/openAISpeechToTextIO.ts:22:43 #c225f313 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P component/src/services/openAI/openAITextToSpeechIO.ts:20:43 #8815535b tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P component/src/services/openAI/realtime/openAIRealtimeIO.ts:125:28 #6de88420 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P example-servers/ui/src/App.tsx:74:92 #b9b6ea92 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P example-servers/ui/src/App.tsx:84:42 #f3f9d6f1 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M component/custom-elements.json:47413 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M component/custom-elements.json:48599 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M component/src/services/openAI/openAIChatIO.ts:75 gpt-4o-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+M component/src/types/openAI.ts:35 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M component/src/types/openAI.ts:44 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M llms.txt:43 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:233 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:233 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:237 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:237 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:308 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:314 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:325 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:346 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:419 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:424 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:428 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:443 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:453 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:468 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAI.mdx:484 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAIRealtime.mdx:148 gpt-4o-realtime-preview-2024-12-17 openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+M website/docs/docs/directConnection/OpenAI/OpenAIRealtime.mdx:466 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M website/docs/docs/directConnection/OpenRouter.mdx:43 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenRouter.mdx:65 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenRouter.mdx:76 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenRouter.mdx:92 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M website/docs/docs/directConnection/OpenRouter.mdx:109 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M website/src/pages/playground/serviceModal/serviceModal.js:1162 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M website/src/pages/playground/serviceModal/serviceModal.js:1165 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M website/src/pages/playground/serviceModal/serviceModal.js:1166 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+S example-servers/elixir/phoenix/assets/vendor dependency or build folder

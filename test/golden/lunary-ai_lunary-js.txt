@@ -1,0 +1,16 @@
+exit 1
+scanned files=32 records=33 otherFiles=11 foreign=0 tooLarge=0 skipped=1
+H examples/assistant.ts:19:3 #588891cf openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H examples/feedback.ts:30:5 #93bb7212 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H examples/flush.ts:17:3 #ec1058c6 openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+H examples/openai.ts:98:5 #9b3aef1d openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+H examples/openai.ts:120:5 #9b3aef1d openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+H examples/scoring.ts:19:5 #93bb7212 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H examples/simple.ts:13:3 #ec1058c6 openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+H examples/thread.ts:36:5 #93bb7212 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H test/openai.test.ts:48:7 #93bb7212 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/agent.ts:10:14 #854c778a gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P examples/langchain.ts:7:14 #5f710ebf gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M src/lunary.ts:84 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test/openai.test.ts:80 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+S dist dependency or build folder

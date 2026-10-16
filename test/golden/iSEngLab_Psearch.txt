@@ -1,0 +1,10 @@
+exit 1
+scanned files=29 records=33 otherFiles=80 foreign=0 tooLarge=2 skipped=0
+H gpt.py:28:13 #b039db41 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H gpt.py:54:13 #b039db41 openai:2024-09-12:max-tokens-to-max-completion-tokens
+M gpt.py:5 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M mcts.py:20 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/vul_mcts.sh:10 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vul4j_mcts.py:116 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+T SWE/swe_lite_loc_with_context.jsonl
+T data/beam_search_results.jsonl

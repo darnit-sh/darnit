@@ -1,0 +1,16 @@
+exit 0
+scanned files=28 records=33 otherFiles=71 foreign=0 tooLarge=0 skipped=1
+M docs/01-introduction/README.md:44 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M docs/01-introduction/README.md:45 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/01-introduction/README.md:46 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M docs/01-introduction/README.md:74 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M docs/01-introduction/README.md:74 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/01-introduction/README.md:75 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M docs/01-introduction/README.md:76 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M docs/01-introduction/README.md:76 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/01-introduction/README.md:78 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M docs/01-introduction/README.md:78 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/01-introduction/README.md:80 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down
+M docs/01-introduction/README.md:80 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/01-introduction/README.md:83 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
+S examples/__pycache__ dependency or build folder
