@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative } from "node:path";
 
-type Result = { status: string; why: string; file: string };
+type Result = { status: string; why: string; file: string; test?: string };
 const env = process.env;
 const MISSING = "does not exist without this change";
 const lines = (s = "") => s.split("\n").filter(Boolean);
@@ -48,7 +48,19 @@ if (process.argv[2] === "mark") {
     const missing = names.filter((n) => !base[file]?.includes(n) && /^[A-Za-z_$][\w$]*$/.test(n));
     if (missing.length === 0) continue;
     const values = missing.map((n, i) => `const __proofMissing${i} = __proofMissing("${n}");\nexport { __proofMissing${i} as ${n} };`);
-    const helper = `function __proofMissing(name: string): any { const fail = () => { throw new Error(name + " ${MISSING}"); }; return new Proxy(function () {}, { get: fail, apply: fail, construct: fail, has: fail, ownKeys: fail, getPrototypeOf: fail, set: fail }); }`;
+    // Base code may catch the throw, so each use is also written down with the test running it, from
+    // vitest's worker state; a use with no test name found counts against every test.
+    const helper = `import { appendFileSync as __proofAppend } from "node:fs";
+function __proofMissing(name: string): any {
+  const fail = () => {
+    const test = (globalThis as any).__vitest_worker__?.current;
+    const names: string[] = [];
+    for (let t = test; t && t !== test.file; t = t.suite) names.unshift(t.name);
+    if (process.env.PROOF_FIRED) __proofAppend(process.env.PROOF_FIRED, JSON.stringify([test?.file?.filepath ?? "", names.join(" ")]) + "\\n");
+    throw new Error(name + " ${MISSING}");
+  };
+  return new Proxy(function () {}, { get: fail, apply: fail, construct: fail, has: fail, ownKeys: fail, getPrototypeOf: fail, set: fail });
+}`;
     writeFileSync(file, `${existsSync(file) ? readFileSync(file, "utf8") : ""}\n${helper}\n${values.join("\n")}\n`);
   }
   process.exit(0);
@@ -67,7 +79,7 @@ function results(side: string): Map<string, Result> {
       // Two tests with one name keep apart by their order, which is the same on both sides.
       let key = `${file} > ${a.fullName}`;
       for (let i = 2; r.has(key); i++) key = `${file} > ${a.fullName} (${i})`;
-      r.set(key, { status: a.status, why: first(a.failureMessages?.[0]), file });
+      r.set(key, { status: a.status, why: first(a.failureMessages?.[0]), file, test: `${file} > ${a.fullName}` });
     }
   }
   // The fixture runner and scripts/e2e.ts print "✓ <name>" or "✗ <name>", then the problems indented.
@@ -93,6 +105,10 @@ type Vitest = {
 
 const head = results("head");
 const base = results("base");
+// Tests on base that used a value base does not have, even when base's code caught the throw.
+const fired = lines(read("fired")).map((l) => JSON.parse(l) as [string, string]);
+const used = new Set(fired.map(([file, name]) => `${file && relative(process.cwd(), file)} > ${name}`));
+const unknown = fired.some(([file, name]) => !file || !name);
 const broken = [...tests, ...lines(env.CASES), ...lines(env.SCENARIOS)].filter((t) => ![...head.values()].some((r) => r.file === t));
 const failing = [...head].filter(([, r]) => r.status === "failed" || r.status === "load");
 if (broken.length > 0 || failing.length > 0) {
@@ -112,8 +128,10 @@ for (const [name, r] of base) {
   if (r.status === "passed") passedOnBase++;
   if (r.status !== "failed" && r.status !== "load") continue;
   const label = r.file.startsWith("test/e2e/") ? "did not run" : r.file.startsWith("packs/") ? "new pack" : "new export";
-  // A call to an import that is undefined names vitest's import variable: something base does not have.
-  const load = r.status === "load" || r.why.includes(MISSING) || /__vite_ssr_import_\d+__/.test(r.why);
+  // A call to an import vitest left undefined names its import variable: an export the list above does
+  // not read, such as one in a JavaScript module.
+  const reached = r.test !== undefined && (unknown || used.has(r.test));
+  const load = r.status === "load" || reached || r.why.includes(MISSING) || /__vite_ssr_import_\d+__/.test(r.why);
   if (load && !feat) notLoaded.push(`- ${code(name)}: ${code(r.why || "did not load")}`);
   else rows.push(`| ${code(name)} | ${load ? `${label}: ` : "fails: "}${code(r.why || r.status)} | passes |`);
 }

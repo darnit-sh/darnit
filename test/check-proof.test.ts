@@ -28,6 +28,8 @@ const baseFiles: Record<string, string> = {
   "package.json": JSON.stringify({ type: "module", scripts: { "test:e2e": "tsx scripts/e2e.ts" } }),
   "tsconfig.json": JSON.stringify({ compilerOptions: { module: "NodeNext", strict: true, noEmit: true, skipLibCheck: true, types: [] }, include: ["src", "test"] }),
   "src/add.ts": subtract,
+  "src/run.ts": "const cb = () => 'base';\nexport function run(f: () => string) {\n  try {\n    return f();\n  } catch {\n    return cb();\n  }\n}\n",
+  "src/raw.js": "export const one = 1;\n",
   "test/add.test.ts": test("it('adds zero', () => expect(add(1, 0)).toBe(1));"),
   "packs/v/p/change.json": "{}\n",
   "packs/v/p/rules/r.yml": "old\n",
@@ -115,6 +117,17 @@ describe("the proof check", { timeout: 120_000 }, () => {
     expect(feat).toMatchObject({ status: 0, clean: true });
     expect(feat.summary).toContain("| `test/sum.test.ts > sums` | new export: `Error: sum does not exist without this change` | passes |");
     expect(feat.summary).toContain("| `test/new.test.ts > is one` | new export: `Error: one does not exist without this change` | passes |");
+  });
+
+  it("leaves out a fix's test whose new export base's code caught, or that sits in a JavaScript module", async () => {
+    const r = await proof("fix: run", {
+      "src/run.ts": "export const cb = () => 'ok';\nexport function run(f: () => string) {\n  try {\n    return f();\n  } catch {\n    return cb();\n  }\n}\n",
+      "src/raw.js": "export const one = 1;\nexport const two = () => 2;\n",
+      "test/run.test.ts": test("it('runs', () => expect(run(cb)).toBe('ok'));\nit('twos', () => expect(two()).toBe(2));", "import { cb, run } from '../src/run.js';\nimport { two } from '../src/raw.js';"),
+    });
+    expect(r).toMatchObject({ status: 1, clean: true });
+    expect(r.summary).toContain("- `test/run.test.ts > runs`: `AssertionError: expected 'base' to be 'ok' // Object.is equality`");
+    expect(r.summary).toContain("- `test/run.test.ts > twos`: `TypeError: ");
   });
 
   it("proves a rule change with a fixture case, a scenario folder or a scenario's EXPECT entry that fails on base's rules", async () => {

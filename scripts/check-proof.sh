@@ -64,7 +64,7 @@ set -f
 # Runs the changed tests on the code in the working tree, writing each runner's output to $out/$1.*.
 run() {
   if [ -n "$tests" ]; then
-    npx vitest run $tests --reporter=default --reporter=json --outputFile.json="$out/$1.json" || true
+    PROOF_FIRED=$out/fired npx vitest run $tests --reporter=default --reporter=json --outputFile.json="$out/$1.json" || true
   fi
   if [ -n "$cases" ]; then npx tsx scripts/fixtures.ts $cases | tee "$out/$1.cases" || true; fi
   if [ -n "$scenarios" ]; then npm run test:e2e 2>&1 | tee "$out/$1.e2e" || true; fi
