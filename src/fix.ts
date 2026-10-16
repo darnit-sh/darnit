@@ -255,6 +255,9 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   if (!dryRun && !(await g.isRepo(root))) {
     throw new Refusal("not a git repository; darnit only edits files it can undo. Use --dry-run to preview.");
   }
+  if (!dryRun && !(await g.hasCommit(root))) {
+    throw new Refusal("no commits yet; commit your files first, darnit only edits files it can undo. Use --dry-run to preview.");
+  }
 
   const { groups, coverage, namesElsewhere } = await groupHits(root, opts.only);
   const records: RecordResult[] = [];

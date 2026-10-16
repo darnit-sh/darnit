@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
@@ -437,6 +438,34 @@ describe("fix", () => {
     await writeFile(join(dir, "app.js"), 'import OpenAI from "openai";\nnew OpenAI().chat.completions.create({ max_tokens: 1 });\n');
     await expect(fix(dir)).rejects.toBeInstanceOf(Refusal);
     expect((await fix(dir, { dryRun: true })).diff).toContain("max_completion_tokens");
+  });
+
+  const NO_COMMITS = "no commits yet; commit your files first, darnit only edits files it can undo. Use --dry-run to preview.";
+
+  it("refuses a repository with no commits before touching a file, unless --dry-run", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-nohead-"));
+    tempDirs.push(dir);
+    await writeFile(join(dir, "sdk.js"), SDK_CALL);
+    await git(dir, ["init", "-q"]);
+    const id = "openai:2024-09-12:max-tokens-to-max-completion-tokens";
+    for (const opts of [{}, { noTest: true }, { only: [id] }, { pr: true, allowDirty: true }]) {
+      const err = await fix(dir, opts).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Refusal);
+      expect((err as Error).message).toBe(NO_COMMITS);
+      expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+    }
+    expect((await fix(dir, { dryRun: true })).diff).toContain("max_completion_tokens");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+
+    const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" };
+    const run = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) =>
+      execFile(process.execPath, ["--import", import.meta.resolve("tsx"), cli, "fix", "--json"], { cwd: dir, env }, (err, stdout, stderr) =>
+        resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }),
+      ),
+    );
+    expect(run).toEqual({ code: 2, stdout: "", stderr: `darnit: ${NO_COMMITS}\n` });
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
   it("refuses an unknown --only id", async () => {
