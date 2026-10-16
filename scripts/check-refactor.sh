@@ -6,9 +6,7 @@
 #   check-refactor.sh --base-tests <base sha>   runs base's tests and fixtures against the checked out code
 # The second form overwrites test/ and the fixtures in the working tree.
 set -eu
-summary=${GITHUB_STEP_SUMMARY:-/dev/null}
-say() { printf '%s\n' "$1"; printf '%s\n\n' "$1" >>"$summary"; }
-list() { printf '%s\n' "$1" | sed 's/^/- /' | tee -a "$summary"; echo >>"$summary"; }
+. "$(dirname "$0")/pr-common.sh"
 
 if [ "${1:-}" = --base-tests ]; then
   base=$2
@@ -27,23 +25,7 @@ if [ "${1:-}" = --base-tests ]; then
 fi
 
 base=$1 head=$2
-type=$(printf '%s\n' "$TITLE" | sed -nE '1s/^([a-z]+)(\([a-z0-9-]+\))?!?: .*/\1/p')
-# No rename detection: a renamed file shows as its old path deleted and its new path added.
-paths() { git diff --no-renames --name-only "$@" "$base...$head"; }
-# The body as a reader sees it: HTML comments and fenced code blocks taken out.
-visible() {
-  printf '%s\n' "${BODY:-}" | tr -d '\r' | awk '
-    !c && fence == "" && match($0, /^ ? ? ?(```+|~~~+)/) { fence = substr($0, RSTART, RLENGTH); sub(/^ +/, "", fence); next }
-    fence != "" { t = $0; sub(/^ +/, "", t); if (index(t, fence) == 1 && t ~ /^(`+|~+)[ \t]*$/) fence = ""; next }
-    {
-      s = $0; out = ""
-      while (s != "") {
-        if (c) { i = index(s, "-->"); if (i) { s = substr(s, i + 3); c = 0 } else s = "" }
-        else { i = index(s, "<!--"); if (i) { out = out substr(s, 1, i - 1); s = substr(s, i + 4); c = 1 } else { out = out s; s = "" } }
-      }
-      print out
-    }'
-}
+type=$(title_type)
 
 case $type in
 refactor | perf)
@@ -59,22 +41,18 @@ refactor | perf)
     exit 1
   fi
   say "**(a) passed:** no existing test, fixture, golden file, test script or record changed."
-  reason=$(visible | sed -n 's/^Proof: none, //p' | head -1 | sed 's/[[:space:]]*$//')
-  # Characters, not bytes, whatever the locale: UTF-8 continuation bytes are not counted.
-  length=$(($(printf '%s' "$reason" | LC_ALL=C tr -d '\200-\277' | wc -c)))
-  if [ "$length" -ge 10 ]; then
-    code=$(printf '%s' "$reason" | tr '`' "'")
+  opt_out
+  if [ -n "$reason" ]; then
     echo "::warning::(b) skipped by a 'Proof: none' line in the pull request body; the reason is in the job summary"
-    say "**(b) skipped** by the opt-out line in the pull request body. Reason given: \`$code\`"
+    say "**(b) skipped** by the opt-out line in the pull request body. Reason given: \`$reason\`"
   else
-    [ -n "$reason" ] && say "The opt-out line was ignored: its reason needs at least 10 characters."
     say "(b) runs next."
     echo "base-tests=true" >>"${GITHUB_OUTPUT:-/dev/null}"
   fi
   ;;
 test | docs | chore | ci | build)
   say "**Rule for \`$type\`:** no change under src/, packs/*/*/rules/ or any change.json."
-  touched=$(paths | grep -E '^"?(src/|packs/[^/]+/[^/]+/rules/)|(^|/)change\.json"?$' || true)
+  touched=$(paths | grep -E "$CODE" || true)
   if [ -n "$touched" ]; then
     say "**Failed:** a $type change leaves the code and the rule packs alone; use fix, feat, refactor or perf. Touched:"
     list "$touched"
