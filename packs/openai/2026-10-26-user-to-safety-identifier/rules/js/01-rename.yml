@@ -1,0 +1,16 @@
+id: openai-user-to-safety-identifier-js
+language: javascript
+rule:
+  pattern:
+    context: '({ user: $V })'
+    selector: pair
+  inside:
+    kind: object
+    inside:
+      kind: arguments
+      inside:
+        kind: call_expression
+        has:
+          field: function
+          regex: '(images\.edit|images\.generate)$'
+fix: 'safety_identifier: $V'

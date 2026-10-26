@@ -1,0 +1,14 @@
+id: openai-user-to-safety-identifier-py
+language: python
+rule:
+  pattern:
+    context: 'f(user=$V)'
+    selector: keyword_argument
+  inside:
+    kind: argument_list
+    inside:
+      kind: call
+      has:
+        field: function
+        regex: '(images\.edit|images\.generate)$'
+fix: 'safety_identifier=$V'
