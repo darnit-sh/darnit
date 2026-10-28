@@ -195,6 +195,16 @@ describe("init", () => {
     expect(forced.slice(1)).toEqual(["Rewrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
   });
 
+  it("finds Anthropic's Bedrock and Vertex clients, and says when a supported vendor has no change records yet", async () => {
+    const dir = await scratchCopy("small");
+    await writeFile(join(dir, "package.json"), JSON.stringify({ dependencies: { openai: "1.0.0", "@anthropic-ai/bedrock-sdk": "1.0.0" } }));
+    await writeFile(join(dir, "vertex.ts"), 'import { AnthropicVertex } from "@anthropic-ai/vertex-sdk";\n');
+    expect((await detectApis(dir)).find((d) => d.vendor === "anthropic")?.evidence).toEqual(["package.json: @anthropic-ai/bedrock-sdk", "vertex.ts: import @anthropic-ai/vertex-sdk"]);
+    const [summary] = await init(dir);
+    expect(summary).toBe("Scanned repo: found anthropic (package.json: @anthropic-ai/bedrock-sdk; no change records yet), openai (index.js: import openai)");
+    expect(await readFile(join(dir, "darnit.yml"), "utf8")).toContain("anthropic:\n    tier: supported");
+  });
+
   it.skipIf(process.platform === "win32")("keeps a rewritten file's permissions", async () => {
     const dir = await scratchCopy("small");
     await writeFile(join(dir, "darnit.yml"), "old\n");

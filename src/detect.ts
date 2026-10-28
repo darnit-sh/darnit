@@ -3,11 +3,11 @@ import { open, readdir, realpath, stat } from "node:fs/promises";
 import type { VendorClients } from "./scan/clients.js";
 import { basename, join, resolve, sep } from "node:path";
 
-// Known vendors. "supported" = a rule pack exists in packs/; "recognized" = named
-// in config only. Extend by adding a row.
+// Known vendors. "supported" = change records are added to packs/ as the vendor announces
+// changes; "recognized" = named in config only. Extend by adding a row.
 export const VENDORS = {
   openai: { name: "OpenAI", npm: ["openai"], pypi: ["openai"], hosts: ["api.openai.com", "openai.azure.com"], tier: "supported" },
-  anthropic: { name: "Anthropic", npm: ["@anthropic-ai/sdk"], pypi: ["anthropic"], hosts: ["api.anthropic.com"], tier: "recognized" },
+  anthropic: { name: "Anthropic", npm: ["@anthropic-ai/sdk", "@anthropic-ai/bedrock-sdk", "@anthropic-ai/vertex-sdk"], pypi: ["anthropic"], hosts: ["api.anthropic.com"], tier: "supported" },
   stripe: { name: "Stripe", npm: ["stripe"], pypi: ["stripe"], hosts: ["api.stripe.com"], tier: "recognized" },
   twilio: { name: "Twilio", npm: ["twilio"], pypi: ["twilio"], hosts: ["api.twilio.com"], tier: "recognized" },
 } as const;

@@ -21,10 +21,22 @@ vi.mock("../src/tests.js", async (original) => {
   };
 });
 
+// Set to give every loaded record another vendor, to check the wording names the record's vendor.
+const swap = vi.hoisted(() => ({ vendor: undefined as string | undefined }));
+vi.mock("../src/records/load.js", async (original) => {
+  const real = await original<typeof import("../src/records/load.js")>();
+  return {
+    ...real,
+    loadRecords: async (...args: Parameters<typeof real.loadRecords>) =>
+      (await real.loadRecords(...args)).map((l) => (swap.vendor ? { ...l, record: { ...l.record, vendor: swap.vendor } } : l)),
+  };
+});
+
 const PACKS = fileURLToPath(new URL("../packs/", import.meta.url));
 
 const tempDirs: string[] = [];
 afterEach(async () => {
+  swap.vendor = undefined;
   runs.limitMs = undefined;
   runs.count = 0;
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
@@ -283,6 +295,16 @@ describe("fix leaves calls sent to a local address to a human", () => {
     const summary = renderSummary(result);
     expect(summary).toContain("needs a human: both.ts:3 (sent to localhost:11434, which may not be OpenAI)");
     expect(summary).toContain("needs a human: both.ts:5 (this file also sends calls to a private address)");
+  });
+
+  it("names the record's vendor, not always OpenAI", async () => {
+    // The OpenAI record handed to another vendor, called through that vendor's own client.
+    swap.vendor = "anthropic";
+    const both = `${LOCAL_CALL.replace('"openai"', '"@anthropic-ai/sdk"')}const openai = new OpenAI();\nexport const s = openai.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n`;
+    const dir = await repoWith({ "both.ts": both });
+    const result = await fix(dir, { noTest: true, dryRun: true });
+    expect(result.records[0]).toMatchObject({ applied: false, reason: "this file sends calls to a private address, which may not be Anthropic" });
+    expect(renderSummary(result)).toContain("needs a human: both.ts:3 (sent to localhost:11434, which may not be Anthropic)");
   });
 
   it("names both reasons when local files and look-alike files are held together", async () => {

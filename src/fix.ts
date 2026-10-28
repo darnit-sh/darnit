@@ -93,12 +93,12 @@ const MIXED = "this file also calls another provider through the same methods";
 const LOCAL = "this file also sends calls to a private address";
 
 /** Why a record whose files were all held was not rewritten: a look-alike client, a private address, or both. */
-function heldReason(held: readonly Site[]): string {
+function heldReason(held: readonly Site[], vendor: string): string {
   const files = new Set(held.map((h) => h.file)).size === 1 ? "this file" : "each of these files";
   const lookalike = held.some((h) => h.note === MIXED);
   const local = held.some((h) => h.note !== MIXED);
   if (lookalike && local) return `${files} also calls another provider or a private address, so the rewrite would change those calls too`;
-  if (local) return `${files} sends calls to a private address, which may not be OpenAI`;
+  if (local) return `${files} sends calls to a private address, which may not be ${vendorName(vendor)}`;
   return `${files} also calls another provider through the same methods, so the rewrite would change those calls too`;
 }
 
@@ -117,7 +117,7 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
     if (only && !only.includes(hit.record.id)) continue;
     const group = byId.get(hit.record.id) ?? { record: hit.record, packDir: packs.get(hit.record.id)!, files: [], sites: 0 };
     if (mixed.has(key(hit)) || local.has(key(hit))) {
-      const note = hit.local ? `sent to ${hit.local.map(shown).join(" or ")}, which may not be OpenAI` : mixed.has(key(hit)) ? MIXED : LOCAL;
+      const note = hit.local ? `sent to ${hit.local.map(shown).join(" or ")}, which may not be ${vendorName(hit.record.vendor)}` : mixed.has(key(hit)) ? MIXED : LOCAL;
       (group.held ??= []).push({ file: hit.file, line: hit.line, note });
     } else {
       if (!group.files.includes(hit.file)) group.files.push(hit.file);
@@ -277,7 +277,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
           : !reviewed
             ? "checked by a parser, not yet read by a person"
             : !clean
-              ? heldReason(grp.held ?? [])
+              ? heldReason(grp.held ?? [], grp.record.vendor)
               : !ready
                 ? "no rewrite rules yet"
                 : gate.blocked;

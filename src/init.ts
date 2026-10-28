@@ -4,7 +4,8 @@ import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promi
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
-import { detectApis, skippedNote, tooLargeNote, VENDORS, type Skipped } from "./detect.js";
+import { detectApis, skippedNote, tooLargeNote, VENDORS, type Skipped, type Vendor } from "./detect.js";
+import { loadRecords } from "./records/load.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -85,16 +86,18 @@ export async function init(root: string, { force = false } = {}): Promise<string
   const tooLarge: string[] = [];
   const skipped: Skipped[] = [];
   const found = await detectApis(root, tooLarge, skipped);
+  const withRecords = new Set((await loadRecords()).map((l) => l.record.vendor));
+  const note = (vendor: Vendor) => (VENDORS[vendor].tier === "recognized" ? "; recognized only" : withRecords.has(vendor) ? "" : "; no change records yet");
   const summary =
     found.length === 0
       ? "Scanned repo: no known APIs found (the scheduled check still runs)"
-      : `Scanned repo: found ${found.map((f) => `${f.vendor} (${f.evidence[0]}${VENDORS[f.vendor].tier === "recognized" ? "; recognized only" : ""})`).join(", ")}`;
+      : `Scanned repo: found ${found.map((f) => `${f.vendor} (${f.evidence[0]}${note(f.vendor)})`).join(", ")}`;
 
   const config = {
     version: 1,
     apis: Object.fromEntries(found.map((f) => [f.vendor, { tier: VENDORS[f.vendor].tier, evidence: f.evidence }])),
   };
-  const yml = `# darnit configuration (https://darnit.sh)\n# tier: supported = rule packs exist; recognized = named only, no change records yet; request support on GitHub\n${stringify(config)}`;
+  const yml = `# darnit configuration (https://darnit.sh)\n# tier: supported = change records are added as the vendor announces changes; recognized = named only, no change records yet; request support on GitHub\n${stringify(config)}`;
 
   const files = [
     ["darnit.yml", yml],

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { parse, type SgNode } from "@ast-grep/napi";
 import { parse as parseYaml } from "yaml";
-import { byPath, firstFive, listFiles, plural, readText, shown, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
+import { byPath, firstFive, listFiles, plural, readText, shown, skippedNote, tooLargeNote, vendorClients, vendorName, type Skipped } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { findMatches, grammarFor, modelNames, type Match, type Span } from "./scan/astgrep.js";
@@ -232,7 +232,7 @@ function grouped(hits: readonly Hit[], noun: string): string[] {
     const width = locations.reduce((w, l) => Math.max(w, l.length), 0) + 2;
     out.push(heading(record));
     group.forEach((h, i) =>
-      out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.map(shown).join(" or ")}; ignore if that server isn't OpenAI)` : ""}`),
+      out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.map(shown).join(" or ")}; ignore if that server isn't ${vendorName(record.vendor)})` : ""}`),
     );
     out.push(`  ${plural(group.length, noun)} in ${plural(new Set(group.map((h) => h.file)).size, "file")}`);
     for (const source of record.sources) out.push(`  ${source.url}`);
