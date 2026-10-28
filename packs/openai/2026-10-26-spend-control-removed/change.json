@@ -27,12 +27,32 @@
         {
           "context": "({ spend_control: $V })",
           "selector": "pair"
+        },
+        {
+          "context": "({ spend_control })",
+          "selector": "shorthand_property_identifier"
+        },
+        {
+          "context": "({ \"spend_control\": $V })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ 'spend_control': $V })",
+          "selector": "pair"
         }
       ],
       "py": [
         {
           "context": "f(spend_control=$V)",
           "selector": "keyword_argument"
+        },
+        {
+          "context": "{\"spend_control\": $V}",
+          "selector": "pair"
+        },
+        {
+          "context": "{'spend_control': $V}",
+          "selector": "pair"
         }
       ]
     }

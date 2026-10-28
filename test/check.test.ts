@@ -668,6 +668,18 @@ describe("check", () => {
     expect(locations(hits)).toEqual(["app.js:8", "app.js:16", "app.ts:6"]);
   });
 
+  it("reports images user in shorthand, raw-response and raw HTTP calls, not in other calls", async () => {
+    const dir = fileURLToPath(new URL("../packs/openai/2026-10-26-user-to-safety-identifier/fixtures/forms/before/", import.meta.url));
+    const hits = (await check(dir)).filter((h) => h.record.id.includes("user-to-safety-identifier"));
+    expect(locations(hits)).toEqual(["app.js:5", "app.js:6", "app.js:7", "app.py:5", "app.py:6", "app.py:7", "app.py:8", "app.py:9", "app.py:10"]);
+  });
+
+  it("reports spend_control sent to the agent session paths with quoted or bare keys, not to other paths", async () => {
+    const dir = fileURLToPath(new URL("../packs/openai/2026-10-26-spend-control-removed/fixtures/raw-http/before/", import.meta.url));
+    const hits = (await check(dir)).filter((h) => h.record.id.includes("spend-control"));
+    expect(locations(hits)).toEqual(["app.js:4", "app.js:5", "app.js:6", "app.js:7", "app.py:5", "app.py:6", "app.py:7", "app.py:8"]);
+  });
+
   it("does not report an options object passed by name", async () => {
     const dir = await scratch({ "detached.js": 'import OpenAI from "openai";\nconst opts = { max_tokens: 5 };\nnew OpenAI().chat.completions.create(opts);\n' });
     expect(await check(dir)).toEqual([]);

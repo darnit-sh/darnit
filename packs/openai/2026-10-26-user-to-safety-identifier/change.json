@@ -12,7 +12,11 @@
     ],
     "sdkSymbols": [
       "images.edit",
-      "images.generate"
+      "images.generate",
+      "images.with_raw_response.edit",
+      "images.with_raw_response.generate",
+      "images.with_streaming_response.edit",
+      "images.with_streaming_response.generate"
     ],
     "fields": [
       "user"
@@ -31,18 +35,38 @@
         {
           "context": "({ user: $V })",
           "selector": "pair"
+        },
+        {
+          "context": "({ user })",
+          "selector": "shorthand_property_identifier"
+        },
+        {
+          "context": "({ \"user\": $V })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ 'user': $V })",
+          "selector": "pair"
         }
       ],
       "py": [
         {
           "context": "f(user=$V)",
           "selector": "keyword_argument"
+        },
+        {
+          "context": "{\"user\": $V}",
+          "selector": "pair"
+        },
+        {
+          "context": "{'user': $V}",
+          "selector": "pair"
         }
       ]
     }
   },
   "notes": {
-    "migration": "Deprecated: use safety_identifier instead. Older Python SDK versions reject an unknown safety_identifier keyword, so upgrade the SDK before renaming.",
+    "migration": "Deprecated: use safety_identifier instead. Before renaming, check that your OpenAI SDK version accepts safety_identifier on image calls.",
     "citationQuality": "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it."
   }
 }
