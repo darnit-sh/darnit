@@ -1,1 +1,1 @@
-export const r = client.images.edit({ safety_identifier: 1 });
+export const r = client.images.edit({ user: 1 });

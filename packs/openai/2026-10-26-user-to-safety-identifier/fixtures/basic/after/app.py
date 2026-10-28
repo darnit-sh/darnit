@@ -1,1 +1,1 @@
-r = client.images.edit(safety_identifier=1)
+r = client.images.edit(user=1)

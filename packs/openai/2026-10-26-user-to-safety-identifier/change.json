@@ -1,6 +1,6 @@
 {
   "id": "openai:2026-10-26:user-to-safety-identifier",
-  "title": "Rename user to safety_identifier on images.edit, images.generate",
+  "title": "user is deprecated on images.edit, images.generate",
   "status": "candidate",
   "vendor": "openai",
   "announcedAt": "2026-10-26",
@@ -18,7 +18,7 @@
       "user"
     ]
   },
-  "classification": "mechanical",
+  "classification": "semantic",
   "sources": [
     {
       "url": "https://raw.githubusercontent.com/openai/openai-openapi/main/openapi.yaml",
@@ -41,11 +41,8 @@
       ]
     }
   },
-  "fix": {
-    "rulePackPath": "packs/openai/2026-10-26-user-to-safety-identifier/"
-  },
   "notes": {
-    "migration": "Rename user to safety_identifier on images.edit, images.generate calls.",
+    "migration": "Deprecated: use safety_identifier instead. Older Python SDK versions reject an unknown safety_identifier keyword, so upgrade the SDK before renaming.",
     "citationQuality": "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it."
   }
 }
