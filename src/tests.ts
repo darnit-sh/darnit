@@ -99,11 +99,18 @@ const CUT_MARGIN = 1024;
 // darnit's GitHub credentials open the pull request; the repository's own commands never get them.
 export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
 
-/** `text` with the value of every credential darnit holds replaced by `***`. */
+const base64 = (s: string) => Buffer.from(s).toString("base64").replace(/=+$/, "");
+
+/**
+ * `text` with every credential darnit holds replaced by `***`, also in the base64 form a git auth
+ * header carries, and with the value of any auth header shown.
+ */
 function redact(text: string): string {
   return CREDENTIALS.map((k) => process.env[k])
     .filter((v): v is string => !!v && v.length >= 8)
-    .reduce((t, secret) => t.replaceAll(secret, "***"), text);
+    .flatMap((v) => [v, base64(`x-access-token:${v}`), base64(v)])
+    .reduce((t, secret) => t.replaceAll(secret, "***"), text)
+    .replace(/(authorization:\s*\w+\s+)\S+/gi, "$1***");
 }
 
 /** Terminal escape sequences (colors, cursor moves, links), so kept output is plain text. */

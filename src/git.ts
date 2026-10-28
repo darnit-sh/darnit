@@ -13,9 +13,10 @@ const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=
  * byte a second for that many seconds; the environment beats any `http.<url>.lowSpeed*` config. Any
  * other transport is stopped after four times as long, which can leave its ssh child running.
  */
-export async function git(root: string, args: string[], stall?: number): Promise<string> {
+export async function git(root: string, args: string[], stall?: number, extraEnv: NodeJS.ProcessEnv = {}): Promise<string> {
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_LITERAL_PATHSPECS: "1" };
   for (const k of CREDENTIALS) delete env[k];
+  Object.assign(env, extraEnv);
   let timeout = 0;
   if (stall) {
     Object.assign(env, { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
@@ -94,7 +95,27 @@ export async function commit(root: string, subject: string, body: string): Promi
   await git(root, [...identity, "commit", "-q", "-m", subject, "-m", body]);
 }
 
-export const push = (root: string, branch: string) => git(root, ["push", "-q", "-u", "origin", branch], 60);
+/**
+ * With a token in the environment, the push alone gets it, as git config in its own environment:
+ * never on disk or in arguments, sent to `site` only. The empty value first drops any header the
+ * checkout saved, since two would reach the server.
+ */
+export function push(root: string, branch: string, site = "https://github.com/"): Promise<string> {
+  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const auth: NodeJS.ProcessEnv = {};
+  if (token) {
+    const n = Number(process.env.GIT_CONFIG_COUNT) || 0;
+    const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+    Object.assign(auth, {
+      GIT_CONFIG_COUNT: String(n + 2),
+      [`GIT_CONFIG_KEY_${n}`]: `http.${site}.extraheader`,
+      [`GIT_CONFIG_VALUE_${n}`]: "",
+      [`GIT_CONFIG_KEY_${n + 1}`]: `http.${site}.extraheader`,
+      [`GIT_CONFIG_VALUE_${n + 1}`]: header,
+    });
+  }
+  return git(root, ["push", "-q", "-u", "origin", branch], 60, auth);
+}
 
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);

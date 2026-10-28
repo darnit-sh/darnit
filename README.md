@@ -278,12 +278,21 @@ permissions:
   contents: write
   pull-requests: write
 
-# ...same as above, then replace the last step with:
+# ...same as above, with the checkout keeping no token on disk:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+# ...and the last step replaced with:
       - run: npm ci   # or whatever installs your project
       - run: npx darnit fix --pr
         env:
           GITHUB_TOKEN: ${{ github.token }}
 ```
+
+With `persist-credentials: false` the checkout leaves no token in git config or
+under `$RUNNER_TEMP` for your install scripts and tests to read. darnit hands the
+token to its own `git push` to github.com only, through that command's
+environment.
 
 Also turn on *Settings → Actions → General → Allow GitHub Actions to create
 and approve pull requests*. Pull requests opened this way don't trigger your

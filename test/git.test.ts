@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
+import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +21,39 @@ async function repoWith(files: Record<string, string>): Promise<string> {
   await g.git(dir, ["add", "."]);
   await g.git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]);
   return dir;
+}
+
+/** git http-backend serving the bare repos under `remote`; `send` writes each answer's body. */
+function backend(remote: string, send = (res: ServerResponse, body: Buffer) => void res.end(body)) {
+  return (req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url!, "http://x");
+    const cgi = spawn("git", ["http-backend"], {
+      env: {
+        ...process.env,
+        GIT_PROJECT_ROOT: remote,
+        GIT_HTTP_EXPORT_ALL: "1",
+        REMOTE_USER: "t",
+        PATH_INFO: url.pathname,
+        QUERY_STRING: url.search.slice(1),
+        REQUEST_METHOD: req.method,
+        CONTENT_TYPE: req.headers["content-type"] ?? "",
+        HTTP_CONTENT_ENCODING: req.headers["content-encoding"] ?? "",
+        ...(req.headers["content-length"] ? { CONTENT_LENGTH: req.headers["content-length"] } : {}),
+      },
+    });
+    res.on("close", () => cgi.kill());
+    req.pipe(cgi.stdin);
+    const out: Buffer[] = [];
+    cgi.stdout.on("data", (d: Buffer) => out.push(d));
+    cgi.on("close", () => {
+      const all = Buffer.concat(out);
+      const end = all.indexOf("\r\n\r\n");
+      const headers = Object.fromEntries(all.subarray(0, end).toString().split("\r\n").map((l) => l.split(": ") as [string, string]));
+      const { Status: status = "200", ...rest } = headers;
+      res.writeHead(parseInt(status), rest);
+      send(res, all.subarray(end + 4));
+    });
+  };
 }
 
 describe("git treats the repo as untrusted", () => {
@@ -110,37 +143,12 @@ describe("git calls that reach the remote end when it stalls", () => {
     tempDirs.push(remote);
     await g.git(remote, ["init", "-q", "--bare", "r.git"]);
     // git http-backend behind a server that sends each answer a byte at a time over 2.5 seconds.
-    const server = createHttpServer((req, res) => {
-      const url = new URL(req.url!, "http://x");
-      const cgi = spawn("git", ["http-backend"], {
-        env: {
-          ...process.env,
-          GIT_PROJECT_ROOT: remote,
-          GIT_HTTP_EXPORT_ALL: "1",
-          REMOTE_USER: "t",
-          PATH_INFO: url.pathname,
-          QUERY_STRING: url.search.slice(1),
-          REQUEST_METHOD: req.method,
-          CONTENT_TYPE: req.headers["content-type"] ?? "",
-          HTTP_CONTENT_ENCODING: req.headers["content-encoding"] ?? "",
-          ...(req.headers["content-length"] ? { CONTENT_LENGTH: req.headers["content-length"] } : {}),
-        },
-      });
-      res.on("close", () => cgi.kill());
-      req.pipe(cgi.stdin);
-      const out: Buffer[] = [];
-      cgi.stdout.on("data", (d: Buffer) => out.push(d));
-      cgi.on("close", () => {
-        const all = Buffer.concat(out);
-        const end = all.indexOf("\r\n\r\n");
-        const headers = Object.fromEntries(all.subarray(0, end).toString().split("\r\n").map((l) => l.split(": ") as [string, string]));
-        const { Status: status = "200", ...rest } = headers;
-        const body = all.subarray(end + 4);
-        res.writeHead(parseInt(status), rest);
+    const server = createHttpServer(
+      backend(remote, (res, body) => {
         let at = 0;
         const timer = setInterval(() => (at < body.length ? res.write(body.subarray(at, ++at)) : (clearInterval(timer), res.end())), 2500 / body.length);
-      });
-    });
+      }),
+    );
     open.push(server);
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
@@ -157,5 +165,54 @@ describe("git calls that reach the remote end when it stalls", () => {
     await g.git(dir, ["remote", "add", "origin", "ssh://example.invalid/r.git"]);
     vi.stubEnv("GIT_SSH_COMMAND", "sleep 6 #");
     await expect(g.git(dir, ["push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow("git push timed out after 4 seconds");
+  }, 20_000);
+});
+
+describe("push", () => {
+  const token = "ghs_fake_for_test";
+  const header = `basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+  let server: HttpServer | undefined;
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    server?.close();
+  });
+
+  // A remote that takes a push only with exactly one auth header, the job token's.
+  async function guardedOrigin(dir: string): Promise<{ url: string; remote: string }> {
+    const remote = await mkdtemp(join(tmpdir(), "darnit-remote-"));
+    tempDirs.push(remote);
+    await g.git(remote, ["init", "-q", "--bare", "r.git"]);
+    const serve = backend(remote);
+    server = createHttpServer((req, res) => {
+      const auth = req.headersDistinct.authorization ?? [];
+      if (auth.length === 1 && auth[0] === header) serve(req, res);
+      else res.writeHead(401, { "WWW-Authenticate": 'Basic realm="r"' }).end();
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    await g.git(dir, ["remote", "add", "origin", `${url}r.git`]);
+    return { url, remote: join(remote, "r.git") };
+  }
+
+  it("hands the token to the push alone, through its environment, with or without the header the checkout saved", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir);
+    vi.stubEnv("GITHUB_TOKEN", "");
+    await expect(g.push(dir, branch, url)).rejects.toThrow();
+    vi.stubEnv("GITHUB_TOKEN", token);
+    // Sent to that site only: the default, github.com, never reaches this server.
+    await expect(g.push(dir, branch)).rejects.toThrow();
+    await g.push(dir, branch, url);
+    expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
+    expect(await readFile(join(dir, ".git/config"), "utf8")).not.toContain(header);
+    await g.git(dir, ["config", `http.${url}.extraheader`, `AUTHORIZATION: ${header}`]);
+    await writeFile(join(dir, "a.ts"), "b\n");
+    await g.add(dir, ["a.ts"]);
+    await g.commit(dir, "b", "b");
+    await g.push(dir, branch, url);
+    expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
 });

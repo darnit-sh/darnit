@@ -164,6 +164,9 @@ describe("runTests", () => {
       const file = await runTests(dir, "cat leak.txt");
       expect(file.output).not.toContain("ghp_testtoken1234567890");
       expect(file.output).toContain("***");
+      // Nor any auth header's value, such as one git config shows.
+      await writeFile(join(dir, "leak.txt"), "http.https://github.com/.extraheader AUTHORIZATION: basic c29tZW9uZTpzZWNyZXQ=");
+      expect((await runTests(dir, "cat leak.txt")).output).toBe("http.https://github.com/.extraheader AUTHORIZATION: basic ***");
       // Nor by wrapping it in terminal codes that, once removed, would cut or join it.
       for (const wrapped of ["\u001bghp_testtoken1234567890", "\u001b[ghp_testtoken1234567890", "gh\u001b[0mp_testtoken1234567890"]) {
         await writeFile(join(dir, "leak.txt"), wrapped);
