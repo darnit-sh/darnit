@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels its older run. Each run on main gets its own group, so none is
+# cancelled or queued.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The slowest job has taken under 2 minutes; the timeout stops a hung test long before
 # GitHub's 6 hour default.
 jobs:
@@ -34,6 +40,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         node: [22, 24]
+        # Pull requests skip macOS on Node 24; main runs all four.
+        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24}]') || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -63,6 +71,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         node: [22, 24]
+        # Pull requests skip macOS on Node 24; main runs all four.
+        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24}]') || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:

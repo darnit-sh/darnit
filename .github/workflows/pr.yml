@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# A new push or edit cancels the older run for the same pull request.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   # The title becomes the commit subject on main, and the commits stay on the pull request page.
   title:
