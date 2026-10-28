@@ -1126,16 +1126,23 @@ describe("other mentions of model names", () => {
     expect(listed(findMentions(text, names))).toEqual([":2:gpt-4", ":2:gpt-4-turbo", ":2:o1", ":3:gpt-4", ":4:gpt-4"]);
   });
 
-  it("does not count a name directly followed by @, a cloud provider's own versioned name", () => {
+  it("does not count a name directly followed by @ and a date, a cloud provider's own versioned name", () => {
     const names = new Set(["claude-sonnet-4-5", "claude-sonnet-4-5-20250929", "gpt-4"]);
     const text = [
-      '"claude-sonnet-4-5@20250929" gpt-4@2024',
+      '"claude-sonnet-4-5@20250929" gpt-4@20240613',
       '"claude-sonnet-4-5-20250929"',
       "support@openai.com @gpt-4 gpt-4 @x",
       "claude-sonnet-4-5 @20250929",
+      "'gpt-4@tool' claude-sonnet-4-5@2025 claude-sonnet-4-5@202509291",
       "",
     ].join("\n");
-    expect(listed(findMentions(text, names))).toEqual([":2:claude-sonnet-4-5-20250929", ":3:gpt-4", ":4:claude-sonnet-4-5"]);
+    expect(listed(findMentions(text, names))).toEqual([
+      ":2:claude-sonnet-4-5-20250929",
+      ":3:gpt-4",
+      ":4:claude-sonnet-4-5",
+      ":5:gpt-4",
+      ":5:claude-sonnet-4-5",
+    ]);
   });
 
   it("treats letters and digits in any script as part of a word", () => {
