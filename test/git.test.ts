@@ -1,4 +1,6 @@
+import { once } from "node:events";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -57,4 +59,40 @@ describe("git treats the repo as untrusted", () => {
     for (const n of names) await writeFile(join(dir, n), "b\n");
     expect((await g.modified(dir)).sort()).toEqual([...names].sort());
   });
+});
+
+describe("git calls that reach the remote end when it stalls", () => {
+  const open: (Server | Socket)[] = [];
+  afterEach(() => open.splice(0).forEach((s) => (s instanceof Socket ? s.destroy() : s.close())));
+
+  it("ends an HTTP remote that accepts the connection and never answers, leaving no git process on it", async () => {
+    const server = createServer();
+    open.push(server);
+    // Resolves only once every process holding the connection is gone.
+    const closed = new Promise((resolve) =>
+      server.on("connection", (socket) => {
+        open.push(socket);
+        socket.resume().on("close", resolve);
+      }),
+    );
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const dir = await repoWith({ "a.ts": "a\n" });
+    await g.git(dir, ["remote", "add", "origin", `http://127.0.0.1:${(server.address() as AddressInfo).port}/r.git`]);
+    await expect(g.git(dir, ["ls-remote", "--heads", "origin", "x"], 1)).rejects.toThrow("git ls-remote timed out after 1 seconds");
+    await closed;
+  }, 20_000);
+
+  it("stops git after four times the limit on a transport with no stall setting", async () => {
+    const dir = await repoWith({ "a.ts": "a\n" });
+    await g.git(dir, ["remote", "add", "origin", "ssh://example.invalid/r.git"]);
+    const before = process.env.GIT_SSH_COMMAND;
+    process.env.GIT_SSH_COMMAND = "sleep 6 #";
+    try {
+      await expect(g.git(dir, ["push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow("git push timed out after 4 seconds");
+    } finally {
+      if (before === undefined) delete process.env.GIT_SSH_COMMAND;
+      else process.env.GIT_SSH_COMMAND = before;
+    }
+  }, 20_000);
 });

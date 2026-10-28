@@ -8,11 +8,29 @@ const exec = promisify(execFile);
 // fsmonitor, never sees darnit's credentials, and takes file names literally, never as patterns.
 const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
 
-export async function git(root: string, args: string[]): Promise<string> {
+/**
+ * `stall` bounds a call that reaches the remote: git itself ends an HTTPS transfer that sends nothing
+ * for that many seconds, and the process is stopped after four times as long for any other transport.
+ */
+export async function git(root: string, args: string[], stall?: number): Promise<string> {
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_LITERAL_PATHSPECS: "1" };
   for (const k of CREDENTIALS) delete env[k];
-  const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...args], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
-  return stdout;
+  const net = stall ? ["-c", "http.lowSpeedLimit=1", "-c", `http.lowSpeedTime=${stall}`] : [];
+  try {
+    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...net, ...args], {
+      cwd: root,
+      env,
+      maxBuffer: 64 * 1024 * 1024,
+      ...(stall ? { timeout: stall * 4 * 1000 } : {}),
+    });
+    return stdout;
+  } catch (err) {
+    const { killed, stderr } = err as { killed?: boolean; stderr?: string };
+    if (stall && (killed || stderr?.includes("Operation too slow"))) {
+      throw new Error(`git ${args[0]} timed out after ${killed ? stall * 4 : stall} seconds`, { cause: err });
+    }
+    throw err;
+  }
 }
 
 export const isRepo = (root: string) =>
@@ -38,7 +56,7 @@ export const localBranchExists = (root: string, name: string) =>
   );
 
 export const remoteBranchExists = async (root: string, name: string) =>
-  (await git(root, ["ls-remote", "--heads", "origin", name])).trim() !== "";
+  (await git(root, ["ls-remote", "--heads", "origin", name], 30)).trim() !== "";
 
 export const remoteUrl = async (root: string) => (await git(root, ["remote", "get-url", "origin"])).trim();
 
@@ -74,7 +92,7 @@ export async function commit(root: string, subject: string, body: string): Promi
   await git(root, [...identity, "commit", "-q", "-m", subject, "-m", body]);
 }
 
-export const push = (root: string, branch: string) => git(root, ["push", "-q", "-u", "origin", branch]);
+export const push = (root: string, branch: string) => git(root, ["push", "-q", "-u", "origin", branch], 60);
 
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
