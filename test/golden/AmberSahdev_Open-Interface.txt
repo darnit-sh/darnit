@@ -1,5 +1,5 @@
 exit 1
-scanned files=25 records=33 otherFiles=14 foreign=0 tooLarge=0 skipped=0
+scanned files=25 records=35 otherFiles=14 foreign=0 tooLarge=0 skipped=0
 H app/models/gpt4v.py:46:13 #5bc8b5a6 openai:2024-09-12:max-tokens-to-max-completion-tokens
 M app/models/factory.py:14 computer-use-preview openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M app/models/factory.py:18 gpt-4-vision-preview openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2024-12-06

@@ -1,5 +1,5 @@
 exit 1
-scanned files=202 records=33 otherFiles=79 foreign=0 tooLarge=0 skipped=0
+scanned files=202 records=35 otherFiles=79 foreign=0 tooLarge=0 skipped=0
 H examples/06-ai-pipeline-demo.ts:78:5 #466dd65a openai:2024-09-12:max-tokens-to-max-completion-tokens
 H examples/07-full-showcase.ts:77:45 #514eecaa openai:2024-09-12:max-tokens-to-max-completion-tokens
 P adapters/codex-adapter.ts:395:32 #349c54d8 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down

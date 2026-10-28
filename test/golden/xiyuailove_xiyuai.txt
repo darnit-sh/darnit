@@ -1,5 +1,5 @@
 exit 1
-scanned files=307 records=33 otherFiles=80 foreign=1 tooLarge=0 skipped=0
+scanned files=307 records=35 otherFiles=80 foreign=1 tooLarge=0 skipped=0
 H src/providers/chat.mjs:395:52 #c5225b8e openai:2024-09-12:max-tokens-to-max-completion-tokens
 H src/providers/chat.mjs:466:11 #a4d75be4 openai:2024-09-12:max-tokens-to-max-completion-tokens
 P src/providers/asr.mjs:41:19 #742f4215 whisper-1 openai:2026-08-26:transcription-models-shut-down

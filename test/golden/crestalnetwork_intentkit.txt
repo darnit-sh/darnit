@@ -1,5 +1,5 @@
 exit 1
-scanned files=959 records=33 otherFiles=220 foreign=1 tooLarge=0 skipped=0
+scanned files=959 records=35 otherFiles=220 foreign=1 tooLarge=0 skipped=0
 H intentkit/core/avatar.py:178:13 #e2337f5d openai:2026-06-02:gpt-image-model-deprecations-shut-down
 H intentkit/tools/web_scraper/website_indexer.py:258:17 #add5bfd8 openai:2024-09-12:max-tokens-to-max-completion-tokens
 P intentkit/tools/image/gpt.py:90:25 #2ecf6454 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
