@@ -1,7 +1,11 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
+import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as g from "../src/git.js";
 
 const tempDirs: string[] = [];
@@ -57,4 +61,101 @@ describe("git treats the repo as untrusted", () => {
     for (const n of names) await writeFile(join(dir, n), "b\n");
     expect((await g.modified(dir)).sort()).toEqual([...names].sort());
   });
+});
+
+describe("git calls that reach the remote end when it stalls", () => {
+  const open: (Server | Socket | HttpServer)[] = [];
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    open.splice(0).forEach((s) => (s instanceof Socket ? s.destroy() : s.close()));
+  });
+
+  const silentOrigin = async (dir: string) => {
+    const server = createServer();
+    open.push(server);
+    // Resolves only once every process holding the connection is gone.
+    const closed = new Promise((resolve) =>
+      server.on("connection", (socket) => {
+        open.push(socket);
+        socket.resume().on("close", resolve);
+      }),
+    );
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/r.git`;
+    await g.git(dir, ["remote", "add", "origin", url]);
+    return { url, closed };
+  };
+
+  it.each([
+    ["with no setting of its own", () => {}],
+    ["when the repo config turns the stall check off for that URL", async (dir: string, url: string) => {
+      await g.git(dir, ["config", `http.${url}.lowSpeedLimit`, "0"]);
+      await g.git(dir, ["config", `http.${url}.lowSpeedTime`, "0"]);
+    }],
+    ["when the environment turns the stall check off", () => {
+      vi.stubEnv("GIT_HTTP_LOW_SPEED_LIMIT", "0");
+      vi.stubEnv("GIT_HTTP_LOW_SPEED_TIME", "0");
+    }],
+  ])("ends an HTTP remote that accepts the connection and never answers %s, leaving no git process on it", async (_, setup) => {
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const { url, closed } = await silentOrigin(dir);
+    await setup(dir, url);
+    await expect(g.git(dir, ["ls-remote", "--heads", "origin", "x"], 1)).rejects.toThrow("git ls-remote timed out after 1 seconds");
+    await closed;
+  }, 10_000);
+
+  it("lets a slow but steady HTTP push run past four times the limit", async () => {
+    const remote = await mkdtemp(join(tmpdir(), "darnit-remote-"));
+    tempDirs.push(remote);
+    await g.git(remote, ["init", "-q", "--bare", "r.git"]);
+    // git http-backend behind a server that sends each answer a byte at a time over 2.5 seconds.
+    const server = createHttpServer((req, res) => {
+      const url = new URL(req.url!, "http://x");
+      const cgi = spawn("git", ["http-backend"], {
+        env: {
+          ...process.env,
+          GIT_PROJECT_ROOT: remote,
+          GIT_HTTP_EXPORT_ALL: "1",
+          REMOTE_USER: "t",
+          PATH_INFO: url.pathname,
+          QUERY_STRING: url.search.slice(1),
+          REQUEST_METHOD: req.method,
+          CONTENT_TYPE: req.headers["content-type"] ?? "",
+          HTTP_CONTENT_ENCODING: req.headers["content-encoding"] ?? "",
+          ...(req.headers["content-length"] ? { CONTENT_LENGTH: req.headers["content-length"] } : {}),
+        },
+      });
+      res.on("close", () => cgi.kill());
+      req.pipe(cgi.stdin);
+      const out: Buffer[] = [];
+      cgi.stdout.on("data", (d: Buffer) => out.push(d));
+      cgi.on("close", () => {
+        const all = Buffer.concat(out);
+        const end = all.indexOf("\r\n\r\n");
+        const headers = Object.fromEntries(all.subarray(0, end).toString().split("\r\n").map((l) => l.split(": ") as [string, string]));
+        const { Status: status = "200", ...rest } = headers;
+        const body = all.subarray(end + 4);
+        res.writeHead(parseInt(status), rest);
+        let at = 0;
+        const timer = setInterval(() => (at < body.length ? res.write(body.subarray(at, ++at)) : (clearInterval(timer), res.end())), 2500 / body.length);
+      });
+    });
+    open.push(server);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const dir = await repoWith({ "a.ts": "a\n" });
+    await g.git(dir, ["remote", "add", "origin", `http://127.0.0.1:${(server.address() as AddressInfo).port}/r.git`]);
+    const start = Date.now();
+    await g.git(dir, ["push", "-q", "origin", "HEAD:refs/heads/x"], 1);
+    expect(Date.now() - start).toBeGreaterThan(4000);
+    expect(await g.git(join(remote, "r.git"), ["rev-parse", "x"])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
+  }, 20_000);
+
+  it("stops git after four times the limit on a transport with no stall setting", async () => {
+    const dir = await repoWith({ "a.ts": "a\n" });
+    await g.git(dir, ["remote", "add", "origin", "ssh://example.invalid/r.git"]);
+    vi.stubEnv("GIT_SSH_COMMAND", "sleep 6 #");
+    await expect(g.git(dir, ["push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow("git push timed out after 4 seconds");
+  }, 20_000);
 });
