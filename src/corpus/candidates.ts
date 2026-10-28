@@ -14,7 +14,7 @@ export type Candidate = {
   record: ChangeRecord;
   /** "<vendor>/<date>-<slug>" under packs/ */
   dir: string;
-  /** Rules and fixtures, relative to dir; change.json is written from record. */
+  /** Fixtures, relative to dir; change.json is written from record. */
   files: Record<string, string>;
 };
 
@@ -27,10 +27,12 @@ const KIND: Record<string, ChangeRecord["kind"]> = {
   "endpoint-deprecated": "deprecation",
 };
 const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
-// Spec text lands in rule YAML, ast-grep patterns, fixtures and the corpus pull request,
+// Spec text lands in ast-grep patterns, fixtures and the corpus pull request,
 // so only plain names and paths get through; anything else is counted in `ignored`, never echoed.
 // The caps keep folder names short (longest in OpenAI's spec: a 35-character name, an 82-character path).
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+// Python's keyword.kwlist: `f(from=$V)` is not valid Python, and ast-grep rejects it as a pattern.
+const PY_KEYWORDS = new Set("False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield".split(" "));
 const METHOD = /^[A-Z]{1,10}$/;
 const PATH = /^\/[\w/{}?=-]{0,199}$/;
 // Greedy, so a name with a backtick in it is read whole and then fails IDENTIFIER.
@@ -44,20 +46,6 @@ const sentences = (s: string) => s.replace(/\s+/g, " ").trim().split(/(?<=\.)\s/
 const firstSentence = (s: string) => sentences(s)[0]!.slice(0, 200);
 // The sentence that states the deprecation, when there is one.
 const quote = (s: string) => (sentences(s).find((x) => /deprecat|in favou?r of|replaced by/i.test(x)) ?? firstSentence(s)).slice(0, 200);
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/** `callee` is an already-escaped regex alternation of SDK symbols. */
-function renameRule(lang: "js" | "py", id: string, field: string, replacement: string, callee: string): string {
-  const [pattern, selector, obj, args, call, fix] =
-    lang === "js"
-      ? [`({ ${field}: $V })`, "pair", "object", "arguments", "call_expression", `${replacement}: $V`]
-      : [`f(${field}=$V)`, "keyword_argument", "argument_list", "argument_list", "call", `${replacement}=$V`];
-  const chain =
-    lang === "js"
-      ? `  inside:\n    kind: ${obj}\n    inside:\n      kind: ${args}\n      inside:\n        kind: ${call}\n        has:\n          field: function\n          regex: '(${callee})$'\n`
-      : `  inside:\n    kind: ${args}\n    inside:\n      kind: ${call}\n      has:\n        field: function\n        regex: '(${callee})$'\n`;
-  return `id: ${id}-${lang}\nlanguage: ${lang === "js" ? "javascript" : "python"}\nrule:\n  pattern:\n    context: '${pattern}'\n    selector: ${selector}\n${chain}fix: '${fix}'\n`;
-}
 
 export function deriveCandidates(input: {
   vendor: string;
@@ -151,23 +139,32 @@ export function deriveCandidates(input: {
     const endpoint = d.endpoints[0]!;
     const gone = kind === "breaking";
     const where = d.symbols.length > 0 ? d.symbols.join(", ") : d.endpoints.join(", ");
-    const title = field
-      ? rename
-        ? `Rename ${field} to ${rename} on ${where}`
-        : gone
-          ? `Stop sending ${field} to ${where}`
-          : `${field} is deprecated on ${where}`
-      : `${endpoint} is ${gone ? "gone" : "deprecated"}`;
+    const title = field ? (gone ? `Stop sending ${field} to ${where}` : `${field} is deprecated on ${where}`) : `${endpoint} is ${gone ? "gone" : "deprecated"}`;
+    // A deprecated field still works and the replacement may be newer than the SDK a repo pins, so it is
+    // reported, not rewritten. A rename can come back behind fix.requires once the SDK versions are known.
     const migration = rename
-      ? `Rename ${field} to ${rename} on ${where} calls.`
+      ? `${field} is deprecated in favor of ${rename}. Before renaming, check that your SDK version accepts ${rename} on ${where} calls.`
       : field
         ? description
           ? firstSentence(description)
           : `${field} is ${gone ? "no longer accepted" : "deprecated"} on ${where}.`
         : `${endpoint} is ${gone ? "no longer served" : "deprecated"}; callers need the replacement endpoint.`;
     const dir = `${vendor}/${observedAt}-${slug}`;
+    const pyKeyword = field !== undefined && PY_KEYWORDS.has(field);
     const patterns = field
-      ? { js: [{ context: `({ ${field}: $V })`, selector: "pair" }], py: [{ context: `f(${field}=$V)`, selector: "keyword_argument" }] }
+      ? {
+          js: [
+            { context: `({ ${field}: $V })`, selector: "pair" },
+            { context: `({ ${field} })`, selector: "shorthand_property_identifier" },
+            { context: `({ "${field}": $V })`, selector: "pair" },
+            { context: `({ '${field}': $V })`, selector: "pair" },
+          ],
+          py: [
+            ...(pyKeyword ? [] : [{ context: `f(${field}=$V)`, selector: "keyword_argument" }]),
+            { context: `{"${field}": $V}`, selector: "pair" },
+            { context: `{'${field}': $V}`, selector: "pair" },
+          ],
+        }
       : { js: [{ context: `$C.${symbol}($$$ARGS)`, selector: "call_expression" }], py: [{ context: `$C.${symbol}($$$ARGS)`, selector: "call" }] };
 
     const record = parseChangeRecord(
@@ -179,12 +176,12 @@ export function deriveCandidates(input: {
         announcedAt: observedAt,
         kind,
         surface: { endpoints: d.paths, ...(d.symbols.length > 0 ? { sdkSymbols: d.symbols } : {}), ...(field ? { fields: [field] } : {}) },
-        classification: rename && symbol ? "mechanical" : "semantic",
+        classification: "semantic",
         sources: [{ url: config.spec, quoteId: `${endpoint}${field ? ` ${field}` : ""}: ${quote(description) || d.text}` }],
         detection: { astGrepPatterns: patterns },
-        ...(rename && symbol ? { fix: { rulePackPath: `packs/${dir}/` } } : {}),
         notes: {
           migration,
+          ...(pyKeyword ? { edgeCases: [`${field} is a Python keyword, so Python code can only send it in a dict; only quoted keys are detected there.`] } : {}),
           citationQuality: "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it.",
         },
       },
@@ -193,20 +190,14 @@ export function deriveCandidates(input: {
 
     const call = symbol ?? "call";
     const js = field ? `export const r = client.${call}({ ${field}: 1 });\n` : `export const r = client.${call}({});\n`;
-    const py = field ? `r = client.${call}(${field}=1)\n` : `r = client.${call}()\n`;
+    const py = field ? `r = client.${call}(${pyKeyword ? `**{"${field}": 1}` : `${field}=1`})\n` : `r = client.${call}()\n`;
     const files: Record<string, string> = {
       "fixtures/basic/before/app.js": js,
       "fixtures/basic/before/app.py": py,
-      "fixtures/basic/after/app.js": rename && symbol ? js.replace(`${field}:`, `${rename}:`) : js,
-      "fixtures/basic/after/app.py": rename && symbol ? py.replace(`${field}=`, `${rename}=`) : py,
+      "fixtures/basic/after/app.js": js,
+      "fixtures/basic/after/app.py": py,
       "fixtures/basic/expected.json": `${JSON.stringify({ note: "Generated from the vendor's OpenAPI specification.", matches: { "before/app.js": 1, "before/app.py": 1 } }, null, 2)}\n`,
     };
-    if (rename && symbol && field) {
-      const ruleId = `${vendor}-${slug}`;
-      const callee = d.symbols.map(escapeRegExp).join("|");
-      files["rules/js/01-rename.yml"] = renameRule("js", ruleId, field, rename, callee);
-      files["rules/py/01-rename.yml"] = renameRule("py", ruleId, field, rename, callee);
-    }
     candidates.push({ record, dir, files });
   }
   return { candidates, ignored, unmapped: [...unmapped].sort() };
