@@ -21,6 +21,12 @@ export const isRepo = (root: string) =>
     () => false,
   );
 
+export const hasCommit = (root: string) =>
+  git(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]).then(
+    () => true,
+    () => false,
+  );
+
 export const isClean = async (root: string) => (await git(root, ["status", "--porcelain"])).trim() === "";
 
 const currentBranch = async (root: string) => (await git(root, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
