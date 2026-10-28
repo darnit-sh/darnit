@@ -1,0 +1,64 @@
+{
+  "id": "openai:2026-10-26:spend-control-removed",
+  "title": "Stop sending spend_control to POST /agents/sessions, POST /agents/sessions/{session_id}",
+  "status": "candidate",
+  "vendor": "openai",
+  "announcedAt": "2026-10-26",
+  "kind": "breaking",
+  "surface": {
+    "endpoints": [
+      "/agents/sessions",
+      "/agents/sessions/{session_id}"
+    ],
+    "fields": [
+      "spend_control"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/openai/openai-openapi/main/openapi.yaml",
+      "quoteId": "POST /agents/sessions spend_control: removed the request property `spend_control`"
+    }
+  ],
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "({ spend_control: $V })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ spend_control })",
+          "selector": "shorthand_property_identifier"
+        },
+        {
+          "context": "({ \"spend_control\": $V })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ 'spend_control': $V })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(spend_control=$V)",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "{\"spend_control\": $V}",
+          "selector": "pair"
+        },
+        {
+          "context": "{'spend_control': $V}",
+          "selector": "pair"
+        }
+      ]
+    }
+  },
+  "notes": {
+    "migration": "spend_control is no longer accepted on POST /agents/sessions, POST /agents/sessions/{session_id}.",
+    "citationQuality": "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it."
+  }
+}

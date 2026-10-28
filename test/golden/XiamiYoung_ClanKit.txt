@@ -1,5 +1,5 @@
 exit 1
-scanned files=288 records=33 otherFiles=201 foreign=0 tooLarge=0 skipped=1
+scanned files=288 records=35 otherFiles=201 foreign=0 tooLarge=0 skipped=1
 H electron/ipc/voice.js:141:92 #41bd5614 openai:2024-09-12:max-tokens-to-max-completion-tokens
 H electron/lib/notifier.js:123:11 #92e46425 openai:2024-09-12:max-tokens-to-max-completion-tokens
 P electron/agent/voice/WhisperSTT.js:11:27 #f9effd6b whisper-1 openai:2026-08-26:transcription-models-shut-down

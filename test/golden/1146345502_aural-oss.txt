@@ -1,5 +1,5 @@
 exit 1
-scanned files=413 records=33 otherFiles=39 foreign=0 tooLarge=0 skipped=1
+scanned files=413 records=35 otherFiles=39 foreign=0 tooLarge=0 skipped=1
 H src/app/api/ai/parse-resume/route.ts:101:7 #0b2029d8 openai:2024-09-12:max-tokens-to-max-completion-tokens
 H src/lib/ai/providers/kimi.ts:45:7 #37063e20 openai:2024-09-12:max-tokens-to-max-completion-tokens
 H src/lib/ai/providers/kimi.ts:72:7 #37063e20 openai:2024-09-12:max-tokens-to-max-completion-tokens

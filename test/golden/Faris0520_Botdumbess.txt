@@ -1,5 +1,5 @@
 exit 1
-scanned files=37 records=33 otherFiles=7 foreign=0 tooLarge=0 skipped=0
+scanned files=37 records=35 otherFiles=7 foreign=0 tooLarge=0 skipped=0
 H commands/ai/dalle.js:9:7 #8fa3da64 openai:2025-11-14:dall-e-model-snapshots-shut-down
 H commands/ai/o3.js:10:7 #f9634461 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M commands/ai/o1.js:2 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

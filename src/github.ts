@@ -3,6 +3,8 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 const API = "https://api.github.com";
+// GitHub ends any request it takes over 10 seconds to handle, so a call still unanswered at 30 is stalled.
+const TIMEOUT_MS = 30_000;
 
 export type Repo = { owner: string; repo: string };
 
@@ -38,18 +40,29 @@ export function parseSlug(slug: string): Repo | undefined {
 const repoPath = ({ owner, repo }: Repo) => `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 
 async function api<T>(token: string, method: string, path: string, body?: object): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: "application/vnd.github+json",
-      "content-type": "application/json",
-      "user-agent": "darnit",
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
-  return (await res.json()) as T;
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(`${API}${path}`, {
+      method,
+      signal,
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/vnd.github+json",
+        "content-type": "application/json",
+        "user-agent": "darnit",
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    text = await res.text();
+  } catch (err) {
+    if (signal.aborted) throw new Error(`GitHub ${method} ${path} timed out after ${TIMEOUT_MS / 1000} seconds`, { cause: err });
+    const { message, cause } = err as Error;
+    throw new Error(`GitHub ${method} ${path} failed: ${message}${cause instanceof Error ? ` (${cause.message})` : ""}`, { cause: err });
+  }
+  if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${text.slice(0, 300)}`);
+  return JSON.parse(text) as T;
 }
 
 export async function defaultBranch(token: string, repo: Repo): Promise<string> {

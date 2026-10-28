@@ -1,0 +1,7 @@
+{
+  "note": "user as shorthand, as a quoted key in a raw request, and on the raw and streaming response image calls. Detection counts every one, including those outside image calls; check keeps only the image calls and requests to the image paths (test/check.test.ts). Report only: nothing is rewritten.",
+  "matches": {
+    "before/app.js": 5,
+    "before/app.py": 8
+  }
+}

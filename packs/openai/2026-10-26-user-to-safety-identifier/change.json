@@ -1,0 +1,72 @@
+{
+  "id": "openai:2026-10-26:user-to-safety-identifier",
+  "title": "user is deprecated on images.edit, images.generate",
+  "status": "candidate",
+  "vendor": "openai",
+  "announcedAt": "2026-10-26",
+  "kind": "deprecation",
+  "surface": {
+    "endpoints": [
+      "/images/edits",
+      "/images/generations"
+    ],
+    "sdkSymbols": [
+      "images.edit",
+      "images.generate",
+      "images.with_raw_response.edit",
+      "images.with_raw_response.generate",
+      "images.with_streaming_response.edit",
+      "images.with_streaming_response.generate"
+    ],
+    "fields": [
+      "user"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/openai/openai-openapi/main/openapi.yaml",
+      "quoteId": "POST /images/edits user: Deprecated: use `safety_identifier` instead."
+    }
+  ],
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "({ user: $V })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ user })",
+          "selector": "shorthand_property_identifier"
+        },
+        {
+          "context": "({ \"user\": $V })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ 'user': $V })",
+          "selector": "pair"
+        }
+      ],
+      "py": [
+        {
+          "context": "f(user=$V)",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "{\"user\": $V}",
+          "selector": "pair"
+        },
+        {
+          "context": "{'user': $V}",
+          "selector": "pair"
+        }
+      ]
+    }
+  },
+  "notes": {
+    "migration": "Deprecated: use safety_identifier instead. Before renaming, check that your OpenAI SDK version accepts safety_identifier on image calls.",
+    "citationQuality": "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it."
+  }
+}

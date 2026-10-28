@@ -1,0 +1,7 @@
+{
+  "note": "spend_control as a bare, shorthand, double-quoted or single-quoted key, or a dict() keyword. Detection counts every one, including the two sent to /api/budget; check keeps only those inside a request whose URL names an agent session path (test/check.test.ts). Report only: nothing is rewritten.",
+  "matches": {
+    "before/app.js": 5,
+    "before/app.py": 6
+  }
+}

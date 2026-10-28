@@ -1,7 +1,12 @@
+import { once } from "node:events";
+import { type AddressInfo, createServer, type Socket } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPr, defaultBranch, findOpenPr, parseRemote, parseSlug } from "../src/github.js";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }));
 
@@ -76,5 +81,42 @@ describe("GitHub API calls", () => {
     vi.stubGlobal("fetch", () => Promise.resolve(new Response("Bad credentials", { status: 401 })));
     await expect(defaultBranch("secret-token", { owner: "o", repo: "r" })).rejects.toThrow(/401 Bad credentials/);
     await expect(defaultBranch("secret-token", { owner: "o", repo: "r" })).rejects.not.toThrow(/secret-token/);
+  });
+
+  // Sends `reply` once the request arrives, then goes quiet with the connection open.
+  async function stall(reply: string) {
+    const server = createServer((socket) => socket.once("data", () => socket.write(reply))).listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const connected = once(server, "connection") as Promise<[Socket]>;
+    const local = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const send = fetch;
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => send(url.replace("https://api.github.com", local), init));
+    // The real limit, shortened so the test does not wait it out.
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    const limit = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => timeout(50));
+    try {
+      await expect(defaultBranch("tok", { owner: "o", repo: "r" })).rejects.toThrow("GitHub GET /repos/o/r timed out after 30 seconds");
+      expect(limit).toHaveBeenCalledWith(30_000);
+      const [socket] = await connected;
+      socket.resume();
+      if (!socket.closed) await once(socket, "close");
+    } finally {
+      server.close();
+    }
+  }
+
+  it("gives up on a call GitHub never answers, and closes the connection", { timeout: 10_000 }, () => stall(""));
+
+  it("gives up on a response whose body stops arriving, and closes the connection", { timeout: 10_000 }, () =>
+    stall('HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\n\r\n1\r\n{\r\n'));
+
+  it("names the call when the connection never comes up", async () => {
+    const server = createServer().listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const { port } = server.address() as AddressInfo;
+    await new Promise((done) => server.close(done));
+    const send = fetch;
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => send(url.replace("https://api.github.com", `http://127.0.0.1:${port}`), init));
+    await expect(defaultBranch("tok", { owner: "o", repo: "r" })).rejects.toThrow(/^GitHub GET \/repos\/o\/r failed: fetch failed \(.*ECONNREFUSED/);
   });
 });
