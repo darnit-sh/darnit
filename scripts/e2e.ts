@@ -2,7 +2,7 @@
 // folder, and runs init, check and fix against every scenario in test/e2e/.
 // Unit tests import the source; this checks the artifact users actually get.
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -110,6 +110,12 @@ const EXPECT: Record<string, Expect> = {
     fix: { exit: 0, has: ["found in 1 file, not rewritten: this file also calls another provider through the same methods"] },
     changed: [],
   },
+  // Its .npmrc runs its own files under npm, as fix runs `npm test`; the run below checks the workflow line.
+  "16-hostile-repo": {
+    check: { exit: 1, has: ["src/summarize.js:5:5  max_tokens: 256"] },
+    fix: { exit: 0, has: ["✓ Rename max_tokens", "tests: npm test passed"], lacks: CLEAN_FIX },
+    changed: ["src/summarize.js"],
+  },
   "11-py-old-sdk": {
     check: { exit: 1, has: ["app/summarize.py:5:9  max_tokens=256"] },
     fix: { exit: 0, has: ["found in 1 file, not rewritten: needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first"] },
@@ -157,17 +163,23 @@ try {
     failures++;
     console.log(`✗ usage error exited ${usage.exit}, expected 2\n${usage.out}`);
   } else console.log("✓ usage error exits 2");
+  const missing = run(darnit, ["check", join(work, "no-such-folder")], install);
+  if (missing.exit !== 2 || !missing.out.includes("no-such-folder is not a folder")) {
+    failures++;
+    console.log(`✗ a missing folder exited ${missing.exit}, expected 2 and "is not a folder"\n${missing.out}`);
+  } else console.log("✓ a missing folder exits 2");
 
   for (const [name, want] of Object.entries(EXPECT).sort(([a], [b]) => a.localeCompare(b))) {
     const dir = join(work, name);
     cpSync(join(SCENARIOS, name), dir, { recursive: true });
-    let env = process.env;
+    // The .npmrc in 16-hostile-repo finds its files the way it would in a workflow run.
+    let env: NodeJS.ProcessEnv = { ...process.env, GITHUB_WORKSPACE: dir };
     // Scenarios that list pytest get a virtualenv with it, so their suite can run.
     const requirements = readdirSync(dir).includes("requirements.txt") ? readFileSync(join(dir, "requirements.txt"), "utf8") : "";
     if (requirements.includes("pytest")) {
       must("python3", ["-m", "venv", ".venv"], dir);
       must(join(dir, ".venv", "bin", "python"), ["-m", "pip", "install", "--quiet", "pytest"], dir);
-      env = { ...process.env, PATH: `${join(dir, ".venv", "bin")}${delimiter}${process.env.PATH ?? ""}` };
+      env = { ...env, PATH: `${join(dir, ".venv", "bin")}${delimiter}${process.env.PATH ?? ""}` };
     }
     const git = (...args: string[]) => must("git", ["-c", "user.name=e2e", "-c", "user.email=e2e@example.com", ...args], dir, env);
     git("init", "-q");
@@ -183,6 +195,8 @@ try {
     };
     const check = run(darnit, ["check"], dir, env);
     expectRun("check", check, want.check);
+    const outside = run(darnit, ["check", dir], install, env);
+    if (outside.exit !== check.exit || outside.out !== check.out) problems.push(`check run from outside differs:\n${outside.out}`);
     const fix = run(darnit, ["fix"], dir, env);
     expectRun("fix", fix, want.fix);
 
@@ -205,6 +219,48 @@ try {
     else {
       failures++;
       console.log(`✗ ${name}\n${problems.map((p) => `    ${p}`).join("\n")}\n  check output:\n${check.out}\n  fix output:\n${fix.out}`);
+    }
+  }
+
+  // The workflow init writes, run as Actions runs it with the packed darnit in place of npm's. In
+  // 16-hostile-repo, npx started inside the repository would run the repository's files; started from
+  // RUNNER_TEMP it runs none of them and still reports the repository's call site.
+  const hostile = join(work, "hostile");
+  cpSync(join(SCENARIOS, "16-hostile-repo"), hostile, { recursive: true });
+  must(darnit, ["init"], hostile);
+  const line = /^\s*- run: (.*npx darnit@\S+.*)$/m.exec(readFileSync(join(hostile, ".github", "workflows", "darnit.yml"), "utf8"))![1]!;
+  const packed = (cmd: string) => cmd.replace(/darnit@\S+/, `--package='${tarball}' darnit`);
+  const runnerTemp = join(work, "runner-temp");
+  const npmCache = join(work, "npm-cache");
+  mkdirSync(runnerTemp);
+  mkdirSync(npmCache);
+  // npx installs into its own cache folder; this one reuses the downloads `npm install` just made, offline,
+  // and goes away with the work folder.
+  symlinkSync(join(must("npm", ["config", "get", "cache"], install).trim(), "_cacache"), join(npmCache, "_cacache"));
+  const actions = {
+    ...process.env,
+    RUNNER_TEMP: runnerTemp,
+    GITHUB_WORKSPACE: hostile,
+    npm_config_cache: npmCache,
+    npm_config_prefix: join(work, "no-global"),
+    npm_config_offline: "true",
+    npm_config_audit: "false",
+    npm_config_fund: "false",
+    npm_config_update_notifier: "false",
+  };
+  const ran = () => readdirSync(hostile).filter((f) => f.startsWith("ran-"));
+  for (const [label, cmd, breached] of [
+    ["workflow line", packed(line), false],
+    ["npx started inside the repository", packed("npx darnit@pin check"), true],
+  ] as const) {
+    const r = run("sh", ["-c", cmd], hostile, actions);
+    const markers = ran();
+    for (const f of markers) rmSync(join(hostile, f));
+    const ok = breached ? markers.length > 0 : markers.length === 0 && r.exit === 1 && r.out.includes("src/summarize.js:5:5  max_tokens: 256");
+    if (ok) console.log(`✓ ${label}: ${breached ? `the repository ran ${markers.join(", ")}` : "ran none of the repository's files"}`);
+    else {
+      failures++;
+      console.log(`✗ ${label} (${cmd}): exited ${r.exit}, repository files that ran: [${markers.join(", ")}]\n${r.out}`);
     }
   }
 } finally {
