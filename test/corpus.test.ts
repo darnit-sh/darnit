@@ -7,6 +7,7 @@ import { deriveCandidates, writeCandidate } from "../src/corpus/candidates.js";
 import { changelog, type ChangeEntry } from "../src/corpus/oasdiff.js";
 import { parseSpec, requestProperty, type Schema, type Spec } from "../src/corpus/spec.js";
 import { runPackFixtures } from "../src/packs/fixtures.js";
+import { findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { loadRecords } from "../src/records/load.js";
 
 const YAML_DIR = fileURLToPath(new URL("./fixtures/specs/", import.meta.url));
@@ -34,27 +35,47 @@ describe("deriveCandidates", () => {
     ]);
 
     const rename = candidates.find((c) => c.record.id.endsWith("max-completion-tokens"))!;
-    expect(rename.record).toMatchObject({
-      status: "candidate",
-      kind: "deprecation",
-      classification: "mechanical",
-      title: "Rename max_tokens to max_completion_tokens on chat.completions.create",
-      surface: { endpoints: ["/chat/completions"], sdkSymbols: ["chat.completions.create"], fields: ["max_tokens"] },
-      fix: { rulePackPath: "packs/openai/2026-01-01-max-tokens-to-max-completion-tokens/" },
-    });
     expect(rename.record.sources[0]?.quoteId).toContain("deprecated in favor of `max_completion_tokens`");
-    expect(Object.keys(rename.files)).toEqual(expect.arrayContaining(["rules/js/01-rename.yml", "rules/py/01-rename.yml"]));
 
     const functions = candidates.find((c) => c.record.id.endsWith("functions-deprecated"))!;
     expect(functions.record.classification).toBe("semantic");
     expect(functions.record.fix).toBeUndefined();
-    expect(Object.keys(functions.files)).not.toContain("rules/js/01-rename.yml");
+    expect(candidates.flatMap((c) => Object.keys(c.files)).filter((f) => f.startsWith("rules/"))).toEqual([]);
 
     expect(candidates.find((c) => c.record.id.endsWith("old-name-removed"))?.record.kind).toBe("breaking");
 
     expect(ignored).toMatchObject({ "new-optional-request-property": 2, "request-property-enum-value-added": 3, "request-property-became-enum": 1 });
     expect(unmapped).toEqual(["POST /edits"]);
     expect(ignored["api-path-removed-without-deprecation (no symbol for POST /edits)"]).toBe(1);
+  });
+
+  it("reports a deprecated field that names a replacement without rewriting it", async () => {
+    const { candidates } = await derive();
+    const rename = candidates.find((c) => c.record.id.endsWith("max-completion-tokens"))!;
+    expect(rename.record).toMatchObject({
+      status: "candidate",
+      kind: "deprecation",
+      classification: "semantic",
+      title: "max_tokens is deprecated on chat.completions.create",
+      surface: { endpoints: ["/chat/completions"], sdkSymbols: ["chat.completions.create"], fields: ["max_tokens"] },
+      notes: {
+        migration:
+          "max_tokens is deprecated in favor of max_completion_tokens. Before renaming, check that your SDK version accepts max_completion_tokens on chat.completions.create calls.",
+      },
+    });
+    expect(rename.record.fix).toBeUndefined();
+    expect(Object.keys(rename.files).filter((f) => f.startsWith("rules/"))).toEqual([]);
+    expect(rename.files["fixtures/basic/after/app.js"]).toBe(rename.files["fixtures/basic/before/app.js"]);
+    expect(rename.files["fixtures/basic/after/app.py"]).toBe(rename.files["fixtures/basic/before/app.py"]);
+  });
+
+  it("detects a field as shorthand and as a quoted key", async () => {
+    const { candidates } = await derive();
+    const { js, py } = candidates.find((c) => c.record.id.endsWith("max-completion-tokens"))!.record.detection.astGrepPatterns;
+    const jsSource = `const max_tokens = 1;\nf({ max_tokens });\nf({ max_tokens: 1 });\nf({ "max_tokens": 1 });\nf({ 'max_tokens': 1 });\nf({ other: 1 });\n`;
+    const pySource = `f(max_tokens=1)\nf(json={"max_tokens": 1})\nf(json={'max_tokens': 1})\nf(json={"other": 1})\n`;
+    expect(findMatches(jsSource, grammarFor("app.js")!.grammar, js!)).toHaveLength(4);
+    expect(findMatches(pySource, grammarFor("app.py")!.grammar, py!)).toHaveLength(3);
   });
 
   it("writes packs that pass the fixture runner", async () => {
@@ -66,7 +87,7 @@ describe("deriveCandidates", () => {
       for (const r of results) expect(r.problems, c.record.id).toEqual([]);
     }
     const written = await readFile(join(packs, "openai", "2026-01-01-max-tokens-to-max-completion-tokens", "fixtures", "basic", "after", "app.py"), "utf8");
-    expect(written).toBe("r = client.chat.completions.create(max_completion_tokens=1)\n");
+    expect(written).toBe("r = client.chat.completions.create(max_tokens=1)\n");
   });
 
   it("does not regenerate a change that is already recorded", async () => {
@@ -95,7 +116,6 @@ describe("deriveCandidates", () => {
       sdkSymbols: ["chat.completions.create", "other.create"],
       fields: ["max_tokens"],
     });
-    expect(candidates[0]?.files["rules/js/01-rename.yml"]).toContain("regex: '(chat\\.completions\\.create|other\\.create)$'");
   });
 
   it("only treats explicit replacement phrasing as a rename", async () => {
@@ -144,10 +164,23 @@ describe("deriveCandidates", () => {
     );
     expect(ignored).toEqual({});
     expect(candidates.map((c) => c.record.surface.fields)).toEqual([[long], ["short"]]);
-    expect(candidates[1]?.record.fix).toBeUndefined();
+    expect(candidates[1]?.record.id).toBe("openai:2026-01-01:short-deprecated");
     const packs = await mkdtemp(join(tmpdir(), "darnit-corpus-"));
     tempDirs.push(packs);
     for (const c of candidates) await writeCandidate(packs, c);
+  });
+
+  it("leaves out the keyword argument pattern for a field named after a Python keyword", async () => {
+    const { candidates } = synthetic({ from: { description: "Deprecated." } }, [deprecated("from")]);
+    const c = candidates[0]!;
+    expect(c.record.detection.astGrepPatterns.py?.map((p) => p.context)).toEqual(['{"from": $V}', "{'from': $V}"]);
+    expect(c.record.detection.astGrepPatterns.js).toHaveLength(4);
+    expect(c.record.notes?.edgeCases?.[0]).toContain("from is a Python keyword");
+    const source = `import x\nclient.chat.completions.create(**{"from": 1})\nsave(to=1)\n`;
+    expect(findMatches(source, grammarFor("app.py")!.grammar, c.record.detection.astGrepPatterns.py!)).toHaveLength(1);
+    const packs = await mkdtemp(join(tmpdir(), "darnit-corpus-"));
+    tempDirs.push(packs);
+    for (const r of await runPackFixtures(await writeCandidate(packs, c), c.record)) expect(r.problems).toEqual([]);
   });
 
   it("reads the parameter name, not its location, from a removed request parameter", () => {
@@ -169,7 +202,7 @@ describe("deriveCandidates", () => {
       { X: { description: "Deprecated in favor of `evil`." } },
     );
     expect(candidates.map((c) => c.record.surface.fields)).toEqual([["max_tokens"], ["functions"]]);
-    expect(candidates.every((c) => !c.record.fix)).toBe(true);
+    expect(candidates.map((c) => c.record.id)).toEqual(["openai:2026-01-01:max-tokens-deprecated", "openai:2026-01-01:functions-deprecated"]);
   });
 
   it("resolves each referenced schema once across many fields within a CPU budget", () => {
@@ -181,7 +214,7 @@ describe("deriveCandidates", () => {
     const { candidates } = synthetic(Object.fromEntries(fields.map((f) => [f, ref("C0")])), fields.map((f) => deprecated(f)), schemas);
     const { user, system } = process.cpuUsage(start);
     expect(candidates).toHaveLength(60);
-    expect(candidates.every((c) => c.record.fix)).toBe(true);
+    expect(candidates.every((c) => c.record.id.endsWith("-to-g"))).toBe(true);
     expect((user + system) / 1000).toBeLessThan(1000);
   });
 });
