@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      - run: cd "$RUNNER_TEMP" && npx darnit@${pinned(version)} check "$GITHUB_WORKSPACE"
+      - run: cd "\${RUNNER_TEMP:?}" && npx darnit@${pinned(version)} check "\${GITHUB_WORKSPACE:?}"
 `;
 
 const { O_WRONLY, O_CREAT, O_EXCL, O_NOFOLLOW } = constants;

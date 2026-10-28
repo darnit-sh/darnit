@@ -13,10 +13,11 @@ const { version } = createRequire(import.meta.url)("../package.json") as { versi
 
 const DIR = "the repository's folder (default: the current folder)";
 
-/** The folder a command works on, as an absolute path; the current folder when none is given. */
+/** The folder a command works on, as an absolute path; the current folder when none is given. An empty path,
+ * as from an unset variable in a workflow, is refused rather than read as the current folder. */
 async function folder(dir = process.cwd()): Promise<string> {
   const abs = resolve(dir);
-  if (!(await stat(abs).catch(() => undefined))?.isDirectory()) throw new Error(`${dir} is not a folder`);
+  if (!dir.trim() || !(await stat(abs).catch(() => undefined))?.isDirectory()) throw new Error(`${dir.trim() ? dir : `"${dir}"`} is not a folder`);
   return abs;
 }
 

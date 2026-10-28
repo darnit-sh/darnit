@@ -270,7 +270,7 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      - run: cd "$RUNNER_TEMP" && npx darnit check "$GITHUB_WORKSPACE"
+      - run: cd "${RUNNER_TEMP:?}" && npx darnit check "${GITHUB_WORKSPACE:?}"
 ```
 
 Once a day it runs `check`. npx starts outside your checkout, so nothing in the
@@ -294,7 +294,7 @@ permissions:
 
 # ...same as above, then replace the last step with:
       - run: npm ci   # or whatever installs your project
-      - run: cd "$RUNNER_TEMP" && npx darnit fix --pr "$GITHUB_WORKSPACE"
+      - run: cd "${RUNNER_TEMP:?}" && npx darnit fix --pr "${GITHUB_WORKSPACE:?}"
         env:
           GITHUB_TOKEN: ${{ github.token }}
 ```

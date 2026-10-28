@@ -163,11 +163,14 @@ try {
     failures++;
     console.log(`✗ usage error exited ${usage.exit}, expected 2\n${usage.out}`);
   } else console.log("✓ usage error exits 2");
-  const missing = run(darnit, ["check", join(work, "no-such-folder")], install);
-  if (missing.exit !== 2 || !missing.out.includes("no-such-folder is not a folder")) {
-    failures++;
-    console.log(`✗ a missing folder exited ${missing.exit}, expected 2 and "is not a folder"\n${missing.out}`);
-  } else console.log("✓ a missing folder exits 2");
+  // An empty path must not fall back to the current folder: a workflow with an unset variable would pass green.
+  for (const args of [["check", join(work, "no-such-folder")], ["check", ""], ["check", "--json", " "]]) {
+    const missing = run(darnit, args, install);
+    if (missing.exit !== 2 || !missing.out.includes("is not a folder")) {
+      failures++;
+      console.log(`✗ check ${JSON.stringify(args.slice(1))} exited ${missing.exit}, expected 2 and "is not a folder"\n${missing.out}`);
+    } else console.log(`✓ check ${JSON.stringify(args.slice(1))} exits 2`);
+  }
 
   for (const [name, want] of Object.entries(EXPECT).sort(([a], [b]) => a.localeCompare(b))) {
     const dir = join(work, name);
@@ -223,8 +226,9 @@ try {
   }
 
   // The workflow init writes, run as Actions runs it with the packed darnit in place of npm's. In
-  // 16-hostile-repo, npx started inside the repository would run the repository's files; started from
-  // RUNNER_TEMP it runs none of them and still reports the repository's call site.
+  // 16-hostile-repo, npx started inside the repository runs the repository's files; started from
+  // RUNNER_TEMP it runs none of them and still reports the repository's call site, and with a variable
+  // missing it fails instead of starting inside the repository or scanning an empty folder.
   const hostile = join(work, "hostile");
   cpSync(join(SCENARIOS, "16-hostile-repo"), hostile, { recursive: true });
   must(darnit, ["init"], hostile);
@@ -249,18 +253,25 @@ try {
     npm_config_update_notifier: "false",
   };
   const ran = () => readdirSync(hostile).filter((f) => f.startsWith("ran-"));
-  for (const [label, cmd, breached] of [
-    ["workflow line", packed(line), false],
-    ["npx started inside the repository", packed("npx darnit@pin check"), true],
-  ] as const) {
-    const r = run("sh", ["-c", cmd], hostile, actions);
+  const hit = "src/summarize.js:5:5  max_tokens: 256";
+  // [label, command, environment, exit, files that must run (none may run when empty)]
+  const cases: [string, string, NodeJS.ProcessEnv, (exit: number, out: string) => boolean, string[]][] = [
+    ["workflow line", packed(line), actions, (exit, out) => exit === 1 && out.includes(hit), []],
+    ["workflow line, GITHUB_WORKSPACE empty", packed(line), { ...actions, GITHUB_WORKSPACE: "" }, (exit) => exit !== 0, []],
+    ["workflow line, RUNNER_TEMP unset", packed(line), { ...actions, RUNNER_TEMP: undefined }, (exit) => exit !== 0, []],
+    // Controls: started inside the repository, an unpinned npx runs its planted bin, and any npx runs its .npmrc settings.
+    ["npx darnit inside the repository", "npx darnit check", actions, () => true, ["ran-bin"]],
+    ["npx darnit@<pin> inside the repository", packed("npx darnit@pin check"), actions, () => true, ["ran-node-options", "ran-script-shell"]],
+  ];
+  for (const [label, cmd, env, exitOk, want] of cases) {
+    const r = run("sh", ["-c", cmd], hostile, env);
     const markers = ran();
     for (const f of markers) rmSync(join(hostile, f));
-    const ok = breached ? markers.length > 0 : markers.length === 0 && r.exit === 1 && r.out.includes("src/summarize.js:5:5  max_tokens: 256");
-    if (ok) console.log(`✓ ${label}: ${breached ? `the repository ran ${markers.join(", ")}` : "ran none of the repository's files"}`);
+    const ok = exitOk(r.exit, r.out) && (want.length ? want.every((f) => markers.includes(f)) : markers.length === 0);
+    if (ok) console.log(`✓ ${label}: exited ${r.exit}, the repository ran [${markers.join(", ")}]`);
     else {
       failures++;
-      console.log(`✗ ${label} (${cmd}): exited ${r.exit}, repository files that ran: [${markers.join(", ")}]\n${r.out}`);
+      console.log(`✗ ${label} (${cmd}): exited ${r.exit}, the repository ran [${markers.join(", ")}], expected [${want.join(", ")}]\n${r.out}`);
     }
   }
 } finally {

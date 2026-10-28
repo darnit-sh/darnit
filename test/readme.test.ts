@@ -45,7 +45,7 @@ describe("docs match the CLI", () => {
   it("the README workflow examples start npx outside the checkout, like the workflow init writes", async () => {
     const runs = (await read("README.md")).match(/^ *- run: .*npx .*$/gm);
     expect(runs).toHaveLength(2);
-    for (const run of runs!) expect(run).toMatch(/- run: cd "\$RUNNER_TEMP" && npx darnit (?:check|fix --pr) "\$GITHUB_WORKSPACE"$/);
+    for (const run of runs!) expect(run).toMatch(/- run: cd "\$\{RUNNER_TEMP:\?\}" && npx darnit (?:check|fix --pr) "\$\{GITHUB_WORKSPACE:\?\}"$/);
   });
 
   it("each command's README section lists exactly the flags the command has", async () => {
