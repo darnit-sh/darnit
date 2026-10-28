@@ -13,6 +13,7 @@ const IDENTIFIER = /^[\p{L}\p{M}\p{N}_]+$/u;
 const QUOTES = new Set(['"', "'", "`"]);
 const SETTING = /^[ \t]*[=:][ \t]*$/;
 const LINE_END = /[ \t]*\r?(?:\n|$)/y;
+const PROVIDER_VERSION = /@\d{8}(?!\d)/y;
 /** Longer lines are minified or machine-made. */
 const LONG_LINE = 5000;
 
@@ -87,7 +88,9 @@ function commentsAndStrings(text: string, { hash, multiline, raw, apostrophe }: 
 /**
  * Every exact mention of `names` in `text`, once per name per line. A name counts only when it is
  * not part of a longer name: gpt-4 never matches gpt-4o, gpt-4.1, gpt-4-turbo or my_gpt-4, but a
- * sentence ending "gpt-4." does. A letter in any script joins a word, so ada never matches orçada.
+ * sentence ending "gpt-4." does. A name directly followed by @ and an eight-digit date is a cloud
+ * provider's own versioned name, such as Google's claude-sonnet-4-5@20250929, retired on that
+ * provider's dates, so it does not count; gpt-4@tool still does. A letter in any script joins a word, so ada never matches orçada.
  * A name made only of letters, such as ada, is also an everyday word or name, so it counts only
  * directly inside quotes ("ada", 'ada', `ada` or \"ada\") or as a whole setting value (model: ada).
  * A name code could use as a variable, such as o1, counts in code files (by `file`'s extension) only
@@ -125,6 +128,8 @@ export function findMentions(text: string, names: ReadonlySet<string>, file = ""
       newline = text.indexOf("\n", newline + 1);
     }
     const end = index + model.length;
+    PROVIDER_VERSION.lastIndex = end;
+    if (PROVIDER_VERSION.test(text)) continue;
     if (IDENTIFIER.test(model)) {
       const strict = LETTERS.test(model) || (newline === -1 ? text.length : newline) - lineStart > LONG_LINE;
       const value = setting(text, index, end, named, namedEnd);

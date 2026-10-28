@@ -159,6 +159,8 @@ describe("check tells OpenAI apart from look-alike clients", () => {
     });
     expect(exitCodeForCheck(hits)).toBe(1);
     expect(render(hits, coverage)).toMatch(/ollama\.ts:3:72 +max_tokens: 5 {2}\(sent to localhost:11434; ignore if that server isn't OpenAI\)\n/);
+    const anthropic = hits.map((h) => ({ ...h, record: { ...h.record, vendor: "anthropic" } }));
+    expect(render(anthropic, coverage)).toMatch(/ollama\.ts:3:72 +max_tokens: 5 {2}\(sent to localhost:11434; ignore if that server isn't Anthropic\)\n/);
     expect(toJson(hits).find((h) => (h as { file: string }).file === "ollama.ts")).toMatchObject({ localAddresses: ["localhost:11434"] });
     expect(toJson(hits).find((h) => (h as { file: string }).file === "plain.ts")).not.toHaveProperty("localAddresses");
   });
@@ -1122,6 +1124,25 @@ describe("other mentions of model names", () => {
     const names = new Set(["gpt-4", "gpt-4-turbo", "o1"]);
     const text = "gpt-4o gpt-4.1 gpt-4.5 my_gpt-4 a.gpt-4 gpt-4_x xgpt-4 -gpt-4 o1-pro po1\n(gpt-4) gpt-4-turbo, o1\n'gpt-4'.\nmodels/gpt-4..\n";
     expect(listed(findMentions(text, names))).toEqual([":2:gpt-4", ":2:gpt-4-turbo", ":2:o1", ":3:gpt-4", ":4:gpt-4"]);
+  });
+
+  it("does not count a name directly followed by @ and a date, a cloud provider's own versioned name", () => {
+    const names = new Set(["claude-sonnet-4-5", "claude-sonnet-4-5-20250929", "gpt-4"]);
+    const text = [
+      '"claude-sonnet-4-5@20250929" gpt-4@20240613',
+      '"claude-sonnet-4-5-20250929"',
+      "support@openai.com @gpt-4 gpt-4 @x",
+      "claude-sonnet-4-5 @20250929",
+      "'gpt-4@tool' claude-sonnet-4-5@2025 claude-sonnet-4-5@202509291",
+      "",
+    ].join("\n");
+    expect(listed(findMentions(text, names))).toEqual([
+      ":2:claude-sonnet-4-5-20250929",
+      ":3:gpt-4",
+      ":4:claude-sonnet-4-5",
+      ":5:gpt-4",
+      ":5:claude-sonnet-4-5",
+    ]);
   });
 
   it("treats letters and digits in any script as part of a word", () => {
