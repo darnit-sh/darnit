@@ -41,8 +41,10 @@ const repoPath = ({ owner, repo }: Repo) => `/repos/${encodeURIComponent(owner)}
 
 async function api<T>(token: string, method: string, path: string, body?: object): Promise<T> {
   const signal = AbortSignal.timeout(TIMEOUT_MS);
+  let res: Response;
+  let text: string;
   try {
-    const res = await fetch(`${API}${path}`, {
+    res = await fetch(`${API}${path}`, {
       method,
       signal,
       headers: {
@@ -53,12 +55,14 @@ async function api<T>(token: string, method: string, path: string, body?: object
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
-    return (await res.json()) as T;
+    text = await res.text();
   } catch (err) {
     if (signal.aborted) throw new Error(`GitHub ${method} ${path} timed out after ${TIMEOUT_MS / 1000} seconds`, { cause: err });
-    throw err;
+    const { message, cause } = err as Error;
+    throw new Error(`GitHub ${method} ${path} failed: ${message}${cause instanceof Error ? ` (${cause.message})` : ""}`, { cause: err });
   }
+  if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${text.slice(0, 300)}`);
+  return JSON.parse(text) as T;
 }
 
 export async function defaultBranch(token: string, repo: Repo): Promise<string> {
