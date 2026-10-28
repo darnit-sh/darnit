@@ -9,20 +9,22 @@ const exec = promisify(execFile);
 const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
 
 /**
- * `stall` bounds a call that reaches the remote: git itself ends an HTTPS transfer that sends nothing
- * for that many seconds, and the process is stopped after four times as long for any other transport.
+ * `stall` bounds a call to origin. Git itself ends an HTTP or HTTPS transfer that moves less than a
+ * byte a second for that many seconds; the environment beats any `http.<url>.lowSpeed*` config. Any
+ * other transport is stopped after four times as long, which can leave its ssh child running.
  */
 export async function git(root: string, args: string[], stall?: number): Promise<string> {
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_LITERAL_PATHSPECS: "1" };
   for (const k of CREDENTIALS) delete env[k];
-  const net = stall ? ["-c", "http.lowSpeedLimit=1", "-c", `http.lowSpeedTime=${stall}`] : [];
+  let timeout = 0;
+  if (stall) {
+    Object.assign(env, { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
+    // A process timeout would cut a slow but healthy HTTPS push and leave its helper pushing.
+    const urls = (await git(root, ["remote", "get-url", "--all", ...(args[0] === "push" ? ["--push"] : []), "origin"])).split("\n").filter(Boolean);
+    if (!urls.every((u) => /^https?:\/\//i.test(u))) timeout = stall * 4 * 1000;
+  }
   try {
-    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...net, ...args], {
-      cwd: root,
-      env,
-      maxBuffer: 64 * 1024 * 1024,
-      ...(stall ? { timeout: stall * 4 * 1000 } : {}),
-    });
+    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...args], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
     return stdout;
   } catch (err) {
     const { killed, stderr } = err as { killed?: boolean; stderr?: string };
