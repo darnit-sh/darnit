@@ -12,3 +12,6 @@ coverage/
 
 # Model name fixtures
 !test/samples/model-mentions/.env
+
+# A planted bin for the hostile repository scenario
+!test/e2e/16-hostile-repo/node_modules/

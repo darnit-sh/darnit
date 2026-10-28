@@ -108,10 +108,12 @@ git switch -c release/X.Y.Z-final
 npm version X.Y.Z --no-git-tag-version
 # in CHANGELOG.md, add `## [X.Y.Z] - <release date>` under an empty `## [Unreleased]`, point
 #   the `[Unreleased]` link at `vX.Y.Z...HEAD` and add an `[X.Y.Z]` link from the previous release
-# for a new minor (X.Y.0) before 1.0, README.md's workflow examples become `npx darnit@X.Y check`
-#   and `npx darnit@X.Y fix --pr`, with a one-line note on the pin; npm has no X.Y before this.
-#   From 1.0 on, `init` pins the major, so for a new major (X.0.0) they become `npx darnit@X check`
-#   and `npx darnit@X fix --pr`
+# for a new minor (X.Y.0) before 1.0, README.md's workflow examples become
+#   `cd "${RUNNER_TEMP:?}" && npx darnit@X.Y check "${GITHUB_WORKSPACE:?}"` and
+#   `cd "${RUNNER_TEMP:?}" && npx darnit@X.Y fix --pr "${GITHUB_WORKSPACE:?}"`, with a one-line note on the
+#   pin; npm has no X.Y before this. From 1.0 on, `init` pins the major, so for a new major (X.0.0)
+#   they become `cd "${RUNNER_TEMP:?}" && npx darnit@X check "${GITHUB_WORKSPACE:?}"` and
+#   `cd "${RUNNER_TEMP:?}" && npx darnit@X fix --pr "${GITHUB_WORKSPACE:?}"`
 # open the pull request, wait for CI to pass, merge it
 git switch main && git pull
 git log --oneline vX.Y.Z-rc.N..main                 # only the version pull request
