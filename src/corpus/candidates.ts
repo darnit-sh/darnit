@@ -31,6 +31,8 @@ const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
 // so only plain names and paths get through; anything else is counted in `ignored`, never echoed.
 // The caps keep folder names short (longest in OpenAI's spec: a 35-character name, an 82-character path).
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+// Python's keyword.kwlist: `f(from=$V)` is not valid Python, and ast-grep rejects it as a pattern.
+const PY_KEYWORDS = new Set("False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield".split(" "));
 const METHOD = /^[A-Z]{1,10}$/;
 const PATH = /^\/[\w/{}?=-]{0,199}$/;
 // Greedy, so a name with a backtick in it is read whole and then fails IDENTIFIER.
@@ -148,6 +150,7 @@ export function deriveCandidates(input: {
           : `${field} is ${gone ? "no longer accepted" : "deprecated"} on ${where}.`
         : `${endpoint} is ${gone ? "no longer served" : "deprecated"}; callers need the replacement endpoint.`;
     const dir = `${vendor}/${observedAt}-${slug}`;
+    const pyKeyword = field !== undefined && PY_KEYWORDS.has(field);
     const patterns = field
       ? {
           js: [
@@ -157,7 +160,7 @@ export function deriveCandidates(input: {
             { context: `({ '${field}': $V })`, selector: "pair" },
           ],
           py: [
-            { context: `f(${field}=$V)`, selector: "keyword_argument" },
+            ...(pyKeyword ? [] : [{ context: `f(${field}=$V)`, selector: "keyword_argument" }]),
             { context: `{"${field}": $V}`, selector: "pair" },
             { context: `{'${field}': $V}`, selector: "pair" },
           ],
@@ -178,6 +181,7 @@ export function deriveCandidates(input: {
         detection: { astGrepPatterns: patterns },
         notes: {
           migration,
+          ...(pyKeyword ? { edgeCases: [`${field} is a Python keyword, so Python code can only send it in a dict; only quoted keys are detected there.`] } : {}),
           citationQuality: "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it.",
         },
       },
@@ -186,7 +190,7 @@ export function deriveCandidates(input: {
 
     const call = symbol ?? "call";
     const js = field ? `export const r = client.${call}({ ${field}: 1 });\n` : `export const r = client.${call}({});\n`;
-    const py = field ? `r = client.${call}(${field}=1)\n` : `r = client.${call}()\n`;
+    const py = field ? `r = client.${call}(${pyKeyword ? `**{"${field}": 1}` : `${field}=1`})\n` : `r = client.${call}()\n`;
     const files: Record<string, string> = {
       "fixtures/basic/before/app.js": js,
       "fixtures/basic/before/app.py": py,

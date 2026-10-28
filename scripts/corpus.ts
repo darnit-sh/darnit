@@ -53,7 +53,7 @@ for (const [vendor, config] of Object.entries(vendors)) {
         console.log(`- ${c.record.id}: ${prose(c.record.title ?? "")}`);
         if (!dryRun) await writeCandidate(PACKS_DIR, c);
       }
-      if (unmapped.length > 0) console.log(`\nEndpoints with no SDK symbol in vendors.yml (add one to limit detection to the SDK call): ${prose(unmapped.join(", "))}`);
+      if (unmapped.length > 0) console.log(`\nEndpoints with no SDK symbol in vendors.yml (add one so SDK calls are found too): ${prose(unmapped.join(", "))}`);
       const ignoredLines = Object.entries(ignored).sort((a, b) => b[1] - a[1]);
       if (ignoredLines.length > 0) console.log(`\nNot turned into records:\n${ignoredLines.map(([why, n]) => `- ${n} × ${prose(why)}`).join("\n")}`);
     } finally {

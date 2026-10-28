@@ -40,7 +40,7 @@ describe("deriveCandidates", () => {
     const functions = candidates.find((c) => c.record.id.endsWith("functions-deprecated"))!;
     expect(functions.record.classification).toBe("semantic");
     expect(functions.record.fix).toBeUndefined();
-    expect(Object.keys(functions.files)).not.toContain("rules/js/01-rename.yml");
+    expect(candidates.flatMap((c) => Object.keys(c.files)).filter((f) => f.startsWith("rules/"))).toEqual([]);
 
     expect(candidates.find((c) => c.record.id.endsWith("old-name-removed"))?.record.kind).toBe("breaking");
 
@@ -168,6 +168,19 @@ describe("deriveCandidates", () => {
     const packs = await mkdtemp(join(tmpdir(), "darnit-corpus-"));
     tempDirs.push(packs);
     for (const c of candidates) await writeCandidate(packs, c);
+  });
+
+  it("leaves out the keyword argument pattern for a field named after a Python keyword", async () => {
+    const { candidates } = synthetic({ from: { description: "Deprecated." } }, [deprecated("from")]);
+    const c = candidates[0]!;
+    expect(c.record.detection.astGrepPatterns.py?.map((p) => p.context)).toEqual(['{"from": $V}', "{'from': $V}"]);
+    expect(c.record.detection.astGrepPatterns.js).toHaveLength(4);
+    expect(c.record.notes?.edgeCases?.[0]).toContain("from is a Python keyword");
+    const source = `import x\nclient.chat.completions.create(**{"from": 1})\nsave(to=1)\n`;
+    expect(findMatches(source, grammarFor("app.py")!.grammar, c.record.detection.astGrepPatterns.py!)).toHaveLength(1);
+    const packs = await mkdtemp(join(tmpdir(), "darnit-corpus-"));
+    tempDirs.push(packs);
+    for (const r of await runPackFixtures(await writeCandidate(packs, c), c.record)) expect(r.problems).toEqual([]);
   });
 
   it("reads the parameter name, not its location, from a removed request parameter", () => {
