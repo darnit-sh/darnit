@@ -1,5 +1,5 @@
 exit 0
-scanned files=23 records=33 otherFiles=13 foreign=0 tooLarge=0 skipped=0
+scanned files=23 records=35 otherFiles=13 foreign=0 tooLarge=0 skipped=0
 M src/models.py:47 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/models.py:47 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/utils/error_handler.py:161 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

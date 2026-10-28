@@ -1,5 +1,5 @@
 exit 0
-scanned files=71 records=33 otherFiles=20 foreign=0 tooLarge=0 skipped=1
+scanned files=71 records=35 otherFiles=20 foreign=0 tooLarge=0 skipped=1
 P gepetto/models/openai.py:19:21 #bbae8ca2 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 P gepetto/models/openai.py:23:19 #882ea978 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P gepetto/models/openai.py:25:25 #1e6cf304 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

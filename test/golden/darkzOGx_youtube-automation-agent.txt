@@ -1,2 +1,2 @@
 exit 0
-scanned files=42 records=33 otherFiles=26 foreign=0 tooLarge=0 skipped=0
+scanned files=42 records=35 otherFiles=26 foreign=0 tooLarge=0 skipped=0

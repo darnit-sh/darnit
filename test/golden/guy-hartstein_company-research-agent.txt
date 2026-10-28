@@ -1,3 +1,3 @@
 exit 0
-scanned files=45 records=33 otherFiles=32 foreign=0 tooLarge=0 skipped=0
+scanned files=45 records=35 otherFiles=32 foreign=0 tooLarge=0 skipped=0
 P backend/nodes/researchers/base.py:28:19 #9dda5f5c gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down

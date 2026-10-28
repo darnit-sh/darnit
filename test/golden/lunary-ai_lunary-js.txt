@@ -1,5 +1,5 @@
 exit 1
-scanned files=32 records=33 otherFiles=11 foreign=0 tooLarge=0 skipped=1
+scanned files=32 records=35 otherFiles=11 foreign=0 tooLarge=0 skipped=1
 H examples/assistant.ts:19:3 #588891cf openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H examples/feedback.ts:30:5 #93bb7212 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H examples/flush.ts:17:3 #ec1058c6 openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down

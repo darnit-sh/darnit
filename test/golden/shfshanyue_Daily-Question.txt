@@ -1,5 +1,5 @@
 exit 1
-scanned files=68 records=33 otherFiles=1056 foreign=0 tooLarge=0 skipped=0
+scanned files=68 records=35 otherFiles=1056 foreign=0 tooLarge=0 skipped=0
 H lib/tag.ts:26:5 #d9375a03 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P lib/tag.ts:22:55 #e7ce98f8 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lib/tag.ts:68 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

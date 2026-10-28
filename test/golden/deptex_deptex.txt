@@ -1,5 +1,5 @@
 exit 1
-scanned files=1528 records=33 otherFiles=1428 foreign=0 tooLarge=0 skipped=0
+scanned files=1528 records=35 otherFiles=1428 foreign=0 tooLarge=0 skipped=0
 H backend/src/lib/ai/providers/openai-provider.ts:50:36 #a4d3be5e openai:2024-09-12:max-tokens-to-max-completion-tokens
 H backend/src/lib/ai/providers/openai-provider.ts:77:36 #a4d3be5e openai:2024-09-12:max-tokens-to-max-completion-tokens
 H backend/src/lib/ai/providers/openai-provider.ts:110:36 #a4d3be5e openai:2024-09-12:max-tokens-to-max-completion-tokens
