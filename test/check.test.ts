@@ -39,23 +39,28 @@ async function scratch(files: Record<string, string>): Promise<string> {
 
 const locations = (hits: Hit[]) => hits.map((h) => `${h.file}:${h.line}`);
 
-/** Milliseconds of CPU time `f` takes, which shared runners and parallel test files disturb less than wall time. */
-function cpuTime(f: () => unknown): number {
-  const start = process.cpuUsage();
-  f();
-  const { user, system } = process.cpuUsage(start);
-  return (user + system) / 1000;
+/** Milliseconds of CPU time `f` takes, which shared runners and parallel test files disturb less than wall time. With `runs`, the least of that many runs, as noise only adds time. */
+function cpuTime(f: () => unknown, runs = 1): number {
+  let least = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const start = process.cpuUsage();
+    f();
+    const { user, system } = process.cpuUsage(start);
+    least = Math.min(least, (user + system) / 1000);
+  }
+  return least;
 }
 
 /** How much longer `findModelValues` takes on `source(1)` than on `source(1 / 8)`: 8 when linear, 64 when quadratic. Healthy runs stay under 11. */
 function growth(file: string, source: (scale: number) => string): number {
   const grammar = grammarFor(file)!.grammar;
-  const time = (scale: number) => {
+  const time = (scale: number, runs: number) => {
     const text = source(scale);
-    return cpuTime(() => findModelValues(file, text, grammar, new Set(["gpt-4"])));
+    return cpuTime(() => findModelValues(file, text, grammar, new Set(["gpt-4"])), runs);
   };
-  const small = time(1 / 8);
-  return time(1) / small;
+  // One slow full-size run pushed the ratio past 24, so both sizes take their fastest run. Each full-size run holds its trees until collected, so only two.
+  const small = time(1 / 8, 5);
+  return time(1, 2) / small;
 }
 
 describe("check tells OpenAI apart from look-alike clients", () => {
@@ -999,7 +1004,7 @@ describe("model names set as values", () => {
     for (const [file, link] of ["app.py", "app.ts"].flatMap((f) => [".a()", ".token", ".token()"].map((l) => [f, l] as const))) {
       expect(growth(file, (n) => `model = "gpt-4"; x${link.repeat(40_000 * n)}\n`)).toBeLessThan(24);
     }
-  }, 20_000);
+  }, 60_000);
 
   it("reads calls with many arguments about as fast as parsing them", () => {
     const cases = [
@@ -1011,12 +1016,8 @@ describe("model names set as values", () => {
     for (const [file, arg] of cases) {
       const grammar = grammarFor(file)!.grammar;
       const source = `f("model", ${arg.repeat(2000)})\n`;
-      let start = performance.now();
-      parse(grammar, source);
-      const parsing = performance.now() - start;
-      start = performance.now();
-      findModelValues(file, source, grammar, new Set(["gpt-4"]));
-      expect(performance.now() - start).toBeLessThan(10 * parsing + 500);
+      const parsing = cpuTime(() => parse(grammar, source), 3);
+      expect(cpuTime(() => findModelValues(file, source, grammar, new Set(["gpt-4"])), 3)).toBeLessThan(10 * parsing + 500);
     }
   }, 60_000);
 
@@ -1272,9 +1273,7 @@ describe("other mentions of model names", () => {
     const names = new Set(["gpt-4", "o1", "ada"]);
     for (const unit of ["a", ".", "gpt-4.gpt-4x", "x y ", "o1\n", "model= ada ", '\\"ada\\"x ', "engine: \t"]) {
       const text = unit.repeat(Math.ceil(2_000_000 / unit.length));
-      const start = performance.now();
-      findMentions(text, names);
-      expect(performance.now() - start).toBeLessThan(3000);
+      expect(cpuTime(() => findMentions(text, names), 3)).toBeLessThan(3000);
     }
   });
 });
