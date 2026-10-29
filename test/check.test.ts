@@ -58,9 +58,9 @@ function growth(file: string, source: (scale: number) => string): number {
     const text = source(scale);
     return cpuTime(() => findModelValues(file, text, grammar, new Set(["gpt-4"])), runs);
   };
-  // The small run is short enough that one slow run moved the ratio past 24, so both sizes take their fastest run.
+  // One slow full-size run pushed the ratio past 24, so both sizes take their fastest run. Each full-size run holds its trees until collected, so only two.
   const small = time(1 / 8, 5);
-  return time(1, 3) / small;
+  return time(1, 2) / small;
 }
 
 describe("check tells OpenAI apart from look-alike clients", () => {
