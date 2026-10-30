@@ -164,7 +164,8 @@ describe("git calls that reach the remote end when it stalls", () => {
     const dir = await repoWith({ "a.ts": "a\n" });
     await g.git(dir, ["remote", "add", "origin", "ssh://example.invalid/r.git"]);
     vi.stubEnv("GIT_SSH_COMMAND", "sleep 6 #");
-    await expect(g.git(dir, ["push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow("git push timed out after 4 seconds");
+    // Named after the command, not git's options before it.
+    await expect(g.git(dir, ["-C", dir, "push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow("git push timed out after 4 seconds");
   }, 20_000);
 });
 
@@ -197,7 +198,7 @@ describe("push", () => {
     return { url, remote: join(remote, "r.git") };
   }
 
-  it("hands the token to the push alone, through its environment, with or without the header the checkout saved", async () => {
+  it("hands the push the token through its environment, for that site only, with or without the header the checkout saved", async () => {
     vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
     vi.stubEnv("GITHUB_ACTIONS", "true");
     const dir = await repoWith({ "a.ts": "a\n" });
@@ -231,9 +232,30 @@ describe("push", () => {
     await g.push(dir, branch, url);
     expect(await g.remoteBranchExists(dir, branch, url)).toBe(true);
     await g.git(dir, ["-c", "x.y=z", "fetch", "-q", "origin"], 30, url);
-    // A new call to origin made without a stall limit would get no token, so git() refuses it.
-    await expect(g.git(dir, ["fetch", "origin"])).rejects.toThrow("git fetch reaches origin");
-    await expect(g.git(dir, ["-c", "x.y=z", "ls-remote", "origin"])).rejects.toThrow("git ls-remote reaches origin");
+    // A new call to origin made without a stall limit would get no token, so git() refuses it, after
+    // any of git's global options and under a command-line alias.
+    for (const args of [
+      ["fetch", "origin"],
+      ["-c", "x.y=z", "ls-remote", "origin"],
+      ["-C", dir, "fetch", "origin"],
+      ["--git-dir", join(dir, ".git"), "fetch", "origin"],
+      ["--git-dir=.git", "--no-pager", "fetch", "origin"],
+      ["-c", "alias.f=fetch", "f", "origin"],
+      ["-c", "Alias.f=!git fetch", "f"],
+      ["--config-env", "alias.f=X", "f"],
+      ["--config-env=alias.f=X", "f"],
+      ["remote", "update"],
+      ["remote", "show", "origin"],
+      ["remote", "-v", "prune", "origin"],
+      ["remote", "set-head", "origin", "-a"],
+      ["remote", "add", "-f", "other", url],
+    ]) {
+      await expect(g.git(dir, args), args.join(" ")).rejects.toThrow("reaches origin, so it needs a stall limit");
+    }
+    // Local commands, `git remote` ones among them, still run without one.
+    for (const args of [["remote", "get-url", "origin"], ["-C", dir, "remote", "-v"], ["remote", "add", "other", url], ["-c", "x.y=z", "status"]]) {
+      await g.git(dir, args);
+    }
   }, 20_000);
 
   it("takes GH_TOKEN for the push when GITHUB_TOKEN is set but empty", async () => {

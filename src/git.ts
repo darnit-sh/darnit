@@ -11,6 +11,23 @@ const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=
 const GITHUB = "https://github.com/";
 // git commands that reach origin. git() refuses them without `stall`, which also brings the token.
 const REMOTE = new Set(["push", "fetch", "pull", "ls-remote", "clone", "archive", "submodule"]);
+// `git remote` subcommands that stay local (`add` unless it fetches); any other may reach origin.
+const LOCAL_REMOTE = new Set(["get-url", "set-url", "rename", "remove", "rm", "set-branches", "add"]);
+// git's global options that take the next argument as their value.
+const VALUED = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix"]);
+
+/** The git command `args` runs, after git's global options, and whether it can reach origin. */
+function command(args: string[]): { name: string; remote: boolean } {
+  let i = 0;
+  while (i < args.length && args[i]!.startsWith("-")) i += VALUED.has(args[i]!) ? 2 : 1;
+  const [name = "", ...rest] = args.slice(i);
+  // An alias set on the command line can stand for any command, so it counts as one that reaches origin.
+  const opts = args.slice(0, i);
+  if (opts.some((a, j) => /^--config-env=alias\./i.test(a) || (["-c", "--config-env"].includes(a) && /^alias\./i.test(opts[j + 1] ?? "")))) return { name, remote: true };
+  if (name !== "remote") return { name, remote: REMOTE.has(name) };
+  const sub = rest.find((a) => !a.startsWith("-"));
+  return { name, remote: sub !== undefined && (!LOCAL_REMOTE.has(sub) || (sub === "add" && rest.some((a) => a === "-f" || a === "--fetch"))) };
+}
 
 /**
  * `stall` marks a call to origin and bounds it. Git itself ends an HTTP or HTTPS transfer that moves
@@ -19,15 +36,15 @@ const REMOTE = new Set(["push", "fetch", "pull", "ls-remote", "clone", "archive"
  * running. In GitHub Actions the call also gets the token for `site` (see originAuth).
  */
 export async function git(root: string, args: string[], stall?: number, site = GITHUB): Promise<string> {
-  const command = args.find((a, i) => !a.startsWith("-") && args[i - 1] !== "-c");
-  if (!stall && REMOTE.has(command!)) throw new Error(`git ${command} reaches origin, so it needs a stall limit`);
+  const { name, remote } = command(args);
+  if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_LITERAL_PATHSPECS: "1" };
   for (const k of CREDENTIALS) delete env[k];
   let timeout = 0;
   if (stall) {
     Object.assign(env, originAuth(site), { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
     // A process timeout would cut a slow but healthy HTTPS push and leave its helper pushing.
-    const urls = (await git(root, ["remote", "get-url", "--all", ...(args[0] === "push" ? ["--push"] : []), "origin"])).split("\n").filter(Boolean);
+    const urls = (await git(root, ["remote", "get-url", "--all", ...(name === "push" ? ["--push"] : []), "origin"])).split("\n").filter(Boolean);
     if (!urls.every((u) => /^https?:\/\//i.test(u))) timeout = stall * 4 * 1000;
   }
   try {
@@ -36,7 +53,7 @@ export async function git(root: string, args: string[], stall?: number, site = G
   } catch (err) {
     const { killed, stderr } = err as { killed?: boolean; stderr?: string };
     if (stall && (killed || stderr?.includes("Operation too slow"))) {
-      throw new Error(`git ${args[0]} timed out after ${killed ? stall * 4 : stall} seconds`, { cause: err });
+      throw new Error(`git ${name} timed out after ${killed ? stall * 4 : stall} seconds`, { cause: err });
     }
     throw err;
   }
