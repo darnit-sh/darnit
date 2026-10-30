@@ -113,12 +113,12 @@ const suiteEdits: Edit[] = [
 async function rule(
   title: string,
   edits: Edit[],
-  body: string | ((base: string) => string) = "",
+  body: string | ((base: string, parent: string) => string) = "",
   env: Record<string, string> = {},
   landed: Edit[] = [],
 ) {
   const { dir, base, head } = await repo(edits, landed);
-  if (typeof body === "function") body = body(base);
+  if (typeof body === "function") body = body(base, execFileSync("git", ["rev-parse", `${base}~1`], { cwd: dir, encoding: "utf8" }).trim());
   const output = await scratch("output");
   const summary = await scratch("summary");
   const run = spawnSync("sh", [script, base, head], {
@@ -356,6 +356,7 @@ describe("the rule picked by the title's type", () => {
       [[{ revert: true }], ""],
       [[{ revert: true }], (b: string) => `<!-- This reverts commit ${b}. -->`],
       [[{ revert: true }], (b: string) => `This reverts commit ${b}.\nThis reverts commit ${"0".repeat(40)}.`],
+      [[{ revert: true }], (b: string, parent: string) => `This reverts commit ${b}.\nThis reverts commit ${parent}.`],
       [[{ revert: true }], `This reverts commit ${"0".repeat(40)}.`],
     ] as const) {
       const r = await rule("revert: x", [...edits], body, {}, landed);

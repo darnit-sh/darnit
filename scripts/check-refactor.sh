@@ -137,12 +137,12 @@ test | docs | chore | ci | build)
 fix | feat) say "**Rule for \`$type\`:** passes here; the proof check covers $type changes." ;;
 revert)
   say "**Rule for \`revert\`:** the change is exactly the inverse of the commit on a \`This reverts commit <sha>\` line in the title or body, a single-parent commit already in this change's history."
-  shas=$({ printf '%s\n' "${TITLE:-}"; visible; } | grep -oE 'This reverts commit [0-9a-f]+' | sed 's/.* //' | sort -u)
+  shas=$({ printf '%s\n' "${TITLE:-}"; visible; } | grep -oE 'This reverts commit [0-9a-f]+' | sed 's/.* //' | awk '!seen[$0]++')
   if [ "$(printf '%s' "$shas" | grep -c .)" != 1 ]; then
     say "**Failed:** name exactly one commit on a \`This reverts commit <sha>\` line; revert one commit per pull request."
     exit 1
   fi
-  sha=$shas
+  sha=$(printf '%s\n' "$shas" | head -1)
   commit=$(git rev-parse --verify --quiet "$sha^{commit}" || true)
   if [ -z "$commit" ] || ! git merge-base --is-ancestor "$commit" "$mb" || git rev-parse --verify --quiet "$commit^2" >/dev/null; then
     say "**Failed:** $sha is not a single-parent commit in this change's history."
