@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { detectApis, MAX_FILE_BYTES, readText } from "../src/detect.js";
 import { init, pinned } from "../src/init.js";
+import { cpuTime } from "./helpers.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs/promises")>();
@@ -75,9 +76,8 @@ describe("detectApis on a repository built to slow it down", () => {
   it("finishes quickly on a Python file of blank lines", async () => {
     const dir = await scratchCopy("small");
     await writeFile(join(dir, "blank.py"), "\n".repeat(150_000));
-    const start = performance.now();
-    expect((await detectApis(dir)).map((d) => d.vendor)).toEqual(["openai"]);
-    expect(performance.now() - start).toBeLessThan(2000);
+    const time = await cpuTime(async () => expect((await detectApis(dir)).map((d) => d.vendor)).toEqual(["openai"]), 3, 2000);
+    expect(time).toBeLessThan(2000);
   });
 
   it("does not read a file over the size limit, and init says so", async () => {
