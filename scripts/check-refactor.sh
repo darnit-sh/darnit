@@ -62,6 +62,13 @@ package_json() {
     }
   ' "$mb" "$head" "$1" || echo "package.json (unreadable)"
 }
+# What decides which files ship: package.json "files", and ignore files below the root, which drop files
+# inside "files" (a root one does not). Test scenarios do not ship.
+ships() {
+  package_json files
+  paths | grep -E '(^|/)\.npmignore"?$' || true
+  paths | grep -E '/\.gitignore"?$' | grep -vE '^"?test/' || true
+}
 
 case $type in
 refactor | perf)
@@ -92,10 +99,10 @@ test | docs | chore | ci | build)
   test | ci) allowed="$suite only with a \`Proof: none, <reason>\` line" ;;
   *) allowed="nothing in $suite" ;;
   esac
-  [ "$type" = build ] && ships="may change" || ships="stays"
-  say "**Rule for \`$type\`:** no change under src/, packs/*/*/rules/ or any change.json; $allowed; package.json \"files\" $ships."
+  [ "$type" = build ] && ships="may change" || ships="stay"
+  say "**Rule for \`$type\`:** no change under src/, packs/*/*/rules/ or any change.json; $allowed; package.json \"files\", any .npmignore and any .gitignore below the root outside test/ $ships."
   touched=$(paths | grep -E "$CODE" || true)
-  [ "$type" = build ] || touched=$(printf '%s\n' "$touched" "$(package_json files)" | grep . || true)
+  [ "$type" = build ] || touched=$(printf '%s\n' "$touched" "$(ships)" | grep . || true)
   changed=$(printf '%s\n' "$(suite_files)" "$(package_json scripts)" | grep . || true)
   if [ -n "$changed" ]; then
     reason=
@@ -109,7 +116,7 @@ test | docs | chore | ci | build)
     fi
   fi
   if [ -n "$touched" ]; then
-    say "**Failed:** a $type change leaves alone the code, the rule packs and what the rule above keeps. Code goes under fix, feat, refactor or perf, the suite under test or ci with a reason, and package.json \"files\" under build. Touched:"
+    say "**Failed:** a $type change leaves alone the code, the rule packs and what the rule above keeps. Code goes under fix, feat, refactor or perf, the suite under test or ci with a reason, and what ships under build. Touched:"
     list "$touched"
     exit 1
   fi

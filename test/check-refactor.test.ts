@@ -302,6 +302,22 @@ describe("the rule picked by the title's type", () => {
     expect(broken.out).toContain("- package.json (unreadable)");
   });
 
+  it("lets only build add or change an ignore file that drops shipped files", async () => {
+    for (const [type, f] of [
+      ["docs", "packs/.npmignore"],
+      ["test", ".npmignore"],
+      ["chore", "packs/v/p/.gitignore"],
+      ["ci", "dist/.gitignore"],
+    ] as const) {
+      const r = await rule(`${type}: x`, [{ write: f }], "Proof: none, drops nothing that ships\n");
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
+    }
+    expect((await rule("build: x", [{ write: "packs/.npmignore" }])).status).toBe(0);
+    expect((await rule("docs: x", [{ write: ".gitignore" }])).status).toBe(0);
+    expect((await rule("test: x", [{ write: "test/e2e/s/.gitignore" }])).status).toBe(0);
+  });
+
   it("passes a revert only when it is exactly the inverse of the one commit it names", async () => {
     const landed = [{ write: "src/a.ts" }, { remove: "test/golden/repo.txt" }];
     const line = (base: string) => `Text\r\nThis reverts commit ${base}.\r\n`;
