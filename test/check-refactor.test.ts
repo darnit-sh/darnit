@@ -196,7 +196,6 @@ describe("the rule picked by the title's type", () => {
       ["build(deps): bump yaml", bump],
       ["build: ship the docs", { write: "package.json", text: pkg(["dist", "docs"]) }],
       ["ci: bump actions/create-github-app-token from 3.2.0 to 3.3.0", { write: ".github/workflows/ci.yml" }],
-      ["ci: add a script", { write: "package.json", text: pkg().replace('"check"', '"golden":"x","check"') }],
       ["test: cover x", { write: "test/a.test.ts" }],
       ["test: add a helper", { write: "test/more.ts" }],
       ["docs: readme", { write: "README.md" }],
@@ -232,6 +231,15 @@ describe("the rule picked by the title's type", () => {
     }
     const r = await rule("test: x", [{ write: "package.json", text: pkg(undefined, "vitest run -x") }]);
     expect(r.out).toContain('- package.json script "test"');
+    for (const added of ["pretest", "postinstall", "prepare", "preinstall"]) {
+      const text = pkg().replace('"scripts":{', `"scripts":{"${added}":"true",`);
+      const r = await rule("docs: x", [{ write: "package.json", text }]);
+      expect(r.status, added).toBe(1);
+      expect(r.out).toContain(`- package.json script "${added}"`);
+    }
+    for (const text of [pkg().replace(/"scripts":\{[^}]*\}/, '"scripts":[]'), pkg().replace(/"scripts":\{[^}]*\}/, '"scripts":null')]) {
+      expect((await rule("chore: x", [{ write: "package.json", text }])).status, text).toBe(1);
+    }
   });
 
   it("lets only test and ci change the suite, and only with a reason a reader sees", async () => {

@@ -34,7 +34,7 @@ suite_files() {
     grep -vE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
   paths | grep -E '^"?(vitest|vite)\.(config|workspace)\.[cm]?[jt]s"?$' || true
 }
-# package.json's "files", or each of base's scripts, when this change alters it. A package.json this
+# package.json's "files", or each script this change adds, alters or removes. A package.json this
 # change leaves unreadable, or not an object, counts as changed, as does a reader that fails.
 package_json() {
   git diff --quiet "$base...$head" -- package.json && return 0
@@ -45,7 +45,12 @@ package_json() {
     const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
     if (b === undefined) console.log("package.json (removed or unreadable)");
     else if (process.argv[3] === "files") { if (!same(a?.files, b.files)) console.log("package.json \"files\""); }
-    else for (const k of Object.keys(a?.scripts ?? {})) if (!same(a.scripts[k], b.scripts?.[k])) console.log(`package.json script "${k}"`);
+    else {
+      const [x, y] = [a?.scripts ?? {}, b.scripts ?? {}];
+      const keys = [...new Set([...Object.keys(x), ...Object.keys(y)])].filter((k) => !same(x[k], y[k]));
+      for (const k of keys) console.log(`package.json script "${k}"`);
+      if (!keys.length && !same(a?.scripts, b.scripts)) console.log("package.json \"scripts\"");
+    }
   ' "$(git merge-base "$base" "$head")" "$head" "$1" || echo "package.json (unreadable)"
 }
 
