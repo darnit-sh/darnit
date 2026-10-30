@@ -35,18 +35,18 @@ suite_files() {
   paths | grep -E '^"?(vitest|vite)\.(config|workspace)\.[cm]?[jt]s"?$' || true
 }
 # package.json's "files", or each of base's scripts, when this change alters it. A package.json this
-# change leaves unreadable counts as changed.
+# change leaves unreadable, or not an object, counts as changed, as does a reader that fails.
 package_json() {
   git diff --quiet "$base...$head" -- package.json && return 0
   node -e '
     const git = (rev) => require("node:child_process").execFileSync("git", ["show", `${rev}:package.json`], { encoding: "utf8", stdio: "pipe" });
-    const read = (rev) => { try { return JSON.parse(git(rev)); } catch { return undefined; } };
+    const read = (rev) => { try { const j = JSON.parse(git(rev)); return j?.constructor === Object ? j : undefined; } catch { return undefined; } };
     const [a, b] = [read(process.argv[1]), read(process.argv[2])];
     const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
     if (b === undefined) console.log("package.json (removed or unreadable)");
     else if (process.argv[3] === "files") { if (!same(a?.files, b.files)) console.log("package.json \"files\""); }
     else for (const k of Object.keys(a?.scripts ?? {})) if (!same(a.scripts[k], b.scripts?.[k])) console.log(`package.json script "${k}"`);
-  ' "$(git merge-base "$base" "$head")" "$head" "$1"
+  ' "$(git merge-base "$base" "$head")" "$head" "$1" || echo "package.json (unreadable)"
 }
 
 case $type in

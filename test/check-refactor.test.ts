@@ -256,13 +256,19 @@ describe("the rule picked by the title's type", () => {
         { write: "package.json", text: pkg(["dist", "test"]) },
         { write: "package.json", text: pkg().replace('"files":["dist"],', "") },
         { write: "package.json" },
+        { write: "package.json", text: "null\n" },
+        { write: "package.json", text: "[]\n" },
         { remove: "package.json" },
       ]) {
         const r = await rule(`${type}: x`, [edit], "Proof: none, ships the tests as well\n");
         expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
-        expect(r.out).toMatch(/- package.json ("files"|\(removed or unreadable\))/);
+        expect(r.out).toMatch(/- package.json ("files"|\((removed or )?unreadable\))/);
       }
     }
+    const bump = { write: "package.json", text: pkg().replace("4.6.6", "4.6.7") };
+    const broken = await rule("docs: x", [bump], "", { NODE_OPTIONS: "--require=/nonexistent" });
+    expect(broken.status).toBe(1);
+    expect(broken.out).toContain("- package.json (unreadable)");
   });
 
   it("passes a revert only when it is exactly the inverse of the one commit it names", async () => {
