@@ -120,7 +120,7 @@ describe("detectApis on a repository built to slow it down", () => {
     tempDirs.push(dir);
     await writeFile(join(dir, "x\n::error::\u202Ey.py"), "import openai\n");
     const [summary] = await init(dir);
-    expect(summary).toBe("Scanned repo: found openai (x?::error::?y.py: import openai)");
+    expect(summary).toBe("Scanned repo: found openai (x?::error::\\u202ey.py: import openai)");
   });
 
   it.skipIf(process.platform === "win32")("prints folder names without their control characters, and no check mark on Not checked", async () => {

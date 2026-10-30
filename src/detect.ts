@@ -79,11 +79,19 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
- * A file or folder name from the repository as report text: each control or direction-changing character
- * becomes "?", so a name can't start a new line (a forged report line, or a GitHub Actions command) or reorder one.
+ * Text from the repository with each DEL or C1 control (U+009B reads as ESC [ in some terminals), direction-changing
+ * character or line separator written out as \u009b, so it can't hide or reorder text. On screen the escape is
+ * visible; inside a JSON string it decodes to the same character, which JSON.stringify leaves raw.
+ */
+export const escapeHidden = (text: string) =>
+  text.replace(/[\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+
+/**
+ * A file or folder name from the repository as report text: each other control character becomes "?", so a name
+ * can't start a new line (a forged report line, or a GitHub Actions command), and `escapeHidden` keeps it from reordering one.
  */
 // eslint-disable-next-line no-control-regex
-export const shown = (name: string) => name.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, "?");
+export const shown = (name: string) => escapeHidden(name.replace(/[\u0000-\u001f]/g, "?"));
 
 /** "a, b, c, d, e and 2 more", each item through `shown` */
 export const firstFive = (items: readonly string[]) => `${items.slice(0, 5).map(shown).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;

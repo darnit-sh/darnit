@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { checkJson, checkReport, exitCodeForCheck, render } from "./check.js";
+import { escapeHidden } from "./detect.js";
 import { exitCodeFor, fix, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 import { updateNotice } from "./update.js";
@@ -97,7 +98,7 @@ program
       ...(flags.only ? { only: flags.only } : {}),
       ...(typeof flags.test === "string" ? { test: flags.test } : {}),
     });
-    if (flags.json) console.log(JSON.stringify({ version, ...fixToJson(result) }, null, 2));
+    if (flags.json) console.log(escapeHidden(JSON.stringify({ version, ...fixToJson(result) }, null, 2)));
     else {
       if (result.diff) console.log(forTerminal(result.diff, true));
       console.log(forTerminal(renderSummary(result)));

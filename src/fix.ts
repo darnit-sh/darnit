@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
-import { shown, vendorName } from "./detect.js";
+import { escapeHidden, shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
@@ -424,21 +424,21 @@ const longestBacktickRun = (s: string) => Math.max(0, ...(s.match(/`+/g) ?? []).
 
 /**
  * Text from the repository (a file name, a command) as one code span that GitHub shows literally:
- * control characters are written out (a newline as \\n), and the fence is longer than any backtick run inside.
+ * control and direction-changing characters are written out (a newline as \\n), and the fence is longer than any backtick run inside.
  */
 function code(text: string): string {
   // eslint-disable-next-line no-control-regex
-  const t = text.replace(INVISIBLE, "").replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => JSON.stringify(c).slice(1, -1));
+  const t = escapeHidden(text).replace(INVISIBLE, "").replace(/[\u0000-\u001f]/g, (c) => JSON.stringify(c).slice(1, -1));
   const fence = "`".repeat(longestBacktickRun(t) + 1);
   const pad = /^[` ]|[` ]$/.test(t) ? " " : "";
   return `${fence}${pad}${t}${pad}${fence}`;
 }
 
-/** Text from the repository on its way to a terminal: control characters go, and color codes too unless `color`. */
+/** Text from the repository on its way to a terminal: control characters go, and color codes too unless `color`; `escapeHidden` writes out the rest. */
 export const forTerminal = (text: string, color = false) =>
-  // eslint-disable-next-line no-control-regex
-  text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g : /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (m) =>
-    m.length > 1 ? m : "",
+  escapeHidden(
+    // eslint-disable-next-line no-control-regex
+    text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f]/g : /[\u0000-\u0008\u000b-\u001f]/g, (m) => (m.length > 1 ? m : "")),
   );
 
 /** Verbatim vendor text: GitHub renders a code span as literal text, so no links, HTML or mentions. */
@@ -497,7 +497,8 @@ export type PrEvidence = {
 export function prBody(record: ChangeRecord, files: readonly string[], version: string, evidence: PrEvidence = {}): string {
   const { build, tests, remaining = [], testsNote, buildNote, unconfirmed = [] } = evidence;
   const source = record.sources[0]!;
-  return [
+  // Test output from the repository goes in as it is; this writes out any character that could reorder or hide it.
+  return escapeHidden([
     prose(record.notes?.migration ?? title(record)),
     "",
     "## Why",
@@ -532,7 +533,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     "---",
     `darnit ${version}, change record [\`${record.id}\`](${recordUrl(record.id)})`,
     "",
-  ].join("\n");
+  ].join("\n"));
 }
 
 // Opened pull requests can't be edited later, so the footer links a darnit.sh path

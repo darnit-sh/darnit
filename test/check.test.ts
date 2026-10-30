@@ -471,13 +471,21 @@ describe.skipIf(process.platform === "win32")("check prints crafted file and fol
       expect(lines(text).filter((l) => l.startsWith("::"))).toEqual([]);
       expect(text).not.toMatch(/[\r\t\u202E]/);
       expect(text).toContain("a?::error::b.ts:2:");
-      expect(text).toContain("?gpj.ts:2:");
+      expect(text).toContain("\\u202egpj.ts:2:");
       expect(text).toContain("m?::warning::.md");
     }
     expect(render(hits, coverage, values, mentions)).toContain("v?::notice::.py:1:");
-    expect(render(hits, coverage, values, mentions)).toContain("(sent to localhost:1?abc;");
+    expect(render(hits, coverage, values, mentions)).toContain("(sent to localhost:1\\u202eabc;");
     const json = JSON.parse([...checkJson({ version: "t" }, { hits, possiblyAffected: values, mentions })].join("")) as { hits: { file: string }[] };
     expect(json.hits.map((h) => h.file)).toContain("a\n::error::b.ts");
+  });
+
+  it("escapes direction-changing and C1 characters in every part of the JSON report", () => {
+    const report = { version: "t", scanned: { files: 1, records: 1, tooLarge: ["\u202Ex\u2066\u009b.ts", "café 日本 🎉.ts"] } };
+    const text = [...checkJson(report, { hits: [], possiblyAffected: [], mentions: [] })].join("");
+    expect(text).not.toMatch(/[\u0080-\u009f\u202e\u2066]/);
+    expect(text).toContain(String.raw`"\u202ex\u2066\u009b.ts"`);
+    expect(JSON.parse(text)).toEqual({ ...report, hits: [], possiblyAffected: [], mentions: [] });
   });
 });
 
