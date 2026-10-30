@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { CREDENTIALS } from "./tests.js";
 
 const exec = promisify(execFile);
+
+// darnit's GitHub credentials open the pull request; the repository's own commands never get them.
+export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
 
 // The repo's own commands can write .git/config and .git/hooks, so git runs none of their hooks or
 // fsmonitor, never sees darnit's credentials, and takes file names literally, never as patterns.
@@ -15,6 +17,31 @@ const REMOTE = new Set(["push", "fetch", "pull", "ls-remote", "clone", "archive"
 const LOCAL_REMOTE = new Set(["get-url", "set-url", "rename", "remove", "rm", "set-branches", "add"]);
 // git's global options that take the next argument as their value.
 const VALUED = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix"]);
+
+// git's own list of the variables that pick a repository, its index and objects, or config local to
+// it (GIT_DIR, GIT_INDEX_FILE, GIT_CONFIG_COUNT...). Left in place they would point git() elsewhere.
+let repoLocal: Promise<string[]> | undefined;
+// The names git 2.40 through 2.47 print, for when git cannot be asked.
+const REPO_LOCAL = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY",
+  "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS",
+  "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR",
+];
+const repoLocalVars = () =>
+  (repoLocal ??= exec("git", ["rev-parse", "--local-env-vars"]).then(
+    ({ stdout }) => {
+      const names = stdout.split("\n").filter(Boolean);
+      return names.length > 0 ? names : REPO_LOCAL;
+    },
+    () => REPO_LOCAL,
+  ));
+
+/** The environment for git and the repository's own commands: no credentials, nothing that points git elsewhere. */
+export async function childEnv(): Promise<NodeJS.ProcessEnv> {
+  const env = { ...process.env };
+  for (const k of [...CREDENTIALS, ...(await repoLocalVars())]) delete env[k];
+  return env;
+}
 
 /** The git command `args` runs, after git's global options, and whether it can reach origin. */
 function command(args: string[]): { name: string; remote: boolean } {
@@ -38,8 +65,7 @@ function command(args: string[]): { name: string; remote: boolean } {
 export async function git(root: string, args: string[], stall?: number, site = GITHUB): Promise<string> {
   const { name, remote } = command(args);
   if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
-  const env: NodeJS.ProcessEnv = { ...process.env, GIT_LITERAL_PATHSPECS: "1" };
-  for (const k of CREDENTIALS) delete env[k];
+  const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1" };
   let timeout = 0;
   if (stall) {
     Object.assign(env, originAuth(site), { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
@@ -59,9 +85,10 @@ export async function git(root: string, args: string[], stall?: number, site = G
   }
 }
 
+/** True inside a checked-out work tree. In a bare repository or a .git folder git succeeds but prints false. */
 export const isRepo = (root: string) =>
   git(root, ["rev-parse", "--is-inside-work-tree"]).then(
-    () => true,
+    (out) => out.trim() === "true",
     () => false,
   );
 
@@ -96,11 +123,59 @@ export async function position(root: string): Promise<{ ref: string; detached: b
   return { ref: (await git(root, ["rev-parse", "HEAD"])).trim(), detached: true };
 }
 
-export const dirtyAmong = async (root: string, files: readonly string[]) =>
-  (await git(root, ["status", "--porcelain", "--", ...files])).trim() !== "";
-
 /** Tracked files under `root` with changes, staged or not, relative to `root`. */
 export const modified = async (root: string) => (await git(root, ["diff", "--name-only", "-z", "--relative", "HEAD"])).split("\0").filter(Boolean);
+
+/**
+ * Tracked files under `root` that git status calls changed, staged or not, relative to `root`. Unlike
+ * `modified`, this includes a file whose bytes differ only in what git would normalize, such as line endings.
+ */
+async function changedFiles(root: string): Promise<string[]> {
+  const prefix = (await git(root, ["rev-parse", "--show-prefix"])).trim();
+  const entries = (await git(root, ["--no-optional-locks", "status", "--porcelain", "-z", "--untracked-files=no"])).split("\0");
+  const out: string[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    // Paths are from the repository root. A rename or copy is followed by its source path, which has no status of its own.
+    const paths = /[RC]/.test(entry.slice(0, 2)) ? [entry.slice(3), entries[++i] ?? ""] : [entry.slice(3)];
+    for (const p of paths) if (p && p.startsWith(prefix)) out.push(p.slice(prefix.length));
+  }
+  return out;
+}
+
+/** A core setting as git reads a boolean, or undefined when it is not set. */
+const coreFlag = (root: string, name: string) =>
+  git(root, ["config", "--type=bool", "--get", `core.${name}`]).then(
+    (v) => v.trim() === "true",
+    () => undefined,
+  );
+
+/**
+ * Which of `files` (relative to `root`) git could not put back as they are now: changed since HEAD,
+ * staged or not, or with no plain committed copy in this repository (untracked, ignored, marked
+ * assume-unchanged or skip-worktree, or inside a nested repository or submodule). Lists the whole
+ * tree once rather than passing `files` to git, which matches each name against every entry.
+ */
+export async function uncommitted(root: string, files: readonly string[]): Promise<Uncommitted[]> {
+  if (files.length === 0) return [];
+  // Git on macOS lists names composed, whatever form the disk gives them in, so they are compared that way there.
+  const composed = (await coreFlag(root, "precomposeunicode")) ?? process.platform === "darwin";
+  const key = (f: string) => (composed ? f.normalize("NFC") : f);
+  const changed = new Set((await changedFiles(root)).map(key));
+  // -v tags each entry; "H " is a plain tracked file, anything else is a flag or a conflict git would not restore from.
+  const names = (await git(root, ["ls-files", "-v", "-z"])).split("\0").filter((e) => e.startsWith("H ")).map((e) => e.slice(2));
+  const tracked = new Set(names.map(key));
+  const caseless = (await coreFlag(root, "ignorecase")) ? new Map(names.map((n) => [key(n).toLowerCase(), n])) : undefined;
+  return files
+    .filter((f) => changed.has(key(f)) || !tracked.has(key(f)))
+    .map((file) => {
+      const gitName = tracked.has(key(file)) ? undefined : caseless?.get(key(file).toLowerCase());
+      return gitName ? { file, gitName } : { file };
+    });
+}
+
+/** A file git could not put back; `gitName` when git has it under a name that differs only in case. */
+export type Uncommitted = { file: string; gitName?: string };
 
 /** Puts tracked files back to their committed contents. */
 export const discard = async (root: string, files: readonly string[]) => {
@@ -129,14 +204,14 @@ export async function commit(root: string, subject: string, body: string): Promi
 function originAuth(site: string): NodeJS.ProcessEnv {
   const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
   if (!token || process.env.GITHUB_ACTIONS !== "true") return {};
-  const n = Number(process.env.GIT_CONFIG_COUNT) || 0;
   const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+  // git() drops any GIT_CONFIG_COUNT it inherits, so these are the only entries.
   return {
-    GIT_CONFIG_COUNT: String(n + 2),
-    [`GIT_CONFIG_KEY_${n}`]: `http.${site}.extraheader`,
-    [`GIT_CONFIG_VALUE_${n}`]: "",
-    [`GIT_CONFIG_KEY_${n + 1}`]: `http.${site}.extraheader`,
-    [`GIT_CONFIG_VALUE_${n + 1}`]: header,
+    GIT_CONFIG_COUNT: "2",
+    GIT_CONFIG_KEY_0: `http.${site}.extraheader`,
+    GIT_CONFIG_VALUE_0: "",
+    GIT_CONFIG_KEY_1: `http.${site}.extraheader`,
+    GIT_CONFIG_VALUE_1: header,
   };
 }
 

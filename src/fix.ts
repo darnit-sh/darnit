@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
-import { shown, vendorName } from "./detect.js";
+import { firstFive, shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
@@ -253,7 +253,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   const color = opts.color ?? false;
   const dryRun = opts.dryRun ?? false;
   if (!dryRun && !(await g.isRepo(root))) {
-    throw new Refusal("not a git repository; darnit only edits files it can undo. Use --dry-run to preview.");
+    throw new Refusal("not a checked-out git repository; darnit only edits files it can undo. Use --dry-run to preview.");
   }
   if (!dryRun && !(await g.hasCommit(root))) {
     throw new Refusal("the current branch has no commits yet; commit your files first. Use --dry-run to preview.");
@@ -324,9 +324,22 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     else if (skipped) base.testsNote = `${skipped}; pass the command with --test`;
     else if (noPython) base.testsNote = noPython;
   }
+  if (opts.pr && !opts.allowDirty && !(await g.isClean(root))) {
+    throw new Refusal("uncommitted changes in the working tree; commit or stash them, or pass --allow-dirty");
+  }
+  // Only files git can put back are edited; --allow-dirty tolerates edits elsewhere, never in these.
+  const wanted = [...new Set(applicable.flatMap((grp) => grp.files))];
+  const unsafe = await g.uncommitted(root, wanted);
+  const changed = unsafe.filter((u) => !u.gitName).map((u) => u.file);
+  const renamed = unsafe.filter((u) => u.gitName).map((u) => `${u.file} (git has ${u.gitName})`);
+  const why = [
+    ...(changed.length > 0 ? [`uncommitted changes in files darnit needs to edit: ${firstFive(changed)}; commit or stash them first so git can undo the rewrite`] : []),
+    ...(renamed.length > 0 ? [`files darnit needs to edit differ only in case from the names git has: ${firstFive(renamed)}; rename them back or commit the rename first`] : []),
+  ];
+  if (why.length > 0) throw new Refusal(`${why.join("; ")}, or preview with --dry-run`);
   if (opts.pr) return pullRequests(root, applicable, base, commands, opts);
 
-  const snap = await snapshotOf(root, [...new Set(applicable.flatMap((grp) => grp.files))]);
+  const snap = await snapshotOf(root, wanted);
   const touched: string[] = [];
   try {
     for (const grp of applicable) {
@@ -345,14 +358,6 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
 // One branch, one test run and one pull request per change. The working tree is
 // left exactly as it was found, on the branch it was found on.
 async function pullRequests(root: string, groups: Group[], base: FixResult, commands: Commands, opts: FixOptions): Promise<FixResult> {
-  if (!opts.allowDirty && !(await g.isClean(root))) {
-    throw new Refusal("uncommitted changes in the working tree; commit or stash them, or pass --allow-dirty");
-  }
-  // --allow-dirty tolerates edits elsewhere, never in the files darnit is about to commit.
-  const wanted = [...new Set(groups.flatMap((grp) => grp.files))];
-  if (await g.dirtyAmong(root, wanted)) {
-    throw new Refusal("uncommitted changes in files darnit needs to edit; commit or stash them first");
-  }
   const repo = opts.repo ? parseSlug(opts.repo) : parseRemote(await g.remoteUrl(root).catch(() => ""));
   if (!repo) throw new Refusal("could not tell which GitHub repository this is; pass --repo owner/name");
   const token = await githubToken();
