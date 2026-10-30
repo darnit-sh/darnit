@@ -4,7 +4,8 @@ import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promi
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
-import { detectApis, skippedNote, tooLargeNote, VENDORS, type Skipped } from "./detect.js";
+import { detectApis, readText, skippedNote, tooLargeNote, VENDORS, type Skipped } from "./detect.js";
+import { isRepo, uncommitted } from "./git.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -64,7 +65,7 @@ const unchanged = (rel: string) => `${rel} exists, left unchanged (--force to re
 const TEMP = /^\.darnit-[0-9a-f-]{36}\.tmp$/;
 
 /** Checks root/rel before anything is written. Returns why it is left alone, or the file a rewrite replaces. */
-async function inspect(root: string, rel: string, force: boolean): Promise<{ skip?: string; old?: Stats }> {
+async function inspect(root: string, rel: string, text: string, force: boolean): Promise<{ skip?: string; old?: Stats }> {
   await refuseOutside(root, join(root, rel), rel);
   const old = await lstat(join(root, rel)).catch((err: NodeJS.ErrnoException) => {
     if (err.code === "ENOENT") return undefined;
@@ -77,7 +78,25 @@ async function inspect(root: string, rel: string, force: boolean): Promise<{ ski
   }
   if (!force) return { skip: unchanged(rel) };
   if (!old.isFile()) throw new Error(`${rel} is not a file; darnit only rewrites files`);
+  if ((await readText(join(root, rel))) === text) return { skip: `${rel} is up to date, left unchanged` };
   return { old };
+}
+
+/** Refuses to rewrite files git could not put back, since the rewrite would lose their only copy. */
+async function refuseUncommitted(root: string, rels: string[]): Promise<void> {
+  if (rels.length === 0) return;
+  if (!(await isRepo(root))) {
+    const it = rels.length > 1 ? "them" : "it";
+    throw new Error(`not a checked-out git repository, so git could not put back ${rels.join(", ")} if --force rewrote ${it}; move ${it} aside first, then run init again`);
+  }
+  const unsafe = await uncommitted(root, rels);
+  const changed = unsafe.filter((u) => !u.gitName).map((u) => u.file);
+  const renamed = unsafe.filter((u) => u.gitName).map((u) => `${u.file} (git has ${u.gitName})`);
+  const why = [
+    ...(changed.length > 0 ? [`uncommitted changes in files init --force would rewrite: ${changed.join(", ")}; commit or stash them first so git can put them back`] : []),
+    ...(renamed.length > 0 ? [`files init --force would rewrite differ only in case from the names git has: ${renamed.join(", ")}; rename them back or commit the rename first`] : []),
+  ];
+  if (why.length > 0) throw new Error(why.join("; "));
 }
 
 /** `darnit init`: detect APIs, write darnit.yml and the scheduled workflow. Returns log lines. */
@@ -100,7 +119,8 @@ export async function init(root: string, { force = false } = {}): Promise<string
     ["darnit.yml", yml],
     [".github/workflows/darnit.yml", WORKFLOW],
   ] as const;
-  const plans = await Promise.all(files.map(([rel]) => inspect(root, rel, force)));
+  const plans = await Promise.all(files.map(([rel, text]) => inspect(root, rel, text, force)));
+  await refuseUncommitted(root, files.filter((_, i) => plans[i]?.old).map(([rel]) => rel));
   // Every file is written before any is renamed into place, so a failed write changes nothing. A rewrite goes to a new
   // file, so the old one, and any hard link to it, is never written.
   const made: string[] = [];
