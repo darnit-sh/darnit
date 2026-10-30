@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { atLeast, npmVersionFor, pypiVersions } from "../src/versions.js";
+import { cpuTime } from "./helpers.js";
 
 const tempDirs: string[] = [];
 afterEach(async () => {
@@ -102,9 +103,8 @@ describe("pypiVersions", () => {
 describe("versions on a repository built to slow it down", () => {
   it("finishes quickly on a requirements line padded with spaces", async () => {
     const dir = await dirWith({ "requirements.txt": `openai${" ".repeat(100_000)}\nopenai==1.50.0\n` });
-    const start = performance.now();
-    expect(await pypiVersions(dir, "openai")).toEqual([{ version: "1.50.0", from: "requirements.txt" }]);
-    expect(performance.now() - start).toBeLessThan(2000);
+    const time = await cpuTime(async () => expect(await pypiVersions(dir, "openai")).toEqual([{ version: "1.50.0", from: "requirements.txt" }]), 3, 2000);
+    expect(time).toBeLessThan(2000);
   });
 
   it("does not read a lock file over the size limit", async () => {
