@@ -116,6 +116,13 @@ async function changedFiles(root: string): Promise<string[]> {
   return out;
 }
 
+/** A core setting as git reads a boolean, or undefined when it is not set. */
+const coreFlag = (root: string, name: string) =>
+  git(root, ["config", "--type=bool", "--get", `core.${name}`]).then(
+    (v) => v.trim() === "true",
+    () => undefined,
+  );
+
 /**
  * Which of `files` (relative to `root`) git could not put back as they are now: changed since HEAD,
  * staged or not, or with no plain committed copy in this repository (untracked, ignored, marked
@@ -124,10 +131,13 @@ async function changedFiles(root: string): Promise<string[]> {
  */
 export async function uncommitted(root: string, files: readonly string[]): Promise<string[]> {
   if (files.length === 0) return [];
-  const changed = new Set(await changedFiles(root));
+  // Git on macOS lists names composed, whatever form the disk gives them in, so they are compared that way there.
+  const composed = (await coreFlag(root, "precomposeunicode")) ?? process.platform === "darwin";
+  const key = (f: string) => (composed ? f.normalize("NFC") : f);
+  const changed = new Set((await changedFiles(root)).map(key));
   // -v tags each entry; "H " is a plain tracked file, anything else is a flag or a conflict git would not restore from.
-  const tracked = new Set((await git(root, ["ls-files", "-v", "-z"])).split("\0").filter((e) => e.startsWith("H ")).map((e) => e.slice(2)));
-  return files.filter((f) => changed.has(f) || !tracked.has(f));
+  const tracked = new Set((await git(root, ["ls-files", "-v", "-z"])).split("\0").filter((e) => e.startsWith("H ")).map((e) => key(e.slice(2))));
+  return files.filter((f) => changed.has(key(f)) || !tracked.has(key(f)));
 }
 
 /** Puts tracked files back to their committed contents. */

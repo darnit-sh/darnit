@@ -5,6 +5,7 @@ import { createServer as createHttpServer, type IncomingMessage, type Server as 
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as g from "../src/git.js";
 
@@ -284,4 +285,63 @@ describe("push", () => {
     await g.push(dir, branch, url);
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
+});
+
+describe("uncommitted where git composes file names, as on macOS", () => {
+  // macOS git lists every name composed (NFC), whatever form readdir gives; Linux git keeps the form it was given.
+  // Composing git's output stands in for macOS git here.
+  async function composingGit(): Promise<typeof g> {
+    vi.resetModules();
+    vi.doMock("node:child_process", async (original) => {
+      const real = await original<typeof import("node:child_process")>();
+      const exec = promisify(real.execFile);
+      const execFile = Object.assign((...args: never[]) => (real.execFile as (...a: never[]) => unknown)(...args), {
+        [promisify.custom]: async (file: string, args: string[], opts: object) => {
+          const out = await exec(file, args, opts);
+          return { ...out, stdout: String(out.stdout).normalize("NFC") };
+        },
+      });
+      return { ...real, execFile };
+    });
+    return import("../src/git.js");
+  }
+
+  afterEach(() => {
+    vi.doUnmock("node:child_process");
+    vi.resetModules();
+  });
+
+  it.each([
+    ["decomposed", "é.js"],
+    ["composed", "é.js"],
+  ])("finds a clean file named %s on disk", async (_, name) => {
+    const dir = await repoWith({ [name]: "a\n" });
+    await g.git(dir, ["config", "core.precomposeunicode", "true"]);
+    expect(await (await composingGit()).uncommitted(dir, [name])).toEqual([]);
+  });
+
+  it("composes names on macOS when core.precomposeunicode is not set", async () => {
+    const dir = await repoWith({ "e\u0301.js": "a\n" });
+    await g.git(dir, ["config", "--unset-all", "core.precomposeunicode"]).catch(() => undefined);
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    try {
+      expect(await (await composingGit()).uncommitted(dir, ["e\u0301.js"])).toEqual([]);
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+  });
+
+  it("compares names exactly when core.precomposeunicode is off", async () => {
+    const dir = await repoWith({ "é.js": "a\n" });
+    await g.git(dir, ["config", "core.precomposeunicode", "false"]);
+    expect(await (await composingGit()).uncommitted(dir, ["é.js"])).toEqual(["é.js"]);
+  });
+
+  // Two files whose names differ only in form can't both exist on macOS.
+  it.skipIf(process.platform === "darwin")("still refuses an untracked file whose name only looks like a tracked one", async () => {
+    const dir = await repoWith({ "é.js": "a\n" });
+    await writeFile(join(dir, "é.js"), "b\n");
+    expect(await g.uncommitted(dir, ["é.js", "é.js"])).toEqual(["é.js"]);
+  });
 });
