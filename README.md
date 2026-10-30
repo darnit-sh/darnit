@@ -305,8 +305,12 @@ permissions:
 
 With `persist-credentials: false` the checkout leaves no token in git config or
 under `$RUNNER_TEMP` for your install scripts and tests to read. darnit hands the
-token to its own `git push` to github.com only, through that command's
-environment.
+token to its own git calls to github.com through each command's environment.
+That does not hold against the repository's own code: your install scripts and
+tests run first, in the same job, and git config they write to the repository,
+such as `http.curloptResolve` with `http.sslVerify false`, can send darnit's
+push, and the token with it, to another server. Only running the tests in a
+separate job that has no token removes this.
 
 Also turn on *Settings → Actions → General → Allow GitHub Actions to create
 and approve pull requests*. Pull requests opened this way don't trigger your
