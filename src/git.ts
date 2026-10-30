@@ -16,6 +16,11 @@ const LOCAL_REMOTE = new Set(["get-url", "set-url", "rename", "remove", "rm", "s
 // git's global options that take the next argument as their value.
 const VALUED = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix"]);
 
+// git's own list of the variables that pick a repository, its index and objects, or config local to
+// it (GIT_DIR, GIT_INDEX_FILE, GIT_CONFIG_COUNT...). Left in place they would point git() elsewhere.
+let repoLocal: Promise<string[]> | undefined;
+const repoLocalVars = () => (repoLocal ??= exec("git", ["rev-parse", "--local-env-vars"]).then(({ stdout }) => stdout.split("\n").filter(Boolean)));
+
 /** The git command `args` runs, after git's global options, and whether it can reach origin. */
 function command(args: string[]): { name: string; remote: boolean } {
   let i = 0;
@@ -39,7 +44,7 @@ export async function git(root: string, args: string[], stall?: number, site = G
   const { name, remote } = command(args);
   if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_LITERAL_PATHSPECS: "1" };
-  for (const k of CREDENTIALS) delete env[k];
+  for (const k of [...CREDENTIALS, ...(await repoLocalVars())]) delete env[k];
   let timeout = 0;
   if (stall) {
     Object.assign(env, originAuth(site), { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
@@ -129,14 +134,14 @@ export async function commit(root: string, subject: string, body: string): Promi
 function originAuth(site: string): NodeJS.ProcessEnv {
   const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
   if (!token || process.env.GITHUB_ACTIONS !== "true") return {};
-  const n = Number(process.env.GIT_CONFIG_COUNT) || 0;
   const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+  // git() drops any GIT_CONFIG_COUNT it inherits, so these are the only entries.
   return {
-    GIT_CONFIG_COUNT: String(n + 2),
-    [`GIT_CONFIG_KEY_${n}`]: `http.${site}.extraheader`,
-    [`GIT_CONFIG_VALUE_${n}`]: "",
-    [`GIT_CONFIG_KEY_${n + 1}`]: `http.${site}.extraheader`,
-    [`GIT_CONFIG_VALUE_${n + 1}`]: header,
+    GIT_CONFIG_COUNT: "2",
+    GIT_CONFIG_KEY_0: `http.${site}.extraheader`,
+    GIT_CONFIG_VALUE_0: "",
+    GIT_CONFIG_KEY_1: `http.${site}.extraheader`,
+    GIT_CONFIG_VALUE_1: header,
   };
 }
 
