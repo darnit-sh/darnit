@@ -258,14 +258,17 @@ describe("push", () => {
     }
   }, 20_000);
 
-  it("takes GH_TOKEN for the push when GITHUB_TOKEN is set but empty", async () => {
+  it("takes GH_TOKEN when GITHUB_TOKEN is set but empty or blank, and sends either one trimmed", async () => {
     vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
     vi.stubEnv("GITHUB_ACTIONS", "true");
-    vi.stubEnv("GITHUB_TOKEN", "");
-    vi.stubEnv("GH_TOKEN", token);
     const dir = await repoWith({ "a.ts": "a\n" });
     const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
     const { url, remote } = await guardedOrigin(dir);
+    for (const [github, gh] of [["", token], [" \n", token], [`${token}\n`, ""], ["", ` ${token}\n`]]) {
+      vi.stubEnv("GITHUB_TOKEN", github);
+      vi.stubEnv("GH_TOKEN", gh);
+      expect(await g.remoteBranchExists(dir, branch, url), JSON.stringify([github, gh])).toBe(false);
+    }
     await g.push(dir, branch, url);
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);

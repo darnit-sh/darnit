@@ -185,6 +185,19 @@ describe("runTests", () => {
     }
   });
 
+  it("hides a token stored with surrounding whitespace, as darnit sends it trimmed", async () => {
+    const header = Buffer.from("x-access-token:ghp_testtoken1234567890").toString("base64");
+    const dir = await dirWith({ "leak.txt": `token ghp_testtoken1234567890 end ${header}` });
+    const saved = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = " ghp_testtoken1234567890\n";
+    try {
+      expect((await runTests(dir, "cat leak.txt")).output).toMatch(/^token \*\*\* end \*\*\*=*$/);
+    } finally {
+      if (saved === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = saved;
+    }
+  });
+
   it("hides the credential on a basic, bearer or token Authorization line, and nothing else", async () => {
     const lines = ["Authorization: see the docs", "authorization: basic", "next line", "Authorization: Basic c2VjcmV0 x", "AUTHORIZATION: bearer abc.def", "Proxy-Authorization:\tTOKEN ghx_1"];
     const dir = await dirWith({ "leak.txt": lines.join("\n") });

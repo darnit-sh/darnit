@@ -127,7 +127,7 @@ export async function commit(root: string, subject: string, body: string): Promi
  * or hand it to another program (core.sshCommand, credential.helper, core.askPass).
  */
 function originAuth(site: string): NodeJS.ProcessEnv {
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
   if (!token || process.env.GITHUB_ACTIONS !== "true") return {};
   const n = Number(process.env.GIT_CONFIG_COUNT) || 0;
   const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;

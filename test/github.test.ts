@@ -12,12 +12,14 @@ afterEach(() => {
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }));
 
 describe("githubToken", () => {
-  it("takes GH_TOKEN when GITHUB_TOKEN is set but empty, as a missing secret leaves it", async () => {
+  it("takes GH_TOKEN when GITHUB_TOKEN is set but empty or blank, as a missing secret leaves it, and trims either", async () => {
     // No gh on PATH, so only the environment can answer.
     vi.stubEnv("PATH", "");
-    vi.stubEnv("GITHUB_TOKEN", "");
-    vi.stubEnv("GH_TOKEN", "gho_fake_for_test");
-    expect(await githubToken()).toBe("gho_fake_for_test");
+    for (const [github, gh] of [["", "gho_fake_for_test"], ["  \n", "gho_fake_for_test"], ["gho_fake_for_test\n", ""], ["", " gho_fake_for_test\n"]]) {
+      vi.stubEnv("GITHUB_TOKEN", github);
+      vi.stubEnv("GH_TOKEN", gh);
+      expect(await githubToken(), JSON.stringify([github, gh])).toBe("gho_fake_for_test");
+    }
   });
 });
 
