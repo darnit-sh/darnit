@@ -188,6 +188,40 @@ describe("git works on the folder it was given", () => {
       vi.unstubAllEnvs();
     }
   });
+
+  it("isRepo is true only inside a checked-out work tree, not in a bare repository or a .git folder", async () => {
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const parent = await mkdtemp(join(tmpdir(), "darnit-isrepo-"));
+    tempDirs.push(parent);
+    await mkdir(join(dir, "sub"));
+    await g.git(dir, ["worktree", "add", "-q", "--detach", join(parent, "wt")]);
+    // Named like a bare repository, but a work tree.
+    const clone = (...args: string[]) => promisify(execFile)("git", ["clone", "-q", ...args], { cwd: parent });
+    await clone(dir, "look.git");
+    await clone("--bare", dir, "bare.git");
+    await mkdir(join(parent, "plain", ".git"), { recursive: true });
+    const cases: [string, boolean][] = [
+      [dir, true],
+      [join(dir, "sub"), true],
+      [join(parent, "wt"), true],
+      [join(parent, "look.git"), true],
+      [join(parent, "bare.git"), false],
+      [join(parent, "bare.git", "refs"), false],
+      [join(dir, ".git"), false],
+      [join(dir, ".git", "objects"), false],
+      [join(parent, "plain"), false],
+      [join(parent, "plain", ".git"), false],
+    ];
+    for (const [path, expected] of cases) expect(await g.isRepo(path), path).toBe(expected);
+    // GIT_DIR from the environment does not make a bare repository look checked out.
+    vi.stubEnv("GIT_DIR", join(dir, ".git"));
+    vi.stubEnv("GIT_WORK_TREE", dir);
+    try {
+      expect(await g.isRepo(join(parent, "bare.git"))).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("git calls that reach the remote end when it stalls", () => {
