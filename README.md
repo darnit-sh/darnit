@@ -40,9 +40,19 @@ darnit leaves it alone. That one is correct.
 
 ```
 npm install -g darnit
+darnit check
 ```
 
-Or skip the install: `npx darnit check`. Needs Node 22.12 or newer.
+Or skip the install: `npx darnit check`. Run inside a repository, npx trusts it: a
+darnit in its `node_modules` or a setting in its `.npmrc` can run the repository's
+own code before darnit starts. Needs Node 22.12 or newer.
+
+### Code you don't trust
+
+Run `check` only, from outside the repository, with its path:
+`darnit check path/to/repo`, or `npx darnit check path/to/repo` from another
+folder. `check` reads the files and runs nothing from them. `fix` runs the
+repository's own build and tests, so run it only on code you would run yourself.
 
 The official package is `darnit` on npm. Its source is
 [github.com/darnit-sh/darnit](https://github.com/darnit-sh/darnit) and its site
@@ -82,6 +92,9 @@ Want one covered? Open an issue.
 Reads JavaScript, TypeScript and Python.
 
 ## Commands
+
+Each command works on the current folder, or on the folder named after it, as in
+`darnit check path/to/repo`.
 
 ### `darnit init`
 
@@ -257,10 +270,11 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      - run: npx darnit check
+      - run: cd "${RUNNER_TEMP:?}" && npx darnit check "${GITHUB_WORKSPACE:?}"
 ```
 
-Once a day it runs `check`. The day a reviewed or parser-verified change hits your code, the run fails and
+Once a day it runs `check`. npx starts outside your checkout, so nothing in the
+repository can change which darnit runs. The day a reviewed or parser-verified change hits your code, the run fails and
 GitHub tells you, like any failed workflow. Scheduled workflows only run from
 the default branch, so commit this file there.
 
@@ -284,7 +298,7 @@ permissions:
           persist-credentials: false
 # ...and the last step replaced with:
       - run: npm ci   # or whatever installs your project
-      - run: npx darnit fix --pr
+      - run: cd "${RUNNER_TEMP:?}" && npx darnit fix --pr "${GITHUB_WORKSPACE:?}"
         env:
           GITHUB_TOKEN: ${{ github.token }}
 ```

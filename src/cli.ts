@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { once } from "node:events";
+import { stat } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { checkJson, checkReport, exitCodeForCheck, render } from "./check.js";
 import { exitCodeFor, fix, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
@@ -8,6 +10,16 @@ import { init } from "./init.js";
 import { updateNotice } from "./update.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+
+const DIR = "the repository's folder (default: the current folder)";
+
+/** The folder a command works on, as an absolute path; the current folder when none is given. An empty path,
+ * as from an unset variable in a workflow, is refused rather than read as the current folder. */
+async function folder(dir = process.cwd()): Promise<string> {
+  const abs = resolve(dir);
+  if (!dir.trim() || !(await stat(abs).catch(() => undefined))?.isDirectory()) throw new Error(`${dir.trim() ? dir : `"${dir}"`} is not a folder`);
+  return abs;
+}
 
 // Exit codes: 0 nothing to act on, 1 call sites of a reviewed or parser-verified change found, 2 darnit itself failed.
 // process.exitCode (not process.exit) so a long report is fully flushed through a pipe.
@@ -23,19 +35,22 @@ const program = new Command()
 program
   .command("init")
   .description("detect the APIs this repo uses and install the scheduled check")
+  .argument("[dir]", DIR)
   .option("--force", "rewrite darnit.yml and the workflow if they exist")
-  .action(async ({ force }: { force?: boolean }) => {
-    for (const line of await init(process.cwd(), { force: force ?? false })) console.log(forTerminal(line.startsWith("Not checked:") ? line : `✓ ${line}`));
+  .action(async (dir: string | undefined, { force }: { force?: boolean }) => {
+    for (const line of await init(await folder(dir), { force: force ?? false })) console.log(forTerminal(line.startsWith("Not checked:") ? line : `✓ ${line}`));
   });
 
 program
   .command("check")
   .description("report vendor API changes that affect this repo's call sites")
+  .argument("[dir]", DIR)
   .option("--json", "machine-readable output")
   .option("--mentions", "list every line that mentions a retired or retiring model name")
-  .action(async ({ json, mentions: all }: { json?: boolean; mentions?: boolean }) => {
+  .action(async (dir: string | undefined, { json, mentions: all }: { json?: boolean; mentions?: boolean }) => {
+    const root = await folder(dir);
     const update = updateNotice(version, { env: process.env, json });
-    const { hits, coverage, values, mentions } = await checkReport(process.cwd());
+    const { hits, coverage, values, mentions } = await checkReport(root);
     if (json) {
       const out = process.stdout;
       // A reader that stops early (`| head`) ends the report quietly, as with console.log.
@@ -59,6 +74,7 @@ type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: s
 program
   .command("fix")
   .description("apply the rewrite for each affected change, run your tests, show the diff")
+  .argument("[dir]", DIR)
   .option("--dry-run", "show what would change without writing anything")
   .option("--pr", "commit on a branch, push, and open one pull request per change")
   .option("--allow-dirty", "let --pr run with uncommitted changes present")
@@ -67,9 +83,10 @@ program
   .option("--test <command>", "run this instead of the detected test command")
   .option("--no-test", "skip tests and the build check")
   .option("--json", "machine-readable output")
-  .action(async (flags: FixFlags) => {
+  .action(async (dir: string | undefined, flags: FixFlags) => {
+    const root = await folder(dir);
     const update = updateNotice(version, { env: process.env, json: flags.json });
-    const result = await fix(process.cwd(), {
+    const result = await fix(root, {
       dryRun: flags.dryRun ?? false,
       pr: flags.pr ?? false,
       allowDirty: flags.allowDirty ?? false,

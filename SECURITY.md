@@ -41,9 +41,11 @@ new 0.2 release on their next run.
 
 - `fix` runs your repository's build and test commands; that is its job. Run `fix` only on
   repositories whose code you would run yourself.
-- Run inside a repository, `npx darnit` may use a darnit from that repository's `node_modules`, or
-  settings such as the registry from its `.npmrc`. On code you do not trust, install darnit from
-  outside the repository (`npm install -g darnit`) and run `darnit check` in it.
+- Run inside a repository, `npx darnit` trusts that repository: a darnit in its `node_modules` or a
+  setting in its `.npmrc` can run its code before darnit starts. On code you do not trust, run
+  `check` only, from outside the repository, with its path: `darnit check path/to/repo` after
+  `npm install -g darnit`, or `npx darnit check path/to/repo` from another folder. The workflow
+  `darnit init` writes starts npx from `$RUNNER_TEMP` for this reason.
 - Problems in a vendor's API or SDK.
 - Problems in a dependency that darnit does not reach. Report those upstream, and tell us if
   darnit is affected.
