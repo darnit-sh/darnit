@@ -85,9 +85,10 @@ export async function git(root: string, args: string[], stall?: number, site = G
   }
 }
 
+/** True inside a checked-out work tree. In a bare repository or a .git folder git succeeds but prints false. */
 export const isRepo = (root: string) =>
   git(root, ["rev-parse", "--is-inside-work-tree"]).then(
-    () => true,
+    (out) => out.trim() === "true",
     () => false,
   );
 
