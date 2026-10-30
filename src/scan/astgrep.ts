@@ -207,6 +207,29 @@ function ruleFor(context: string, selector: string) {
   return { any: [context, ...fallbacks].map((c) => ({ pattern: { context: c, selector } })) };
 }
 
+// Pattern sets that compiled, so records loaded again in the same process are not compiled again.
+const compiledSets = new Set<string>();
+
+/**
+ * Compiles `patterns` for every grammar a `lang` file is parsed with, so a pattern ast-grep rejects
+ * fails when its record loads instead of on the first file it would scan. Throws naming the pattern and grammar.
+ */
+export function compilePatterns(lang: Lang, patterns: readonly AstGrepPattern[]): void {
+  const key = `${lang}\0${JSON.stringify(patterns)}`;
+  if (compiledSets.has(key)) return;
+  for (const grammar of new Set(Object.values(GRAMMAR_BY_EXT).filter((g) => g.lang === lang).map((g) => g.grammar))) {
+    const root = parse(grammar, "").root();
+    for (const [i, { context, selector }] of patterns.entries()) {
+      try {
+        root.findAll({ rule: ruleFor(context, selector) });
+      } catch (err) {
+        throw new Error(`${lang} pattern ${i + 1} does not compile for ${String(grammar).toLowerCase()}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      }
+    }
+  }
+  compiledSets.add(key);
+}
+
 /** Every node in `source` matching any of `patterns`, optionally gated. `parsed` gives the file's syntax tree, so callers can share one. */
 export function findMatches(source: string, grammar: Grammar, allPatterns: readonly AstGrepPattern[], gate?: Gate, parsed = () => parse(grammar, source).root()): Match[] {
   // A plain text check before parsing: most files contain none of a pattern's quoted text.

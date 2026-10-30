@@ -148,8 +148,15 @@ export async function runPackFixtures(packDir: string, record: ChangeRecord): Pr
     return [{ pack, case: "-", problems: ["no fixtures/ cases; a pack without passing fixtures does not ship"] }];
   }
   const results: CaseResult[] = [];
+  // A language with patterns or rules but no fixture file is never run in CI, so a broken pattern or rule in it ships.
+  const untested = new Set<Lang>(Object.keys(record.detection.astGrepPatterns) as Lang[]);
+  for (const lang of LANGS) if ((await ruleFiles(packDir, lang)).length > 0) untested.add(lang);
   for (const name of cases) {
     const caseDir = join(packDir, "fixtures", name);
+    for (const file of await listFiles(join(caseDir, "before"))) {
+      const lang = grammarFor(file)?.lang;
+      if (lang) untested.delete(lang);
+    }
     const problems: string[] = [];
     try {
       await checkDetection(record, caseDir, problems);
@@ -159,5 +166,6 @@ export async function runPackFixtures(packDir: string, record: ChangeRecord): Pr
     }
     results.push({ pack, case: name, problems });
   }
+  for (const lang of untested) results.push({ pack, case: "-", problems: [`${record.id}: no fixture case has a ${lang} file in before/, so its ${lang} patterns and rules are never run`] });
   return results;
 }
