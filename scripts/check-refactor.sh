@@ -29,18 +29,19 @@ type=$(title_type)
 
 mb=$(git merge-base "$base" "$head")
 
-# Modules the suite runs and proves with besides the tests: the runners and the modules tests import.
+# What the suite and the pull request checks run besides the tests: the runners, the checks and the
+# modules tests import.
 guarded() {
-  grep -E '^"?(scripts/(fixtures|e2e|golden)\.ts|test/.*\.[cm]?[jt]s)"?$' |
+  grep -E '^"?(scripts/((fixtures|e2e|golden)\.ts|check-[^/]+|pr-common\.sh)|test/.*\.[cm]?[jt]s)"?$' |
     grep -vE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
 }
 # Those this change edits or removes, or shadows with an added file of the same path minus its extension
-# (test/helpers.js beside test/helpers.ts), and any test runner config at all.
+# (test/helpers.js beside test/helpers.ts), and any test runner config or workflow at all.
 suite_files() {
   paths --diff-filter=DMT | guarded
   { git ls-tree -r --name-only "$mb" | guarded | sed 's/^/G /'; paths --diff-filter=A | sed 's/^/A /'; } |
     awk '{ p = substr($0, 3); s = p; sub(/^"/, "", s); sub(/\.[^.\/]*"?$/, "", s) } $1 == "G" { g[s] = 1; next } s in g { print p }'
-  paths | grep -E '^"?(vitest\.config|vite\.config|vitest\.workspace)\.[^/]*"?$' || true
+  paths | grep -E '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|\.github/(workflows|actions)/.*)"?$' || true
 }
 # package.json's "files", or each script this change adds, alters or removes. A package.json this
 # change leaves unreadable, or not an object, counts as changed, as does a reader that fails.
@@ -86,7 +87,7 @@ refactor | perf)
   fi
   ;;
 test | docs | chore | ci | build)
-  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules or package.json scripts"
+  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, pull request checks or workflows"
   case $type in
   test | ci) allowed="$suite only with a \`Proof: none, <reason>\` line" ;;
   *) allowed="nothing in $suite" ;;

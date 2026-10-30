@@ -21,6 +21,8 @@ const baseFiles = [
   "scripts/e2e.ts",
   "scripts/golden.ts",
   "scripts/fixtures.ts",
+  "scripts/check-pr.sh",
+  "scripts/pr-common.sh",
   "vitest.config.ts",
   ".github/workflows/ci.yml",
 ];
@@ -80,6 +82,32 @@ async function scratch(name: string) {
   await writeFile(file, "");
   return file;
 }
+
+// One edit to each kind of file that changes what the suite proves.
+const suiteEdits: Edit[] = [
+  { write: "vitest.config.ts" },
+  { remove: "vitest.config.ts" },
+  { write: "vitest.config.mts" },
+  { write: "vitest.config.json" },
+  { write: "vitest.workspace.json" },
+  { write: "vite.config.js" },
+  { write: "test/helpers.js" },
+  { write: "test/helpers.mjs" },
+  { write: "scripts/fixtures.js" },
+  { write: "scripts/fixtures.ts" },
+  { write: "scripts/e2e.ts" },
+  { write: "scripts/golden.ts" },
+  { write: "test/helpers.ts" },
+  { link: "test/helpers.ts" },
+  { write: "scripts/check-pr.sh" },
+  { write: "scripts/check-pr.ts" },
+  { remove: "scripts/pr-common.sh" },
+  { write: ".github/workflows/ci.yml" },
+  { write: ".github/workflows/new.yml" },
+  { write: ".github/actions/a/action.yml" },
+  { write: "package.json", text: pkg(undefined, "vitest run --passWithNoTests") },
+  { write: "package.json", text: pkg().replace(',"check":"npm test"', "") },
+];
 
 /** Runs the rule for `title` and `body`, given base's head commit, on a crafted repo. */
 async function rule(
@@ -195,7 +223,6 @@ describe("the rule picked by the title's type", () => {
       ["chore(deps-dev): bump the tooling group with 2 updates", { write: "package-lock.json" }],
       ["build(deps): bump yaml", bump],
       ["build: ship the docs", { write: "package.json", text: pkg(["dist", "docs"]) }],
-      ["ci: bump actions/create-github-app-token from 3.2.0 to 3.3.0", { write: ".github/workflows/ci.yml" }],
       ["test: cover x", { write: "test/a.test.ts" }],
       ["test: add a helper", { write: "test/more.ts" }],
       ["docs: readme", { write: "README.md" }],
@@ -206,29 +233,18 @@ describe("the rule picked by the title's type", () => {
     }
   });
 
-  it("fails test, docs, chore, ci and build changes that change what the suite proves", async () => {
-    const suite: Edit[] = [
-      { write: "vitest.config.ts" },
-      { remove: "vitest.config.ts" },
-      { write: "vitest.config.mts" },
-      { write: "vitest.config.json" },
-      { write: "vitest.workspace.json" },
-      { write: "vite.config.js" },
-      { write: "test/helpers.js" },
-      { write: "test/helpers.mjs" },
-      { write: "scripts/fixtures.js" },
-      { write: "scripts/fixtures.ts" },
-      { write: "scripts/e2e.ts" },
-      { write: "scripts/golden.ts" },
-      { write: "test/helpers.ts" },
-      { link: "test/helpers.ts" },
-      { write: "package.json", text: pkg(undefined, "vitest run --passWithNoTests") },
-      { write: "package.json", text: pkg().replace(',"check":"npm test"', "") },
-    ];
-    const cases = [
-      ...suite.map((edit) => ["test", edit] as const),
-      ...["docs", "chore", "ci", "build"].flatMap((type) => [suite[0]!, suite[6]!, suite.at(-2)!].map((edit) => [type, edit] as const)),
-    ];
+  it("fails a test change that changes what the suite proves", async () => {
+    for (const edit of suiteEdits) {
+      const r = await rule("test: x", [edit]);
+      expect(r.status, JSON.stringify(edit)).toBe(1);
+      expect(r.out).toContain("**Failed:**");
+    }
+  });
+
+  it("fails docs, chore, ci and build changes that change what the suite proves", async () => {
+    const cases = ["docs", "chore", "ci", "build"].flatMap((type) =>
+      [0, 6, 14, 18, suiteEdits.length - 2].map((i) => [type, suiteEdits[i]!] as const),
+    );
     for (const [type, edit] of cases) {
       const r = await rule(`${type}: x`, [edit]);
       expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
@@ -249,6 +265,8 @@ describe("the rule picked by the title's type", () => {
 
   it("lets only test and ci change the suite, and only with a reason a reader sees", async () => {
     const reason = "Proof: none, gives slow process tests more time\n";
+    const bump = "ci: bump actions/create-github-app-token from 3.2.0 to 3.3.0";
+    expect((await rule(bump, [{ write: ".github/workflows/ci.yml" }], "Proof: none, bumps one action pin\n")).status).toBe(0);
     for (const type of ["test", "ci"]) {
       const r = await rule(`${type}: x`, [{ write: "vitest.config.ts" }, { write: "test/helpers.ts" }], reason);
       expect(r.status, type).toBe(0);
