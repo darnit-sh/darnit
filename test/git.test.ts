@@ -99,12 +99,12 @@ describe("git treats the repo as untrusted", () => {
 });
 
 /** The environment git gives a program it runs, as `NAME=value` lines: `env` stands in for the diff tool. */
-async function gitChildEnv(): Promise<string> {
+async function gitChildEnv(git = g.git): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "darnit-env-"));
   tempDirs.push(dir);
   await writeFile(join(dir, "a"), "a\n");
   await writeFile(join(dir, "b"), "b\n");
-  return g.git(dir, ["-c", "diff.external=env; true", "diff", "--no-index", "--ext-diff", "a", "b"]).catch((err: { code?: number; stdout?: string }) => {
+  return git(dir, ["-c", "diff.external=env; true", "diff", "--no-index", "--ext-diff", "a", "b"]).catch((err: { code?: number; stdout?: string }) => {
     if (err.code === 1 && err.stdout !== undefined) return err.stdout;
     throw err;
   });
@@ -124,6 +124,32 @@ describe("git works on the folder it was given", () => {
       expect(await gitChildEnv(), name).not.toContain("darnit-marker");
       expect((await runTests(dir, "env | grep -c darnit-marker")).output, name).toBe("0");
       vi.unstubAllEnvs();
+    }
+  });
+
+  it.each([
+    ["fails", () => Promise.reject(new Error("git: not found"))],
+    ["prints nothing", () => Promise.resolve({ stdout: "", stderr: "" })],
+  ])("keeps the same variables out when asking git for its list %s", async (_, answer) => {
+    vi.resetModules();
+    vi.doMock("node:child_process", async (original) => {
+      const real = await original<typeof import("node:child_process")>();
+      const run = promisify(real.execFile);
+      const execFile = Object.assign(() => {}, {
+        [promisify.custom]: (file: string, args: string[], opts: object) => (args.includes("--local-env-vars") ? answer() : run(file, args, opts)),
+      });
+      return { ...real, execFile };
+    });
+    try {
+      const fresh = await import("../src/git.js");
+      for (const name of (await promisify(execFile)("git", ["rev-parse", "--local-env-vars"])).stdout.split("\n").filter(Boolean)) {
+        vi.stubEnv(name, `darnit-marker-${name}`);
+        expect(await gitChildEnv(fresh.git), name).not.toContain("darnit-marker");
+        vi.unstubAllEnvs();
+      }
+    } finally {
+      vi.doUnmock("node:child_process");
+      vi.resetModules();
     }
   });
 

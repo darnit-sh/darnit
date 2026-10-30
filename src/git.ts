@@ -21,7 +21,20 @@ const VALUED = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "
 // git's own list of the variables that pick a repository, its index and objects, or config local to
 // it (GIT_DIR, GIT_INDEX_FILE, GIT_CONFIG_COUNT...). Left in place they would point git() elsewhere.
 let repoLocal: Promise<string[]> | undefined;
-const repoLocalVars = () => (repoLocal ??= exec("git", ["rev-parse", "--local-env-vars"]).then(({ stdout }) => stdout.split("\n").filter(Boolean)));
+// The names git 2.40 through 2.47 print, for when git cannot be asked.
+const REPO_LOCAL = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY",
+  "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS",
+  "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR",
+];
+const repoLocalVars = () =>
+  (repoLocal ??= exec("git", ["rev-parse", "--local-env-vars"]).then(
+    ({ stdout }) => {
+      const names = stdout.split("\n").filter(Boolean);
+      return names.length > 0 ? names : REPO_LOCAL;
+    },
+    () => REPO_LOCAL,
+  ));
 
 /** The environment for git and the repository's own commands: no credentials, nothing that points git elsewhere. */
 export async function childEnv(): Promise<NodeJS.ProcessEnv> {
