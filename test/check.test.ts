@@ -1349,11 +1349,9 @@ describe("check on a repository built to slow it down", () => {
       times(3000, (i) => `const c${i} = new OpenAI();\n${create("OpenAIRealtimeWS", `c${i}`)}${create("OpenAIRealtimeWebSocket", `c${i}`)}`),
     ].join("");
     const dir = await scratch({ "app.ts": text });
-    const start = process.cpuUsage();
-    const { hits } = await checkReport(dir);
-    const { user, system } = process.cpuUsage(start);
+    let hits: Hit[] = [];
     // About 0.9 seconds on a laptop.
-    expect((user + system) / 1000).toBeLessThan(5000);
+    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 5000)).toBeLessThan(5000);
     expect(new Set(hits.map((h) => h.line)).size).toBe(3000);
   });
 
@@ -1363,11 +1361,9 @@ describe("check on a repository built to slow it down", () => {
       times(16000, () => 'OpenAIRealtimeWS.create(c, { model: "gpt-4o-realtime-preview-2024-10-01" });\n'),
     ].join("");
     const dir = await scratch({ "app.ts": text });
-    const start = process.cpuUsage();
-    const { hits } = await checkReport(dir);
-    const { user, system } = process.cpuUsage(start);
+    let hits: Hit[] = [];
     // About 2 seconds on a laptop; 16 when each call walked every import of the name.
-    expect((user + system) / 1000).toBeLessThan(8000);
+    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 8000)).toBeLessThan(8000);
     expect(hits).toEqual([]);
   });
 

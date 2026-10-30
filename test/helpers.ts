@@ -8,7 +8,7 @@ const collect = runInNewContext("gc") as () => void;
 /**
  * Milliseconds of CPU time `f` takes, which shared runners and parallel test files disturb less than wall time.
  * With `runs`, the least of up to that many runs, as noise only adds time. With a `budget`, it stops at the
- * first run under it, so a healthy check runs once, or at one half again over it, so a regression fails quickly.
+ * first run under it, so a healthy check runs once, or once a run is over 1.5 times it, so a regression fails quickly.
  */
 export async function cpuTime(f: () => unknown, runs = 1, budget?: number): Promise<number> {
   let least = Infinity;
