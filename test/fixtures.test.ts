@@ -1,6 +1,7 @@
-import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadRecords } from "../src/records/load.js";
@@ -114,8 +115,25 @@ describe("pack fixtures", () => {
 describe("records whose patterns do not compile", () => {
   it("fail to load, naming the record and the language", async () => {
     await expect(loadRecords(BAD_PACKS)).rejects.toThrow(
-      /^invalid ChangeRecord at openai\/2026-01-01-bad-python-pattern\/change\.json:\nopenai:2026-01-01:bad-python-pattern: py pattern 1 does not compile for python: /,
+      /^invalid ChangeRecord at openai\/2026-01-01-bad-python-pattern\/change\.json:\nopenai:2026-01-01:bad-python-pattern: py pattern 1 does not compile for python: [\s\S]*\nThis is a problem in darnit's own change records, not in your code: upgrade darnit, or report it at https:\/\/github\.com\/darnit-sh\/darnit\/issues\.$/,
     );
+  });
+
+  it("fail the fixture runner with exit 1 and the message, without a stack trace", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-runner-"));
+    tempDirs.push(dir);
+    await cp(resolve("src"), join(dir, "src"), { recursive: true });
+    await mkdir(join(dir, "scripts"));
+    await cp(resolve("scripts", "fixtures.ts"), join(dir, "scripts", "fixtures.ts"));
+    await cp(BAD_PACKS, join(dir, "packs"), { recursive: true });
+    await cp(resolve("package.json"), join(dir, "package.json"));
+    await symlink(resolve("node_modules"), join(dir, "node_modules"));
+
+    const run = spawnSync(join(dir, "node_modules", ".bin", "tsx"), ["scripts/fixtures.ts"], { cwd: dir, encoding: "utf8" });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toMatch(/^✗ invalid ChangeRecord at openai\/2026-01-01-bad-python-pattern\/change\.json:\nopenai:2026-01-01:bad-python-pattern: py pattern 1 does not compile for python: /);
+    expect(run.stdout).toMatch(/upgrade darnit, or report it/);
+    expect(run.stdout + run.stderr).not.toMatch(/\n\s+at /);
   });
 
   it("fail for each grammar the language is scanned with, not only the one it is written for", () => {

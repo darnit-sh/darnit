@@ -9,7 +9,11 @@ import { runPackFixtures } from "../src/packs/fixtures.js";
 
 const only = process.argv.slice(2).map((dir) => resolve(dir));
 
-const records = await loadRecords();
+// A record that does not load is a failure to report, not a crash: its message names it, and a stack trace adds nothing.
+const records = await loadRecords().catch((err: unknown) => {
+  console.log(`✗ ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+});
 let failed = 0;
 let passed = 0;
 

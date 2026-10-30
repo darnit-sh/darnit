@@ -15,13 +15,15 @@ export type LoadedRecord = {
   file: string;
 };
 
+const BROKEN_RECORD = "This is a problem in darnit's own change records, not in your code: upgrade darnit, or report it at https://github.com/darnit-sh/darnit/issues.";
+
 /** A record whose patterns ast-grep cannot compile, in any language, does not load: it would throw on every file of that language. */
 function compiled(record: ChangeRecord, file: string): ChangeRecord {
   for (const [lang, patterns] of Object.entries(record.detection.astGrepPatterns) as [Lang, AstGrepPattern[]][]) {
     try {
       compilePatterns(lang, patterns);
     } catch (err) {
-      throw new ChangeRecordError(file, `${record.id}: ${(err as Error).message}`);
+      throw new ChangeRecordError(file, `${record.id}: ${(err as Error).message}\n${BROKEN_RECORD}`);
     }
   }
   return record;
