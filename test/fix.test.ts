@@ -110,6 +110,29 @@ describe("text from the repository in output", () => {
     expect((JSON.parse(json.stdout) as { diff: string }).diff).toContain(`-export const r = c.chat.completions.create({ ${call} });`);
   });
 
+  it("gives fix --json the address and path as they are, and writes them out on screen", async () => {
+    const local = 'import OpenAI from "openai";\nconst c = new OpenAI({ baseURL: "http://localhost:1\u202E\u001b[2Jabc/v1" });\nexport const r = c.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n';
+    const old = '{ "name": "openai", "version": "4.0.0" }';
+    for (const [files, expected, written] of [
+      [{ "local.ts": local }, "sent to localhost:1\u202E\u001b[2jabc, which may not be OpenAI", String.raw`needs a human: local.ts:3 (sent to localhost:1\u202e?[2jabc, which may not be OpenAI)`],
+      [{ "w\u202E\nd/app.js": SDK_CALL, "w\u202E\nd/node_modules/openai/package.json": old }, `(${join("w\u202E\nd", "node_modules", "openai")})`, String.raw`(w\u202e?d/node_modules/openai); upgrade it first`],
+    ] as const) {
+      const dir = await repoWith(files);
+      const json = await darnit(dir, "fix", "--dry-run", "--no-test", "--json");
+      expect(json.stdout).not.toMatch(HIDDEN);
+      const record = (JSON.parse(json.stdout) as { records: { reason: string; remaining: { note: string }[] }[] }).records[0]!;
+      expect([record.reason, ...record.remaining.map((r) => r.note)].join("\n")).toContain(expected);
+      const { stdout } = await darnit(dir, "fix", "--dry-run", "--no-test");
+      expect(stdout).not.toMatch(HIDDEN);
+      expect(stdout).toContain(written);
+    }
+    const note = "sent to localhost:1\u202E\u001b[2jabc, which may not be OpenAI";
+    const body = prBody((await loadRecords())[0]!.record, ["local.ts"], "t", { remaining: [{ file: "local.ts", line: 3, note }] });
+    expect(body).not.toContain("\u001b");
+    expect(body).not.toContain("\u202E");
+    expect(body).toContain("?[2jabc");
+  });
+
   /** Peak resident memory of darnit running `args` in `cwd`, with its output thrown away. */
   const peakRss = (cwd: string, args: string[]) =>
     new Promise<number>((resolve, reject) => {

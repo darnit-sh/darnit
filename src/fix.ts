@@ -117,7 +117,7 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
     if (only && !only.includes(hit.record.id)) continue;
     const group = byId.get(hit.record.id) ?? { record: hit.record, packDir: packs.get(hit.record.id)!, files: [], sites: 0 };
     if (mixed.has(key(hit)) || local.has(key(hit))) {
-      const note = hit.local ? `sent to ${hit.local.map(shown).join(" or ")}, which may not be OpenAI` : mixed.has(key(hit)) ? MIXED : LOCAL;
+      const note = hit.local ? `sent to ${hit.local.join(" or ")}, which may not be OpenAI` : mixed.has(key(hit)) ? MIXED : LOCAL;
       (group.held ??= []).push({ file: hit.file, line: hit.line, note });
     } else {
       if (!group.files.includes(hit.file)) group.files.push(hit.file);
@@ -171,7 +171,7 @@ async function versionGate(root: string, grp: Group): Promise<{ blocked?: string
   const py = grp.files.length > js.length;
   const unconfirmed: string[] = [];
   const tooOld = (pkg: string, min: string, found: Found) =>
-    `needs ${pkg} >= ${min}, this repo has ${found.version} (${shown(found.from)}); upgrade it first`;
+    `needs ${pkg} >= ${min}, this repo has ${found.version} (${found.from}); upgrade it first`;
 
   for (const [pkg, min] of js.length > 0 ? Object.entries(requires.npm ?? {}) : []) {
     let unknown = false;
@@ -524,7 +524,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     ...(tests?.output ? ["", "<details><summary>test output</summary>", "", fence(tests.output), tests.output, fence(tests.output), "", "</details>"] : []),
     "",
     ...(remaining.length > 0
-      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- ${code(`${r.file}:${r.line}`)}${r.note ? `: ${prose(r.note)}` : ""}`), ""]
+      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- ${code(`${r.file}:${r.line}`)}${r.note ? `: ${prose(shown(r.note))}` : ""}`), ""]
       : []),
     "## Not verified",
     ...unconfirmed.map((u) => `- This change needs ${u}; darnit could not find the version this repository uses.`),
@@ -572,7 +572,7 @@ export function renderSummary(result: FixResult): string {
   const lines: string[] = [];
   for (const r of result.records) {
     const where = `${r.files.length} file${r.files.length === 1 ? "" : "s"}`;
-    if (!r.applied) lines.push(`- ${r.title}: found in ${where}, not rewritten: ${r.reason}`);
+    if (!r.applied) lines.push(`- ${r.title}: found in ${where}, not rewritten: ${shown(r.reason ?? "")}`);
     else if (!r.pr && result.reverted) lines.push(`✗ ${r.title}: rewritten, then put back`);
     else if (!r.pr) lines.push(`✓ ${r.title}: ${r.remaining ? `${r.sites - r.remaining.length} of ${r.sites} call sites rewritten` : where}`);
     else if (r.pr.state === "opened") {
@@ -584,7 +584,7 @@ export function renderSummary(result: FixResult): string {
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;
-    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}:${s.line}${s.note ? ` (${s.note})` : ""}`);
+    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}:${s.line}${s.note ? ` (${shown(s.note)})` : ""}`);
     if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
   const notChecked = notCheckedNotes(result.coverage);
