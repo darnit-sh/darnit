@@ -1312,6 +1312,12 @@ describe("compilePatterns", () => {
     expect(() => compilePatterns("py", bad)).toThrow(/does not compile/);
     expect(() => compilePatterns("py", bad)).toThrow(/does not compile/);
   });
+
+  it("does not take a set that compiled for one language as compiled for another", () => {
+    const patterns = [{ context: "f(x)", selector: "call_expression" }];
+    compilePatterns("js", patterns);
+    expect(() => compilePatterns("py", patterns)).toThrow(/does not compile/);
+  });
 });
 
 describe("check parses each file once", () => {
