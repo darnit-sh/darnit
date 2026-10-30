@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parse, SgNode } from "@ast-grep/napi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, scan, snippet, toJson, type Hit } from "../src/check.js";
-import { MAX_FILE_BYTES } from "../src/detect.js";
+import { escapedPieces, escapeHidden, MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { compilePatterns, findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { SDK_CLASSES } from "../src/scan/clients.js";
@@ -486,6 +486,27 @@ describe.skipIf(process.platform === "win32")("check prints crafted file and fol
     expect(text).not.toMatch(/[\u0080-\u009f\u202e\u2066]/);
     expect(text).toContain(String.raw`"\u202ex\u2066\u009b.ts"`);
     expect(JSON.parse(text)).toEqual({ ...report, hits: [], possiblyAffected: [], mentions: [] });
+  });
+
+  it("writes a long escaped line of the JSON report in pieces, never as one string", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const hit = { record, file: "app.ts", line: 1, column: 1, text: "\u202E".repeat(200_000) } as unknown as Hit;
+    const chunks = [...checkJson({ version: "t" }, { hits: [hit], possiblyAffected: [], mentions: [] })];
+    expect(Math.max(...chunks.map((c) => c.length))).toBeLessThanOrEqual(6 * 65_536);
+    expect((JSON.parse(chunks.join("")) as { hits: { text: string }[] }).hits[0]!.text).toBe(hit.text);
+  });
+});
+
+describe("escapedPieces", () => {
+  it("escapes as escapeHidden does, in pieces that never cut a character in two", () => {
+    const text = `${"a".repeat(65_535)}🎉\u202E${"b".repeat(65_534)}👨\u200D👩${"\u2066".repeat(70_000)}`;
+    const pieces = [...escapedPieces(text)];
+    expect(pieces.length).toBeGreaterThan(2);
+    expect(pieces.join("")).toBe(escapeHidden(text));
+    // Each piece is written on its own, and a lone half of an emoji would be written as U+FFFD.
+    for (const piece of pieces) expect(Buffer.from(piece).toString()).toBe(piece);
+    expect(Math.max(...pieces.map((p) => p.length))).toBeLessThanOrEqual(6 * 65_536);
+    expect([...escapedPieces("")]).toEqual([]);
   });
 });
 

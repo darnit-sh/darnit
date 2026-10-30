@@ -86,6 +86,22 @@ export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" :
 export const escapeHidden = (text: string) =>
   text.replace(/[\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
+const PIECE = 65_536;
+
+/**
+ * `escapeHidden` over `text` a piece at a time, cut between surrogate pairs, for output written as it goes: escaping can
+ * make text six times longer, and a long line escaped whole would hold that copy in memory, or pass V8's string limit.
+ */
+export function* escapedPieces(text: string): Generator<string> {
+  for (let start = 0; start < text.length; ) {
+    let end = Math.min(start + PIECE, text.length);
+    const last = text.charCodeAt(end - 1);
+    if (end < text.length && last >= 0xd800 && last <= 0xdbff) end--;
+    yield escapeHidden(text.slice(start, end));
+    start = end;
+  }
+}
+
 /**
  * A file or folder name from the repository as report text: each other control character becomes "?", so a name
  * can't start a new line (a forged report line, or a GitHub Actions command), and `escapeHidden` keeps it from reordering one.

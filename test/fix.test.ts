@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
@@ -109,6 +109,34 @@ describe("text from the repository in output", () => {
     expect(json.stdout).not.toMatch(HIDDEN);
     expect((JSON.parse(json.stdout) as { diff: string }).diff).toContain(`-export const r = c.chat.completions.create({ ${call} });`);
   });
+
+  /** Peak resident memory of darnit running `args` in `cwd`, with its output thrown away. */
+  const peakRss = (cwd: string, args: string[]) =>
+    new Promise<number>((resolve, reject) => {
+      const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+      const hook = 'data:text/javascript,process.on("exit",()=>process.stderr.write("maxrss "+process.resourceUsage().maxRSS+"\\n"))';
+      const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"), "--import", hook, cli, ...args], {
+        cwd,
+        env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" },
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+      child.on("error", reject);
+      child.on("close", () => resolve(Number(/maxrss (\d+)/.exec(stderr)?.[1] ?? NaN)));
+    });
+
+  it("keeps peak memory within 1.5 times that of the same file with nothing to write out", async () => {
+    const file = (chars: string) =>
+      `import OpenAI from "openai";\nconst c = new OpenAI();\nexport const r = c.chat.completions.create({ max_tokens: cap("${chars.repeat(1_162_000)}") });\n`;
+    // 9.3 MB each, with as many characters: U+202E, U+2066 and U+009B take 3, 3 and 2 bytes in UTF-8, as do 日, 本 and é.
+    const crafted = await repoWith({ "app.ts": file("\u202E\u2066\u009b") });
+    const plain = await repoWith({ "app.ts": file("日本é") });
+    for (const args of [["check", "--json"], ["fix", "--dry-run", "--no-test"], ["fix", "--dry-run", "--no-test", "--json"]]) {
+      const [hidden, ordinary] = await Promise.all([peakRss(crafted, args), peakRss(plain, args)]);
+      expect(hidden, args.join(" ")).toBeLessThan(1.5 * ordinary);
+    }
+  }, 180_000);
 });
 
 describe("fix checks package versions before rewriting", () => {

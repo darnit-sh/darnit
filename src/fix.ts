@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
-import { escapeHidden, shown, vendorName } from "./detect.js";
+import { escapedPieces, escapeHidden, shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
@@ -434,12 +434,15 @@ function code(text: string): string {
   return `${fence}${pad}${t}${pad}${fence}`;
 }
 
+const withoutControls = (text: string, color: boolean) =>
+  // eslint-disable-next-line no-control-regex
+  text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f]/g : /[\u0000-\u0008\u000b-\u001f]/g, (m) => (m.length > 1 ? m : ""));
+
 /** Text from the repository on its way to a terminal: control characters go, and color codes too unless `color`; `escapeHidden` writes out the rest. */
-export const forTerminal = (text: string, color = false) =>
-  escapeHidden(
-    // eslint-disable-next-line no-control-regex
-    text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f]/g : /[\u0000-\u0008\u000b-\u001f]/g, (m) => (m.length > 1 ? m : "")),
-  );
+export const forTerminal = (text: string, color = false) => escapeHidden(withoutControls(text, color));
+
+/** `forTerminal` a piece at a time, for long text such as a diff. */
+export const forTerminalPieces = (text: string, color = false) => escapedPieces(withoutControls(text, color));
 
 /** Verbatim vendor text: GitHub renders a code span as literal text, so no links, HTML or mentions. */
 const plain = (text: string) => {
