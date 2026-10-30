@@ -1,12 +1,14 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as g from "../src/git.js";
+import { runTests } from "../src/tests.js";
 
 const tempDirs: string[] = [];
 afterEach(async () => {
@@ -93,6 +95,98 @@ describe("git treats the repo as untrusted", () => {
     const dir = await repoWith(Object.fromEntries(names.map((n) => [n, "a\n"])));
     for (const n of names) await writeFile(join(dir, n), "b\n");
     expect((await g.modified(dir)).sort()).toEqual([...names].sort());
+  });
+});
+
+/** The environment git gives a program it runs, as `NAME=value` lines: `env` stands in for the diff tool. */
+async function gitChildEnv(git = g.git): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "darnit-env-"));
+  tempDirs.push(dir);
+  await writeFile(join(dir, "a"), "a\n");
+  await writeFile(join(dir, "b"), "b\n");
+  return git(dir, ["-c", "diff.external=env; true", "diff", "--no-index", "--ext-diff", "a", "b"]).catch((err: { code?: number; stdout?: string }) => {
+    if (err.code === 1 && err.stdout !== undefined) return err.stdout;
+    throw err;
+  });
+}
+
+describe("git works on the folder it was given", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("hands git and the repository's commands none of the variables git keeps local to a repository", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-env-"));
+    tempDirs.push(dir);
+    const names = (await promisify(execFile)("git", ["rev-parse", "--local-env-vars"])).stdout.split("\n").filter(Boolean);
+    expect(names).toContain("GIT_DIR");
+    for (const name of names) {
+      // git sets GIT_PREFIX and GIT_CONFIG_PARAMETERS for its own children, so look for the value.
+      vi.stubEnv(name, `darnit-marker-${name}`);
+      expect(await gitChildEnv(), name).not.toContain("darnit-marker");
+      expect((await runTests(dir, "env | grep -c darnit-marker")).output, name).toBe("0");
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each([
+    ["fails", () => Promise.reject(new Error("git: not found"))],
+    ["prints nothing", () => Promise.resolve({ stdout: "", stderr: "" })],
+  ])("keeps the same variables out when asking git for its list %s", async (_, answer) => {
+    vi.resetModules();
+    vi.doMock("node:child_process", async (original) => {
+      const real = await original<typeof import("node:child_process")>();
+      const run = promisify(real.execFile);
+      const execFile = Object.assign(() => {}, {
+        [promisify.custom]: (file: string, args: string[], opts: object) => (args.includes("--local-env-vars") ? answer() : run(file, args, opts)),
+      });
+      return { ...real, execFile };
+    });
+    try {
+      const fresh = await import("../src/git.js");
+      for (const name of (await promisify(execFile)("git", ["rev-parse", "--local-env-vars"])).stdout.split("\n").filter(Boolean)) {
+        vi.stubEnv(name, `darnit-marker-${name}`);
+        expect(await gitChildEnv(fresh.git), name).not.toContain("darnit-marker");
+        vi.unstubAllEnvs();
+      }
+    } finally {
+      vi.doUnmock("node:child_process");
+      vi.resetModules();
+    }
+  });
+
+  it("still reads the config files GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME and XDG_CONFIG_HOME point to", async () => {
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const home = await mkdtemp(join(tmpdir(), "darnit-home-"));
+    tempDirs.push(home);
+    await mkdir(join(home, "git"));
+    const where = { GIT_CONFIG_GLOBAL: "global", GIT_CONFIG_SYSTEM: "system", HOME: ".gitconfig", XDG_CONFIG_HOME: "git/config" };
+    for (const [name, file] of Object.entries(where)) {
+      await writeFile(join(home, file), `[darnit]\n\tprobe = ${name}\n`);
+      vi.stubEnv(name, name.startsWith("GIT_") ? join(home, file) : home);
+      expect((await g.git(dir, ["config", "--get", "darnit.probe"])).trim()).toBe(name);
+      vi.unstubAllEnvs();
+      await rm(join(home, file));
+    }
+  });
+
+  it("reads the folder it was given when GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR, GIT_INDEX_FILE or GIT_OBJECT_DIRECTORY names another repository", async () => {
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const other = await repoWith({ "b.ts": "b\n" });
+    const head = (await g.git(dir, ["rev-parse", "HEAD"])).trim();
+    const otherGit = join(other, ".git");
+    const hostile: Record<string, string> = {
+      GIT_DIR: otherGit,
+      GIT_WORK_TREE: other,
+      GIT_COMMON_DIR: otherGit,
+      GIT_INDEX_FILE: join(otherGit, "index"),
+      GIT_OBJECT_DIRECTORY: join(otherGit, "objects"),
+    };
+    for (const name of Object.keys(hostile)) {
+      vi.stubEnv(name, hostile[name]);
+      expect(await g.git(dir, ["ls-files"]), name).toBe("a.ts\n");
+      expect((await g.git(dir, ["rev-parse", "HEAD"])).trim(), name).toBe(head);
+      expect(await g.isClean(dir), name).toBe(true);
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -256,6 +350,20 @@ describe("push", () => {
     for (const args of [["remote", "get-url", "origin"], ["-C", dir, "remote", "-v"], ["remote", "add", "other", url], ["-c", "x.y=z", "status"]]) {
       await g.git(dir, args);
     }
+  }, 20_000);
+
+  it("sends the token, and no git config the environment held, when the environment already set GIT_CONFIG_COUNT", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("GITHUB_TOKEN", token);
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir);
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "url.http://127.0.0.1:9/.insteadOf");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", url);
+    await g.push(dir, branch, url);
+    expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
 
   it("takes GH_TOKEN when GITHUB_TOKEN is set but empty or blank, and sends either one trimmed", async () => {
