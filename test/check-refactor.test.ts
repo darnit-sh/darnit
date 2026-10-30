@@ -318,6 +318,29 @@ describe("the rule picked by the title's type", () => {
     expect((await rule("test: x", [{ write: "test/e2e/s/.gitignore" }])).status).toBe(0);
   });
 
+  it("fails npm or yarn config under any type, unless test or ci gives a reason", async () => {
+    const reason = "Proof: none, the hostile scenario needs a new setting\n";
+    for (const [type, f] of [
+      ["fix", ".npmrc"],
+      ["feat", "packs/.npmrc"],
+      ["refactor", ".yarnrc.yml"],
+      ["perf", ".npmrc"],
+      ["revert", ".npmrc"],
+      ["docs", ".yarnrc"],
+      ["chore", ".npmrc"],
+      ["build", "packs/.npmrc"],
+      ["test", "test/e2e/s/.npmrc"],
+      ["ci", ".npmrc"],
+    ] as const) {
+      const r = await rule(`${type}: x`, [{ write: f }], type === "test" || type === "ci" ? "" : reason);
+      expect(r.status, `${type} ${f}`).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
+    }
+    for (const type of ["test", "ci"]) {
+      expect((await rule(`${type}: x`, [{ write: "test/e2e/s/.npmrc" }], reason)).status, type).toBe(0);
+    }
+  });
+
   it("passes a revert only when it is exactly the inverse of the one commit it names", async () => {
     const landed = [{ write: "src/a.ts" }, { remove: "test/golden/repo.txt" }];
     const line = (base: string) => `Text\r\nThis reverts commit ${base}.\r\n`;

@@ -28,6 +28,18 @@ base=$1 head=$2
 type=$(title_type)
 
 mb=$(git merge-base "$base" "$head")
+# npm and yarn config anywhere, which can send every npm run and npx in CI through a script of its own.
+config=$(paths | grep -E '(^|/)\.(npmrc|yarnrc[^/]*)"?$' || true)
+case $type in
+test | docs | chore | ci | build) ;;
+*)
+  if [ -n "$config" ]; then
+    say "**Failed:** npm or yarn config decides what every npm command in CI runs; only a test or ci change with a \`Proof: none, <reason>\` line may touch it. Touched:"
+    list "$config"
+    exit 1
+  fi
+  ;;
+esac
 
 # What the suite and the pull request checks run besides the tests: the runners, the checks and the
 # modules tests import.
@@ -94,7 +106,7 @@ refactor | perf)
   fi
   ;;
 test | docs | chore | ci | build)
-  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, pull request checks or workflows"
+  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, pull request checks, workflows or npm and yarn config"
   case $type in
   test | ci) allowed="$suite only with a \`Proof: none, <reason>\` line" ;;
   *) allowed="nothing in $suite" ;;
@@ -103,7 +115,7 @@ test | docs | chore | ci | build)
   say "**Rule for \`$type\`:** no change under src/, packs/*/*/rules/ or any change.json; $allowed; package.json \"files\", any .npmignore and any .gitignore below the root outside test/ $ships."
   touched=$(paths | grep -E "$CODE" || true)
   [ "$type" = build ] || touched=$(printf '%s\n' "$touched" "$(ships)" | grep . || true)
-  changed=$(printf '%s\n' "$(suite_files)" "$(package_json scripts)" | grep . || true)
+  changed=$(printf '%s\n' "$(suite_files)" "$(package_json scripts)" "$config" | grep . || true)
   if [ -n "$changed" ]; then
     reason=
     case $type in test | ci) opt_out ;; esac
