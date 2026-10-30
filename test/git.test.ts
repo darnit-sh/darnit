@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
+import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +21,39 @@ async function repoWith(files: Record<string, string>): Promise<string> {
   await g.git(dir, ["add", "."]);
   await g.git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]);
   return dir;
+}
+
+/** git http-backend serving the bare repos under `remote`; `send` writes each answer's body. */
+function backend(remote: string, send = (res: ServerResponse, body: Buffer) => void res.end(body)) {
+  return (req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url!, "http://x");
+    const cgi = spawn("git", ["http-backend"], {
+      env: {
+        ...process.env,
+        GIT_PROJECT_ROOT: remote,
+        GIT_HTTP_EXPORT_ALL: "1",
+        REMOTE_USER: "t",
+        PATH_INFO: url.pathname,
+        QUERY_STRING: url.search.slice(1),
+        REQUEST_METHOD: req.method,
+        CONTENT_TYPE: req.headers["content-type"] ?? "",
+        HTTP_CONTENT_ENCODING: req.headers["content-encoding"] ?? "",
+        ...(req.headers["content-length"] ? { CONTENT_LENGTH: req.headers["content-length"] } : {}),
+      },
+    });
+    res.on("close", () => cgi.kill());
+    req.pipe(cgi.stdin);
+    const out: Buffer[] = [];
+    cgi.stdout.on("data", (d: Buffer) => out.push(d));
+    cgi.on("close", () => {
+      const all = Buffer.concat(out);
+      const end = all.indexOf("\r\n\r\n");
+      const headers = Object.fromEntries(all.subarray(0, end).toString().split("\r\n").map((l) => l.split(": ") as [string, string]));
+      const { Status: status = "200", ...rest } = headers;
+      res.writeHead(parseInt(status), rest);
+      send(res, all.subarray(end + 4));
+    });
+  };
 }
 
 describe("git treats the repo as untrusted", () => {
@@ -110,37 +143,12 @@ describe("git calls that reach the remote end when it stalls", () => {
     tempDirs.push(remote);
     await g.git(remote, ["init", "-q", "--bare", "r.git"]);
     // git http-backend behind a server that sends each answer a byte at a time over 2.5 seconds.
-    const server = createHttpServer((req, res) => {
-      const url = new URL(req.url!, "http://x");
-      const cgi = spawn("git", ["http-backend"], {
-        env: {
-          ...process.env,
-          GIT_PROJECT_ROOT: remote,
-          GIT_HTTP_EXPORT_ALL: "1",
-          REMOTE_USER: "t",
-          PATH_INFO: url.pathname,
-          QUERY_STRING: url.search.slice(1),
-          REQUEST_METHOD: req.method,
-          CONTENT_TYPE: req.headers["content-type"] ?? "",
-          HTTP_CONTENT_ENCODING: req.headers["content-encoding"] ?? "",
-          ...(req.headers["content-length"] ? { CONTENT_LENGTH: req.headers["content-length"] } : {}),
-        },
-      });
-      res.on("close", () => cgi.kill());
-      req.pipe(cgi.stdin);
-      const out: Buffer[] = [];
-      cgi.stdout.on("data", (d: Buffer) => out.push(d));
-      cgi.on("close", () => {
-        const all = Buffer.concat(out);
-        const end = all.indexOf("\r\n\r\n");
-        const headers = Object.fromEntries(all.subarray(0, end).toString().split("\r\n").map((l) => l.split(": ") as [string, string]));
-        const { Status: status = "200", ...rest } = headers;
-        const body = all.subarray(end + 4);
-        res.writeHead(parseInt(status), rest);
+    const server = createHttpServer(
+      backend(remote, (res, body) => {
         let at = 0;
         const timer = setInterval(() => (at < body.length ? res.write(body.subarray(at, ++at)) : (clearInterval(timer), res.end())), 2500 / body.length);
-      });
-    });
+      }),
+    );
     open.push(server);
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
@@ -156,6 +164,124 @@ describe("git calls that reach the remote end when it stalls", () => {
     const dir = await repoWith({ "a.ts": "a\n" });
     await g.git(dir, ["remote", "add", "origin", "ssh://example.invalid/r.git"]);
     vi.stubEnv("GIT_SSH_COMMAND", "sleep 6 #");
-    await expect(g.git(dir, ["push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow("git push timed out after 4 seconds");
+    // Named after the command, not git's options before it.
+    await expect(g.git(dir, ["-C", dir, "push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow("git push timed out after 4 seconds");
+  }, 20_000);
+});
+
+describe("push", () => {
+  const token = "ghs_fake_for_test";
+  const header = `basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+  let server: HttpServer | undefined;
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    server?.close();
+  });
+
+  // A remote that takes a push only with exactly one auth header, `accept`, and refuses any other, as
+  // GitHub refuses a token without push rights.
+  async function guardedOrigin(dir: string, accept = header): Promise<{ url: string; remote: string }> {
+    const remote = await mkdtemp(join(tmpdir(), "darnit-remote-"));
+    tempDirs.push(remote);
+    await g.git(remote, ["init", "-q", "--bare", "r.git"]);
+    const serve = backend(remote);
+    server = createHttpServer((req, res) => {
+      const auth = req.headersDistinct.authorization ?? [];
+      if (auth.length === 1 && auth[0] === accept) serve(req, res);
+      else if (auth.length === 0) res.writeHead(401, { "WWW-Authenticate": 'Basic realm="r"' }).end();
+      else res.writeHead(403).end();
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    await g.git(dir, ["remote", "add", "origin", `${url}r.git`]);
+    return { url, remote: join(remote, "r.git") };
+  }
+
+  it("hands the push the token through its environment, for that site only, with or without the header the checkout saved", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir);
+    vi.stubEnv("GITHUB_TOKEN", "");
+    await expect(g.push(dir, branch, url)).rejects.toThrow();
+    vi.stubEnv("GITHUB_TOKEN", token);
+    // Sent to that site only: the default, github.com, never reaches this server.
+    await expect(g.push(dir, branch)).rejects.toThrow();
+    await g.push(dir, branch, url);
+    expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
+    expect(await readFile(join(dir, ".git/config"), "utf8")).not.toContain(header);
+    await g.git(dir, ["config", `http.${url}.extraheader`, `AUTHORIZATION: ${header}`]);
+    await writeFile(join(dir, "a.ts"), "b\n");
+    await g.add(dir, ["a.ts"]);
+    await g.commit(dir, "b", "b");
+    await g.push(dir, branch, url);
+    expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
+  }, 20_000);
+
+  it("gives every call to origin the token, and refuses one that skips the shared path", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("GITHUB_TOKEN", token);
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url } = await guardedOrigin(dir);
+    // fix --pr asks whether the branch exists before the tests run; a private repository needs auth for it.
+    expect(await g.remoteBranchExists(dir, branch, url)).toBe(false);
+    await g.push(dir, branch, url);
+    expect(await g.remoteBranchExists(dir, branch, url)).toBe(true);
+    await g.git(dir, ["-c", "x.y=z", "fetch", "-q", "origin"], 30, url);
+    // A new call to origin made without a stall limit would get no token, so git() refuses it, after
+    // any of git's global options and under a command-line alias.
+    for (const args of [
+      ["fetch", "origin"],
+      ["-c", "x.y=z", "ls-remote", "origin"],
+      ["-C", dir, "fetch", "origin"],
+      ["--git-dir", join(dir, ".git"), "fetch", "origin"],
+      ["--git-dir=.git", "--no-pager", "fetch", "origin"],
+      ["-c", "alias.f=fetch", "f", "origin"],
+      ["-c", "Alias.f=!git fetch", "f"],
+      ["--config-env", "alias.f=X", "f"],
+      ["--config-env=alias.f=X", "f"],
+      ["remote", "update"],
+      ["remote", "show", "origin"],
+      ["remote", "-v", "prune", "origin"],
+      ["remote", "set-head", "origin", "-a"],
+      ["remote", "add", "-f", "other", url],
+    ]) {
+      await expect(g.git(dir, args), args.join(" ")).rejects.toThrow("reaches origin, so it needs a stall limit");
+    }
+    // Local commands, `git remote` ones among them, still run without one.
+    for (const args of [["remote", "get-url", "origin"], ["-C", dir, "remote", "-v"], ["remote", "add", "other", url], ["-c", "x.y=z", "status"]]) {
+      await g.git(dir, args);
+    }
+  }, 20_000);
+
+  it("takes GH_TOKEN when GITHUB_TOKEN is set but empty or blank, and sends either one trimmed", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir);
+    for (const [github, gh] of [["", token], [" \n", token], [`${token}\n`, ""], ["", ` ${token}\n`]]) {
+      vi.stubEnv("GITHUB_TOKEN", github);
+      vi.stubEnv("GH_TOKEN", gh);
+      expect(await g.remoteBranchExists(dir, branch, url), JSON.stringify([github, gh])).toBe(false);
+    }
+    await g.push(dir, branch, url);
+    expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
+  }, 20_000);
+
+  it("leaves the push to git's own credentials outside GitHub Actions, even with a token exported", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "");
+    vi.stubEnv("GITHUB_TOKEN", token);
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir, `Basic ${Buffer.from("me:own").toString("base64")}`);
+    await g.git(dir, ["config", "credential.helper", "!f() { echo username=me; echo password=own; }; f"]);
+    await g.push(dir, branch, url);
+    expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
 });
