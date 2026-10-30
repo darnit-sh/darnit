@@ -424,11 +424,11 @@ const longestBacktickRun = (s: string) => Math.max(0, ...(s.match(/`+/g) ?? []).
 
 /**
  * Text from the repository (a file name, a command) as one code span that GitHub shows literally:
- * control and direction-changing characters are written out (a newline as \\n), and the fence is longer than any backtick run inside.
+ * control, direction-changing and zero-width characters are written out (a newline as \\n), and the fence is longer than any backtick run inside.
  */
 function code(text: string): string {
   // eslint-disable-next-line no-control-regex
-  const t = escapeHidden(text).replace(INVISIBLE, "").replace(/[\u0000-\u001f]/g, (c) => JSON.stringify(c).slice(1, -1));
+  const t = escapeHidden(text).replace(/[\u0000-\u001f]/g, (c) => JSON.stringify(c).slice(1, -1));
   const fence = "`".repeat(longestBacktickRun(t) + 1);
   const pad = /^[` ]|[` ]$/.test(t) ? " " : "";
   return `${fence}${pad}${t}${pad}${fence}`;
@@ -453,7 +453,6 @@ const plain = (text: string) => {
 // Characters GitHub can turn into something live: mentions, references, URLs, emoji, math,
 // commit links, custom references like ABC-123, HTML and entities.
 const RISKY = /[@#/$]|:\S|www[.)\]]?$|www\.|[0-9a-f]{7}|[A-Za-z]+-\d|^[<&]/i;
-const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\u061C\uFEFF]/g;
 const escapeMarkdown = (s: string) => s.replace(/[\\`*_[\]()<>!|~{}&#$]/g, (c) => `\\${c}`);
 
 /**
@@ -463,7 +462,7 @@ const escapeMarkdown = (s: string) => s.replace(/[\\`*_[\]()<>!|~{}&#$]/g, (c) =
  * Each rule was checked against GitHub's own renderer.
  */
 export function prose(text: string): string {
-  const clean = text.replace(INVISIBLE, "").replace(/\s+/g, " ").trim();
+  const clean = escapeHidden(text).replace(/\s+/g, " ").trim();
   // A cap keeps every pattern below fast on any input; real notes are a few sentences.
   const capped = clean.length > 2000 ? `${clean.slice(0, 2000)}…` : clean;
   return capped

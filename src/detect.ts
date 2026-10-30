@@ -79,12 +79,13 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
- * Text from the repository with each DEL or C1 control (U+009B reads as ESC [ in some terminals), direction-changing
- * character or line separator written out as \u009b, so it can't hide or reorder text. On screen the escape is
- * visible; inside a JSON string it decodes to the same character, which JSON.stringify leaves raw.
+ * Text from the repository with each DEL or C1 control (U+009B reads as ESC [ in some terminals), direction-changing,
+ * zero-width or line-separating character written out as \u009b, so it can't hide or reorder text. On screen the escape
+ * is visible; inside a JSON string it decodes to the same character, which JSON.stringify leaves raw. The joiners
+ * U+200C and U+200D are kept: emoji sequences and some scripts need them.
  */
 export const escapeHidden = (text: string) =>
-  text.replace(/[\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  text.replace(/[\u007f-\u009f\u061c\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
 const PIECE = 65_536;
 

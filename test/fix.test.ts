@@ -82,8 +82,8 @@ async function darnit(cwd: string, ...args: string[]): Promise<{ code: number; s
 }
 
 describe("text from the repository in output", () => {
-  const HIDDEN = /[\u0080-\u009f\u061C\u200E\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069]/;
-  const call = 'max_tokens: /*\u202E\u2066*/ cap("\u202Eab\u2069\u009b1A")';
+  const HIDDEN = /[\u0080-\u009f\u061C\u200B\u200E\u200F\u2028\u2029\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/;
+  const call = 'max_tokens: /*\u202E\u2066*/ cap("\u202Eab\u2069\u009b\u200B\uFEFF1A")';
   const plain = 'max_tokens: cap("café 日本 🎉 👨‍👩‍👧 שלום")';
   const source = `import OpenAI from "openai";\nconst c = new OpenAI();\nexport const r = c.chat.completions.create({ ${call} });\nexport const s = c.chat.completions.create({ ${plain} });\n`;
 
@@ -91,7 +91,7 @@ describe("text from the repository in output", () => {
     const dir = await repoWith({ "app.ts": source });
     const { stdout } = await darnit(dir, "check");
     expect(stdout).not.toMatch(HIDDEN);
-    expect(stdout).toContain(String.raw`app.ts:3:46  max_tokens: /*\u202e\u2066*/ cap("\u202eab\u2069\u009b1A")`);
+    expect(stdout).toContain(String.raw`app.ts:3:46  max_tokens: /*\u202e\u2066*/ cap("\u202eab\u2069\u009b\u200b\ufeff1A")`);
     expect(stdout).toContain(`app.ts:4:46  ${plain}`);
     const json = await darnit(dir, "check", "--json");
     expect(json.stdout).not.toMatch(HIDDEN);
@@ -102,8 +102,8 @@ describe("text from the repository in output", () => {
     const dir = await repoWith({ "app.ts": source });
     const { stdout } = await darnit(dir, "fix", "--dry-run", "--no-test");
     expect(stdout).not.toMatch(HIDDEN);
-    expect(stdout).toContain(String.raw`-export const r = c.chat.completions.create({ max_tokens: /*\u202e\u2066*/ cap("\u202eab\u2069\u009b1A") });`);
-    expect(stdout).toContain(String.raw`+export const r = c.chat.completions.create({ max_completion_tokens: cap("\u202eab\u2069\u009b1A") });`);
+    expect(stdout).toContain(String.raw`-export const r = c.chat.completions.create({ max_tokens: /*\u202e\u2066*/ cap("\u202eab\u2069\u009b\u200b\ufeff1A") });`);
+    expect(stdout).toContain(String.raw`+export const r = c.chat.completions.create({ max_completion_tokens: cap("\u202eab\u2069\u009b\u200b\ufeff1A") });`);
     expect(stdout).toContain(`+export const s = c.chat.completions.create({ ${plain.replace("max_tokens", "max_completion_tokens")} });`);
     const json = await darnit(dir, "fix", "--dry-run", "--no-test", "--json");
     expect(json.stdout).not.toMatch(HIDDEN);
@@ -973,6 +973,13 @@ describe("prBody", () => {
     expect(lines).toContain("- `  a  `");
   });
 
+  it("writes out zero-width characters in file names and keeps joined emoji whole", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const lines = prBody(record, ["a👨\u200D👩.ts", "z\u200Bw\u2060\uFEFF.ts"], "t").split("\n");
+    expect(lines).toContain("- `a👨\u200D👩.ts`");
+    expect(lines).toContain("- `z\\u200bw\\u2060\\ufeff.ts`");
+  });
+
   it("writes out direction-changing characters in test output and leaves ordinary Unicode alone", async () => {
     const record = (await loadRecords())[0]!.record;
     const output = 'FAIL app.test.ts\n  max_tokens: /*\u202E\u2066*/ cap("\u202Eab\u2069\u009b1A") // café 日本 🎉 👨‍👩‍👧 שלום';
@@ -1000,10 +1007,10 @@ describe("forTerminal", () => {
     expect(forTerminal(text)).toBe("[31mred[0m\tok\n]52;c;Zm9vclip[2Jwipeover\\u009b1Ahide\\u007f");
   });
 
-  it("writes out every direction-changing character and line separator, and leaves ordinary Unicode alone", () => {
-    const hidden = "\u061c\u200e\u200f\u2028\u2029\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069";
+  it("writes out every direction-changing, zero-width and line-separating character, and leaves ordinary Unicode alone", () => {
+    const hidden = "\u061c\u200b\u200e\u200f\u2028\u2029\u202a\u202b\u202c\u202d\u202e\u2060\u2061\u2062\u2063\u2064\u2066\u2067\u2068\u2069\ufeff";
     expect(forTerminal(`a${hidden}b`)).toBe(`a${[...hidden].map((c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`).join("")}b`);
-    const plain = "café naïve 日本語 한국어 🎉 👨‍👩‍👧 مرحبا שלום Ωµ ~!@#$%^&*()_+{}|:\"<>?`-=[]\\;',./";
+    const plain = "café naïve 日本語 한국어 🎉 👨‍👩‍👧 👨\u200D👩 می\u200Cخواهم مرحبا שלום Ωµ ~!@#$%^&*()_+{}|:\"<>?`-=[]\\;',./";
     expect(forTerminal(plain)).toBe(plain);
     expect(forTerminal(plain, true)).toBe(plain);
   });
@@ -1048,8 +1055,8 @@ describe("prose", () => {
     expect(out).not.toMatch(INVISIBLE);
   });
 
-  it("removes invisible and direction-changing characters from its input", () => {
-    expect(prose("a\u200Bb\u202Ec\uFEFFd")).toBe("abcd");
+  it("writes out invisible and direction-changing characters in its input", () => {
+    expect(prose("a\u200Bb\u202Ec\uFEFFd")).toBe("a\\\\u200bb\\\\u202ec\\\\ufeffd");
   });
 
   it("stays fast on hostile input", async () => {
