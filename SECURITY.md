@@ -54,10 +54,10 @@ new 0.2 release on their next run.
 In the README's `fix --pr` workflow, your install scripts and tests run in the job that holds the
 GitHub token. The token is not in their environment, on disk or in the pull request, but a process
 there can still read darnit's own environment, and the token with it. Git config they write to the
-repository can also send darnit's push, and the token with it, to a server other than GitHub, for
-example `http.curloptResolve` pointing github.com at another address with `http.sslVerify false`.
-Running the tests in a separate job that has no token is what removes both. On code you do not
-trust, run `check` only.
+repository can also send darnit's git calls to GitHub, and the token with them, to another server,
+for example `http.curloptResolve` pointing github.com at another address with
+`http.sslVerify false`. The README workflow cannot prevent either. On code you do not trust, run
+`check` only.
 
 ## How we handle a report
 
