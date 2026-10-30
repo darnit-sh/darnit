@@ -812,6 +812,22 @@ describe("fix in GitHub Actions", () => {
     expect(notDarnits(run.stdout + run.stderr)).toEqual({ ran: [], stopped: false });
   });
 
+  it("prints no file name in an error as a workflow command", async () => {
+    const dir = await repoWith({ "README.md": "hi\n" });
+    await writeFile(join(dir, "##[error]pwned.js"), SDK_CALL);
+    const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "fix", "--no-test");
+    expect(run).toMatchObject({ code: 2, stdout: "" });
+    expect(run.stderr).toContain("darnit needs to edit: ##[error]pwned.js;");
+    expect(notDarnits(run.stderr)).toEqual({ ran: [], stopped: false });
+  });
+
+  it("prints no file name from init as a workflow command", async () => {
+    const dir = await repoWith({ "##[error]pwned.py": "import openai\n" });
+    const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "init");
+    expect(run.stdout).toContain("found openai (##[error]pwned.py: import openai)");
+    expect(notDarnits(run.stdout)).toEqual({ ran: [], stopped: false });
+  });
+
   it("is plain text outside GitHub Actions", async () => {
     const dir = await repoWith({ "::error::pwned.js": SDK_CALL });
     expect((await darnit(dir, "check")).stdout).not.toContain("stop-commands");
