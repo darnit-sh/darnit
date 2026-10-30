@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as g from "../src/git.js";
+import { runTests } from "../src/tests.js";
 
 const tempDirs: string[] = [];
 afterEach(async () => {
@@ -97,10 +98,36 @@ describe("git treats the repo as untrusted", () => {
   });
 });
 
+/** The environment git gives a program it runs, as `NAME=value` lines: `env` stands in for the diff tool. */
+async function gitChildEnv(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "darnit-env-"));
+  tempDirs.push(dir);
+  await writeFile(join(dir, "a"), "a\n");
+  await writeFile(join(dir, "b"), "b\n");
+  return g.git(dir, ["-c", "diff.external=env; true", "diff", "--no-index", "--ext-diff", "a", "b"]).catch((err: { code?: number; stdout?: string }) => {
+    if (err.code === 1 && err.stdout !== undefined) return err.stdout;
+    throw err;
+  });
+}
+
 describe("git works on the folder it was given", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("whatever repository the environment names, for every variable git keeps local to a repository", async () => {
+  it("hands git and the repository's commands none of the variables git keeps local to a repository", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-env-"));
+    tempDirs.push(dir);
+    const names = (await promisify(execFile)("git", ["rev-parse", "--local-env-vars"])).stdout.split("\n").filter(Boolean);
+    expect(names).toContain("GIT_DIR");
+    for (const name of names) {
+      // git sets GIT_PREFIX and GIT_CONFIG_PARAMETERS for its own children, so look for the value.
+      vi.stubEnv(name, `darnit-marker-${name}`);
+      expect(await gitChildEnv(), name).not.toContain("darnit-marker");
+      expect((await runTests(dir, "env | grep -c darnit-marker")).output, name).toBe("0");
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("reads the folder it was given when GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR, GIT_INDEX_FILE or GIT_OBJECT_DIRECTORY names another repository", async () => {
     const dir = await repoWith({ "a.ts": "a\n" });
     const other = await repoWith({ "b.ts": "b\n" });
     const head = (await g.git(dir, ["rev-parse", "HEAD"])).trim();
@@ -112,10 +139,8 @@ describe("git works on the folder it was given", () => {
       GIT_INDEX_FILE: join(otherGit, "index"),
       GIT_OBJECT_DIRECTORY: join(otherGit, "objects"),
     };
-    const names = (await promisify(execFile)("git", ["rev-parse", "--local-env-vars"])).stdout.split("\n").filter(Boolean);
-    expect(names).toContain("GIT_DIR");
-    for (const name of names) {
-      vi.stubEnv(name, hostile[name] ?? "bogus");
+    for (const name of Object.keys(hostile)) {
+      vi.stubEnv(name, hostile[name]);
       expect(await g.git(dir, ["ls-files"]), name).toBe("a.ts\n");
       expect((await g.git(dir, ["rev-parse", "HEAD"])).trim(), name).toBe(head);
       expect(await g.isClean(dir), name).toBe(true);
