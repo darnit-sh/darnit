@@ -362,7 +362,7 @@ To add a vendor, open a pull request adding its spec URL and SDK calls to
   wrappers, proxies, a client passed in from elsewhere, and an address read from
   configuration.
 - `fix` runs in your working tree, not a sandbox. Your test command runs as you.
-- Tested on macOS and Linux with Node 22 and 24. Windows is not supported yet.
+- Tested on macOS and Linux with Node 22, 24 and 26. Windows is not supported yet.
 
 ## License
 

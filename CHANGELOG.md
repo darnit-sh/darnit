@@ -23,6 +23,7 @@ Notable changes to darnit. The format follows [Keep a Changelog](https://keepach
 - darnit's git commands no longer run git hooks, including your own (husky, commitlint, pre-push) and a global `core.hooksPath`, since git cannot tell them from hooks a repository's tests planted. The push now uses git's own credentials, the same as your own `git push`; darnit's token only opens the pull request. A credential helper that reads the token from the environment, such as `gh auth setup-git` with only `GH_TOKEN` set, no longer works for the push. ([#43](https://github.com/darnit-sh/darnit/pull/43))
 - darnit's six runtime dependencies are pinned to exact versions, so `npx darnit@0.2` installs the same dependency versions darnit was tested and released with, instead of whatever newer version npm finds that day. Every package they pull in was already pinned exactly. ([#96](https://github.com/darnit-sh/darnit/pull/96))
 - The npm package includes `CHANGELOG.md`, so the changes are readable offline in `node_modules/darnit`. ([#59](https://github.com/darnit-sh/darnit/pull/59))
+- darnit is tested on Node 26 as well as Node 22 and 24, on Linux and macOS. ([#131](https://github.com/darnit-sh/darnit/pull/131))
 
 ### Fixed
 
