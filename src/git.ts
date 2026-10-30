@@ -100,6 +100,23 @@ export async function position(root: string): Promise<{ ref: string; detached: b
 export const modified = async (root: string) => (await git(root, ["diff", "--name-only", "-z", "--relative", "HEAD"])).split("\0").filter(Boolean);
 
 /**
+ * Tracked files under `root` that git status calls changed, staged or not, relative to `root`. Unlike
+ * `modified`, this includes a file whose bytes differ only in what git would normalize, such as line endings.
+ */
+async function changedFiles(root: string): Promise<string[]> {
+  const prefix = (await git(root, ["rev-parse", "--show-prefix"])).trim();
+  const entries = (await git(root, ["--no-optional-locks", "status", "--porcelain", "-z", "--untracked-files=no"])).split("\0");
+  const out: string[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    // Paths are from the repository root. A rename or copy is followed by its source path, which has no status of its own.
+    const paths = /[RC]/.test(entry.slice(0, 2)) ? [entry.slice(3), entries[++i] ?? ""] : [entry.slice(3)];
+    for (const p of paths) if (p && p.startsWith(prefix)) out.push(p.slice(prefix.length));
+  }
+  return out;
+}
+
+/**
  * Which of `files` (relative to `root`) git could not put back as they are now: changed since HEAD,
  * staged or not, or with no plain committed copy in this repository (untracked, ignored, marked
  * assume-unchanged or skip-worktree, or inside a nested repository or submodule). Lists the whole
@@ -107,7 +124,7 @@ export const modified = async (root: string) => (await git(root, ["diff", "--nam
  */
 export async function uncommitted(root: string, files: readonly string[]): Promise<string[]> {
   if (files.length === 0) return [];
-  const changed = new Set(await modified(root));
+  const changed = new Set(await changedFiles(root));
   // -v tags each entry; "H " is a plain tracked file, anything else is a flag or a conflict git would not restore from.
   const tracked = new Set((await git(root, ["ls-files", "-v", "-z"])).split("\0").filter((e) => e.startsWith("H ")).map((e) => e.slice(2)));
   return files.filter((f) => changed.has(f) || !tracked.has(f));

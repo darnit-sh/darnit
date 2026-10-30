@@ -174,7 +174,8 @@ nothing affects the repository.
 Rewrites the affected code, runs your build and tests, and shows the diff. It only runs
 inside a git repository, so everything it does can be undone with git. It touches
 only the files `check` reported, and refuses (exit 2) when any of them is not
-committed as it is: changed, staged, untracked, ignored, marked
+committed as it is: changed (even only in line endings git would convert),
+staged, untracked, ignored, marked
 `assume-unchanged` or `skip-worktree`, or inside a nested repository or
 submodule. Commit or stash those first, or preview with `--dry-run`.
 

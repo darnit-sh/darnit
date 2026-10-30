@@ -502,6 +502,12 @@ describe("fix", () => {
       await appendFile(join(dir, "sdk.js"), "// mine\n");
       return "sdk.js";
     }],
+    ["converted to CRLF where .gitattributes stores LF", async (dir) => {
+      await writeFile(join(dir, ".gitattributes"), "*.js text eol=lf\n");
+      await commitAll(dir);
+      await writeFile(join(dir, "sdk.js"), SDK_CALL.replaceAll("\n", "\r\n"));
+      return "sdk.js";
+    }],
     ["edited and staged", async (dir) => {
       await appendFile(join(dir, "sdk.js"), "// mine\n");
       await git(dir, ["add", "sdk.js"]);
@@ -549,10 +555,20 @@ describe("fix", () => {
   });
 
   it("checks files by their path from a subfolder of the repository", async () => {
-    const dir = await repoWith({ "app/sdk.js": SDK_CALL });
+    const dir = await repoWith({ "app/sdk.js": SDK_CALL, "app/b.js": SDK_CALL });
+    await appendFile(join(dir, "app", "b.js"), "// mine\n");
+    await expect(fix(join(dir, "app"), { noTest: true })).rejects.toThrow("files darnit needs to edit: b.js;");
+    await git(dir, ["checkout", "--", "app/b.js"]);
     expect((await fix(join(dir, "app"), { noTest: true })).records[0]).toMatchObject({ applied: true });
     await writeFile(join(dir, "app", "new.js"), SDK_CALL);
     await expect(fix(join(dir, "app"), { noTest: true })).rejects.toThrow("files darnit needs to edit: new.js;");
+  });
+
+  it("reads a staged rename's source path as a path, not as a status line", async () => {
+    // Read as a status line, "ab/sdk.js" would lose its first three characters and name sdk.js.
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "ab/sdk.js": "notes\n" });
+    await git(dir, ["mv", "ab/sdk.js", "moved.md"]);
+    expect((await fix(dir, { noTest: true })).records[0]).toMatchObject({ applied: true });
   });
 
   it("names the first five files it refused and counts the rest", async () => {
