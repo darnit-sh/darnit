@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { CREDENTIALS } from "./tests.js";
 
 const exec = promisify(execFile);
+
+// darnit's GitHub credentials open the pull request; the repository's own commands never get them.
+export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
 
 // The repo's own commands can write .git/config and .git/hooks, so git runs none of their hooks or
 // fsmonitor, never sees darnit's credentials, and takes file names literally, never as patterns.
@@ -20,6 +22,13 @@ const VALUED = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "
 // it (GIT_DIR, GIT_INDEX_FILE, GIT_CONFIG_COUNT...). Left in place they would point git() elsewhere.
 let repoLocal: Promise<string[]> | undefined;
 const repoLocalVars = () => (repoLocal ??= exec("git", ["rev-parse", "--local-env-vars"]).then(({ stdout }) => stdout.split("\n").filter(Boolean)));
+
+/** The environment for git and the repository's own commands: no credentials, nothing that points git elsewhere. */
+export async function childEnv(): Promise<NodeJS.ProcessEnv> {
+  const env = { ...process.env };
+  for (const k of [...CREDENTIALS, ...(await repoLocalVars())]) delete env[k];
+  return env;
+}
 
 /** The git command `args` runs, after git's global options, and whether it can reach origin. */
 function command(args: string[]): { name: string; remote: boolean } {
@@ -43,8 +52,7 @@ function command(args: string[]): { name: string; remote: boolean } {
 export async function git(root: string, args: string[], stall?: number, site = GITHUB): Promise<string> {
   const { name, remote } = command(args);
   if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
-  const env: NodeJS.ProcessEnv = { ...process.env, GIT_LITERAL_PATHSPECS: "1" };
-  for (const k of [...CREDENTIALS, ...(await repoLocalVars())]) delete env[k];
+  const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1" };
   let timeout = 0;
   if (stall) {
     Object.assign(env, originAuth(site), { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
