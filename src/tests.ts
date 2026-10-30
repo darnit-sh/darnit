@@ -103,7 +103,7 @@ const base64 = (s: string) => Buffer.from(s).toString("base64").replace(/=+$/, "
 
 /**
  * `text` with every credential darnit holds replaced by `***`, also in the base64 form a git auth
- * header carries, and with the credential on any basic, bearer or token Authorization line shown.
+ * header carries, and the credential on any basic, bearer or token Authorization line replaced too.
  */
 function redact(text: string): string {
   return CREDENTIALS.map((k) => process.env[k])

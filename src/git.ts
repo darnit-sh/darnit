@@ -8,18 +8,24 @@ const exec = promisify(execFile);
 // fsmonitor, never sees darnit's credentials, and takes file names literally, never as patterns.
 const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
 
+const GITHUB = "https://github.com/";
+// git commands that reach origin. git() refuses them without `stall`, which also brings the token.
+const REMOTE = new Set(["push", "fetch", "pull", "ls-remote", "clone", "archive", "submodule"]);
+
 /**
- * `stall` bounds a call to origin. Git itself ends an HTTP or HTTPS transfer that moves less than a
- * byte a second for that many seconds; the environment beats any `http.<url>.lowSpeed*` config. Any
- * other transport is stopped after four times as long, which can leave its ssh child running.
+ * `stall` marks a call to origin and bounds it. Git itself ends an HTTP or HTTPS transfer that moves
+ * less than a byte a second for that many seconds; the environment beats any `http.<url>.lowSpeed*`
+ * config. Any other transport is stopped after four times as long, which can leave its ssh child
+ * running. In GitHub Actions the call also gets the token for `site` (see originAuth).
  */
-export async function git(root: string, args: string[], stall?: number, extraEnv: NodeJS.ProcessEnv = {}): Promise<string> {
+export async function git(root: string, args: string[], stall?: number, site = GITHUB): Promise<string> {
+  const command = args.find((a, i) => !a.startsWith("-") && args[i - 1] !== "-c");
+  if (!stall && REMOTE.has(command!)) throw new Error(`git ${command} reaches origin, so it needs a stall limit`);
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_LITERAL_PATHSPECS: "1" };
   for (const k of CREDENTIALS) delete env[k];
-  Object.assign(env, extraEnv);
   let timeout = 0;
   if (stall) {
-    Object.assign(env, { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
+    Object.assign(env, originAuth(site), { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
     // A process timeout would cut a slow but healthy HTTPS push and leave its helper pushing.
     const urls = (await git(root, ["remote", "get-url", "--all", ...(args[0] === "push" ? ["--push"] : []), "origin"])).split("\n").filter(Boolean);
     if (!urls.every((u) => /^https?:\/\//i.test(u))) timeout = stall * 4 * 1000;
@@ -58,8 +64,8 @@ export const localBranchExists = (root: string, name: string) =>
     () => false,
   );
 
-export const remoteBranchExists = async (root: string, name: string) =>
-  (await git(root, ["ls-remote", "--heads", "origin", name], 30)).trim() !== "";
+export const remoteBranchExists = async (root: string, name: string, site = GITHUB) =>
+  (await git(root, ["ls-remote", "--heads", "origin", name], 30, site)).trim() !== "";
 
 export const remoteUrl = async (root: string) => (await git(root, ["remote", "get-url", "origin"])).trim();
 
@@ -96,28 +102,28 @@ export async function commit(root: string, subject: string, body: string): Promi
 }
 
 /**
- * In GitHub Actions with a token in the environment, the push alone gets it, as git config in its own
- * environment: never on disk or in arguments, sent to `site` only. The empty value first drops any
- * header the checkout saved, since two would reach the server. Elsewhere git's own credentials push.
- * Known limit: config the repository's tests wrote, such as core.sshCommand, credential.helper,
- * core.askPass or http.proxy, still applies to this push and can hand the header to another program.
+ * In GitHub Actions with a token in the environment, a call to origin gets it as git config in its
+ * own environment: never on disk or in arguments, sent to `site` only. The empty value first drops
+ * any header the checkout saved, since two would reach the server. Elsewhere git's own credentials
+ * are used. Known limit: config the repository's own code wrote to .git/config still applies. It
+ * can send the header to another server (http.curloptResolve with http.sslVerify false, http.proxy)
+ * or hand it to another program (core.sshCommand, credential.helper, core.askPass).
  */
-export function push(root: string, branch: string, site = "https://github.com/"): Promise<string> {
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
-  const auth: NodeJS.ProcessEnv = {};
-  if (token && process.env.GITHUB_ACTIONS === "true") {
-    const n = Number(process.env.GIT_CONFIG_COUNT) || 0;
-    const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
-    Object.assign(auth, {
-      GIT_CONFIG_COUNT: String(n + 2),
-      [`GIT_CONFIG_KEY_${n}`]: `http.${site}.extraheader`,
-      [`GIT_CONFIG_VALUE_${n}`]: "",
-      [`GIT_CONFIG_KEY_${n + 1}`]: `http.${site}.extraheader`,
-      [`GIT_CONFIG_VALUE_${n + 1}`]: header,
-    });
-  }
-  return git(root, ["push", "-q", "-u", "origin", branch], 60, auth);
+function originAuth(site: string): NodeJS.ProcessEnv {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (!token || process.env.GITHUB_ACTIONS !== "true") return {};
+  const n = Number(process.env.GIT_CONFIG_COUNT) || 0;
+  const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+  return {
+    GIT_CONFIG_COUNT: String(n + 2),
+    [`GIT_CONFIG_KEY_${n}`]: `http.${site}.extraheader`,
+    [`GIT_CONFIG_VALUE_${n}`]: "",
+    [`GIT_CONFIG_KEY_${n + 1}`]: `http.${site}.extraheader`,
+    [`GIT_CONFIG_VALUE_${n + 1}`]: header,
+  };
 }
+
+export const push = (root: string, branch: string, site = GITHUB) => git(root, ["push", "-q", "-u", "origin", branch], 60, site);
 
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);

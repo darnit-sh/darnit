@@ -628,7 +628,7 @@ describe("fix --pr", () => {
     await git(bare, ["init", "-q", "--bare"]);
     await git(dir, ["remote", "add", "origin", bare]);
     const branch = (await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim();
-    await git(dir, ["push", "-q", "-u", "origin", branch]);
+    await git(dir, ["push", "-q", "-u", "origin", branch], 60);
     return { dir, bare, branch };
   }
 

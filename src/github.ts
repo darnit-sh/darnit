@@ -9,7 +9,7 @@ const TIMEOUT_MS = 30_000;
 export type Repo = { owner: string; repo: string };
 
 export async function githubToken(): Promise<string | undefined> {
-  const env = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const env = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (env) return env;
   try {
     return (await exec("gh", ["auth", "token"])).stdout.trim() || undefined;

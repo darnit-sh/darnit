@@ -219,6 +219,35 @@ describe("push", () => {
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
 
+  it("gives every call to origin the token, and refuses one that skips the shared path", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("GITHUB_TOKEN", token);
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url } = await guardedOrigin(dir);
+    // fix --pr asks whether the branch exists before the tests run; a private repository needs auth for it.
+    expect(await g.remoteBranchExists(dir, branch, url)).toBe(false);
+    await g.push(dir, branch, url);
+    expect(await g.remoteBranchExists(dir, branch, url)).toBe(true);
+    await g.git(dir, ["-c", "x.y=z", "fetch", "-q", "origin"], 30, url);
+    // A new call to origin made without a stall limit would get no token, so git() refuses it.
+    await expect(g.git(dir, ["fetch", "origin"])).rejects.toThrow("git fetch reaches origin");
+    await expect(g.git(dir, ["-c", "x.y=z", "ls-remote", "origin"])).rejects.toThrow("git ls-remote reaches origin");
+  }, 20_000);
+
+  it("takes GH_TOKEN for the push when GITHUB_TOKEN is set but empty", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("GITHUB_TOKEN", "");
+    vi.stubEnv("GH_TOKEN", token);
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir);
+    await g.push(dir, branch, url);
+    expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
+  }, 20_000);
+
   it("leaves the push to git's own credentials outside GitHub Actions, even with a token exported", async () => {
     vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
     vi.stubEnv("GITHUB_ACTIONS", "");
