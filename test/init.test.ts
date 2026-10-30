@@ -128,7 +128,7 @@ describe("detectApis on a repository built to slow it down", () => {
     tempDirs.push(dir);
     await mkdir(join(dir, "a\u001b[2J\u001b[31mPWNED", "vendor"), { recursive: true });
     const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-    const { stdout } = await promisify(execFile)(process.execPath, ["--import", import.meta.resolve("tsx"), cli, "init"], { cwd: dir });
+    const { stdout } = await promisify(execFile)(process.execPath, ["--import", import.meta.resolve("tsx"), cli, "init"], { cwd: dir, env: { ...process.env, GITHUB_ACTIONS: "" } });
     expect(stdout).not.toContain("\u001b");
     expect(stdout).toContain("\nNot checked: 1 dependency or build folder: a?[2J?[31mPWNED/vendor.\n");
     expect(stdout).toMatch(/^✓ Scanned repo: /);
