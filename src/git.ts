@@ -129,16 +129,26 @@ const coreFlag = (root: string, name: string) =>
  * assume-unchanged or skip-worktree, or inside a nested repository or submodule). Lists the whole
  * tree once rather than passing `files` to git, which matches each name against every entry.
  */
-export async function uncommitted(root: string, files: readonly string[]): Promise<string[]> {
+export async function uncommitted(root: string, files: readonly string[]): Promise<Uncommitted[]> {
   if (files.length === 0) return [];
   // Git on macOS lists names composed, whatever form the disk gives them in, so they are compared that way there.
   const composed = (await coreFlag(root, "precomposeunicode")) ?? process.platform === "darwin";
   const key = (f: string) => (composed ? f.normalize("NFC") : f);
   const changed = new Set((await changedFiles(root)).map(key));
   // -v tags each entry; "H " is a plain tracked file, anything else is a flag or a conflict git would not restore from.
-  const tracked = new Set((await git(root, ["ls-files", "-v", "-z"])).split("\0").filter((e) => e.startsWith("H ")).map((e) => key(e.slice(2))));
-  return files.filter((f) => changed.has(key(f)) || !tracked.has(key(f)));
+  const names = (await git(root, ["ls-files", "-v", "-z"])).split("\0").filter((e) => e.startsWith("H ")).map((e) => e.slice(2));
+  const tracked = new Set(names.map(key));
+  const caseless = (await coreFlag(root, "ignorecase")) ? new Map(names.map((n) => [key(n).toLowerCase(), n])) : undefined;
+  return files
+    .filter((f) => changed.has(key(f)) || !tracked.has(key(f)))
+    .map((file) => {
+      const gitName = tracked.has(key(file)) ? undefined : caseless?.get(key(file).toLowerCase());
+      return gitName ? { file, gitName } : { file };
+    });
 }
+
+/** A file git could not put back; `gitName` when git has it under a name that differs only in case. */
+export type Uncommitted = { file: string; gitName?: string };
 
 /** Puts tracked files back to their committed contents. */
 export const discard = async (root: string, files: readonly string[]) => {

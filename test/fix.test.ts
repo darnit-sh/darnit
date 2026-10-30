@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -569,6 +569,24 @@ describe("fix", () => {
     const dir = await repoWith({ "sdk.js": SDK_CALL, "ab/sdk.js": "notes\n" });
     await git(dir, ["mv", "ab/sdk.js", "moved.md"]);
     expect((await fix(dir, { noTest: true })).records[0]).toMatchObject({ applied: true });
+  });
+
+  it("says when a file's name differs from git's only in case", async () => {
+    const dir = await repoWith({ "SDK.js": SDK_CALL, "b.js": SDK_CALL });
+    // Git sets core.ignorecase on a disk that ignores case, as on macOS and Windows, where this rename leaves git status clean.
+    await git(dir, ["config", "core.ignorecase", "true"]);
+    await rename(join(dir, "SDK.js"), join(dir, "sdk.js"));
+    const before = await readFile(join(dir, "sdk.js"));
+    await expect(fix(dir, { noTest: true })).rejects.toThrow(
+      /^files darnit needs to edit differ only in case from the names git has: sdk\.js \(git has SDK\.js\); rename them back or commit the rename first, or preview with --dry-run$/,
+    );
+    await appendFile(join(dir, "b.js"), "// mine\n");
+    await expect(fix(dir, { noTest: true })).rejects.toThrow(
+      "uncommitted changes in files darnit needs to edit: b.js; commit or stash them first so git can undo the rewrite; files darnit needs to edit differ only in case from the names git has: sdk.js (git has SDK.js);",
+    );
+    await git(dir, ["config", "core.ignorecase", "false"]);
+    await expect(fix(dir, { noTest: true })).rejects.toThrow("uncommitted changes in files darnit needs to edit: b.js, sdk.js;");
+    expect((await readFile(join(dir, "sdk.js"))).equals(before)).toBe(true);
   });
 
   it("names the first five files it refused and counts the rest", async () => {

@@ -312,8 +312,8 @@ describe("uncommitted where git composes file names, as on macOS", () => {
   });
 
   it.each([
-    ["decomposed", "é.js"],
-    ["composed", "é.js"],
+    ["decomposed", "e\u0301.js"],
+    ["composed", "\u00e9.js"],
   ])("finds a clean file named %s on disk", async (_, name) => {
     const dir = await repoWith({ [name]: "a\n" });
     await g.git(dir, ["config", "core.precomposeunicode", "true"]);
@@ -333,15 +333,15 @@ describe("uncommitted where git composes file names, as on macOS", () => {
   });
 
   it("compares names exactly when core.precomposeunicode is off", async () => {
-    const dir = await repoWith({ "é.js": "a\n" });
+    const dir = await repoWith({ "e\u0301.js": "a\n" });
     await g.git(dir, ["config", "core.precomposeunicode", "false"]);
-    expect(await (await composingGit()).uncommitted(dir, ["é.js"])).toEqual(["é.js"]);
+    expect(await (await composingGit()).uncommitted(dir, ["e\u0301.js"])).toEqual([{ file: "e\u0301.js" }]);
   });
 
   // Two files whose names differ only in form can't both exist on macOS.
   it.skipIf(process.platform === "darwin")("still refuses an untracked file whose name only looks like a tracked one", async () => {
-    const dir = await repoWith({ "é.js": "a\n" });
-    await writeFile(join(dir, "é.js"), "b\n");
-    expect(await g.uncommitted(dir, ["é.js", "é.js"])).toEqual(["é.js"]);
+    const dir = await repoWith({ "\u00e9.js": "a\n" });
+    await writeFile(join(dir, "e\u0301.js"), "b\n");
+    expect(await g.uncommitted(dir, ["\u00e9.js", "e\u0301.js"])).toEqual([{ file: "e\u0301.js" }]);
   });
 });

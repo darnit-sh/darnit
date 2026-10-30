@@ -330,9 +330,13 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   // Only files git can put back are edited; --allow-dirty tolerates edits elsewhere, never in these.
   const wanted = [...new Set(applicable.flatMap((grp) => grp.files))];
   const unsafe = await g.uncommitted(root, wanted);
-  if (unsafe.length > 0) {
-    throw new Refusal(`uncommitted changes in files darnit needs to edit: ${firstFive(unsafe)}; commit or stash them first so git can undo the rewrite, or preview with --dry-run`);
-  }
+  const changed = unsafe.filter((u) => !u.gitName).map((u) => u.file);
+  const renamed = unsafe.filter((u) => u.gitName).map((u) => `${u.file} (git has ${u.gitName})`);
+  const why = [
+    ...(changed.length > 0 ? [`uncommitted changes in files darnit needs to edit: ${firstFive(changed)}; commit or stash them first so git can undo the rewrite`] : []),
+    ...(renamed.length > 0 ? [`files darnit needs to edit differ only in case from the names git has: ${firstFive(renamed)}; rename them back or commit the rename first`] : []),
+  ];
+  if (why.length > 0) throw new Refusal(`${why.join("; ")}, or preview with --dry-run`);
   if (opts.pr) return pullRequests(root, applicable, base, commands, opts);
 
   const snap = await snapshotOf(root, wanted);
