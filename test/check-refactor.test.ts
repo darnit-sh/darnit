@@ -211,7 +211,12 @@ describe("the rule picked by the title's type", () => {
       { write: "vitest.config.ts" },
       { remove: "vitest.config.ts" },
       { write: "vitest.config.mts" },
+      { write: "vitest.config.json" },
+      { write: "vitest.workspace.json" },
       { write: "vite.config.js" },
+      { write: "test/helpers.js" },
+      { write: "test/helpers.mjs" },
+      { write: "scripts/fixtures.js" },
       { write: "scripts/fixtures.ts" },
       { write: "scripts/e2e.ts" },
       { write: "scripts/golden.ts" },
@@ -222,7 +227,7 @@ describe("the rule picked by the title's type", () => {
     ];
     const cases = [
       ...suite.map((edit) => ["test", edit] as const),
-      ...["docs", "chore", "ci", "build"].flatMap((type) => [suite[0]!, suite.at(-2)!].map((edit) => [type, edit] as const)),
+      ...["docs", "chore", "ci", "build"].flatMap((type) => [suite[0]!, suite[6]!, suite.at(-2)!].map((edit) => [type, edit] as const)),
     ];
     for (const [type, edit] of cases) {
       const r = await rule(`${type}: x`, [edit]);

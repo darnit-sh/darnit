@@ -27,12 +27,20 @@ fi
 base=$1 head=$2
 type=$(title_type)
 
-# What the suite runs and proves with besides the tests: the runners and the modules tests import,
-# edited or removed, and any test runner config at all.
-suite_files() {
-  paths --diff-filter=DMT | grep -E '^"?(scripts/(fixtures|e2e|golden)\.ts|test/.*\.[cm]?[jt]s)"?$' |
+mb=$(git merge-base "$base" "$head")
+
+# Modules the suite runs and proves with besides the tests: the runners and the modules tests import.
+guarded() {
+  grep -E '^"?(scripts/(fixtures|e2e|golden)\.ts|test/.*\.[cm]?[jt]s)"?$' |
     grep -vE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
-  paths | grep -E '^"?(vitest|vite)\.(config|workspace)\.[cm]?[jt]s"?$' || true
+}
+# Those this change edits or removes, or shadows with an added file of the same path minus its extension
+# (test/helpers.js beside test/helpers.ts), and any test runner config at all.
+suite_files() {
+  paths --diff-filter=DMT | guarded
+  { git ls-tree -r --name-only "$mb" | guarded | sed 's/^/G /'; paths --diff-filter=A | sed 's/^/A /'; } |
+    awk '{ p = substr($0, 3); s = p; sub(/^"/, "", s); sub(/\.[^.\/]*"?$/, "", s) } $1 == "G" { g[s] = 1; next } s in g { print p }'
+  paths | grep -E '^"?(vitest\.config|vite\.config|vitest\.workspace)\.[^/]*"?$' || true
 }
 # package.json's "files", or each script this change adds, alters or removes. A package.json this
 # change leaves unreadable, or not an object, counts as changed, as does a reader that fails.
@@ -51,7 +59,7 @@ package_json() {
       for (const k of keys) console.log(`package.json script "${k}"`);
       if (!keys.length && !same(a?.scripts, b.scripts)) console.log("package.json \"scripts\"");
     }
-  ' "$(git merge-base "$base" "$head")" "$head" "$1" || echo "package.json (unreadable)"
+  ' "$mb" "$head" "$1" || echo "package.json (unreadable)"
 }
 
 case $type in
@@ -115,7 +123,6 @@ revert)
     exit 1
   fi
   sha=$shas
-  mb=$(git merge-base "$base" "$head")
   commit=$(git rev-parse --verify --quiet "$sha^{commit}" || true)
   if [ -z "$commit" ] || ! git merge-base --is-ancestor "$commit" "$mb" || git rev-parse --verify --quiet "$commit^2" >/dev/null; then
     say "**Failed:** $sha is not a single-parent commit in this change's history."
