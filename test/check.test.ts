@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, scan, snippet, toJson, type Hit } from "../src/check.js";
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
-import { findMatches, grammarFor } from "../src/scan/astgrep.js";
+import { compilePatterns, findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { SDK_CLASSES } from "../src/scan/clients.js";
 import { findModelValues, inside, isTestPath } from "../src/scan/values.js";
 import { findMentions } from "../src/scan/mentions.js";
@@ -1283,6 +1283,31 @@ describe("findMatches", () => {
     expect(findMatches('f({ model: "gpt-4" });\n', ts, [{ context: '({ model: "$M" })', selector: "pair" }])).toHaveLength(1);
     const py = grammarFor("a.py")!.grammar;
     expect(findMatches('f(model="gpt-4")\n', py, [{ context: 'f(model="$M")', selector: "keyword_argument" }])).toHaveLength(1);
+  });
+});
+
+describe("compilePatterns", () => {
+  // Records load more than once per process (fix loads them, then check loads them again); each set compiles once.
+  it("compiles the same patterns once per process, and a bad set every time", () => {
+    const patterns = [{ context: '({ model: "compiled-once" })', selector: "pair" }];
+    vi.mocked(parse).mockClear();
+    compilePatterns("js", patterns);
+    expect(vi.mocked(parse).mock.calls.length).toBeGreaterThan(0);
+    vi.mocked(parse).mockClear();
+    compilePatterns("js", [{ ...patterns[0]! }]);
+    expect(vi.mocked(parse)).not.toHaveBeenCalled();
+    compilePatterns("py", [{ context: 'f(model="compiled-once")', selector: "keyword_argument" }]);
+    expect(vi.mocked(parse)).toHaveBeenCalled();
+
+    const bad = [{ context: "f(model=", selector: "keyword_argument" }];
+    expect(() => compilePatterns("py", bad)).toThrow(/does not compile/);
+    expect(() => compilePatterns("py", bad)).toThrow(/does not compile/);
+  });
+
+  it("does not take a set that compiled for one language as compiled for another", () => {
+    const patterns = [{ context: "f(x)", selector: "call_expression" }];
+    compilePatterns("js", patterns);
+    expect(() => compilePatterns("py", patterns)).toThrow(/does not compile/);
   });
 });
 

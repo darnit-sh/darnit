@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -629,7 +629,7 @@ describe("fix --pr", () => {
     await git(bare, ["init", "-q", "--bare"]);
     await git(dir, ["remote", "add", "origin", bare]);
     const branch = (await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim();
-    await git(dir, ["push", "-q", "-u", "origin", branch]);
+    await git(dir, ["push", "-q", "-u", "origin", branch], 60);
     return { dir, bare, branch };
   }
 
@@ -828,6 +828,53 @@ describe("fix --pr", () => {
     expect(result.records[0]?.pr).toMatchObject({ state: "opened", tests: { output: "ok dimlink" } });
     expect(String(posts[0]?.body)).toContain("\n```\nok dimlink\n```\n");
     expect(String(posts[0]?.body)).not.toContain("\u001b");
+  });
+
+  // The tests stand in for any code in the job: they look for the job token in git config, under
+  // RUNNER_TEMP and in their own environment, and print what git config shows.
+  it("leaves the job token where the tests can't read it in the README workflow, and never shows it", async () => {
+    const token = "ghs_fake_for_test";
+    const b64 = (s: string) => Buffer.from(s).toString("base64").replace(/=+$/, "");
+    const forms = [token, b64(`x-access-token:${token}`), b64(token)];
+    const lab = await mkdtemp(join(tmpdir(), "darnit-lab-"));
+    tempDirs.push(lab);
+    const probe = join(lab, "probe.cjs");
+    await writeFile(
+      probe,
+      `const { execSync } = require("node:child_process");
+const { readdirSync, readFileSync, writeFileSync } = require("node:fs");
+const config = execSync("git config --get-regexp .", { encoding: "utf8" });
+const temp = process.env.RUNNER_TEMP;
+const places = { "git config": config, env: JSON.stringify(process.env) };
+for (const f of readdirSync(temp, { recursive: true })) places[f] = readFileSync(temp + "/" + f, "utf8");
+const forms = ${JSON.stringify(forms)};
+writeFileSync(process.argv[2], Object.keys(places).filter((k) => forms.some((f) => places[k].includes(f))).join(","));
+console.log(config);`,
+    );
+    const run = async (persisted: boolean) => {
+      const { dir, branch } = await repoWithOrigin();
+      const temp = await mkdtemp(join(lab, "temp-"));
+      if (persisted) {
+        // What actions/checkout v7 writes with persist-credentials left on.
+        const file = join(temp, "git-credentials-1.config");
+        await git(temp, ["config", "-f", file, "http.https://github.com/.extraheader", `AUTHORIZATION: basic ${forms[1]}`]);
+        await git(dir, ["config", `includeIf.gitdir:${await realpath(dir)}/.git.path`, file]);
+      }
+      const posts = stubGitHub(branch);
+      vi.stubEnv("GITHUB_ACTIONS", "true");
+      vi.stubEnv("GITHUB_TOKEN", token);
+      vi.stubEnv("RUNNER_TEMP", temp);
+      const out = join(temp, "found");
+      const result = await fix(dir, { pr: true, test: `node ${probe} ${out}`, repo: "o/r" });
+      expect(result.records[0]?.pr).toMatchObject({ state: "opened" });
+      const shown = String(posts[0]?.body) + JSON.stringify(toJson(result));
+      for (const f of forms) expect(shown).not.toContain(f);
+      return readFile(out, "utf8");
+    };
+    const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+    const workflow = readme.split("```").find((block) => block.includes("darnit fix --pr"))!;
+    expect(await run(true)).toBe("git config,git-credentials-1.config");
+    expect(await run(!/persist-credentials: false/.test(workflow))).toBe("");
   });
 });
 

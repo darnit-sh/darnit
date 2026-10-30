@@ -1,0 +1,16 @@
+{
+  "id": "openai:2026-01-01:bad-python-pattern",
+  "status": "reviewed",
+  "vendor": "openai",
+  "announcedAt": "2026-01-01",
+  "kind": "deprecation",
+  "surface": { "sdkSymbols": ["chat.completions.create"], "fields": ["max_tokens"] },
+  "classification": "mechanical",
+  "sources": [{ "url": "https://example.com/bad-python-pattern" }],
+  "detection": {
+    "astGrepPatterns": {
+      "js": [{ "context": "({ max_tokens: $N })", "selector": "pair" }],
+      "py": [{ "context": "f(max_tokens=", "selector": "keyword_argument" }]
+    }
+  }
+}

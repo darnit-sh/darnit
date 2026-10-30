@@ -51,6 +51,14 @@ new 0.2 release on their next run.
   darnit is affected.
 - Attacks that need someone who can already change your workflow files or your machine.
 
+In the README's `fix --pr` workflow, your install scripts and tests run in the job that holds the
+GitHub token. The token is not in their environment, on disk or in the pull request, but a process
+there can still read darnit's own environment, and the token with it. Git config they write to the
+repository can also send darnit's git calls to GitHub, and the token with them, to another server,
+for example `http.curloptResolve` pointing github.com at another address with
+`http.sslVerify false`. The README workflow cannot prevent either. On code you do not trust, run
+`check` only.
+
 ## How we handle a report
 
 1. We confirm the problem with a test that shows it.

@@ -83,7 +83,7 @@ One line per angle, all on the candidate:
 - **Upgrade:** a repository set up by the previous release (`init` output, `darnit.yml`, workflow)
   still works unchanged with the candidate.
 - **Install:** `npx -y darnit@next` and `npm install -g darnit@next` from a clean folder, on macOS
-  and Linux, Node 22 and 24.
+  and Linux, Node 22, 24 and 26.
 - **Live CI:** the workflow in darnit-sh/darnit-example, pointed at the candidate's exact version,
   passes a real Actions run.
 - **Contract:** `--help`, exit codes and a `--json` sample diffed against the previous release; only

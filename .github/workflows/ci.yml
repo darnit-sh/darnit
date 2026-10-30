@@ -39,9 +39,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node: [22, 24]
-        # Pull requests skip macOS on Node 24; main runs all four.
-        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24}]') || fromJSON('[]') }}
+        node: [22, 24, 26]
+        # Pull requests skip macOS on Node 24 and 26; main runs all six.
+        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24},{"os":"macos-latest","node":26}]') || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -70,9 +70,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node: [22, 24]
-        # Pull requests skip macOS on Node 24; main runs all four.
-        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24}]') || fromJSON('[]') }}
+        node: [22, 24, 26]
+        # Pull requests skip macOS on Node 24 and 26; main runs all six.
+        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24},{"os":"macos-latest","node":26}]') || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:

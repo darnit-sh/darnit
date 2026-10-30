@@ -1,14 +1,27 @@
 import { once } from "node:events";
 import { type AddressInfo, createServer, type Socket } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPr, defaultBranch, findOpenPr, parseRemote, parseSlug } from "../src/github.js";
+import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "../src/github.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }));
+
+describe("githubToken", () => {
+  it("takes GH_TOKEN when GITHUB_TOKEN is set but empty or blank, as a missing secret leaves it, and trims either", async () => {
+    // No gh on PATH, so only the environment can answer.
+    vi.stubEnv("PATH", "");
+    for (const [github, gh] of [["", "gho_fake_for_test"], ["  \n", "gho_fake_for_test"], ["gho_fake_for_test\n", ""], ["", " gho_fake_for_test\n"]]) {
+      vi.stubEnv("GITHUB_TOKEN", github);
+      vi.stubEnv("GH_TOKEN", gh);
+      expect(await githubToken(), JSON.stringify([github, gh])).toBe("gho_fake_for_test");
+    }
+  });
+});
 
 describe("parseRemote", () => {
   it("reads ssh and https GitHub remotes", () => {
