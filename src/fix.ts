@@ -455,6 +455,9 @@ export function forTerminal(text: string, color = false, env = process.env): str
   return `::stop-commands::${token}\n${clean}\n::${token}::`;
 }
 
+/** JSON on its way out: `#`, which only a string can hold, as `\u0023`, so no `##[` in it runs as a workflow command. Safe per chunk. */
+export const forJson = (json: string) => json.replaceAll("#", "\\u0023");
+
 /** Verbatim vendor text: GitHub renders a code span as literal text, so no links, HTML or mentions. */
 const plain = (text: string) => {
   const t = text.replaceAll("`", "'").replace(/\s+/g, " ").trim();

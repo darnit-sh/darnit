@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { checkJson, checkReport, exitCodeForCheck, render } from "./check.js";
-import { exitCodeFor, fix, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
+import { exitCodeFor, fix, forJson, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 import { updateNotice } from "./update.js";
 
@@ -58,7 +58,7 @@ program
       const report = checkJson({ version, scanned: coverage }, { hits, possiblyAffected: values, mentions });
       for (const chunk of report) {
         if (out.destroyed) break;
-        if (!out.write(chunk)) await once(out, "drain").catch(() => {});
+        if (!out.write(forJson(chunk))) await once(out, "drain").catch(() => {});
       }
       out.write("\n");
     } else {
@@ -97,7 +97,7 @@ program
       ...(flags.only ? { only: flags.only } : {}),
       ...(typeof flags.test === "string" ? { test: flags.test } : {}),
     });
-    if (flags.json) console.log(JSON.stringify({ version, ...fixToJson(result) }, null, 2));
+    if (flags.json) console.log(forJson(JSON.stringify({ version, ...fixToJson(result) }, null, 2)));
     else {
       if (result.diff) console.log(forTerminal(result.diff, true));
       console.log(forTerminal(renderSummary(result)));
