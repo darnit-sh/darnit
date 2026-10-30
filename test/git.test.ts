@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -150,6 +150,21 @@ describe("git works on the folder it was given", () => {
     } finally {
       vi.doUnmock("node:child_process");
       vi.resetModules();
+    }
+  });
+
+  it("still reads the config files GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME and XDG_CONFIG_HOME point to", async () => {
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const home = await mkdtemp(join(tmpdir(), "darnit-home-"));
+    tempDirs.push(home);
+    await mkdir(join(home, "git"));
+    const where = { GIT_CONFIG_GLOBAL: "global", GIT_CONFIG_SYSTEM: "system", HOME: ".gitconfig", XDG_CONFIG_HOME: "git/config" };
+    for (const [name, file] of Object.entries(where)) {
+      await writeFile(join(home, file), `[darnit]\n\tprobe = ${name}\n`);
+      vi.stubEnv(name, name.startsWith("GIT_") ? join(home, file) : home);
+      expect((await g.git(dir, ["config", "--get", "darnit.probe"])).trim()).toBe(name);
+      vi.unstubAllEnvs();
+      await rm(join(home, file));
     }
   });
 
