@@ -38,7 +38,8 @@ program
   .argument("[dir]", DIR)
   .option("--force", "rewrite darnit.yml and the workflow if they exist")
   .action(async (dir: string | undefined, { force }: { force?: boolean }) => {
-    for (const line of await init(await folder(dir), { force: force ?? false })) console.log(forTerminal(line.startsWith("Not checked:") ? line : `✓ ${line}`));
+    const lines = await init(await folder(dir), { force: force ?? false });
+    console.log(forTerminal(lines.map((line) => (line.startsWith("Not checked:") ? line : `✓ ${line}`)).join("\n")));
   });
 
 program

@@ -821,11 +821,12 @@ describe("fix in GitHub Actions", () => {
     expect(notDarnits(run.stderr)).toEqual({ ran: [], stopped: false });
   });
 
-  it("prints no file name from init as a workflow command", async () => {
+  it("prints no file name from init as a workflow command, inside one fence", async () => {
     const dir = await repoWith({ "##[error]pwned.py": "import openai\n" });
     const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "init");
     expect(run.stdout).toContain("found openai (##[error]pwned.py: import openai)");
     expect(notDarnits(run.stdout)).toEqual({ ran: [], stopped: false });
+    expect(run.stdout.match(/^::stop-commands::/gm)).toHaveLength(1);
   });
 
   it("is plain text outside GitHub Actions", async () => {
