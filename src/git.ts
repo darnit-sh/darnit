@@ -96,11 +96,22 @@ export async function position(root: string): Promise<{ ref: string; detached: b
   return { ref: (await git(root, ["rev-parse", "HEAD"])).trim(), detached: true };
 }
 
-export const dirtyAmong = async (root: string, files: readonly string[]) =>
-  (await git(root, ["status", "--porcelain", "--", ...files])).trim() !== "";
-
 /** Tracked files under `root` with changes, staged or not, relative to `root`. */
 export const modified = async (root: string) => (await git(root, ["diff", "--name-only", "-z", "--relative", "HEAD"])).split("\0").filter(Boolean);
+
+/**
+ * Which of `files` (relative to `root`) git could not put back as they are now: changed since HEAD,
+ * staged or not, or with no plain committed copy in this repository (untracked, ignored, marked
+ * assume-unchanged or skip-worktree, or inside a nested repository or submodule). Lists the whole
+ * tree once rather than passing `files` to git, which matches each name against every entry.
+ */
+export async function uncommitted(root: string, files: readonly string[]): Promise<string[]> {
+  if (files.length === 0) return [];
+  const changed = new Set(await modified(root));
+  // -v tags each entry; "H " is a plain tracked file, anything else is a flag or a conflict git would not restore from.
+  const tracked = new Set((await git(root, ["ls-files", "-v", "-z"])).split("\0").filter((e) => e.startsWith("H ")).map((e) => e.slice(2)));
+  return files.filter((f) => changed.has(f) || !tracked.has(f));
+}
 
 /** Puts tracked files back to their committed contents. */
 export const discard = async (root: string, files: readonly string[]) => {

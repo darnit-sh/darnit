@@ -84,7 +84,7 @@ describe("git treats the repo as untrusted", () => {
   it("takes file names literally, never as patterns", async () => {
     const dir = await repoWith({ "a.ts": "a\n", "*.ts": "star\n" });
     await writeFile(join(dir, "a.ts"), "changed\n");
-    expect(await g.dirtyAmong(dir, ["*.ts"])).toBe(false);
+    expect(await g.uncommitted(dir, ["*.ts"])).toEqual([]);
     expect(await g.diff(dir, ["*.ts"], false)).toBe("");
   });
 

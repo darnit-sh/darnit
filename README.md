@@ -172,9 +172,11 @@ nothing affects the repository.
 ### `darnit fix`
 
 Rewrites the affected code, runs your build and tests, and shows the diff. It only runs
-inside a git repository, so everything it does can be undone with git. Commit
-first if those files have changes of your own. It touches only the files `check`
-reported.
+inside a git repository, so everything it does can be undone with git. It touches
+only the files `check` reported, and refuses (exit 2) when any of them is not
+committed as it is: changed, staged, untracked, ignored, marked
+`assume-unchanged` or `skip-worktree`, or inside a nested repository or
+submodule. Commit or stash those first, or preview with `--dry-run`.
 
 It finds your checks on its own: a `typecheck` or `build` script (or the
 repo's own TypeScript compiler), then your tests (`npm test`, `pnpm test`,
