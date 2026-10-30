@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
+import { cpuTime } from "./helpers.js";
 
 // A short limit for the build and test runs, and a count of them, so a hung check costs a test half a second.
 const runs = vi.hoisted(() => ({ limitMs: undefined as number | undefined, count: 0 }));
@@ -997,9 +998,7 @@ describe("prose", () => {
     expect(prose("a\u200Bb\u202Ec\uFEFFd")).toBe("abcd");
   });
 
-  it("stays fast on hostile input", () => {
-    const started = Date.now();
-    prose(`${".".repeat(50000)}a`);
-    expect(Date.now() - started).toBeLessThan(500);
+  it("stays fast on hostile input", async () => {
+    expect(await cpuTime(() => prose(`${".".repeat(50000)}a`), 3, 500)).toBeLessThan(500);
   });
 });

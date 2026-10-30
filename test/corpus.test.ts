@@ -9,6 +9,7 @@ import { parseSpec, requestProperty, type Schema, type Spec } from "../src/corpu
 import { runPackFixtures } from "../src/packs/fixtures.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { loadRecords } from "../src/records/load.js";
+import { cpuTime } from "./helpers.js";
 
 const YAML_DIR = fileURLToPath(new URL("./fixtures/specs/", import.meta.url));
 const config = { spec: "https://example.com/openapi.yaml", symbols: { "POST /chat/completions": "chat.completions.create" } };
@@ -205,17 +206,16 @@ describe("deriveCandidates", () => {
     expect(candidates.map((c) => c.record.id)).toEqual(["openai:2026-01-01:max-tokens-deprecated", "openai:2026-01-01:functions-deprecated"]);
   });
 
-  it("resolves each referenced schema once across many fields within a CPU budget", () => {
+  it("resolves each referenced schema once across many fields within a CPU budget", async () => {
     const fields = Array.from({ length: 60 }, (_, i) => `f${i}`);
     const schemas: Record<string, Schema> = {};
     for (let i = 0; i < 100_000; i++) schemas[`C${i}`] = ref(`C${i + 1}`);
     schemas["C100000"] = { description: "Deprecated in favor of `g`." };
-    const start = process.cpuUsage();
-    const { candidates } = synthetic(Object.fromEntries(fields.map((f) => [f, ref("C0")])), fields.map((f) => deprecated(f)), schemas);
-    const { user, system } = process.cpuUsage(start);
+    let candidates: ReturnType<typeof synthetic>["candidates"] = [];
+    const ms = await cpuTime(() => ({ candidates } = synthetic(Object.fromEntries(fields.map((f) => [f, ref("C0")])), fields.map((f) => deprecated(f)), schemas)), 3, 1000);
     expect(candidates).toHaveLength(60);
     expect(candidates.every((c) => c.record.id.endsWith("-to-g"))).toBe(true);
-    expect((user + system) / 1000).toBeLessThan(1000);
+    expect(ms).toBeLessThan(1000);
   });
 });
 
@@ -231,20 +231,20 @@ function synthetic(properties: Record<string, Schema>, entries: ChangeEntry[], s
 }
 
 describe("requestProperty", () => {
-  it("stops at $ref cycles and follows long chains within a CPU budget", () => {
+  it("stops at $ref cycles and follows long chains within a CPU budget", async () => {
     const schemas: Record<string, Schema> = { A: ref("B"), B: ref("A"), Self: ref("Self") };
     for (let i = 0; i < 100_000; i++) schemas[`C${i}`] = ref(`C${i + 1}`);
     schemas["C100000"] = { properties: { max_tokens: ref("Self") } };
     const op = (name: string) => ({ post: { requestBody: { content: { "application/json": { schema: ref(name) } } } } });
     const spec: Spec = { paths: { "/a": op("A"), "/self": op("Self"), "/chain": op("C0") }, components: { schemas } };
-    const start = process.cpuUsage();
-    expect(requestProperty(spec, "POST", "/a", "max_tokens")).toBeUndefined();
-    expect(requestProperty(spec, "POST", "/self", "max_tokens")).toBeUndefined();
-    expect(requestProperty(spec, "POST", "/chain", "max_tokens")).toEqual(ref("Self"));
-    expect(requestProperty(spec, "POST", "/chain", "constructor")).toBeUndefined();
     const odd = { paths: { "/x": { post: { requestBody: { content: { "application/json": { schema: { allOf: 1, $ref: 2 } } } } } } } } as unknown as Spec;
-    expect(requestProperty(odd, "POST", "/x", "max_tokens")).toBeUndefined();
-    const { user, system } = process.cpuUsage(start);
-    expect((user + system) / 1000).toBeLessThan(1000);
+    const ms = await cpuTime(() => {
+      expect(requestProperty(spec, "POST", "/a", "max_tokens")).toBeUndefined();
+      expect(requestProperty(spec, "POST", "/self", "max_tokens")).toBeUndefined();
+      expect(requestProperty(spec, "POST", "/chain", "max_tokens")).toEqual(ref("Self"));
+      expect(requestProperty(spec, "POST", "/chain", "constructor")).toBeUndefined();
+      expect(requestProperty(odd, "POST", "/x", "max_tokens")).toBeUndefined();
+    }, 3, 1000);
+    expect(ms).toBeLessThan(1000);
   });
 });
