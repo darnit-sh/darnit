@@ -11,6 +11,7 @@ import { compilePatterns, findMatches, grammarFor } from "../src/scan/astgrep.js
 import { SDK_CLASSES } from "../src/scan/clients.js";
 import { findModelValues, inside, isTestPath } from "../src/scan/values.js";
 import { findMentions } from "../src/scan/mentions.js";
+import { cpuTime } from "./helpers.js";
 
 vi.mock("@ast-grep/napi", async (importOriginal) => {
   const real = await importOriginal<typeof import("@ast-grep/napi")>();
@@ -39,28 +40,16 @@ async function scratch(files: Record<string, string>): Promise<string> {
 
 const locations = (hits: Hit[]) => hits.map((h) => `${h.file}:${h.line}`);
 
-/** Milliseconds of CPU time `f` takes, which shared runners and parallel test files disturb less than wall time. With `runs`, the least of that many runs, as noise only adds time. */
-function cpuTime(f: () => unknown, runs = 1): number {
-  let least = Infinity;
-  for (let i = 0; i < runs; i++) {
-    const start = process.cpuUsage();
-    f();
-    const { user, system } = process.cpuUsage(start);
-    least = Math.min(least, (user + system) / 1000);
-  }
-  return least;
-}
-
 /** How much longer `findModelValues` takes on `source(1)` than on `source(1 / 8)`: 8 when linear, 64 when quadratic. Healthy runs stay under 11. */
-function growth(file: string, source: (scale: number) => string): number {
+async function growth(file: string, source: (scale: number) => string): Promise<number> {
   const grammar = grammarFor(file)!.grammar;
   const time = (scale: number, runs: number) => {
     const text = source(scale);
     return cpuTime(() => findModelValues(file, text, grammar, new Set(["gpt-4"])), runs);
   };
   // One slow full-size run pushed the ratio past 24, so both sizes take their fastest run. Each full-size run holds its trees until collected, so only two.
-  const small = time(1 / 8, 5);
-  return time(1, 2) / small;
+  const small = await time(1 / 8, 5);
+  return (await time(1, 2)) / small;
 }
 
 describe("check tells OpenAI apart from look-alike clients", () => {
@@ -973,17 +962,18 @@ describe("model names set as values", () => {
     expect(["src/latest.py", "contest.py", "testing.ts", "src/attest/a.py"].filter(isTestPath)).toEqual([]);
   });
 
-  it("takes about as long with tokenizer calls in the file as without", () => {
+  it("takes about as long with tokenizer calls in the file as without", async () => {
     const grammar = grammarFor("app.py")!.grammar;
     // Both files hold the same calls and both get the tokenizer pass, so a healthy run is about 1x. CPU
     // time on shared runners still varies by up to half, so the bound is loose: checking every tokenizer
     // for each value is about 5x here. The search itself is counted step by step in the next test.
-    const time = (call: string) => {
+    const time = (call: string, runs?: number, budget?: number) => {
       const source = `count_tokens(x)\n${`${call}(x)\nmodel = "gpt-4"\n`.repeat(120_000)}`;
-      return cpuTime(() => expect(findModelValues("app.py", source, grammar, new Set(["gpt-4"]))).toHaveLength(120_000));
+      return cpuTime(() => expect(findModelValues("app.py", source, grammar, new Set(["gpt-4"]))).toHaveLength(120_000), runs, budget);
     };
-    const plain = time("count_things");
-    expect(time("count_tokens")).toBeLessThan(2.5 * plain);
+    const bound = 2.5 * (await time("count_things"));
+    // A second run only when the first lands over the bound, as each run takes seconds.
+    expect(await time("count_tokens", 2, bound)).toBeLessThan(bound);
   }, 60_000);
 
   it("finds the range around a value in a few steps however many ranges there are", () => {
@@ -1000,13 +990,13 @@ describe("model names set as values", () => {
     expect(reads).toBeLessThan(2 * 2000 * 50);
   });
 
-  it("reads long call chains in linear time", () => {
+  it("reads long call chains in linear time", async () => {
     for (const [file, link] of ["app.py", "app.ts"].flatMap((f) => [".a()", ".token", ".token()"].map((l) => [f, l] as const))) {
-      expect(growth(file, (n) => `model = "gpt-4"; x${link.repeat(40_000 * n)}\n`)).toBeLessThan(24);
+      expect(await growth(file, (n) => `model = "gpt-4"; x${link.repeat(40_000 * n)}\n`)).toBeLessThan(24);
     }
   }, 60_000);
 
-  it("reads calls with many arguments about as fast as parsing them", () => {
+  it("reads calls with many arguments about as fast as parsing them", async () => {
     const cases = [
       ["app.ts", '"gpt-4", '],
       ["app.py", '"gpt-4", '],
@@ -1016,12 +1006,12 @@ describe("model names set as values", () => {
     for (const [file, arg] of cases) {
       const grammar = grammarFor(file)!.grammar;
       const source = `f("model", ${arg.repeat(2000)})\n`;
-      const parsing = cpuTime(() => parse(grammar, source), 3);
-      expect(cpuTime(() => findModelValues(file, source, grammar, new Set(["gpt-4"])), 3)).toBeLessThan(10 * parsing + 500);
+      const parsing = await cpuTime(() => parse(grammar, source), 3);
+      expect(await cpuTime(() => findModelValues(file, source, grammar, new Set(["gpt-4"])), 3)).toBeLessThan(10 * parsing + 500);
     }
   }, 60_000);
 
-  it("reads long names, long lines and deep code in linear time", () => {
+  it("reads long names, long lines and deep code in linear time", async () => {
     const defaults = (n: number) => 'default="gpt-4", '.repeat(5000 * n);
     const cases = [
       ["app.py", (n: number) => `${"a.".repeat(50_000 * n)}model = f(${defaults(n)})\n`],
@@ -1031,8 +1021,9 @@ describe("model names set as values", () => {
       ["app.ts", (n: number) => `model = ${'c ? "gpt-4" : ('.repeat(5000 * n)}x${")".repeat(5000 * n)}\n`],
       ["app.ts", (n: number) => `model = x${'.f("gpt-4")'.repeat(20_000 * n)}\n`],
     ] as const;
-    const slow = cases.filter(([file, source]) => growth(file, source) > 24);
-    expect(slow.map(([, source]) => source(1).slice(0, 20))).toEqual([]);
+    const slow = [];
+    for (const [file, source] of cases) if ((await growth(file, source)) > 24) slow.push(source(1).slice(0, 20));
+    expect(slow).toEqual([]);
   }, 60_000);
 
   it("does not list a call's model fallback again when it wraps to the next line", async () => {
@@ -1079,7 +1070,7 @@ describe("model names set as values", () => {
     const { values } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
     const many = Array.from({ length: 200_000 }, (_, i) => ({ ...values[0]!, line: i + 1 }));
     // A tenth of a second on a laptop; comparing each value with every other takes 40 seconds.
-    expect(cpuTime(() => expect(render([], undefined, many)).toContain("  200000 values in 1 file\n"))).toBeLessThan(10_000);
+    expect(await cpuTime(() => expect(render([], undefined, many)).toContain("  200000 values in 1 file\n"))).toBeLessThan(10_000);
   });
 
   it("does not fail the check when values are all it finds", async () => {
@@ -1269,11 +1260,11 @@ describe("other mentions of model names", () => {
     expect(text).toContain("  and 3 more files\n  276 mentions in 23 files.");
   });
 
-  it("reads a padded file in linear time", () => {
+  it("reads a padded file in linear time", async () => {
     const names = new Set(["gpt-4", "o1", "ada"]);
     for (const unit of ["a", ".", "gpt-4.gpt-4x", "x y ", "o1\n", "model= ada ", '\\"ada\\"x ', "engine: \t"]) {
       const text = unit.repeat(Math.ceil(2_000_000 / unit.length));
-      expect(cpuTime(() => findMentions(text, names), 3)).toBeLessThan(3000);
+      expect(await cpuTime(() => findMentions(text, names), 3)).toBeLessThan(3000);
     }
   });
 });
@@ -1354,9 +1345,8 @@ describe("check on a repository built to slow it down", () => {
     ["a function with thousands of blank lines", "app.py", py(`from groq import Groq\ndef setup():\n    client = Groq()${"\n".repeat(150_000)}    return client`), 150_004],
   ])("finishes quickly on %s", async (_, name, text, line) => {
     const dir = await scratch({ [name]: text });
-    const start = performance.now();
-    const hits = await check(dir);
-    expect(performance.now() - start).toBeLessThan(2000);
+    let hits: Hit[] = [];
+    expect(await cpuTime(async () => (hits = await check(dir)), 3, 2000)).toBeLessThan(2000);
     expect(maxTokens(hits)).toEqual([`${name}:${line}`]);
   });
 
@@ -1372,9 +1362,8 @@ describe("check on a repository built to slow it down", () => {
     ["calls on clients whose address is set in 50 nested blocks", "app.js", `import OpenAI from "openai";\n${times(50, (i) => `{\nconst baseURL = "http://localhost:${i}";\nvar client = new OpenAI({ baseURL });\n`)}${times(20, () => "client.chat.completions.create({ max_tokens: 5 });\n")}${"}\n".repeat(50)}`, 20, 2000],
   ])("finishes quickly on %s", { timeout: 300_000 }, async (_, name, text, count, budget) => {
     const dir = await scratch({ [name]: text });
-    const start = performance.now();
-    const hits = await check(dir);
-    expect(performance.now() - start).toBeLessThan(budget);
+    let hits: Hit[] = [];
+    expect(await cpuTime(async () => (hits = await check(dir)), 3, budget)).toBeLessThan(budget);
     expect(maxTokens(hits)).toHaveLength(count);
   });
 
@@ -1385,11 +1374,9 @@ describe("check on a repository built to slow it down", () => {
       times(3000, (i) => `const c${i} = new OpenAI();\n${create("OpenAIRealtimeWS", `c${i}`)}${create("OpenAIRealtimeWebSocket", `c${i}`)}`),
     ].join("");
     const dir = await scratch({ "app.ts": text });
-    const start = process.cpuUsage();
-    const { hits } = await checkReport(dir);
-    const { user, system } = process.cpuUsage(start);
+    let hits: Hit[] = [];
     // About 0.9 seconds on a laptop.
-    expect((user + system) / 1000).toBeLessThan(5000);
+    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 5000)).toBeLessThan(5000);
     expect(new Set(hits.map((h) => h.line)).size).toBe(3000);
   });
 
@@ -1399,11 +1386,9 @@ describe("check on a repository built to slow it down", () => {
       times(16000, () => 'OpenAIRealtimeWS.create(c, { model: "gpt-4o-realtime-preview-2024-10-01" });\n'),
     ].join("");
     const dir = await scratch({ "app.ts": text });
-    const start = process.cpuUsage();
-    const { hits } = await checkReport(dir);
-    const { user, system } = process.cpuUsage(start);
+    let hits: Hit[] = [];
     // About 2 seconds on a laptop; 16 when each call walked every import of the name.
-    expect((user + system) / 1000).toBeLessThan(8000);
+    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 8000)).toBeLessThan(8000);
     expect(hits).toEqual([]);
   });
 
@@ -1426,9 +1411,8 @@ describe("check on a repository built to slow it down", () => {
     ["calls in functions nested 2000 deep", "app.js", `import OpenAI from "openai";\nconst client = new OpenAI();\n${times(2000, (i) => `function f${i}(a) {\n  client.chat.completions.create({ max_tokens: 5 });\n`)}${"}\n".repeat(2000)}`, 2000],
   ])("finishes quickly on %s", { timeout: 300_000 }, async (_, name, text, count) => {
     const dir = await scratch({ [name]: text });
-    const start = performance.now();
-    const hits = await check(dir);
-    expect(performance.now() - start).toBeLessThan(5000);
+    let hits: Hit[] = [];
+    expect(await cpuTime(async () => (hits = await check(dir)), 3, 5000)).toBeLessThan(5000);
     expect(maxTokens(hits)).toHaveLength(count);
   });
 
@@ -1439,9 +1423,8 @@ describe("check on a repository built to slow it down", () => {
     ["a request inside calls nested 1500 deep", `import requests\nx = ${"f(max_tokens=5, ".repeat(1500)}${request("max_tokens=5")}${")".repeat(1500)}\n`, 1],
   ])("finishes quickly on %s", async (_, text, count) => {
     const dir = await scratch({ "app.py": text });
-    const start = performance.now();
-    const hits = await check(dir);
-    expect(performance.now() - start).toBeLessThan(2000);
+    let hits: Hit[] = [];
+    expect(await cpuTime(async () => (hits = await check(dir)), 3, 2000)).toBeLessThan(2000);
     expect(maxTokens(hits)).toHaveLength(count);
   });
 
@@ -1466,11 +1449,11 @@ describe("check on a repository built to slow it down", () => {
     expect(maxTokens(await check(await scratch({ [name]: text })))).toEqual([at]);
   });
 
-  it.each(["app.js", "app.py", "App.kt"])("finds strings and comments in a crafted 10 MB %s in linear time", { timeout: 60_000 }, (file) => {
+  it.each(["app.js", "app.py", "App.kt"])("finds strings and comments in a crafted 10 MB %s in linear time", { timeout: 60_000 }, async (file) => {
     const names = new Set(["o1", "gpt-4"]);
     for (const unit of ["\"o1 '\\\n", "/*o1\n", "'''o1\\\n", '\\\\"o1"\n', '`o1 #o1 """\n', "o1 o1\n"]) {
       const text = unit.repeat(Math.floor(MAX_FILE_BYTES / unit.length));
-      expect(cpuTime(() => findMentions(text, names, file))).toBeLessThan(3000);
+      expect(await cpuTime(() => findMentions(text, names, file))).toBeLessThan(3000);
     }
   });
 

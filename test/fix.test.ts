@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
+import { cpuTime } from "./helpers.js";
 
 // A short limit for the build and test runs, and a count of them, so a hung check costs a test half a second.
 const runs = vi.hoisted(() => ({ limitMs: undefined as number | undefined, count: 0 }));
@@ -800,6 +801,27 @@ describe("fix --pr", () => {
     expect(renderSummary(result)).toContain("pull request opened https://github.com/o/r/pull/1");
   });
 
+  it("commits and pushes in the folder it was given when the environment points git at another repository", async () => {
+    const { dir, bare, branch } = await repoWithOrigin();
+    // Same files, so git sees nothing amiss when it reads this one instead.
+    const other = await repoWithOrigin();
+    const otherHead = (await git(other.dir, ["rev-parse", "HEAD"])).trim();
+    const posts = stubGitHub(branch);
+    vi.stubEnv("GIT_DIR", join(other.dir, ".git"));
+    const result = await fix(dir, { pr: true, noTest: true, repo: "o/r" });
+    vi.unstubAllEnvs();
+
+    expect((await git(other.bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(other.dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(other.dir, ["rev-parse", "HEAD"])).trim()).toBe(otherHead);
+    expect((await git(other.dir, ["status", "--porcelain"])).trim()).toBe("");
+    expect(result.records[0]?.pr?.state).toBe("opened");
+    expect(posts).toHaveLength(1);
+    expect((await git(bare, ["show", `${BRANCH}:app.py`])).toString()).toContain("max_completion_tokens=256");
+    expect((await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe(branch);
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+  });
+
   it("opens no pull request when the rules changed nothing", async () => {
     const { dir, bare, branch } = await repoWithOrigin(await repoWith({ "client.js": RAW_FETCH }));
     const posts = stubGitHub(branch);
@@ -1110,9 +1132,7 @@ describe("prose", () => {
     expect(prose("a\u200Bb\u202Ec\uFEFFd")).toBe("abcd");
   });
 
-  it("stays fast on hostile input", () => {
-    const started = Date.now();
-    prose(`${".".repeat(50000)}a`);
-    expect(Date.now() - started).toBeLessThan(500);
+  it("stays fast on hostile input", async () => {
+    expect(await cpuTime(() => prose(`${".".repeat(50000)}a`), 3, 500)).toBeLessThan(500);
   });
 });
