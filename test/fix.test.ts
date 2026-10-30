@@ -455,6 +455,44 @@ describe("fix", () => {
     expect((await fix(dir, { dryRun: true })).diff).toContain("max_completion_tokens");
   });
 
+  const NOT_CHECKED_OUT = "not a checked-out git repository; darnit only edits files it can undo. Use --dry-run to preview.";
+
+  it("refuses a bare repository, a .git folder and a plain folder before touching a file, unless --dry-run", async () => {
+    const work = await repoWith({ "sdk.js": SDK_CALL });
+    const parent = await mkdtemp(join(tmpdir(), "darnit-bare-"));
+    tempDirs.push(parent);
+    for (const name of ["bare.git", "empty.git"]) await promisify(execFile)("git", ["clone", "-q", "--bare", work, name], { cwd: parent });
+    await mkdir(join(parent, "plain"));
+    // Each has a fixable file, except empty.git, where there is nothing to fix but darnit still cannot undo.
+    const places = [join(parent, "bare.git"), join(work, ".git"), join(work, ".git", "refs"), join(parent, "plain")];
+    for (const p of places) await writeFile(join(p, "sdk.js"), SDK_CALL);
+    for (const p of [...places, join(parent, "empty.git")]) {
+      for (const opts of [{}, { noTest: true }, { pr: true }, { pr: true, allowDirty: true }]) {
+        const err = await fix(p, opts).catch((e: unknown) => e);
+        expect(err, p).toBeInstanceOf(Refusal);
+        expect((err as Error).message, p).toBe(NOT_CHECKED_OUT);
+      }
+      expect(await darnit(parent, "fix", p)).toEqual({ code: 2, stdout: "", stderr: `darnit: ${NOT_CHECKED_OUT}\n` });
+      expect(await darnit(parent, "fix", "--pr", "--allow-dirty", p)).toEqual({ code: 2, stdout: "", stderr: `darnit: ${NOT_CHECKED_OUT}\n` });
+      if (p.endsWith("empty.git")) continue;
+      expect(await readFile(join(p, "sdk.js"), "utf8"), p).toBe(SDK_CALL);
+      expect((await fix(p, { dryRun: true })).diff, p).toContain("max_completion_tokens");
+    }
+  });
+
+  it("works on a subdirectory or a linked worktree of a repository as on the folder itself", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "sub/sdk.js": SDK_CALL });
+    const wt = join(await mkdtemp(join(tmpdir(), "darnit-wt-")), "wt");
+    tempDirs.push(dirname(wt));
+    await git(dir, ["worktree", "add", "-q", "--detach", wt]);
+    // Only files under the subdirectory are rewritten.
+    expect((await fix(join(dir, "sub"), { noTest: true })).diff).toContain("max_completion_tokens");
+    expect(await git(dir, ["status", "--porcelain"])).toBe(" M sub/sdk.js\n");
+    expect((await fix(wt, { noTest: true })).diff).toContain("max_completion_tokens");
+    expect(await git(wt, ["status", "--porcelain"])).toBe(" M sdk.js\n M sub/sdk.js\n");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
+
   const NO_COMMITS = "the current branch has no commits yet; commit your files first. Use --dry-run to preview.";
 
   it("refuses a repository with no commits before touching a file, unless --dry-run", async () => {

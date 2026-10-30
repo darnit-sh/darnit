@@ -254,7 +254,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   const color = opts.color ?? false;
   const dryRun = opts.dryRun ?? false;
   if (!dryRun && !(await g.isRepo(root))) {
-    throw new Refusal("not a git repository; darnit only edits files it can undo. Use --dry-run to preview.");
+    throw new Refusal("not a checked-out git repository; darnit only edits files it can undo. Use --dry-run to preview.");
   }
   if (!dryRun && !(await g.hasCommit(root))) {
     throw new Refusal("the current branch has no commits yet; commit your files first. Use --dry-run to preview.");
