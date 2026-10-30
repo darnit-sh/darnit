@@ -122,11 +122,59 @@ export async function position(root: string): Promise<{ ref: string; detached: b
   return { ref: (await git(root, ["rev-parse", "HEAD"])).trim(), detached: true };
 }
 
-export const dirtyAmong = async (root: string, files: readonly string[]) =>
-  (await git(root, ["status", "--porcelain", "--", ...files])).trim() !== "";
-
 /** Tracked files under `root` with changes, staged or not, relative to `root`. */
 export const modified = async (root: string) => (await git(root, ["diff", "--name-only", "-z", "--relative", "HEAD"])).split("\0").filter(Boolean);
+
+/**
+ * Tracked files under `root` that git status calls changed, staged or not, relative to `root`. Unlike
+ * `modified`, this includes a file whose bytes differ only in what git would normalize, such as line endings.
+ */
+async function changedFiles(root: string): Promise<string[]> {
+  const prefix = (await git(root, ["rev-parse", "--show-prefix"])).trim();
+  const entries = (await git(root, ["--no-optional-locks", "status", "--porcelain", "-z", "--untracked-files=no"])).split("\0");
+  const out: string[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    // Paths are from the repository root. A rename or copy is followed by its source path, which has no status of its own.
+    const paths = /[RC]/.test(entry.slice(0, 2)) ? [entry.slice(3), entries[++i] ?? ""] : [entry.slice(3)];
+    for (const p of paths) if (p && p.startsWith(prefix)) out.push(p.slice(prefix.length));
+  }
+  return out;
+}
+
+/** A core setting as git reads a boolean, or undefined when it is not set. */
+const coreFlag = (root: string, name: string) =>
+  git(root, ["config", "--type=bool", "--get", `core.${name}`]).then(
+    (v) => v.trim() === "true",
+    () => undefined,
+  );
+
+/**
+ * Which of `files` (relative to `root`) git could not put back as they are now: changed since HEAD,
+ * staged or not, or with no plain committed copy in this repository (untracked, ignored, marked
+ * assume-unchanged or skip-worktree, or inside a nested repository or submodule). Lists the whole
+ * tree once rather than passing `files` to git, which matches each name against every entry.
+ */
+export async function uncommitted(root: string, files: readonly string[]): Promise<Uncommitted[]> {
+  if (files.length === 0) return [];
+  // Git on macOS lists names composed, whatever form the disk gives them in, so they are compared that way there.
+  const composed = (await coreFlag(root, "precomposeunicode")) ?? process.platform === "darwin";
+  const key = (f: string) => (composed ? f.normalize("NFC") : f);
+  const changed = new Set((await changedFiles(root)).map(key));
+  // -v tags each entry; "H " is a plain tracked file, anything else is a flag or a conflict git would not restore from.
+  const names = (await git(root, ["ls-files", "-v", "-z"])).split("\0").filter((e) => e.startsWith("H ")).map((e) => e.slice(2));
+  const tracked = new Set(names.map(key));
+  const caseless = (await coreFlag(root, "ignorecase")) ? new Map(names.map((n) => [key(n).toLowerCase(), n])) : undefined;
+  return files
+    .filter((f) => changed.has(key(f)) || !tracked.has(key(f)))
+    .map((file) => {
+      const gitName = tracked.has(key(file)) ? undefined : caseless?.get(key(file).toLowerCase());
+      return gitName ? { file, gitName } : { file };
+    });
+}
+
+/** A file git could not put back; `gitName` when git has it under a name that differs only in case. */
+export type Uncommitted = { file: string; gitName?: string };
 
 /** Puts tracked files back to their committed contents. */
 export const discard = async (root: string, files: readonly string[]) => {
