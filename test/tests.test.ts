@@ -167,6 +167,11 @@ describe("runTests", () => {
       // Nor any auth header's value, such as one git config shows.
       await writeFile(join(dir, "leak.txt"), "http.https://github.com/.extraheader AUTHORIZATION: basic c29tZW9uZTpzZWNyZXQ=");
       expect((await runTests(dir, "cat leak.txt")).output).toBe("http.https://github.com/.extraheader AUTHORIZATION: basic ***");
+      // Nor in base64, as a git auth header carries it, with no header around it.
+      for (const plain of ["x-access-token:ghp_testtoken1234567890", "ghp_testtoken1234567890"]) {
+        await writeFile(join(dir, "leak.txt"), Buffer.from(plain).toString("base64"));
+        expect((await runTests(dir, "cat leak.txt")).output).toMatch(/^\*\*\*=*$/);
+      }
       // Nor by wrapping it in terminal codes that, once removed, would cut or join it.
       for (const wrapped of ["\u001bghp_testtoken1234567890", "\u001b[ghp_testtoken1234567890", "gh\u001b[0mp_testtoken1234567890"]) {
         await writeFile(join(dir, "leak.txt"), wrapped);
@@ -178,6 +183,12 @@ describe("runTests", () => {
         else process.env[k] = v;
       }
     }
+  });
+
+  it("hides the credential on a basic, bearer or token Authorization line, and nothing else", async () => {
+    const lines = ["Authorization: see the docs", "authorization: basic", "next line", "Authorization: Basic c2VjcmV0 x", "AUTHORIZATION: bearer abc.def", "Proxy-Authorization:\tTOKEN ghx_1"];
+    const dir = await dirWith({ "leak.txt": lines.join("\n") });
+    expect((await runTests(dir, "cat leak.txt")).output.split("\n")).toEqual([...lines.slice(0, 3), "Authorization: Basic *** x", "AUTHORIZATION: bearer ***", "Proxy-Authorization:\tTOKEN ***"]);
   });
 
   it("kills a hung command after the timeout", async () => {

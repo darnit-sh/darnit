@@ -54,7 +54,7 @@ new 0.2 release on their next run.
 In the README's `fix --pr` workflow, your install scripts and tests run in the job that holds the
 GitHub token. The token is not in their environment, on disk or in the pull request, but a process
 there can still read darnit's own environment, and the token with it. On code you do not trust, run
-`check` only. A workflow that runs the tests in a separate job without the token is planned.
+`check` only.
 
 ## How we handle a report
 

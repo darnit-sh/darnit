@@ -96,14 +96,16 @@ export async function commit(root: string, subject: string, body: string): Promi
 }
 
 /**
- * With a token in the environment, the push alone gets it, as git config in its own environment:
- * never on disk or in arguments, sent to `site` only. The empty value first drops any header the
- * checkout saved, since two would reach the server.
+ * In GitHub Actions with a token in the environment, the push alone gets it, as git config in its own
+ * environment: never on disk or in arguments, sent to `site` only. The empty value first drops any
+ * header the checkout saved, since two would reach the server. Elsewhere git's own credentials push.
+ * Known limit: config the repository's tests wrote, such as core.sshCommand, credential.helper,
+ * core.askPass or http.proxy, still applies to this push and can hand the header to another program.
  */
 export function push(root: string, branch: string, site = "https://github.com/"): Promise<string> {
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
   const auth: NodeJS.ProcessEnv = {};
-  if (token) {
+  if (token && process.env.GITHUB_ACTIONS === "true") {
     const n = Number(process.env.GIT_CONFIG_COUNT) || 0;
     const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
     Object.assign(auth, {

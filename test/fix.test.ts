@@ -860,6 +860,7 @@ console.log(config);`,
         await git(dir, ["config", `includeIf.gitdir:${await realpath(dir)}/.git.path`, file]);
       }
       const posts = stubGitHub(branch);
+      vi.stubEnv("GITHUB_ACTIONS", "true");
       vi.stubEnv("GITHUB_TOKEN", token);
       vi.stubEnv("RUNNER_TEMP", temp);
       const out = join(temp, "found");

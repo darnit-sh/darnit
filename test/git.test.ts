@@ -177,16 +177,18 @@ describe("push", () => {
     server?.close();
   });
 
-  // A remote that takes a push only with exactly one auth header, the job token's.
-  async function guardedOrigin(dir: string): Promise<{ url: string; remote: string }> {
+  // A remote that takes a push only with exactly one auth header, `accept`, and refuses any other, as
+  // GitHub refuses a token without push rights.
+  async function guardedOrigin(dir: string, accept = header): Promise<{ url: string; remote: string }> {
     const remote = await mkdtemp(join(tmpdir(), "darnit-remote-"));
     tempDirs.push(remote);
     await g.git(remote, ["init", "-q", "--bare", "r.git"]);
     const serve = backend(remote);
     server = createHttpServer((req, res) => {
       const auth = req.headersDistinct.authorization ?? [];
-      if (auth.length === 1 && auth[0] === header) serve(req, res);
-      else res.writeHead(401, { "WWW-Authenticate": 'Basic realm="r"' }).end();
+      if (auth.length === 1 && auth[0] === accept) serve(req, res);
+      else if (auth.length === 0) res.writeHead(401, { "WWW-Authenticate": 'Basic realm="r"' }).end();
+      else res.writeHead(403).end();
     });
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
@@ -197,6 +199,7 @@ describe("push", () => {
 
   it("hands the token to the push alone, through its environment, with or without the header the checkout saved", async () => {
     vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
     const dir = await repoWith({ "a.ts": "a\n" });
     const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
     const { url, remote } = await guardedOrigin(dir);
@@ -212,6 +215,18 @@ describe("push", () => {
     await writeFile(join(dir, "a.ts"), "b\n");
     await g.add(dir, ["a.ts"]);
     await g.commit(dir, "b", "b");
+    await g.push(dir, branch, url);
+    expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
+  }, 20_000);
+
+  it("leaves the push to git's own credentials outside GitHub Actions, even with a token exported", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "");
+    vi.stubEnv("GITHUB_TOKEN", token);
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir, `Basic ${Buffer.from("me:own").toString("base64")}`);
+    await g.git(dir, ["config", "credential.helper", "!f() { echo username=me; echo password=own; }; f"]);
     await g.push(dir, branch, url);
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
