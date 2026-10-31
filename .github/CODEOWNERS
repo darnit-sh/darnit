@@ -1,0 +1,3 @@
+# The workflows and scripts that decide whether a pull request can merge.
+/.github/ @alexcsh0
+/scripts/ @alexcsh0
