@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -437,11 +438,23 @@ const withoutControls = (text: string, color: boolean) =>
   // eslint-disable-next-line no-control-regex
   text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f]/g : /[\u0000-\u0008\u000b-\u001f]/g, (m) => (m.length > 1 ? m : ""));
 
-/** Text from the repository on its way to a terminal: control characters go, and color codes too unless `color`; `escapeHidden` writes out the rest. */
-export const forTerminal = (text: string, color = false) => escapeHidden(withoutControls(text, color));
+/**
+ * Text from the repository on its way to a terminal, a piece at a time: control characters go, and color codes too
+ * unless `color`; `escapeHidden` writes out the rest. In GitHub Actions it is fenced by a one-time token so no line
+ * of it runs as a workflow command, while darnit's own annotations printed outside it still work.
+ */
+export function* forTerminalPieces(text: string, color = false, env = process.env): Generator<string> {
+  const token = env.GITHUB_ACTIONS === "true" ? randomUUID() : undefined;
+  if (token) yield `::stop-commands::${token}\n`;
+  yield* escapedPieces(withoutControls(text, color));
+  if (token) yield `\n::${token}::`;
+}
 
-/** `forTerminal` a piece at a time, for long text such as a diff. */
-export const forTerminalPieces = (text: string, color = false) => escapedPieces(withoutControls(text, color));
+/** `forTerminalPieces` as one string, for short text. */
+export const forTerminal = (text: string, color = false, env = process.env) => [...forTerminalPieces(text, color, env)].join("");
+
+/** JSON on its way out: `#`, which only a string can hold, as `\u0023`, so no `##[` in it runs as a workflow command. Safe per chunk. */
+export const forJson = (json: string) => json.replaceAll("#", "\\u0023");
 
 /** Verbatim vendor text: GitHub renders a code span as literal text, so no links, HTML or mentions. */
 const plain = (text: string) => {

@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { checkJson, checkReport, exitCodeForCheck, render } from "./check.js";
 import { escapedPieces } from "./detect.js";
-import { exitCodeFor, fix, forTerminal, forTerminalPieces, renderSummary, toJson as fixToJson } from "./fix.js";
+import { exitCodeFor, fix, forJson, forTerminal, forTerminalPieces, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 import { updateNotice } from "./update.js";
 
@@ -33,6 +33,11 @@ async function write(...parts: Iterable<string>[]): Promise<void> {
     }
 }
 
+/** Each piece of JSON through `forJson`. */
+function* asJson(pieces: Iterable<string>): Generator<string> {
+  for (const piece of pieces) yield forJson(piece);
+}
+
 // Exit codes: 0 nothing to act on, 1 call sites of a reviewed or parser-verified change found, 2 darnit itself failed.
 // process.exitCode (not process.exit) so a long report is fully flushed through a pipe.
 
@@ -50,7 +55,8 @@ program
   .argument("[dir]", DIR)
   .option("--force", "rewrite darnit.yml and the workflow if they exist and are committed as they are")
   .action(async (dir: string | undefined, { force }: { force?: boolean }) => {
-    for (const line of await init(await folder(dir), { force: force ?? false })) console.log(forTerminal(line.startsWith("Not checked:") ? line : `✓ ${line}`));
+    const lines = await init(await folder(dir), { force: force ?? false });
+    console.log(forTerminal(lines.map((line) => (line.startsWith("Not checked:") ? line : `✓ ${line}`)).join("\n")));
   });
 
 program
@@ -63,7 +69,7 @@ program
     const root = await folder(dir);
     const update = updateNotice(version, { env: process.env, json });
     const { hits, coverage, values, mentions } = await checkReport(root);
-    if (json) await write(checkJson({ version, scanned: coverage }, { hits, possiblyAffected: values, mentions }), ["\n"]);
+    if (json) await write(asJson(checkJson({ version, scanned: coverage }, { hits, possiblyAffected: values, mentions })), ["\n"]);
     else {
       console.log(forTerminal(render(hits, coverage, values, mentions, all)));
       const notice = await update;
@@ -100,7 +106,7 @@ program
       ...(flags.only ? { only: flags.only } : {}),
       ...(typeof flags.test === "string" ? { test: flags.test } : {}),
     });
-    if (flags.json) await write(escapedPieces(JSON.stringify({ version, ...fixToJson(result) }, null, 2)), ["\n"]);
+    if (flags.json) await write(asJson(escapedPieces(JSON.stringify({ version, ...fixToJson(result) }, null, 2))), ["\n"]);
     else {
       if (result.diff) await write(forTerminalPieces(result.diff, true), ["\n"]);
       console.log(forTerminal(renderSummary(result)));
