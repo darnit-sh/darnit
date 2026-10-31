@@ -1,0 +1,327 @@
+# Every item OpenAI's spec marks deprecated, and every removal the corpus history logged, that no
+# change record covers, with the reason it has none. `npm run accounting` checks this file against
+# corpus/openai: an item missing from it fails, and so does an entry for an item that is gone or
+# that a record now covers. An entry with needs-record instead of reason stays open and is listed
+# on every run, with the record it should get.
+#
+# Keys are what `npm run accounting` prints. Records cover items on their own when they can:
+# a schema property when every endpoint whose request reaches the schema has a record for that
+# field, and an enum value when a record's patterns name it.
+
+# Request side, still open
+
+- items:
+    - GET /assistants
+    - POST /assistants
+    - GET /assistants/{assistant_id}
+    - POST /assistants/{assistant_id}
+    - DELETE /assistants/{assistant_id}
+  needs-record: >-
+    Deprecation, report-only. Finds beta.assistants create, retrieve, update, delete and list
+    calls in JavaScript and Python, and raw HTTP calls to /v1/assistants. Moving to the Responses
+    API is a redesign, so there is nothing to rewrite.
+
+- items:
+    - POST /images/variations
+    - schema CreateImageVariationRequest
+  needs-record: >-
+    Breaking, report-only. The spec says the endpoint is retired. Finds images.createVariation
+    (JavaScript) and images.create_variation (Python) calls and raw HTTP calls to
+    /v1/images/variations. The replacement is an image edit with a GPT image model, which takes
+    different inputs, so there is nothing to rewrite.
+
+- items:
+    - POST /videos
+    - GET /videos
+    - POST /videos/characters
+    - GET /videos/characters/{character_id}
+    - POST /videos/edits
+    - POST /videos/extensions
+    - GET /videos/{video_id}
+    - DELETE /videos/{video_id}
+    - GET /videos/{video_id}/content
+    - POST /videos/{video_id}/remix
+  needs-record: >-
+    Deprecation, report-only. The Sora 2 record only finds the model names, so a call that uses
+    the default model or reads an existing video is missed. Finds every videos call in the SDKs
+    and raw HTTP calls to /v1/videos. OpenAI names no replacement.
+
+- items:
+    - schema CreateChatCompletionRequest property seed
+  needs-record: >-
+    Deprecation, report-only. Finds seed in chat.completions.create calls. OpenAI names no
+    replacement, so the only change is to stop sending it.
+
+- items:
+    - schema CreateFineTuningJobRequest property hyperparameters
+  needs-record: >-
+    Deprecation, report-only. Finds hyperparameters in fine_tuning.jobs.create calls. The
+    replacement nests them under method, which is a reshape, not a rename; report-only until the
+    SDK versions that accept method are confirmed.
+
+- items:
+    - schema ModelResponseProperties property user
+    - schema BetaModelResponseProperties property user
+  needs-record: >-
+    Deprecation, report-only. Finds user in chat.completions.create and responses.create calls,
+    like the images record does. OpenAI splits it into safety_identifier and prompt_cache_key, so
+    which one to use depends on why the code sends it.
+
+- items:
+    - schema ModelResponseProperties property prompt_cache_retention
+    - schema BetaModelResponseProperties property prompt_cache_retention
+    - schema CompactResponseMethodPublicBody property prompt_cache_retention anyOf PromptCacheRetentionEnum
+    - schema BetaCompactResponseMethodPublicBody property prompt_cache_retention anyOf BetaPromptCacheRetentionEnum
+  needs-record: >-
+    Deprecation, report-only. Finds prompt_cache_retention in chat.completions.create,
+    responses.create and responses.compact calls. The replacement prompt_cache_options.ttl sets a
+    minimum lifetime where the old field set a maximum, so a rename would change behavior.
+
+- items:
+    - schema CreateResponse property truncation
+    - schema BetaCreateResponse property truncation
+    - schema TokenCountsBody property truncation
+    - schema BetaTokenCountsBody property truncation
+  needs-record: >-
+    Deprecation, report-only. Finds truncation in responses.create and
+    responses.input_tokens.count calls. The spec names no replacement.
+
+- items:
+    - schema Reasoning property generate_summary anyOf 0
+    - schema BetaReasoning property generate_summary anyOf 0
+  needs-record: >-
+    Deprecation, report-only. Finds generate_summary inside reasoning in responses.create and
+    responses.input_tokens.count calls. The spec says to use summary instead; that becomes a
+    rewrite once the SDK versions that accept summary are confirmed.
+
+- items:
+    - schema MCPTool property connector_id
+    - schema BetaMCPTool property connector_id
+  needs-record: >-
+    Deprecation, report-only. Finds connector_id in an MCP tool passed to responses.create and the
+    realtime calls. It is deprecated only for models released after September 1 2026, so the
+    record has to say which models are affected rather than flag every use as broken.
+
+- items:
+    - schema CreateEvalStoredCompletionsDataSourceConfig
+  needs-record: >-
+    Deprecation, report-only. Finds a data_source_config of type stored_completions in
+    evals.create calls. The replacement, the logs data source, takes different filters.
+
+- items:
+    - schema ProjectCreateRequest property geography
+    - schema ProjectUpdateRequest property geography
+  needs-record: >-
+    Deprecation, report-only. Finds geography in raw HTTP calls to /v1/organization/projects; the
+    SDKs do not cover the Administration API. The spec says to use residency instead, at project
+    creation only.
+
+# Model names the spec lists as deprecated that no model record names yet
+
+- items:
+    - schema AssistantSupportedModels enum gpt-4.1
+    - schema AssistantSupportedModels enum gpt-4.1-mini
+    - schema AssistantSupportedModels enum gpt-4o
+    - schema AssistantSupportedModels enum gpt-4o-mini
+    - schema ModelIdsShared anyOf 1 enum gpt-4.1
+    - schema ModelIdsShared anyOf 1 enum gpt-4.1-2025-04-14
+    - schema ModelIdsShared anyOf 1 enum gpt-4.1-mini
+    - schema ModelIdsShared anyOf 1 enum gpt-4.1-mini-2025-04-14
+    - schema ModelIdsShared anyOf 1 enum gpt-4o
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-2024-08-06
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-2024-11-20
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-2024-07-18
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-2025-04-14
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-mini
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-mini-2025-04-14
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-2024-08-06
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-2024-11-20
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-2024-07-18
+  needs-record: >-
+    Deprecation, report-only, in the same form as the other model records: finds these names as
+    the model of any OpenAI call. The spec gives 2027-01-14 as the shutdown date; the record
+    should cite OpenAI's deprecations page for the date and the replacements.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-5
+    - schema ModelIdsShared anyOf 1 enum gpt-5-mini
+    - schema ModelIdsShared anyOf 1 enum gpt-5-nano
+    - schema ModelIdsShared anyOf 1 enum o3
+    - schema ModelIdsResponses anyOf 1 enum o3-pro
+    - schema ModelIdsResponses anyOf 1 enum gpt-5-pro
+    - schema BetaModelIdsShared anyOf 1 enum gpt-5
+    - schema BetaModelIdsShared anyOf 1 enum gpt-5-mini
+    - schema BetaModelIdsShared anyOf 1 enum gpt-5-nano
+    - schema BetaModelIdsShared anyOf 1 enum o3
+    - schema BetaModelIdsResponses anyOf 1 enum o3-pro
+    - schema BetaModelIdsResponses anyOf 1 enum gpt-5-pro
+  needs-record: >-
+    Deprecation, report-only. The spec gives 2026-12-11, the date of the gpt-5 and o3 record, but
+    that record names only the dated snapshots. Add these aliases to it if OpenAI's deprecations
+    page lists them, or give them their own model record.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-search-preview
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-search-preview
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-search-preview
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-search-preview
+  needs-record: >-
+    Breaking, report-only model record: the spec gives 2026-07-23 as the shutdown date, which has
+    passed, so calls naming these models fail now.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2024-12-17
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2025-06-03
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-audio-preview-2024-12-17
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2024-12-17
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2025-06-03
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-audio-preview-2024-12-17
+  needs-record: >-
+    Add these snapshots to openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down, which has
+    the same 2026-05-07 date and names only the gpt-4o-audio-preview aliases, if OpenAI's
+    deprecations page lists them.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum o1-preview-2024-09-12
+    - schema BetaModelIdsShared anyOf 1 enum o1-preview-2024-09-12
+    - schema ModelIdsShared anyOf 1 enum o1-mini-2024-09-12
+    - schema BetaModelIdsShared anyOf 1 enum o1-mini-2024-09-12
+    - schema ModelIdsShared anyOf 1 enum gpt-3.5-turbo-16k
+    - schema BetaModelIdsShared anyOf 1 enum gpt-3.5-turbo-16k
+  needs-record: >-
+    Add each to the record with the same shutdown date, which names only the other models
+    shut down that day: o1-preview-2024-09-12 to the 2025-07-28 o1-preview record,
+    o1-mini-2024-09-12 to the 2025-10-27 o1-mini record, gpt-3.5-turbo-16k to the 2024-09-13
+    record.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
+    - schema BetaModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
+  needs-record: >-
+    Add to openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down, which has
+    the same 2027-01-20 date and names gpt-audio-mini but not this snapshot.
+
+# No record needed
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-5.1-mini
+    - schema BetaModelIdsShared anyOf 1 enum gpt-5.1-mini
+  reason: >-
+    The spec says this was never a supported model ID and is kept only for SDK compatibility,
+    so there is no working call to migrate.
+
+- items:
+    - schema CreateImageRequest property size anyOf 1 enum 256x256
+    - schema CreateImageRequest property size anyOf 1 enum 512x512
+    - schema CreateImageRequest property size anyOf 1 enum 1792x1024
+    - schema CreateImageRequest property size anyOf 1 enum 1024x1792
+    - schema CreateImageEditRequest property size anyOf 1 enum 256x256
+    - schema CreateImageEditRequest property size anyOf 1 enum 512x512
+    - schema CreateImageRequest property quality anyOf 0 enum standard
+    - schema CreateImageRequest property quality anyOf 0 enum hd
+    - schema CreateImageEditRequest property quality anyOf 0 enum standard
+  reason: >-
+    Values only the retired DALL·E models took, so code sending them also names a DALL·E model,
+    which openai:2025-11-14:dall-e-model-snapshots-shut-down already reports.
+
+- items:
+    - schema ChatCompletionFunctions
+    - schema ChatCompletionRequestAssistantMessage property function_call anyOf 0
+    - schema ChatCompletionRequestFunctionMessage
+  reason: >-
+    Already covered by openai:2023-11-06:chat-functions-to-tools. Function messages and an
+    assistant message's function_call only appear in conversations that send functions, which
+    that record finds, and its notes cover moving them to tool messages.
+
+- items:
+    - schema ChatCompletionResponseMessage property function_call
+    - schema ChatCompletionStreamResponseDelta property function_call
+  reason: >-
+    Response-only field. The request side is covered by openai:2023-11-06:chat-functions-to-tools,
+    whose notes cover reading tool_calls instead.
+
+- items:
+    - schema CreateChatCompletionResponse property system_fingerprint
+    - schema CreateChatCompletionStreamResponse property system_fingerprint
+    - schema OpenAIFile property status
+    - schema OpenAIFile property status_details
+    - schema EvalStoredCompletionsDataSourceConfig
+    - schema AssistantObject
+  reason: Response-only. Code reads these from a response, and darnit finds what code sends.
+
+- items:
+    - schema WebSearchActionSearch property query
+    - schema BetaWebSearchActionSearch property query
+  reason: >-
+    Part of a web search call item that the API writes. It reaches a request only when code passes
+    an earlier output item back unchanged, so no code names it.
+
+- items:
+    - schema ItemField oneOf LocalShellToolCall
+    - schema ItemField oneOf LocalShellToolCallOutput
+    - schema BetaItemField oneOf BetaLocalShellToolCall
+    - schema BetaItemField oneOf BetaLocalShellToolCallOutput
+  reason: >-
+    Item types in the conversation item lists the API returns. The request side, the local_shell
+    tool, is not marked deprecated in the spec.
+
+- items:
+    - webhook live_call_incoming POST
+    - schema WebhookLiveCallIncoming
+  reason: >-
+    A webhook OpenAI sends to the user's server, not a call code makes. The spec says existing
+    subscriptions keep receiving it.
+
+- items:
+    - x-oaiMeta navigationGroups 9
+  reason: The Assistants group in the spec's documentation navigation, not part of the API.
+
+# Removals logged in corpus/openai/removals.json
+
+- items:
+    - api-schema-removed SessionSpendControlParam
+    - api-schema-removed SessionSpendControlResource
+  reason: >-
+    The schemas behind spend_control. Sending it is covered by
+    openai:2026-10-26:spend-control-removed.
+
+- items:
+    - GET /agents/sessions response-optional-property-removed data/items/spend_control
+    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control"
+    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control"
+    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control"
+    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control"
+    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control"
+    - POST /agents/sessions response-optional-property-removed spend_control
+    - GET /agents/sessions/{session_id} response-optional-property-removed spend_control
+    - POST /agents/sessions/{session_id} response-optional-property-removed spend_control
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control"
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control"
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control"
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control"
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control"
+  reason: >-
+    Response-only field. Sending spend_control is covered by
+    openai:2026-10-26:spend-control-removed.
+
+- items:
+    - "POST /moderations request-property-one-of-removed subschema #1, subschema #2, subschema #3"
+  reason: >-
+    Not a removal: the three input forms are still in the spec. Only their inline examples
+    changed, which makes oasdiff see new subschemas.
+
+- items:
+    - "POST /decisions request-property-removed input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/content"
+    - "POST /decisions request-property-removed input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/role"
+    - "POST /decisions request-property-removed input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/type"
+  reason: >-
+    Not a removal: DecisionInputMessage was split into one schema per role, and each still takes
+    role, content and type.
+
+- items:
+    - POST /organization/projects/{project_id}/service_accounts/{service_account_id}/api_keys response-non-success-status-removed 409
+  reason: An error status the spec no longer lists for this endpoint. Calling code sends the same request.

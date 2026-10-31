@@ -1,0 +1,159 @@
+[
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/moderations",
+    "text": "removed `subschema #1, subschema #2, subschema #3` from the `input` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the request property `spend_control`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions/{session_id}",
+    "text": "removed the request property `spend_control`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/decisions",
+    "text": "removed the request property `input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/content`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/decisions",
+    "text": "removed the request property `input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/role`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/decisions",
+    "text": "removed the request property `input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/type`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "api-schema-removed",
+    "text": "removed the schema `SessionSpendControlParam`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "api-schema-removed",
+    "text": "removed the schema `SessionSpendControlResource`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `data/items/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `spend_control` from the response with the `201` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}",
+    "text": "removed the optional property `spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions/{session_id}",
+    "text": "removed the optional property `spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-non-success-status-removed",
+    "operation": "POST",
+    "path": "/organization/projects/{project_id}/service_accounts/{service_account_id}/api_keys",
+    "text": "removed the non-success response with the status `409`"
+  }
+]

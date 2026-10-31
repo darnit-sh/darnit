@@ -26,7 +26,7 @@ const KIND: Record<string, ChangeRecord["kind"]> = {
   "request-parameter-removed": "breaking",
   "endpoint-deprecated": "deprecation",
 };
-const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
+export const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
 // Spec text lands in ast-grep patterns, fixtures and the corpus pull request,
 // so only plain names and paths get through; anything else is counted in `ignored`, never echoed.
 // The caps keep folder names short (longest in OpenAI's spec: a 35-character name, an 82-character path).
@@ -47,6 +47,10 @@ const firstSentence = (s: string) => sentences(s)[0]!.slice(0, 200);
 // The sentence that states the deprecation, when there is one.
 const quote = (s: string) => (sentences(s).find((x) => /deprecat|in favou?r of|replaced by/i.test(x)) ?? firstSentence(s)).slice(0, 200);
 
+/** Whether a record already covers `field` on `path` (the whole endpoint when there is no field). */
+export const covers = (r: ChangeRecord, vendor: string, path: string, field: string | undefined) =>
+  r.vendor === vendor && !!r.surface.endpoints?.some((e) => e.endsWith(path)) && (field ? !!r.surface.fields?.includes(field) : !r.surface.fields?.length);
+
 export function deriveCandidates(input: {
   vendor: string;
   config: VendorConfig;
@@ -65,10 +69,7 @@ export function deriveCandidates(input: {
   type Draft = { slug: string; kind: ChangeRecord["kind"]; field?: string | undefined; rename?: string | undefined; description: string; text: string; endpoints: string[]; paths: string[]; symbols: string[] };
   const drafts = new Map<string, Draft>();
 
-  const covered = (path: string, field: string | undefined) =>
-    existing.some(
-      (r) => r.vendor === vendor && r.surface.endpoints?.some((e) => e.endsWith(path)) && (field ? r.surface.fields?.includes(field) : !r.surface.fields?.length),
-    );
+  const covered = (path: string, field: string | undefined) => existing.some((r) => covers(r, vendor, path, field));
 
   for (const e of entries) {
     const kind = KIND[e.id] ?? (ENDPOINT_GONE.test(e.id) ? "breaking" : undefined);
