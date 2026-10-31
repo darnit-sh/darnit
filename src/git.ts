@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { firstFive } from "./detect.js";
 
 const exec = promisify(execFile);
 
@@ -176,6 +177,16 @@ export async function uncommitted(root: string, files: readonly string[]): Promi
 
 /** A file git could not put back; `gitName` when git has it under a name that differs only in case. */
 export type Uncommitted = { file: string; gitName?: string };
+
+/** Why a command refuses `unsafe`, the files it `would` change ("darnit needs to edit"): one clause each for changed and case-only names. */
+export function uncommittedReasons(unsafe: readonly Uncommitted[], would: string): string[] {
+  const changed = unsafe.filter((u) => !u.gitName).map((u) => u.file);
+  const renamed = unsafe.filter((u) => u.gitName).map((u) => `${u.file} (git has ${u.gitName})`);
+  return [
+    ...(changed.length > 0 ? [`uncommitted changes in files ${would}: ${firstFive(changed)}; commit or stash them first so git can undo the rewrite`] : []),
+    ...(renamed.length > 0 ? [`files ${would} differ only in case from the names git has: ${firstFive(renamed)}; rename them back or commit the rename first`] : []),
+  ];
+}
 
 /** Puts tracked files back to their committed contents. */
 export const discard = async (root: string, files: readonly string[]) => {

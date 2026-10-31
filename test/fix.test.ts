@@ -79,9 +79,12 @@ async function repoWith(files: Record<string, string>): Promise<string> {
   return repoFrom(src);
 }
 
-async function darnit(cwd: string, ...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+/** The CLI run outside GitHub Actions, wherever the tests run, unless `env` says otherwise. */
+const darnit = (cwd: string, ...args: string[]) => darnitWith({}, cwd, ...args);
+
+async function darnitWith(extra: NodeJS.ProcessEnv, cwd: string, ...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-  const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_TOKEN: "", GH_TOKEN: "" };
+  const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "", GITHUB_TOKEN: "", GH_TOKEN: "", ...extra };
   return new Promise((resolve) =>
     execFile(process.execPath, ["--import", import.meta.resolve("tsx"), cli, ...args], { cwd, env }, (err, stdout, stderr) =>
       resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }),
@@ -758,6 +761,107 @@ describe("fix when a check runs out of time", () => {
   });
 });
 
+/**
+ * The workflow commands GitHub's runner would act on in `output`: a line that starts with `::` once leading
+ * whitespace is dropped, or the legacy `##[name]` anywhere in a line, except between `::stop-commands::<token>`
+ * and `::<token>::`. Also whether it ends stopped. Whitespace is what .NET's TrimStart drops (U+0085 among it)
+ * and what JavaScript's does (U+FEFF too), so this can report more than the runner, never less.
+ */
+function workflowCommands(output: string): { ran: string[]; stopped: boolean } {
+  const ran: string[] = [];
+  let token: string | undefined;
+  for (const line of output.split(/\r\n|\r|\n/)) {
+    const [command, name, data] = /^[\s\u0085]*::([^\s:]+)[^:]*::(.*)$/.exec(line) ?? /##\[([^\s\]]+)[^\]]*\](.*)$/.exec(line) ?? [];
+    if (command === undefined || name === undefined) continue;
+    if (token !== undefined) {
+      if (name.toLowerCase() === token.toLowerCase()) token = undefined;
+    } else {
+      if (name === "stop-commands") token = data;
+      ran.push(command);
+    }
+  }
+  return { ran, stopped: token !== undefined };
+}
+
+/** The commands in `output` other than the fences darnit puts around repository text. */
+const notDarnits = (output: string) => {
+  const { ran, stopped } = workflowCommands(output);
+  return { ran: ran.filter((c) => !/^::stop-commands::[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(c)), stopped };
+};
+
+describe("workflowCommands", () => {
+  it("drops the leading whitespace the runner drops, and finds ##[ anywhere", () => {
+    const lines = ["\u0085::error::a", "\u3000\t::warning::b", "\ufeff::debug::c", "x ##[error]d", "::e"];
+    expect(workflowCommands(lines.join("\n")).ran).toEqual(["\u0085::error::a", "\u3000\t::warning::b", "\ufeff::debug::c", "##[error]d"]);
+  });
+});
+
+describe("fix in GitHub Actions", () => {
+  const LINES = ["::error::pwned", "  ::warning::indented", "\t::add-mask::tabbed", "ok #1 ##[add-mask]x", "::stop-commands::x", "::error::after"];
+  const NOTICE = "::notice::darnit 9.0.0 is out";
+
+  it("prints no line of the repository's test output as a workflow command, and leaves darnit's own working", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "noise.js": `console.log(${JSON.stringify(LINES.join("\n"))}); process.exit(1);\n` });
+    const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "fix", "--test", "node noise.js");
+    expect(run.code).not.toBe(2);
+    expect(run.stdout).toContain("::error::pwned\n  ::warning::indented\n\t::add-mask::tabbed\nok #1 ##[add-mask]x\n::stop-commands::x");
+    expect(notDarnits(run.stdout + run.stderr)).toEqual({ ran: [], stopped: false });
+    expect(notDarnits(`${run.stdout}${NOTICE}\n`).ran).toEqual([NOTICE]);
+    const json = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "fix", "--test", "node noise.js", "--json");
+    expect((JSON.parse(json.stdout) as { tests: { output: string } }).tests.output).toContain(LINES.join("\n"));
+    expect(json.stdout).not.toContain("#");
+    expect(notDarnits(json.stdout)).toEqual({ ran: [], stopped: false });
+  });
+
+  it("prints no file name from check --json as a workflow command, and keeps it exact", async () => {
+    const dir = await repoWith({ "pkg#1##[error]pwned.js": SDK_CALL });
+    const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "check", "--json");
+    expect((JSON.parse(run.stdout) as { hits: { file: string }[] }).hits.map((h) => h.file)).toEqual(["pkg#1##[error]pwned.js"]);
+    expect(run.stdout).not.toContain("#");
+    expect(notDarnits(run.stdout)).toEqual({ ran: [], stopped: false });
+  });
+
+  it("prints no file name or snippet from check as a workflow command", async () => {
+    const dir = await repoWith({ "::error::pwned.js": SDK_CALL, "b.js": SDK_CALL });
+    const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "check");
+    expect(run.code).toBe(1);
+    expect(run.stdout).toMatch(/^\s*::error::pwned\.js:/m);
+    expect(notDarnits(run.stdout + run.stderr)).toEqual({ ran: [], stopped: false });
+  });
+
+  it("prints no file name in an error as a workflow command", async () => {
+    const dir = await repoWith({ "README.md": "hi\n" });
+    await writeFile(join(dir, "##[error]pwned.js"), SDK_CALL);
+    const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "fix", "--no-test");
+    expect(run).toMatchObject({ code: 2, stdout: "" });
+    expect(run.stderr).toContain("darnit needs to edit: ##[error]pwned.js;");
+    expect(notDarnits(run.stderr)).toEqual({ ran: [], stopped: false });
+  });
+
+  it("prints no file name from init as a workflow command, inside one fence", async () => {
+    const dir = await repoWith({ "##[error]pwned.py": "import openai\n" });
+    const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "init");
+    expect(run.stdout).toContain("found openai (##[error]pwned.py: import openai)");
+    expect(notDarnits(run.stdout)).toEqual({ ran: [], stopped: false });
+    expect(run.stdout.match(/^::stop-commands::/gm)).toHaveLength(1);
+  });
+
+  it("prints no line of fix's diff as a workflow command", async () => {
+    // Git heads a hunk with the nearest line above it that starts with a letter, and indents context lines by one space.
+    const py = 'x ##[error]E5\n"""\n1\n2\n::stop-commands::E7\n"""\nfrom openai import OpenAI\nr = OpenAI().chat.completions.create(model=\'x\', messages=[], max_tokens=5)\n';
+    const dir = await repoWith({ "app.py": py, "requirements.txt": "openai==1.50.0\n" });
+    const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "fix", "--dry-run", "--no-test");
+    expect(run.stdout).toMatch(/^@@ .* @@ x ##\[error\]E5$/m);
+    expect(run.stdout).toContain("\n ::stop-commands::E7\n");
+    expect(notDarnits(run.stdout + run.stderr)).toEqual({ ran: [], stopped: false });
+  });
+
+  it("is plain text outside GitHub Actions", async () => {
+    const dir = await repoWith({ "::error::pwned.js": SDK_CALL });
+    expect((await darnit(dir, "check")).stdout).not.toContain("stop-commands");
+  });
+});
+
 describe("fix --json", () => {
   it("carries what each check was, and whether it could check the change", async () => {
     const broken = JSON.stringify({ scripts: { build: "node -e \"process.exit(1)\"" } });
@@ -1405,8 +1509,21 @@ describe("prBody", () => {
 describe("forTerminal", () => {
   it("keeps colors and line breaks, and drops every other control character", () => {
     const text = "\u001b[31mred\u001b[0m\tok\n\u001b]52;c;Zm9v\u0007clip\u001b[2Jwipe\rover\u009b1Ahide\u0000";
-    expect(forTerminal(text, true)).toBe("\u001b[31mred\u001b[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
-    expect(forTerminal(text)).toBe("[31mred[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
+    expect(forTerminal(text, true, {})).toBe("\u001b[31mred\u001b[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
+    expect(forTerminal(text, false, {})).toBe("[31mred[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
+  });
+
+  it("fences the text with a new token each time in GitHub Actions only, and keeps it exact", () => {
+    const text = "::error::a\n \u00a0::add-mask::b\r\n::stop-commands::c\n";
+    const actions = { GITHUB_ACTIONS: "true" };
+    const [a, b] = [forTerminal(text, false, actions), forTerminal(text, false, actions)];
+    const [, token, inside] = /^::stop-commands::(\S+)\n([^]*)\n::\1::$/.exec(a) ?? [];
+    expect(inside).toBe("::error::a\n \u00a0::add-mask::b\n::stop-commands::c\n");
+    expect(token).toMatch(/^[0-9a-f-]{36}$/);
+    expect(b).not.toContain(token);
+    expect(forTerminal("", false, actions)).toMatch(/^::stop-commands::(\S+)\n\n::\1::$/);
+    for (const env of [{}, { GITHUB_ACTIONS: "false" }, { GITHUB_ACTIONS: "" }]) expect(forTerminal(text, false, env)).toBe(inside);
+    expect(notDarnits(`${a}\n${b}\n::notice::mine\n`)).toEqual({ ran: ["::notice::mine"], stopped: false });
   });
 });
 
