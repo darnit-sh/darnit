@@ -505,5 +505,101 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "gpt-3.5-turbo-0125": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-3.5-turbo": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-3.5-turbo-completions": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4-0613": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4-0613-completions": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4-completions": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4-1106-preview": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4-turbo": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4-turbo-2024-04-09": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4-turbo-completions": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4.1-nano": {
+        "model": "gpt-5.6-luna",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4.1-nano-2025-04-14": {
+        "model": "gpt-5.6-luna",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4o-2024-05-13": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-image-1": {
+        "human": "not a plain swap: OpenAI recommends gpt-image-2.5-sunburst or gpt-image-2.5-flare",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o1-2024-12-17": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o1": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o1-pro-2025-03-19": {
+        "human": "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o1-pro": {
+        "human": "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o3-mini-2025-01-31": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o3-mini": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o4-mini-2025-04-16": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o4-mini": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }

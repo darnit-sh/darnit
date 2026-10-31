@@ -184,5 +184,21 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "code-davinci-001": {
+        "model": "gpt-6-luna",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "code-cushman-002": {
+        "model": "gpt-6-luna",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "code-cushman-001": {
+        "model": "gpt-6-luna",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }

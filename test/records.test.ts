@@ -64,6 +64,47 @@ describe("ChangeRecord schema", () => {
   it("rejects an id that disagrees with vendor/announcedAt", () => {
     expect(() => parseChangeRecord({ ...valid, vendor: "stripe" }, "x.json")).toThrow(/id must be/);
   });
+
+  describe("fix.models", () => {
+    const source = "https://developers.openai.com/api/docs/deprecations";
+    const detects = (models: string[]) => ({
+      ...valid,
+      detection: { astGrepPatterns: { js: models.map((m) => ({ context: `({ model: "${m}" })`, selector: "pair" })), py: [{ context: `f(model="${models[0]}")`, selector: "keyword_argument" }] } },
+    });
+    const withModels = (models: object, detected = ["gpt-4", "o1"]) => ({ ...detects(detected), fix: { models } });
+
+    it("maps each model the record detects to a replacement model and its source, or to a reason", () => {
+      const models = { "gpt-4": { model: "gpt-5.6-sol", source }, o1: { human: "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro", source } };
+      expect(parseChangeRecord(withModels(models), "x.json").fix?.models).toEqual(models);
+    });
+
+    it.each<[string, object, RegExp]>([
+      ["an entry with an unknown key", { "gpt-4": { model: "gpt-5", source, mode: "pro" }, o1: { human: "x", source } }, /mode/],
+      ["an entry with both a model and a reason", { "gpt-4": { model: "gpt-5", source, human: "x" }, o1: { human: "x", source } }, /fix\.models/],
+      ["a model the record does not detect", { "gpt-4": { model: "gpt-5", source }, o1: { human: "x", source }, "gpt-4o": { human: "x", source } }, /exactly one entry/],
+      ["a detected model left out", { "gpt-4": { model: "gpt-5", source } }, /exactly one entry/],
+      ["a replacement that is not a plain model id", { "gpt-4": { model: "gpt-5 (reasoning.mode: pro)", source }, o1: { human: "x", source } }, /model id/],
+      ["a wildcard replacement", { "gpt-4": { model: "gpt-4.1*", source }, o1: { human: "x", source } }, /model id/],
+      ["a replacement without its source", { "gpt-4": { model: "gpt-5" }, o1: { human: "x", source } }, /fix\.models/],
+      ["a source that is not plain https", { "gpt-4": { model: "gpt-5", source: "http://example.com" }, o1: { human: "x", source } }, /fix\.models/],
+      ["a reason over two lines", { "gpt-4": { model: "gpt-5", source }, o1: { human: "x\n::error::y", source } }, /fix\.models/],
+      ["a reason without its source", { "gpt-4": { model: "gpt-5", source }, o1: { human: "x" } }, /fix\.models/],
+      ...["<script>", "&lt;", '"quoted"', "it's", "`x`", "a\u202eb"].map((h) => [`a reason holding ${h}`, { "gpt-4": { model: "gpt-5", source }, o1: { human: `x ${h}`, source } }, /fix\.models/] as [string, object, RegExp]),
+      ["an empty reason", { "gpt-4": { model: "gpt-5", source }, o1: { human: "", source } }, /fix\.models/],
+    ])("rejects %s", (_, models, error) => {
+      expect(() => parseChangeRecord(withModels(models), "x.json")).toThrow(error);
+    });
+
+    it("rejects a __proto__ key, which zod would otherwise drop without a word", () => {
+      const json = JSON.parse(`{"gpt-4": {"model": "gpt-5", "source": "${source}"}, "o1": {"human": "x", "source": "${source}"}, "__proto__": {"human": "x", "source": "${source}"}}`) as object;
+      expect(Object.hasOwn(json, "__proto__")).toBe(true);
+      expect(() => parseChangeRecord(withModels(json), "x.json")).toThrow(/__proto__/);
+    });
+
+    it("counts a model detected in both languages once", () => {
+      expect(parseChangeRecord(withModels({ "gpt-4": { human: "x", source } }, ["gpt-4"]), "x.json").fix?.models).toEqual({ "gpt-4": { human: "x", source } });
+    });
+  });
 });
 
 describe("packs/ corpus", () => {

@@ -216,5 +216,29 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "sora-2": {
+        "human": "OpenAI names no replacement",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "sora-2-pro": {
+        "human": "OpenAI names no replacement",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "sora-2-2025-10-06": {
+        "human": "OpenAI names no replacement",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "sora-2-2025-12-08": {
+        "human": "OpenAI names no replacement",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "sora-2-pro-2025-10-06": {
+        "human": "OpenAI names no replacement",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }

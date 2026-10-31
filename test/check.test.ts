@@ -1015,6 +1015,63 @@ describe("model shutdowns", () => {
     expect(locations(shutdowns(hits)).sort()).toEqual(["stt.py:6", "stt.ts:5", "stt.ts:6", "stt.ts:7"]);
     expect(coverage.foreignAt).toEqual(["stt.ts:8"]);
   });
+
+  it("says what to use instead under each retiring model, in the report and in JSON", async () => {
+    const dir = await scratch({
+      "app.ts": [
+        'import OpenAI from "openai";',
+        "const openai = new OpenAI();",
+        'export const a = await openai.responses.create({ model: "o3-2025-04-16", input });',
+        'export const b = await openai.responses.create({ model: "gpt-5-pro-2025-10-06", input });',
+        "export const c = (o) => openai.audio.transcriptions.create({ file, model: o.model ?? 'whisper-1' });",
+        'export const d = await openai.chat.completions.create({ model: "gpt-4o", max_tokens: 5, messages });',
+        'export const e = await openai.images.generate({ model: "dall-e-3", prompt });',
+        "",
+      ].join("\n"),
+      "config.py": 'DEFAULT_MODEL = "text-ada-001"\n',
+    });
+    const { hits, values, coverage } = await checkReport(dir);
+    const lines = render(hits, coverage, values).split("\n");
+    const under = (at: string) => lines[lines.findIndex((l) => l.startsWith(`  ${at}`)) + 1];
+    expect(under("app.ts:3:")).toBe("    use gpt-5.6-sol instead (OpenAI's recommendation)");
+    expect(under("app.ts:4:")).toBe("    not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro");
+    expect(under("app.ts:5:")).toBe("    not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe");
+    // text-ada-001's replacement, gpt-3.5-turbo-instruct, shuts down too: its own replacement is named.
+    expect(under("config.py:1:")).toBe("    use gpt-5.6-terra instead (OpenAI's recommendation)");
+    expect(under("app.ts:6:")).toMatch(/^ {2}\d+ call sites? in/);
+    // gpt-image-1 and gpt-image-1-mini, two of the models the page offers, retire too: their own replacements are named.
+    expect(under("app.ts:7:")).toBe("    not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare");
+    expect(lines.filter((l) => /^ {4}(use|not a plain swap)/.test(l))).toHaveLength(5);
+
+    const json = (list: Hit[]) => toJson(list) as { line: number; replacement?: object }[];
+    const source = "https://developers.openai.com/api/docs/deprecations";
+    expect(json(hits).sort((a, b) => a.line - b.line).map((h) => [h.line, h.replacement])).toEqual([
+      [3, { model: "gpt-5.6-sol", source }],
+      [4, { human: "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro", source }],
+      [5, { human: "not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe", source }],
+      [6, undefined],
+      [7, { human: "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare", source }],
+    ]);
+    expect(json(values)).toMatchObject([{ model: "text-ada-001", replacement: { model: "gpt-5.6-terra", source } }]);
+  });
+
+  it("prints record text in the replacement line as other output, one line and no control characters", async () => {
+    const { hits } = await checkReport(await scratch({ "app.py": 'from openai import OpenAI\nclient = OpenAI()\nclient.responses.create(model="o3-2025-04-16")\n' }));
+    const record = hits[0]!.record;
+    const crafted = (r: object) => ({ ...hits[0]!, record: { ...record, fix: { models: { "o3-2025-04-16": r } } } }) as Hit;
+    const text = render([crafted({ human: "a\n::error::b\u001b[2J‮c" }), crafted({ model: "x\ny\u0007", source: "https://e.com" })]);
+    expect(text).toContain("    a?::error::b?[2J\\u202ec\n");
+    expect(text).toContain("    use x?y? instead (OpenAI's recommendation)\n");
+  });
+
+  it("prints thousands of call sites with their replacements quickly", async () => {
+    const { hits } = await checkReport(await scratch({ "app.py": 'from openai import OpenAI\nclient = OpenAI()\nclient.responses.create(model="o3-2025-04-16")\n' }));
+    const many = Array.from({ length: 200_000 }, (_, i) => ({ ...hits[0]!, line: i + 1 }));
+    let text = "";
+    // About a second on a laptop.
+    expect(await cpuTime(() => (text = render(many)))).toBeLessThan(10_000);
+    expect(text.split("\n").filter((l) => l === "    use gpt-5.6-sol instead (OpenAI's recommendation)")).toHaveLength(200_000);
+  });
 });
 
 describe("model names set as values", () => {

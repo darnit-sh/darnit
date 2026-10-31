@@ -152,5 +152,13 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "gpt-5.4-cyber": {
+        "human": "OpenAI names no single replacement model",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }

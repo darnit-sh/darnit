@@ -168,5 +168,17 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "dall-e-2": {
+        "human": "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "dall-e-3": {
+        "human": "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }

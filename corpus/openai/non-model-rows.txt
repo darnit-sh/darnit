@@ -1,0 +1,4 @@
+# Rows of OpenAI's deprecations page that name no model but hold a detected model's letters and digits.
+# npm run replacements fails on any such row, so a newer row darnit cannot read never hides a model behind an
+# older one. Each line here is one row a person has read and confirmed, as the run prints it folded: letters and
+# digits only, lower case. A line no row on the page matches any more fails the run too, until it is taken off.
