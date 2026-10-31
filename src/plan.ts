@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { TAIL_CHARS } from "./tests.js";
 
-// `fix --prepare` writes this file in the job that runs the repository's code; `fix --publish` reads it in
-// the job that holds the write token. Everything in it came from that code, so it is parsed strictly and the
-// patch is recomputed, never applied.
+// `fix --prepare` writes this file in the job that runs the repository's code, for a job that holds the write
+// token to read. Everything in it came from that code, so it is parsed strictly and the patch is recomputed,
+// never applied.
 
 export const PLAN_VERSION = 1 as const;
 export const PLAN_FILE = "plan.json";

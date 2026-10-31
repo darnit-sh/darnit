@@ -387,7 +387,7 @@ async function resolved(path: string): Promise<string> {
   return (await realpath(path).catch(() => undefined)) ?? join(await resolved(dirname(path)), basename(path));
 }
 
-/** Refuses a plan folder inside the repository, then any other planFolder refuses, and removes an earlier plan. */
+/** Refuses a plan folder inside the repository or one planFolder refuses, then removes an earlier plan. */
 async function startPlan(root: string, dir: string): Promise<void> {
   const inside = relative(await realpath(await g.topLevel(root)), await resolved(dir));
   if (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)) {

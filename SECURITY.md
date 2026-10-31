@@ -59,6 +59,11 @@ for example `http.curloptResolve` pointing github.com at another address with
 `http.sslVerify false`. The README workflow cannot prevent either. On code you do not trust, run
 `check` only.
 
+`fix --prepare` runs the repository's code, and its plan is uploaded for another job to read, so its
+job must hold no secrets at all: no token or other secret in its environment or git config, and no
+`id-token: write`. darnit refuses to start only with `GITHUB_TOKEN`, `GH_TOKEN` or the token
+actions/checkout saves in git config; any other secret there can reach the plan through test output.
+
 ## How we handle a report
 
 1. We confirm the problem with a test that shows it.
