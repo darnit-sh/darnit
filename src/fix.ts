@@ -433,11 +433,12 @@ const longestBacktickRun = (s: string) => Math.max(0, ...(s.match(/`+/g) ?? []).
 
 /**
  * Text from the repository (a file name, a command) as one code span that GitHub shows literally:
- * control, direction-changing and zero-width characters are written out (a newline as \\n), and the fence is longer than any backtick run inside.
+ * control characters are written out (a newline as \\n), and the fence is longer than any backtick run inside.
+ * `prBody` writes out the characters that could hide or reorder it.
  */
 function code(text: string): string {
   // eslint-disable-next-line no-control-regex
-  const t = escapeHidden(text).replace(/[\u0000-\u001f]/g, (c) => JSON.stringify(c).slice(1, -1));
+  const t = text.replace(/[\u0000-\u001f]/g, (c) => JSON.stringify(c).slice(1, -1));
   const fence = "`".repeat(longestBacktickRun(t) + 1);
   const pad = /^[` ]|[` ]$/.test(t) ? " " : "";
   return `${fence}${pad}${t}${pad}${fence}`;
