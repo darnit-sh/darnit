@@ -47,9 +47,29 @@ const firstSentence = (s: string) => sentences(s)[0]!.slice(0, 200);
 // The sentence that states the deprecation, when there is one.
 const quote = (s: string) => (sentences(s).find((x) => /deprecat|in favou?r of|replaced by/i.test(x)) ?? firstSentence(s)).slice(0, 200);
 
-/** Whether a record already covers `field` on `path` (the whole endpoint when there is no field). */
-export const covers = (r: ChangeRecord, vendor: string, path: string, field: string | undefined) =>
-  r.vendor === vendor && !!r.surface.endpoints?.some((e) => e.endsWith(path)) && (field ? !!r.surface.fields?.includes(field) : !r.surface.fields?.length);
+// "POST /v1/chat/completions" or "/v1/chat/completions" as its method, if any, and its path without the
+// /v1 prefix or a query, so "/responses?beta=true" is "/responses" and "/completions" is not "/chat/completions".
+const endpointOf = (e: string) => {
+  const m = /^([A-Z]+) (.*)$/.exec(e);
+  return { method: m?.[1], path: (m?.[2] ?? e).split("?")[0]!.replace(/^\/v1(?=\/|$)/, "") };
+};
+
+/**
+ * Whether a record covers `field` on `path` (the whole endpoint when there is no field), and on `method` when
+ * both name one. With `symbol`, the operation's SDK call, a record that lists that call covers it too.
+ */
+export function covers(r: ChangeRecord, vendor: string, path: string, field: string | undefined, method?: string, symbol?: string): boolean {
+  const want = endpointOf(path);
+  return (
+    r.vendor === vendor &&
+    (field ? !!r.surface.fields?.includes(field) : !r.surface.fields?.length) &&
+    (!!r.surface.endpoints?.some((e) => {
+      const have = endpointOf(e);
+      return have.path === want.path && (!have.method || !method || have.method === method);
+    }) ||
+      (symbol !== undefined && !!r.surface.sdkSymbols?.includes(symbol)))
+  );
+}
 
 export function deriveCandidates(input: {
   vendor: string;

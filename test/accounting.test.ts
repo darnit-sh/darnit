@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { account, NotCoveredSchema, RemovalSchema, removalsFrom, type Removal } from "../src/corpus/accounting.js";
+import { deriveCandidates } from "../src/corpus/candidates.js";
 import { changelog } from "../src/corpus/oasdiff.js";
 import { parseSpec, type Spec } from "../src/corpus/spec.js";
 import { loadRecords } from "../src/records/load.js";
@@ -87,6 +88,22 @@ describe("account", () => {
     const result = account({ vendor: "openai", spec: small, removals: [], records: [gpt4o], notCovered: [] });
     expect(result.covered.get("schema Model enum gpt-4o")).toEqual([gpt4o.id]);
     expect(result.unaccounted).toContain("schema Model enum gpt-4");
+  });
+
+  it("does not credit a record for /v1/chat/completions with a field on the legacy /completions", () => {
+    const spec = {
+      paths: { "/completions": { post: body("CreateCompletionRequest") }, "/chat/completions": { post: body("CreateChatCompletionRequest") } },
+      components: { schemas: { CreateCompletionRequest: { properties: { max_tokens: { deprecated: true } } }, CreateChatCompletionRequest: { properties: { max_tokens: { deprecated: true } } } } },
+    };
+    const maxTokens = record("max-tokens", ["/v1/chat/completions"], ["max_tokens"]);
+    const result = account({ vendor: "openai", spec, removals: [], records: [maxTokens], notCovered: [] });
+    expect(result.unaccounted).toEqual(["schema CreateCompletionRequest property max_tokens"]);
+    expect([...result.covered.keys()]).toEqual(["schema CreateChatCompletionRequest property max_tokens"]);
+
+    // Candidate derivation shares the rule: the same field on /completions is a new candidate, not "already recorded".
+    const entries = [{ id: "request-property-deprecated", level: 1 as const, text: "request property `max_tokens` deprecated", operation: "POST", path: "/completions" }];
+    const derived = deriveCandidates({ vendor: "openai", config: { spec: "https://example.com/openapi.yaml" }, entries, spec: {}, existing: [maxTokens], observedAt: "2026-01-01" });
+    expect(derived.candidates.map((c) => c.record.surface.endpoints)).toEqual([["/completions"]]);
   });
 
   it("sorts not-covered entries into reasons, open items, and entries that name nothing or a covered item", () => {
