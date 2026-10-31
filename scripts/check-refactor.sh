@@ -51,37 +51,56 @@ sources() {
   node -e '
     const { execFileSync } = require("node:child_process");
     const [mb, head, fields] = process.argv.slice(1);
+    // By type, as a key named constructor must not hide the object holding it.
+    const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    const obj = (v) => (isObj(v) ? v : {});
     const read = (rev, f) => {
       if (!execFileSync("git", ["ls-tree", "--name-only", rev, "--", f], { encoding: "utf8" })) return null;
-      try { const j = JSON.parse(execFileSync("git", ["show", `${rev}:${f}`], { encoding: "utf8", stdio: "pipe", maxBuffer: 2 ** 28 })); return j?.constructor === Object ? j : undefined; }
+      try { const j = JSON.parse(execFileSync("git", ["show", `${rev}:${f}`], { encoding: "utf8", stdio: "pipe", maxBuffer: 2 ** 28 })); return isObj(j) ? j : undefined; }
       catch { return undefined; }
     };
-    const obj = (v) => (v?.constructor === Object ? v : {});
     // Leaves keyed by their path, so only what this change adds or alters is judged.
     const walk = (v, at, out, next) => { for (const [k, x] of Object.entries(obj(v))) next(x, [...at, k], out); return out; };
-    const specs = (j) => { const out = new Map(); const leaf = (v, at) => (v?.constructor === Object ? walk(v, at, out, leaf) : out.set(JSON.stringify(at), [at, v])); for (const f of fields.split(" ")) if (f in j) leaf(j[f], [f]); return out; };
+    const specs = (j) => { const out = new Map(); const leaf = (v, at) => (isObj(v) ? walk(v, at, out, leaf) : out.set(JSON.stringify(at), [at, v])); for (const f of fields.split(" ")) if (Object.hasOwn(j, f)) leaf(j[f], [f]); return out; };
     const entries = (j) => {
-      const out = walk(j.packages, [], new Map(), (v, at, out) => at[0] && out.set(JSON.stringify(["p", ...at]), [at, v]));
+      const out = walk(j.packages, [], new Map(), (v, at, out) => at[0] && out.set(JSON.stringify(["p", ...at]), [at, v, at[0]]));
       const old = (v, at, out) => { out.set(JSON.stringify(at), [at, v]); walk(obj(v).dependencies, at, out, old); };
       return walk(j.dependencies, [], out, old);
     };
-    // A version, range or tag, or an npm: alias to one; anything with a path, a protocol or a host is not.
-    const registry = (s) => typeof s === "string" && !/[:/\\]|^\.|\.(tgz|tar|tar\.gz)$/i.test(s.trim().replace(/^npm:(@[^/@]+\/)?[^/@]+(@|$)/, ""));
-    const changed = (f, list) => {
+    const show = (at, sep) => at.map((k) => JSON.stringify(k).slice(1, -1)).join(sep);
+    const changed = (f, list, judge) => {
       const b = read(head, f);
       if (b === undefined) return console.log(`${f} (unreadable)`);
       if (b === null) return;
       const a = list(read(mb, f) ?? {});
-      for (const [k, [at, v]] of list(b)) if (JSON.stringify(a.get(k)?.[1]) !== JSON.stringify(v)) judge(f, at, v);
+      const say = (at, why) => console.log(`${f} ${show(at, f === "package.json" ? "." : " > ")} ${why}`);
+      for (const [k, [at, v, loc]] of list(b)) if (JSON.stringify(a.get(k)?.[1]) !== JSON.stringify(v)) judge((why) => say(at, why), at, v, a, a.get(k)?.[1], loc);
     };
-    let judge = (f, at, v) => registry(v) || console.log(`${f} ${at.join(".")} ${JSON.stringify(v) ?? "(none)"}`);
-    changed("package.json", specs);
-    judge = (f, at, e) => {
-      const { resolved, integrity } = obj(e);
-      if (typeof resolved !== "string" || !resolved.startsWith("https://registry.npmjs.org/")) console.log(`${f} ${at.join(" > ")} resolved ${JSON.stringify(resolved) ?? "(none)"}`);
-      else if (typeof integrity !== "string" || !integrity) console.log(`${f} ${at.join(" > ")} integrity (none)`);
-    };
-    for (const f of ["package-lock.json", "npm-shrinkwrap.json"]) changed(f, entries);
+    // A version, range or tag, or an npm: alias to one; anything with a path, a protocol or a host is not.
+    // An alias may only keep the package base already names under that name.
+    const target = (s) => (typeof s === "string" ? /^npm:((?:@[^/@]+\/)?[^/@]+)(?:@|$)/.exec(s.trim())?.[1] : undefined);
+    const registry = (s) => typeof s === "string" && !/[:/\\]|^\.|\.(tgz|tar|tar\.gz)$/i.test(s.trim().replace(/^npm:(@[^/@]+\/)?[^/@]+(@|$)/, ""));
+    const named = (at) => String(at.at(-1) === "." ? at.at(-2) : at.at(-1)).replace(/(.)@.*$/, "$1");
+    changed("package.json", specs, (say, at, v, a) => {
+      if (!registry(v)) return say(JSON.stringify(v) ?? "(none)");
+      const t = target(v);
+      if (t === undefined || t === named(at) || [...a.values()].some(([was, w]) => named(was) === named(at) && target(w) === t)) return;
+      say(`${JSON.stringify(v)} (an alias to ${show([t])})`);
+    });
+    // Each entry is the registry tarball of its own name and version, at a node_modules path npm installs to.
+    const name = "(@[^/\\\\]+/)?[^/\\\\]+";
+    const place = new RegExp(`^node_modules/${name}(/node_modules/${name})*$`);
+    for (const f of ["package-lock.json", "npm-shrinkwrap.json"])
+      changed(f, entries, (say, at, e, a, was, loc) => {
+        if (loc !== undefined && (!place.test(loc) || loc.split("/").some((s) => s === "." || s === ".."))) return say("location outside node_modules");
+        if (Object.hasOwn(obj(e), "link")) return say("link");
+        const { resolved, integrity, version, name: alias } = obj(e);
+        const here = loc === undefined ? at.at(-1) : loc.slice(loc.lastIndexOf("node_modules/") + 13);
+        if (alias !== undefined && alias !== here && alias !== obj(was).name) return say(`name ${JSON.stringify(alias)}`);
+        const pkg = typeof alias === "string" ? alias : here;
+        if (resolved !== `https://registry.npmjs.org/${pkg}/-/${pkg.split("/").pop()}-${version}.tgz`) return say(`resolved ${JSON.stringify(resolved) ?? "(none)"}`);
+        if (typeof integrity !== "string" || !integrity) say("integrity (none)");
+      });
   ' "$mb" "$head" "$deps" || echo "dependency sources (unreadable)"
 }
 fetched=$(sources)
@@ -119,7 +138,7 @@ package_json() {
   git diff --quiet "$base...$head" -- package.json && return 0
   node -e '
     const git = (rev) => require("node:child_process").execFileSync("git", ["show", `${rev}:package.json`], { encoding: "utf8", stdio: "pipe" });
-    const read = (rev) => { try { const j = JSON.parse(git(rev)); return j?.constructor === Object ? j : undefined; } catch { return undefined; } };
+    const read = (rev) => { try { const j = JSON.parse(git(rev)); return j !== null && typeof j === "object" && !Array.isArray(j) ? j : undefined; } catch { return undefined; } };
     const [a, b] = [read(process.argv[1]), read(process.argv[2])];
     const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
     if (b === undefined) console.log("package.json (removed or unreadable)");

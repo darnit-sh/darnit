@@ -34,7 +34,7 @@ const pkg = (files = ["dist"], test = "vitest run") =>
 
 const entry = (name: string, version = "4.6.6", more: object = {}) => ({
   version,
-  resolved: `https://registry.npmjs.org/${name}/-/${name}-${version}.tgz`,
+  resolved: `https://registry.npmjs.org/${name}/-/${name.split("/").pop()}-${version}.tgz`,
   integrity: "sha512-fake",
   ...more,
 });
@@ -305,10 +305,10 @@ describe("the rule picked by the title's type", () => {
       [entry("vitest", "5.0.6", { resolved: "https://registry.npmjs.org.example.test/vitest.tgz" }), "resolved"],
       [entry("vitest", "5.0.6", { resolved: "http://registry.npmjs.org/vitest/-/vitest-5.0.6.tgz" }), "resolved"],
       [entry("vitest", "5.0.6", { resolved: "file:../fake-vitest" }), 'resolved "file:../fake-vitest"'],
-      [{ resolved: "fake-vitest", link: true }, 'resolved "fake-vitest"'],
+      [{ resolved: "fake-vitest", link: true }, "link"],
       [{ version: "5.0.6" }, "resolved (none)"],
-      [entry("vitest", "5.0.6", { integrity: undefined }), "integrity (none)"],
-      [entry("vitest", "5.0.6", { integrity: "" }), "integrity (none)"],
+      [entry("p6", "5.0.6", { integrity: undefined }), "integrity (none)"],
+      [entry("p7", "5.0.6", { integrity: "" }), "integrity (none)"],
     ] as const;
     const r = await rule("chore(deps): bump", [{ write: "package-lock.json", text: lock(Object.fromEntries(bad.map(([e], i) => [`node_modules/p${i}`, e]))) }]);
     expect(r.status).toBe(1);
@@ -342,13 +342,45 @@ describe("the rule picked by the title's type", () => {
     expect((await rule("fix: x", bumped, "", {}, landed)).status).toBe(0);
     for (const [title, deps] of [
       ["chore(deps-dev): bump vitest from 5.0.5 to 5.0.6", { devDependencies: { vitest: "^5.0.6" } }],
-      ["build(deps): add a typescript alias", { devDependencies: { ts: "npm:@typescript/typescript6@^6.0.2", t: "latest", r: ">=1 <2" } }],
+      ["build(deps): add two", { dependencies: { zod: "npm:zod@4.6.7" }, devDependencies: { t: "latest", r: ">=1 <2" } }],
       ["chore(deps): pin a transitive", { overrides: { vitest: { vite: "7.0.0" }, zod: "$zod" } }],
     ] as const) {
       const lockText = lock({ "node_modules/vitest": entry("vitest", "5.0.6"), "node_modules/@x/y": entry("@x/y", "1.0.0") });
       const r = await rule(title, [{ write: "package.json", text: withDeps(deps) }, { write: "package-lock.json", text: lockText }]);
       expect(r, title).toMatchObject({ status: 0, baseTests: false });
       expect(r.out).toContain("**Passed:**");
+    }
+    const alias = (v: string) => [
+      { write: "package.json", text: withDeps({ devDependencies: { ts: `npm:@typescript/typescript6@^${v}` }, overrides: { a: { ts: `npm:@typescript/typescript6@${v}` } } }) },
+      { write: "package-lock.json", text: lock({ "node_modules/ts": entry("@typescript/typescript6", v, { name: "@typescript/typescript6" }) }) },
+    ];
+    expect((await rule("chore(deps): bump the typescript alias", alias("6.0.3"), "", {}, alias("6.0.2"))).status).toBe(0);
+  });
+
+  it("fails a lock or alias that installs another package under a name the suite runs", async () => {
+    const swaps: [string, string, string][] = [
+      ["package.json", withDeps({ devDependencies: { vitest: "npm:evil-vitest@1" } }), 'devDependencies.vitest "npm:evil-vitest@1" (an alias to evil-vitest)'],
+      ["package.json", withDeps({ overrides: { a: { vitest: "npm:@evil/vitest" } } }), 'overrides.a.vitest "npm:@evil/vitest" (an alias to @evil/vitest)'],
+      ["package.json", withDeps({ dependencies: { "a\nb": "file:x" } }), 'dependencies.a\\nb "file:x"'],
+      ["package.json", '{"dependencies":{"constructor":"1.0.0","vitest":"file:x"}}', 'dependencies.vitest "file:x"'],
+      ["package-lock.json", lock({ "node_modules/vitest": entry("vitest", "1.0.0", { resolved: "https://registry.npmjs.org/evil-vitest/-/evil-vitest-1.0.0.tgz" }) }), "node_modules/vitest resolved"],
+      ["package-lock.json", lock({ "node_modules/@x/y": entry("@x/y", "1.0.0", { resolved: "https://registry.npmjs.org/@x/z/-/z-1.0.0.tgz" }) }), "node_modules/@x/y resolved"],
+      ["package-lock.json", lock({ "node_modules/vitest": entry("vitest", "1.0.0", { resolved: "https://registry.npmjs.org/vitest/-/vitest-2.0.0.tgz" }) }), "node_modules/vitest resolved"],
+      ["package-lock.json", lock({ "node_modules/vitest": entry("evil-vitest", "1.0.0", { name: "evil-vitest" }) }), "node_modules/vitest name \"evil-vitest\""],
+      ["package-lock.json", lock({ "node_modules/vitest": { link: true, resolved: "https://registry.npmjs.org/../../fake", integrity: "x" } }), "node_modules/vitest link"],
+      ["package-lock.json", lock({ fake: entry("vitest", "5.0.5") }), "fake location"],
+      ["package-lock.json", lock({ "x/node_modules/vitest": entry("vitest", "5.0.5") }), "x/node_modules/vitest location"],
+      ["package-lock.json", lock({ "node_modules/../fake": entry("fake", "5.0.5") }), "node_modules/../fake location"],
+      ["package-lock.json", lock({ "node_modules/vitest/node_modules/..": entry("vitest", "5.0.5") }), "node_modules/vitest/node_modules/.. location"],
+      ["package-lock.json", lock({ constructor: {}, "node_modules/vitest": entry("vitest", "1.0.0", { resolved: "https://example.test/v.tgz" }) }), "node_modules/vitest resolved"],
+      ["package-lock.json", '{"lockfileVersion":3,"packages":{"__proto__":{"resolved":"https://example.test/v.tgz"}}}', "__proto__ location outside node_modules"],
+      ["npm-shrinkwrap.json", '{"lockfileVersion":1,"dependencies":{"__proto__":{"resolved":"https://example.test/v.tgz"}}}', '__proto__ resolved "https://example.test/v.tgz"'],
+      ["npm-shrinkwrap.json", JSON.stringify({ lockfileVersion: 1, dependencies: { constructor: {}, vitest: entry("vitest", "1.0.0", { resolved: "https://example.test/v.tgz" }) } }), "vitest resolved"],
+    ];
+    for (const [f, text, why] of swaps) {
+      const r = await rule("chore(deps): bump", [{ write: f, text }]);
+      expect(r.status, text).toBe(1);
+      expect(r.summary, text).toContain(`- ${f} ${why}`);
     }
   });
 
