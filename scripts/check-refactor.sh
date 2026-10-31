@@ -54,12 +54,14 @@ guarded() {
     grep -viE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
 }
 # Those this change edits or removes, or shadows with an added file of the same path minus its extension
-# (test/helpers.js beside test/helpers.ts), and any test runner config or workflow at all.
+# (test/helpers.js beside test/helpers.ts), and any test runner, TypeScript or ESLint config or workflow at all.
+# tsx reads tsconfig paths, which can send an import to another file.
 suite_files() {
   paths --diff-filter=DMT | guarded
   { git ls-tree -r --name-only "$mb" | guarded | sed 's/^/G /'; paths --diff-filter=A | sed 's/^/A /'; } |
     awk '{ p = substr($0, 3); s = p; sub(/^"/, "", s); sub(/\.[^.\/]*"?$/, "", s); s = tolower(s) } $1 == "G" { g[s] = 1; next } s in g { print p }'
   paths | grep -iE '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|\.github/(workflows|actions)/.*)"?$' || true
+  paths | grep -iE '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' | grep -viE '^"?test/(e2e|fixtures|samples|golden)/' || true
   collisions
 }
 # package.json's "files", or each script this change adds, alters or removes. A package.json this
@@ -114,7 +116,7 @@ refactor | perf)
   fi
   ;;
 test | docs | chore | ci | build)
-  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, pull request checks, workflows or npm and yarn config"
+  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, TypeScript and ESLint config, pull request checks, workflows or npm and yarn config"
   case $type in
   test | ci) allowed="$suite only with a \`Proof: none, <reason>\` line" ;;
   *) allowed="nothing in $suite" ;;

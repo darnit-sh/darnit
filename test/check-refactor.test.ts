@@ -342,6 +342,15 @@ describe("the rule picked by the title's type", () => {
     }
   });
 
+  it("guards TypeScript and ESLint config anywhere outside test data", async () => {
+    for (const f of ["tsconfig.json", "tsconfig.build.json", "scripts/tsconfig.json", "eslint.config.js", "scripts/eslint.config.mjs"]) {
+      const r = await rule("docs: x", [{ write: f }]);
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
+    }
+    expect((await rule("test: x", [{ write: "test/e2e/s/tsconfig.json" }])).status).toBe(0);
+  });
+
   it("matches every guarded name in any case, as a macOS runner's disk does", async () => {
     for (const f of [
       ".NPMRC",
