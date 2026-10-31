@@ -407,6 +407,13 @@ async function planFolder(dir: string): Promise<void> {
   if (entries.length > 0 && !earlier) throw new Refusal(`${dir} is not empty and holds no earlier plan; give --prepare a new or empty folder`);
 }
 
+/** Why a change's build or tests did not run, in the words of the pull request body. */
+const notRunNotes = (changed: readonly string[], base: FixResult) => ({
+  testsNote: base.testsSkipped ? "skipped with --no-test" : base.testsNote,
+  // A build only runs for JavaScript and TypeScript changes, so only those were skipped.
+  buildNote: base.testsSkipped && changed.some((f) => COMPILED.test(f)) ? "skipped with --no-test" : base.buildNote,
+});
+
 const planOutcome = (t: TestOutcome | undefined): PlanOutcome | null =>
   t ? { command: t.command, passed: t.passed, attributed: t.attributed ?? null, notChecked: t.notChecked ?? false, timedOut: t.timedOut, output: t.output } : null;
 
@@ -425,7 +432,16 @@ async function prepare(root: string, groups: Group[], base: FixResult, commands:
       const { build, tests, passed } = await checkGroup(root, commands, snap, result);
       if (passed) result.pr = { state: "prepared", build, tests };
       anyFailed ||= !passed;
-      plan.groups.push({ id: grp.record.id, files: changed, patch, build: planOutcome(build), tests: planOutcome(tests) });
+      const notes = notRunNotes(changed, base);
+      plan.groups.push({
+        id: grp.record.id,
+        files: changed,
+        patch,
+        build: planOutcome(build),
+        buildNote: build ? null : (notes.buildNote ?? null),
+        tests: planOutcome(tests),
+        testsNote: tests ? null : failed(build) ? "the build failed first" : (notes.testsNote ?? "no test command found in this repository"),
+      });
     } finally {
       await restore(root, snap);
     }
@@ -484,9 +500,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         build,
         tests,
         remaining: result.remaining,
-        testsNote: opts.noTest ? "skipped with --no-test" : base.testsNote,
-        // A build only runs for JavaScript and TypeScript changes, so only those were skipped.
-        buildNote: opts.noTest && changed.some((f) => COMPILED.test(f)) ? "skipped with --no-test" : base.buildNote,
+        ...notRunNotes(changed, base),
         unconfirmed: result.unconfirmed,
       });
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
@@ -672,8 +686,9 @@ export function renderSummary(result: FixResult): string {
       for (const c of [r.pr.build, r.pr.tests]) if (c) lines.push(`  ${testLine(c)}`);
     }
     else if (r.pr.state === "prepared") {
-      lines.push(`✓ ${r.title}: verified, in the plan`);
-      for (const c of [r.pr.build, r.pr.tests]) if (c) lines.push(`  ${testLine(c)}`);
+      const verified = [r.pr.build, r.pr.tests].some((c) => c?.passed);
+      lines.push(`✓ ${r.title}: ${verified ? "verified, in the plan" : "in the plan, not verified"}`);
+      for (const line of checkLines(result, r.pr.build, r.pr.tests)) lines.push(`  ${line}`);
     }
     else if (r.pr.state === "exists") lines.push(`= ${r.title}: pull request already open ${r.pr.url}`);
     else if (r.pr.state === "skipped") lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
@@ -701,20 +716,21 @@ export function renderSummary(result: FixResult): string {
     // Per-record lines already carry the test result.
     if (result.plan) lines.push(`plan written to ${result.plan}`);
   } else if (applied) {
-    if (result.build) lines.push(testLine(result.build));
-    else if (result.buildNote) lines.push(`build: none run (${result.buildNote})`);
-    if (result.tests) lines.push(testLine(result.tests));
-    else if (!failed(result.build)) {
-      lines.push(
-        result.testsSkipped
-          ? "tests: skipped"
-          : result.testsNote
-            ? `tests: none run (${result.testsNote})`
-            : "tests: none found (no test script or pytest setup)",
-      );
-    }
+    lines.push(...checkLines(result, result.build, result.tests));
   }
   return [...lines, ...notChecked].join("\n");
+}
+
+/** What a build and tests found, or why they did not run. */
+function checkLines(result: FixResult, build: TestOutcome | undefined, tests: TestOutcome | undefined): string[] {
+  return [
+    ...(build ? [testLine(build)] : result.buildNote ? [`build: none run (${result.buildNote})`] : []),
+    ...(tests
+      ? [testLine(tests)]
+      : failed(build)
+        ? []
+        : [result.testsSkipped ? "tests: skipped" : result.testsNote ? `tests: none run (${result.testsNote})` : "tests: none found (no test script or pytest setup)"]),
+  ];
 }
 
 export function toJson(result: FixResult): object {

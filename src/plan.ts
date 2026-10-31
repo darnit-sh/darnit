@@ -9,7 +9,7 @@ export const PLAN_VERSION = 1 as const;
 export const PLAN_FILE = "plan.json";
 
 /** Caps: `plan` in bytes of the file, the rest in characters of each string or entries of each list. */
-export const CAPS = { plan: 8 * 1024 * 1024, darnit: 64, groups: 64, files: 1000, path: 4096, patch: 1024 * 1024, command: 4096, output: TAIL_CHARS };
+export const CAPS = { plan: 8 * 1024 * 1024, darnit: 64, groups: 64, files: 1000, path: 4096, patch: 1024 * 1024, command: 4096, note: 1024, output: TAIL_CHARS };
 
 const capped = (max: number) => z.string().max(max, `over the cap of ${max} characters`);
 const list = <T extends z.ZodType>(item: T, max: number) => z.array(item).max(max, `over the cap of ${max} entries`);
@@ -98,7 +98,15 @@ const GroupSchema = z
     files: list(RelativePath, CAPS.files).min(1),
     patch: capped(CAPS.patch),
     build: OutcomeSchema.nullable(),
+    /** Why the build did not run, when it was expected to. */
+    buildNote: capped(CAPS.note).nullable(),
     tests: OutcomeSchema.nullable(),
+    /** Why the tests did not run; set exactly when they did not. */
+    testsNote: capped(CAPS.note).nullable(),
+  })
+  .refine((g) => (g.tests === null) === (g.testsNote !== null) && (g.build === null || g.buildNote === null), {
+    message: "a note says why a check did not run, so it goes with no result",
+    path: ["testsNote"],
   })
   .refine((g) => wellFormed(g.patch, g.files), { message: "patch is not a git diff of exactly these files", path: ["patch"] });
 
@@ -114,7 +122,7 @@ export type PlanGroup = z.infer<typeof GroupSchema>;
 export type Plan = z.infer<typeof PlanSchema>;
 
 // Every key in the order it is written, so the same plan is always the same bytes.
-const KEYS = ["version", "darnit", "base", "groups", "id", "files", "patch", "build", "tests", "command", "passed", "attributed", "notChecked", "timedOut", "output"];
+const KEYS = ["version", "darnit", "base", "groups", "id", "files", "patch", "build", "buildNote", "tests", "testsNote", "command", "passed", "attributed", "notChecked", "timedOut", "output"];
 
 /** The first key any object in `text`, which JSON.parse has read, holds twice; JSON.parse keeps only the last. */
 function duplicateKey(text: string): string | undefined {

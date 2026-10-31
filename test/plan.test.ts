@@ -13,7 +13,7 @@ const SHA = "a".repeat(40);
 const PATCH = `diff --git a/app.py b/app.py\nindex ${"1".repeat(40)}..${"2".repeat(40)} 100644\n--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-max_tokens=5\n+max_completion_tokens=5\n`;
 const outcome = { command: "npm test", passed: true, attributed: null, notChecked: false, timedOut: false, output: "ok" };
 
-const valid = (): Plan => ({ version: 1, darnit: "0.2.0", base: SHA, groups: [{ id: ID, files: ["app.py"], patch: PATCH, build: null, tests: { ...outcome } }] });
+const valid = (): Plan => ({ version: 1, darnit: "0.2.0", base: SHA, groups: [{ id: ID, files: ["app.py"], patch: PATCH, build: null, buildNote: null, tests: { ...outcome }, testsNote: null }] });
 const text = (plan: unknown) => JSON.stringify(plan);
 const group = (change: Record<string, unknown>) => ({ ...valid(), groups: [{ ...valid().groups[0], ...change }] });
 
@@ -21,7 +21,7 @@ describe("parsePlan", () => {
   it("accepts the plan darnit writes, and writes the same bytes whatever order its keys were set in", () => {
     const plan = valid();
     expect(parsePlan(serializePlan(plan, ids), ids)).toEqual(plan);
-    const reordered = { groups: [{ tests: { ...outcome }, build: null, patch: PATCH, files: ["app.py"], id: ID }], base: SHA, darnit: "0.2.0", version: 1 } as const;
+    const reordered = { groups: [{ testsNote: null, tests: { ...outcome }, buildNote: null, build: null, patch: PATCH, files: ["app.py"], id: ID }], base: SHA, darnit: "0.2.0", version: 1 } as const;
     expect(serializePlan(reordered as unknown as Plan, ids)).toBe(serializePlan(plan, ids));
   });
 
@@ -37,6 +37,7 @@ describe("parsePlan", () => {
     ["the patch", group({ patch: PATCH + "+".repeat(CAPS.patch) })],
     ["the test output", group({ tests: { ...outcome, output: "x".repeat(CAPS.output + 1) } })],
     ["the command", group({ tests: { ...outcome, command: "x".repeat(CAPS.command + 1) } })],
+    ["a note", group({ tests: null, testsNote: "x".repeat(CAPS.note + 1) })],
     ["the darnit version", { ...valid(), darnit: "x".repeat(CAPS.darnit + 1) }],
     ["the list of files", group({ files: Array.from({ length: CAPS.files + 1 }, (_, i) => `f${i}.py`) })],
     ["the list of changes", { ...valid(), groups: Array.from({ length: CAPS.groups + 1 }, () => valid().groups[0]) }],
@@ -46,6 +47,14 @@ describe("parsePlan", () => {
 
   it("rejects a whole plan over its cap before reading it", () => {
     expect(() => parsePlan(" ".repeat(CAPS.plan + 1), ids)).toThrow(`plan is over the cap of ${CAPS.plan} bytes`);
+  });
+
+  it("rejects a note on a check that ran, and a check that did not run with no note", () => {
+    const why = /a note says why a check did not run/;
+    expect(() => parsePlan(text(group({ testsNote: "skipped with --no-test" })), ids)).toThrow(why);
+    expect(() => parsePlan(text(group({ tests: null })), ids)).toThrow(why);
+    expect(() => parsePlan(text(group({ build: { ...outcome }, buildNote: "skipped with --no-test" })), ids)).toThrow(why);
+    expect(parsePlan(text(group({ tests: null, testsNote: "no test command found in this repository", buildNote: "package.json could not be read" })), ids).groups[0]).toMatchObject({ build: null, tests: null });
   });
 
   it("rejects a change record darnit does not have, or one named twice", () => {

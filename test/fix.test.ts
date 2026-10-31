@@ -5,7 +5,7 @@ import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
+import { applyAndVerify, exitCodeFor, fix, type FixOptions, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { CAPS, type Plan } from "../src/plan.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
@@ -957,7 +957,7 @@ describe("fix --pr", () => {
     vi.stubEnv("GH_TOKEN", "");
     const result = await fix(dir, { prepare: plan, noTest: true, version: "t" });
     expect(result.records[0]?.pr).toEqual({ state: "prepared", build: undefined, tests: undefined });
-    expect(renderSummary(result)).toContain("Rename max_tokens to max_completion_tokens on chat completions: verified, in the plan");
+    expect(renderSummary(result)).toContain("Rename max_tokens to max_completion_tokens on chat completions: in the plan, not verified\n  tests: skipped");
     expect(renderSummary(result)).toContain(`\nplan written to ${join(plan, "plan.json")}`);
     expect(await tree(dir)).toEqual(await tree(BEFORE));
     expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
@@ -969,7 +969,12 @@ describe("fix --pr", () => {
     const base = (await git(dir, ["rev-parse", "HEAD"])).trim();
     const committed = await git(bare, ["diff", "--binary", "--full-index", base, BRANCH]);
     const written = JSON.parse(await readFile(join(plan, "plan.json"), "utf8")) as Plan;
-    expect(written).toMatchObject({ version: 1, darnit: "t", base, groups: [{ id: result.records[0]!.record.id, files: ["app.js", "app.py", "app.ts"], build: null, tests: null }] });
+    expect(written).toMatchObject({
+      version: 1,
+      darnit: "t",
+      base,
+      groups: [{ id: result.records[0]!.record.id, files: ["app.js", "app.py", "app.ts"], build: null, buildNote: "skipped with --no-test", tests: null, testsNote: "skipped with --no-test" }],
+    });
     expect(Buffer.from(written.groups[0]!.patch)).toEqual(Buffer.from(committed));
   });
 
@@ -1357,6 +1362,36 @@ console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[3
     await git(dir, ["config", "diff.noprefix", "true"]);
     await git(dir, ["config", "diff.external", "false"]);
     expect(await patchOf()).toBe(clean);
+  });
+
+  it("says verified only when a check ran and passed, and keeps why the others did not run", async () => {
+    const run = async (dir: string, opts: FixOptions) => {
+      const plan = join(await planHome(), "plan");
+      const summary = renderSummary(await fix(dir, { prepare: plan, ...opts }));
+      const { build, buildNote, tests, testsNote } = (await readPlan(plan)).groups[0]!;
+      return { summary: summary.split("\n").filter((l) => !l.includes("could not confirm") && !l.startsWith("plan written")).join("\n"), build, buildNote, tests: tests?.passed, testsNote };
+    };
+    const title = "✓ Rename max_tokens to max_completion_tokens on chat completions";
+    const dir = await repoFrom(BEFORE);
+    expect(await run(dir, { noTest: true })).toEqual({ summary: `${title}: in the plan, not verified\n  tests: skipped`, build: null, buildNote: "skipped with --no-test", tests: undefined, testsNote: "skipped with --no-test" });
+    expect(await run(dir, {})).toEqual({
+      summary: `${title}: in the plan, not verified\n  tests: none found (no test script or pytest setup)`,
+      build: null,
+      buildNote: null,
+      tests: undefined,
+      testsNote: "no test command found in this repository",
+    });
+    expect(await run(dir, { test: "node -e 1" })).toMatchObject({ summary: `${title}: verified, in the plan\n  tests: node -e 1 passed`, tests: true, testsNote: null });
+    const broken = await repoWith({ "sdk.js": SDK_CALL, "package.json": STRICT_TYPECHECK });
+    expect(await run(broken, {})).toMatchObject({ build: { passed: false, attributed: "change" }, buildNote: null, tests: undefined, testsNote: "the build failed first" });
+    await mkdir(join(dir, "package.json"));
+    expect(await run(dir, { allowDirty: true })).toEqual({
+      summary: `${title}: in the plan, not verified\n  build: none run (package.json could not be read)\n  tests: none run (package.json could not be read; pass the command with --test)`,
+      build: null,
+      buildNote: "package.json could not be read",
+      tests: undefined,
+      testsNote: "package.json could not be read; pass the command with --test",
+    });
   });
 
   it("takes the patch before the tests run, so it holds darnit's change only", async () => {
