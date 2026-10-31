@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { cp, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
@@ -35,6 +36,8 @@ export type TestOutcome = TestRun & {
   attributed?: "change" | "baseline";
   /** A build that already failed before the change says nothing about it: the change is kept and this is reported instead. */
   notChecked?: boolean;
+  /** A file darnit changed that the run removed or put a link or folder in place of: the check failed, and the files went back. */
+  removed?: string;
 };
 
 /** A check that failed because of the change, or (for tests) failed at all. A build that was already broken is not one. */
@@ -144,15 +147,63 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
   return { groups: [...byId.values()], coverage, namesElsewhere: values.length + mentions.length > 0 };
 }
 
+type Snapshot = Map<string, { bytes: Buffer; mode: number }>;
+
 // Bytes, not text: a file that is not UTF-8 must come back as it was.
-async function snapshotOf(root: string, files: readonly string[]): Promise<Map<string, Buffer>> {
-  const snap = new Map<string, Buffer>();
-  for (const f of files) snap.set(f, await readFile(join(root, f)));
+async function snapshotOf(root: string, files: readonly string[]): Promise<Snapshot> {
+  const snap: Snapshot = new Map();
+  for (const f of files) {
+    const bytes = await readFile(join(root, f), { flag: constants.O_RDONLY | constants.O_NOFOLLOW });
+    snap.set(f, { bytes, mode: (await lstat(join(root, f))).mode & 0o7777 });
+  }
   return snap;
 }
 
-async function restore(root: string, snap: Map<string, Buffer>): Promise<void> {
-  for (const [f, bytes] of snap) await writeFile(join(root, f), bytes);
+/**
+ * Writes each file back as a regular file with its bytes and mode. Whatever the repository's code left in its place,
+ * a link, a folder or a second name for another file, is removed rather than written through.
+ */
+async function restore(root: string, snap: Snapshot): Promise<void> {
+  for (const [f, { bytes, mode }] of snap) {
+    await realFolders(root, f);
+    const path = join(root, f);
+    const info = await lstat(path).catch(() => undefined);
+    if (info && !(info.isFile() && info.nlink === 1)) await rm(path, { recursive: true, force: true });
+    const file = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, mode);
+    try {
+      await file.writeFile(bytes);
+      await file.chmod(mode);
+    } finally {
+      await file.close();
+    }
+  }
+}
+
+/** Makes each folder above `f` a real folder again; one that became a link out of the repository is refused. */
+async function realFolders(root: string, f: string): Promise<void> {
+  let dir = root;
+  for (const part of dirname(f).split(sep).filter((p) => p !== ".")) {
+    dir = join(dir, part);
+    const info = await lstat(dir).catch(() => undefined);
+    if (info?.isDirectory()) continue;
+    if (info?.isSymbolicLink() && !within(await realpath(root), await resolved(dir))) {
+      throw new Refusal(`${shown(relative(root, dir))} became a link out of the repository, so ${shown(f)} was not put back; nothing was written through it`);
+    }
+    if (info) await rm(dir, { recursive: true, force: true });
+    await mkdir(dir);
+  }
+}
+
+/** The first of `files` that is no longer a regular file of its own in real folders: removed, or a link or folder in its place. */
+async function replaced(root: string, files: Iterable<string>): Promise<string | undefined> {
+  for (const f of files) {
+    const parts = f.split(sep);
+    for (let i = 1; i <= parts.length; i++) {
+      const info = await lstat(join(root, ...parts.slice(0, i))).catch(() => undefined);
+      if (!(i < parts.length ? info?.isDirectory() : info?.isFile() && info.nlink === 1)) return f;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -171,7 +222,7 @@ export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> 
   await restore(dir, new Map(failed.map((f) => [f, before.get(f)!])));
   for (const f of failed) before.delete(f);
   const changed: string[] = [];
-  for (const [f, bytes] of before) if (!(await readFile(join(dir, f))).equals(bytes)) changed.push(f);
+  for (const [f, { bytes }] of before) if (!(await readFile(join(dir, f))).equals(bytes)) changed.push(f);
   const remaining = [...hits.map((h) => ({ file: h.file, line: h.line })), ...putBack];
   if (changed.length > 0 && count(remaining) >= grp.sites) {
     await restore(dir, before);
@@ -231,13 +282,15 @@ function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = 
  * Runs a check; on failure puts the files back and runs it again to say whether the change was the cause.
  * A run that timed out checked nothing, so its files go back with no verdict, and no second run when it was the first.
  */
-async function testAndAttribute(root: string, command: string, snap: Map<string, Buffer>, kind: TestOutcome["kind"]): Promise<TestOutcome> {
+async function testAndAttribute(root: string, command: string, snap: Snapshot, kind: TestOutcome["kind"]): Promise<TestOutcome> {
   const outcome: TestOutcome = { ...(await runTests(root, command)), kind };
+  if (await tampered(root, snap, outcome)) return outcome;
   if (!outcome.passed) {
     const changed = await snapshotOf(root, [...snap.keys()]);
     await restore(root, snap);
     if (outcome.timedOut) return outcome;
     const again = await runTests(root, command);
+    if (await tampered(root, snap, outcome)) return outcome;
     if (again.timedOut) return { ...outcome, timedOut: true };
     outcome.attributed = again.passed ? "change" : "baseline";
     // A build that fails without the change too (missing dependencies, secrets, an unrelated error)
@@ -250,6 +303,15 @@ async function testAndAttribute(root: string, command: string, snap: Map<string,
   return outcome;
 }
 
+/** Whether the run removed a file darnit changed or put something in its place; if so the check failed, and the files go back. */
+async function tampered(root: string, snap: Snapshot, outcome: TestOutcome): Promise<boolean> {
+  const gone = await replaced(root, snap.keys());
+  if (gone === undefined) return false;
+  await restore(root, snap);
+  Object.assign(outcome, { passed: false, removed: gone });
+  return true;
+}
+
 type Commands = { build?: string | undefined; tests?: string | undefined };
 
 const COMPILED = /\.(m?[jt]sx?|c[jt]s)$/;
@@ -258,7 +320,7 @@ const COMPILED = /\.(m?[jt]sx?|c[jt]s)$/;
  * The build check first, then the tests; stops at the first failure, which has already put the files back.
  * The build only runs when JavaScript or TypeScript changed: it says nothing about a Python fix.
  */
-async function runChecks(root: string, commands: Commands, snap: Map<string, Buffer>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
+async function runChecks(root: string, commands: Commands, snap: Snapshot): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
   // Builds and tests can write tracked files (a committed dist/, generated types). Put back anything
   // they touched that was clean before, so the tree only differs by the rewrite.
   const dirtyBefore = new Set(await g.modified(root));
@@ -401,7 +463,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
 }
 
 /** Runs the checks on one rewritten group, as --pr and --prepare both do. A failure, which has put the files back, goes on the record. */
-async function checkGroup(root: string, commands: Commands, snap: Map<string, Buffer>, result: RecordResult) {
+async function checkGroup(root: string, commands: Commands, snap: Snapshot, result: RecordResult) {
   const { build, tests } = await runChecks(root, commands, snap);
   if (failed(build)) result.pr = { state: "build-failed", build: build! };
   else if (failed(tests)) result.pr = { state: "tests-failed", tests: tests! };
@@ -414,6 +476,12 @@ const HOLDS: Record<g.Credential, string> = {
   url: "a URL with a user name or password, where a token can sit",
 };
 
+/** Whether `path` is `parent` or inside it. */
+const within = (parent: string, path: string) => {
+  const inside = relative(parent, path);
+  return inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside);
+};
+
 /** `path` with every link resolved, as far as it exists. */
 async function resolved(path: string): Promise<string> {
   return (await realpath(path).catch(() => undefined)) ?? join(await resolved(dirname(path)), basename(path));
@@ -421,8 +489,7 @@ async function resolved(path: string): Promise<string> {
 
 /** Refuses a plan folder inside the repository or one planFolder refuses, then removes an earlier plan. */
 async function startPlan(root: string, dir: string): Promise<void> {
-  const inside = relative(await realpath(await g.topLevel(root)), await resolved(dir));
-  if (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)) {
+  if (within(await realpath(await g.topLevel(root)), await resolved(dir))) {
     throw new Refusal(`${dir} is inside the repository, where its code can change the plan and git sees it as a change; give --prepare a folder outside it`);
   }
   await planFolder(dir);
@@ -734,6 +801,9 @@ export function exitCodeFor(result: FixResult): 0 | 1 {
 
 function testLine(t: TestOutcome): string {
   if (t.passed) return `${t.kind}: ${t.command} passed`;
+  if (t.removed !== undefined) {
+    return `${t.kind}: ${t.command} removed ${shown(t.removed)}, a file darnit changed, or put a link or folder in its place; files put back.${t.output ? `\n${t.output}` : ""}`;
+  }
   if (t.notChecked) return `${t.kind}: ${t.command} already fails without the change, so it could not check it; change kept`;
   if (t.timedOut) {
     return `${t.kind}: ${t.command} timed out after ${TIME_LIMIT_MINUTES} minutes; files put back, since a run that did not finish can't check the change. Rerun with --no-test to apply it without the tests or the build check.${t.output ? `\n${t.output}` : ""}`;
@@ -810,7 +880,7 @@ function checkLines(result: FixResult, build: TestOutcome | undefined, tests: Te
 
 export function toJson(result: FixResult): object {
   const outcome = (t: TestOutcome | undefined) =>
-    t ? { kind: t.kind, command: t.command, passed: t.passed, attributed: t.attributed, notChecked: t.notChecked ?? false, timedOut: t.timedOut, output: t.output } : null;
+    t ? { kind: t.kind, command: t.command, passed: t.passed, attributed: t.attributed, notChecked: t.notChecked ?? false, timedOut: t.timedOut, removed: t.removed ?? null, output: t.output } : null;
   return {
     records: result.records.map((r) => ({
       id: r.record.id,
