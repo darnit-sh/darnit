@@ -1,20 +1,24 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
+import { appendRemovals, removalsFrom, type Removal } from "../src/corpus/accounting.js";
 import { deriveCandidates, writeCandidate, type VendorConfig } from "../src/corpus/candidates.js";
 import { changelog } from "../src/corpus/oasdiff.js";
 import { prose } from "../src/fix.js";
 import { parseSpec, sha256 } from "../src/corpus/spec.js";
-import { loadRecords, PACKS_DIR } from "../src/records/load.js";
+import { loadRecords } from "../src/records/load.js";
 
 // Fetches each vendor's spec, diffs it against the last snapshot, and writes
-// candidate packs for anything users would have to change. --dry-run reports
+// candidate packs for anything users would have to change, and appends every removal to
+// corpus/<vendor>/removals.json so npm run accounting can hold each one to account. --dry-run reports
 // without writing. First run for a vendor only stores the baseline. The output is the
-// pull request body, so text that came from the spec goes through prose().
+// pull request body, so text that came from the spec goes through prose(). --root <dir> reads
+// vendors.yml and writes corpus/ and packs/ under another folder.
 
-const ROOT = fileURLToPath(new URL("../", import.meta.url));
+const at = process.argv.indexOf("--root");
+const ROOT = at > 0 ? resolve(process.argv[at + 1] ?? "") : fileURLToPath(new URL("../", import.meta.url));
 const dryRun = process.argv.includes("--dry-run");
 const today = new Date().toISOString().slice(0, 10);
 
@@ -25,6 +29,7 @@ for (const [vendor, config] of Object.entries(vendors)) {
   const dir = join(ROOT, "corpus", vendor);
   const specPath = join(dir, "openapi.yaml");
   const snapshotPath = join(dir, "snapshot.json");
+  const removed: Removal[] = [];
 
   const res = await fetch(config.spec);
   if (!res.ok) {
@@ -47,11 +52,12 @@ for (const [vendor, config] of Object.entries(vendors)) {
     await writeFile(fresh, text);
     try {
       const entries = await changelog(specPath, fresh);
+      removed.push(...removalsFrom(entries, today));
       const { candidates, ignored, unmapped } = deriveCandidates({ vendor, config, entries, spec: parseSpec(text), existing, observedAt: today });
       console.log(`## ${vendor}: ${entries.length} spec changes, ${candidates.length} candidate records`);
       for (const c of candidates) {
         console.log(`- ${c.record.id}: ${prose(c.record.title ?? "")}`);
-        if (!dryRun) await writeCandidate(PACKS_DIR, c);
+        if (!dryRun) await writeCandidate(join(ROOT, "packs"), c);
       }
       if (unmapped.length > 0) console.log(`\nEndpoints with no SDK symbol in vendors.yml (add one so SDK calls are found too): ${prose(unmapped.join(", "))}`);
       const ignoredLines = Object.entries(ignored).sort((a, b) => b[1] - a[1]);
@@ -63,6 +69,8 @@ for (const [vendor, config] of Object.entries(vendors)) {
 
   if (!dryRun) {
     await mkdir(dir, { recursive: true });
+    // Before the new spec replaces the old one, so a failed append leaves the diff to be taken again.
+    if (removed.length > 0) await appendRemovals(join(dir, "removals.json"), removed);
     await writeFile(specPath, text);
     await writeFile(snapshotPath, `${JSON.stringify({ source: config.spec, sha256: sha, fetchedAt: today }, null, 2)}\n`);
   }

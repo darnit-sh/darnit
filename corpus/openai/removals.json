@@ -1,0 +1,3300 @@
+[
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-any-of-removed",
+    "operation": "POST",
+    "path": "/audio/speech",
+    "text": "removed `#/components/schemas/VoiceIdsShared` from the `voice` request property `anyOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/chat/completions",
+    "text": "removed the required property `usage/completion_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/chat/completions",
+    "text": "removed the required property `usage/prompt_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/chat/completions",
+    "text": "removed the required property `usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/conversations",
+    "text": "removed `subschema #2` from the `items/anyOf[subschema #1]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/conversations",
+    "text": "removed `subschema #2` from the `items/anyOf[subschema #1]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/conversations/{conversation_id}/items",
+    "text": "removed `subschema #2` from the `items/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/conversations/{conversation_id}/items",
+    "text": "removed `subschema #2` from the `items/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}",
+    "text": "removed the required property `code` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}",
+    "text": "removed the required property `message` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}",
+    "text": "removed the required property `param` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}",
+    "text": "removed the required property `type` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed the required property `data/items/error/code` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed the required property `data/items/error/message` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed `subschema #2` from the `data_source/oneOf[subschema #3: ResponsesRunDataSource]/sampling_params/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed the required property `code` from the response with the `400` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed the required property `error/code` from the response with the `201` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed the required property `error/message` from the response with the `201` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed the required property `message` from the response with the `400` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed the required property `param` from the response with the `400` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed the required property `type` from the response with the `400` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}/runs/{run_id}",
+    "text": "removed the required property `code` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}/runs/{run_id}",
+    "text": "removed the required property `message` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}/runs/{run_id}",
+    "text": "removed the required property `param` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}/runs/{run_id}",
+    "text": "removed the required property `type` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs/{run_id}",
+    "text": "removed the required property `error/code` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs/{run_id}",
+    "text": "removed the required property `error/message` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "api-removed-without-deprecation",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs/{run_id}",
+    "text": "api removed without deprecation"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs/{run_id}/output_items",
+    "text": "removed the required property `data/items/sample/error/code` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs/{run_id}/output_items",
+    "text": "removed the required property `data/items/sample/error/message` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs/{run_id}/output_items/{output_item_id}",
+    "text": "removed the required property `sample/error/code` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs/{run_id}/output_items/{output_item_id}",
+    "text": "removed the required property `sample/error/message` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-media-type-removed",
+    "operation": "GET",
+    "path": "/files/{file_id}/content",
+    "text": "removed the media type `application/json` for the response with the status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/alpha/graders/run",
+    "text": "removed `#/components/schemas/GraderStringCheck, #/components/schemas/GraderTextSimilarity, #/components/schemas/GraderPython, #/components/schemas/GraderScoreModel, #/components/schemas/GraderLabelModel` from the `grader/oneOf[subschema #5: MultiGrader]/graders` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/alpha/graders/validate",
+    "text": "removed `#/components/schemas/GraderStringCheck, #/components/schemas/GraderTextSimilarity, #/components/schemas/GraderPython, #/components/schemas/GraderScoreModel, #/components/schemas/GraderLabelModel` from the `grader/oneOf[subschema #5: MultiGrader]/graders` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/fine_tuning/jobs",
+    "text": "removed the required property `data/items/method/type` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs",
+    "text": "removed `#/components/schemas/GraderStringCheck, #/components/schemas/GraderTextSimilarity, #/components/schemas/GraderPython, #/components/schemas/GraderScoreModel, #/components/schemas/GraderLabelModel` from the `method/reinforcement/grader/oneOf[subschema #5: MultiGrader]/graders` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs",
+    "text": "removed the required property `method/type` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}",
+    "text": "removed the required property `method/type` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/cancel",
+    "text": "removed the required property `method/type` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/pause",
+    "text": "removed the required property `method/type` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/resume",
+    "text": "removed the required property `method/type` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact",
+    "text": "removed `subschema #2` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact",
+    "text": "removed `subschema #2` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact?beta=true",
+    "text": "removed `subschema #2` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact?beta=true",
+    "text": "removed `subschema #2` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/input_tokens",
+    "text": "removed `subschema #2` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/input_tokens",
+    "text": "removed `subschema #2` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/input_tokens",
+    "text": "removed `subschema #2` from the `tools/anyOf[subschema #1]/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/input_tokens?beta=true",
+    "text": "removed `subschema #2` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/input_tokens?beta=true",
+    "text": "removed `subschema #2` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/input_tokens?beta=true",
+    "text": "removed `subschema #2` from the `tools/anyOf[subschema #1]/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `code` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `message` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `param` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `type` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `code` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `message` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `param` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `type` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `code` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `message` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `param` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `type` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `code` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `message` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `param` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `type` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/vector_stores/{vector_store_id}/search",
+    "text": "removed `subschema #2` from the `filters/oneOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "GET",
+    "path": "/chat/completions/{completion_id}/messages",
+    "text": "removed `#/components/schemas/ChatCompletionResponseMessage, subschema #2` from the `data/items/` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `allOf[subschema #3]/usage/total_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `allOf[subschema #3]/usage/total_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/total_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/total_tokens` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/input_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/output_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/total_tokens` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/runs",
+    "text": "removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` from the `tool_choice` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/runs",
+    "text": "removed `#/components/schemas/TruncationObject, subschema #2` from the `truncation_strategy` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "GET",
+    "path": "/threads/{thread_id}/runs",
+    "text": "removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` from the `data/items/tool_choice` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "GET",
+    "path": "/threads/{thread_id}/runs",
+    "text": "removed `#/components/schemas/TruncationObject, subschema #2` from the `data/items/truncation_strategy` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs",
+    "text": "removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` from the `tool_choice` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs",
+    "text": "removed `#/components/schemas/TruncationObject, subschema #2` from the `truncation_strategy` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "GET",
+    "path": "/threads/{thread_id}/runs/{run_id}",
+    "text": "removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` from the `tool_choice` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "GET",
+    "path": "/threads/{thread_id}/runs/{run_id}",
+    "text": "removed `#/components/schemas/TruncationObject, subschema #2` from the `truncation_strategy` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs/{run_id}",
+    "text": "removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` from the `tool_choice` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs/{run_id}",
+    "text": "removed `#/components/schemas/TruncationObject, subschema #2` from the `truncation_strategy` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs/{run_id}/cancel",
+    "text": "removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` from the `tool_choice` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs/{run_id}/cancel",
+    "text": "removed `#/components/schemas/TruncationObject, subschema #2` from the `truncation_strategy` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs/{run_id}/submit_tool_outputs",
+    "text": "removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` from the `tool_choice` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs/{run_id}/submit_tool_outputs",
+    "text": "removed `#/components/schemas/TruncationObject, subschema #2` from the `truncation_strategy` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/uploads",
+    "text": "removed `#/components/schemas/OpenAIFile, subschema #2` from the `file` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/uploads/{upload_id}/cancel",
+    "text": "removed `#/components/schemas/OpenAIFile, subschema #2` from the `file` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-all-of-removed",
+    "operation": "POST",
+    "path": "/uploads/{upload_id}/complete",
+    "text": "removed `#/components/schemas/OpenAIFile, subschema #2` from the `file` response property `allOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-body-one-of-removed",
+    "operation": "POST",
+    "path": "/audio/transcriptions",
+    "text": "removed `#/components/schemas/CreateTranscriptionResponseJson, #/components/schemas/CreateTranscriptionResponseDiarizedJson, #/components/schemas/CreateTranscriptionResponseVerboseJson` from the response body `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/chat/completions",
+    "text": "removed the optional property `usage/completion_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/chat/completions",
+    "text": "removed the optional property `usage/prompt_tokens_details` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/completions",
+    "text": "removed the `content_filter` enum value from the `choices/items/finish_reason` response property for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/completions",
+    "text": "removed the `length` enum value from the `choices/items/finish_reason` response property for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/completions",
+    "text": "removed the `stop` enum value from the `choices/items/finish_reason` response property for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/conversations/{conversation_id}/items",
+    "text": "removed `subschema #2` from the `data/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/conversations/{conversation_id}/items",
+    "text": "removed `subschema #2` from the `data/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/conversations/{conversation_id}/items",
+    "text": "removed `subschema #2` from the `data/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/conversations/{conversation_id}/items",
+    "text": "removed `subschema #2` from the `data/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/conversations/{conversation_id}/items/{item_id}",
+    "text": "removed `subschema #2` from the `oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/conversations/{conversation_id}/items/{item_id}",
+    "text": "removed `subschema #2` from the `oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}",
+    "text": "removed the optional property `misalignment` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed `subschema #2` from the `data/items/data_source/oneOf[subschema #3: ResponsesRunDataSource]/sampling_params/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed the optional property `misalignment` from the response with the `400` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/evals/{eval_id}/runs",
+    "text": "removed `subschema #2` from the `data_source/oneOf[subschema #3: ResponsesRunDataSource]/sampling_params/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `201`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "DELETE",
+    "path": "/evals/{eval_id}/runs/{run_id}",
+    "text": "removed the optional property `misalignment` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/evals/{eval_id}/runs/{run_id}",
+    "text": "removed `subschema #2` from the `data_source/oneOf[subschema #3: ResponsesRunDataSource]/sampling_params/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/alpha/graders/validate",
+    "text": "removed `#/components/schemas/GraderStringCheck, #/components/schemas/GraderTextSimilarity, #/components/schemas/GraderPython, #/components/schemas/GraderScoreModel, #/components/schemas/GraderLabelModel` from the `grader/oneOf[subschema #5: MultiGrader]/graders` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/fine_tuning/jobs",
+    "text": "removed the optional property `data/items/method/dpo` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/fine_tuning/jobs",
+    "text": "removed the optional property `data/items/method/reinforcement` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/fine_tuning/jobs",
+    "text": "removed the optional property `data/items/method/supervised` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs",
+    "text": "removed the optional property `method/dpo` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs",
+    "text": "removed the optional property `method/reinforcement` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs",
+    "text": "removed the optional property `method/supervised` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}",
+    "text": "removed the optional property `method/dpo` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}",
+    "text": "removed the optional property `method/reinforcement` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}",
+    "text": "removed the optional property `method/supervised` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/cancel",
+    "text": "removed the optional property `method/dpo` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/cancel",
+    "text": "removed the optional property `method/reinforcement` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/cancel",
+    "text": "removed the optional property `method/supervised` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/pause",
+    "text": "removed the optional property `method/dpo` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/pause",
+    "text": "removed the optional property `method/reinforcement` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/pause",
+    "text": "removed the optional property `method/supervised` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/resume",
+    "text": "removed the optional property `method/dpo` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/resume",
+    "text": "removed the optional property `method/reinforcement` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/fine_tuning/jobs/{fine_tuning_job_id}/resume",
+    "text": "removed the optional property `method/supervised` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-default-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "the `model` request property default value `gpt-image-1.5` was removed (media type: multipart/form-data)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-default-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "the `model` request property default value `dall-e-2` was removed"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-default-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "the `response_format` request property default value `url` was removed"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "request-property-default-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "the `style` request property default value `vivid` was removed"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/realtime/client_secrets",
+    "text": "removed the optional property `session/oneOf[subschema #1: Realtime session configuration object]/audio/input/transcription/language` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/realtime/client_secrets",
+    "text": "removed the optional property `session/oneOf[subschema #1: Realtime session configuration object]/audio/input/transcription/languages` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/realtime/client_secrets",
+    "text": "removed the optional property `session/oneOf[subschema #1: Realtime session configuration object]/audio/input/transcription/model` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/realtime/client_secrets",
+    "text": "removed the optional property `session/oneOf[subschema #1: Realtime session configuration object]/audio/input/transcription/prompt` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/realtime/client_secrets",
+    "text": "removed the optional property `session/oneOf[subschema #2: Realtime transcription session configuration object]/audio/input/transcription/language` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/realtime/client_secrets",
+    "text": "removed the optional property `session/oneOf[subschema #2: Realtime transcription session configuration object]/audio/input/transcription/languages` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/realtime/client_secrets",
+    "text": "removed the optional property `session/oneOf[subschema #2: Realtime transcription session configuration object]/audio/input/transcription/model` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/realtime/client_secrets",
+    "text": "removed the optional property `session/oneOf[subschema #2: Realtime transcription session configuration object]/audio/input/transcription/prompt` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/ResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact",
+    "text": "removed `subschema #2` from the `output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact",
+    "text": "removed `subschema #2` from the `output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact?beta=true",
+    "text": "removed `subschema #2` from the `output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact?beta=true",
+    "text": "removed `subschema #2` from the `output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}",
+    "text": "removed the optional property `misalignment` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed `subschema #2` from the `allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the optional property `misalignment` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed `subschema #2` from the `allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the optional property `misalignment` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed `subschema #2` from the `allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}/input_items",
+    "text": "removed `subschema #2` from the `data/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}/input_items",
+    "text": "removed `subschema #2` from the `data/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}/input_items?beta=true",
+    "text": "removed `subschema #2` from the `data/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}/input_items?beta=true",
+    "text": "removed `subschema #2` from the `data/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-optional-property-removed",
+    "operation": "DELETE",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the optional property `misalignment` from the response with the `404` status"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed `subschema #2` from the `allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[#/components/schemas/BetaResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `subschema #2` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/threads/runs",
+    "text": "removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` from the `response_format` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/threads/{thread_id}/runs",
+    "text": "removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` from the `data/items/response_format` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs",
+    "text": "removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` from the `response_format` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/threads/{thread_id}/runs/{run_id}",
+    "text": "removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` from the `response_format` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs/{run_id}",
+    "text": "removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` from the `response_format` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs/{run_id}/cancel",
+    "text": "removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` from the `response_format` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/threads/{thread_id}/runs/{run_id}/submit_tool_outputs",
+    "text": "removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` from the `response_format` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/vector_stores/{vector_store_id}/file_batches",
+    "text": "removed the `vector_store.files_batch` enum value from the `object` response property for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-enum-value-removed",
+    "operation": "GET",
+    "path": "/vector_stores/{vector_store_id}/file_batches/{batch_id}",
+    "text": "removed the `vector_store.files_batch` enum value from the `object` response property for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-03",
+    "id": "response-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/vector_stores/{vector_store_id}/file_batches/{batch_id}/cancel",
+    "text": "removed the `vector_store.files_batch` enum value from the `object` response property for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `auto` of the request property `background`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `auto` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `high` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `jpeg` of the request property `output_format`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `low` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `max` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `medium` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `opaque` of the request property `background`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `png` of the request property `output_format`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `standard` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `transparent` of the request property `background`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `webp` of the request property `output_format`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed the enum value `xhigh` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `auto` of the request property `background`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `auto` of the request property `moderation`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `auto` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `hd` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `high` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `jpeg` of the request property `output_format`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `low` of the request property `moderation`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `low` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `max` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `medium` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `opaque` of the request property `background`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `png` of the request property `output_format`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `standard` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `transparent` of the request property `background`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `webp` of the request property `output_format`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `xhigh` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/chat/completions",
+    "text": "removed `#/components/schemas/PredictionContent` from the `allOf[subschema #2]/prediction` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-default-value-removed",
+    "operation": "POST",
+    "path": "/audio/transcriptions",
+    "text": "the `` request property default value `[]` was removed"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-body-media-type-removed",
+    "operation": "POST",
+    "path": "/audio/voices",
+    "text": "removed the media type `application/json` from the request body"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-body-one-of-removed",
+    "operation": "POST",
+    "path": "/audio/voices",
+    "text": "removed `#/components/schemas/CreateVoicePromptRequest` from the request body `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/conversations",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `items/anyOf[subschema #1]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/conversations/{conversation_id}/items",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `items/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/live/sessions",
+    "text": "removed the enum value `aube` of the request property `session/audio/output/voice/oneOf[subschema #1]/anyOf[subschema #2]/`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/live/sessions",
+    "text": "removed the enum value `shitan` of the request property `session/audio/output/voice/oneOf[subschema #1]/anyOf[subschema #2]/`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/live/sessions",
+    "text": "removed `#/components/schemas/LiveFunctionToolChoiceParam, #/components/schemas/LiveMCPToolChoiceParam` from the `session/delegation/anyOf[subschema #1]/oneOf[#/components/schemas/LiveResponsesDelegationParam]/responses/tool_choice` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/live/sessions/{session_id}/accept",
+    "text": "removed the enum value `aube` of the request property `session/audio/output/voice/oneOf[subschema #1]/anyOf[subschema #2]/`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/live/sessions/{session_id}/accept",
+    "text": "removed the enum value `shitan` of the request property `session/audio/output/voice/oneOf[subschema #1]/anyOf[subschema #2]/`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/live/sessions/{session_id}/accept",
+    "text": "removed `#/components/schemas/LiveFunctionToolChoiceParam, #/components/schemas/LiveMCPToolChoiceParam` from the `session/delegation/anyOf[subschema #1]/oneOf[#/components/schemas/LiveResponsesDelegationParam]/responses/tool_choice` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/live/sessions/{session_id}/fork",
+    "text": "removed `#/components/schemas/LiveFunctionToolChoiceParam, #/components/schemas/LiveMCPToolChoiceParam` from the `session/delegation/responses/tool_choice` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/compact?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/input_tokens",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/input_tokens?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/conversations/{conversation_id}/items",
+    "text": "removed the required property `data/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/conversations/{conversation_id}/items",
+    "text": "removed the required property `data/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/conversations/{conversation_id}/items/{item_id}",
+    "text": "removed the required property `oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[#/components/schemas/ResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/compact",
+    "text": "removed the required property `output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/compact?beta=true",
+    "text": "removed the required property `output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed the required property `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed the required property `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}/input_items",
+    "text": "removed the required property `data/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}/input_items?beta=true",
+    "text": "removed the required property `data/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[#/components/schemas/BetaResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-required-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the required property `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` from the response with the `200` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "api-schema-removed",
+    "text": "removed the schema `CreateVoicePromptRequest`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/audio/voices",
+    "text": "removed the `prompt` enum value from the `type` response property for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel",
+    "text": "removed `#/components/schemas/NamespaceToolParam` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses/{response_id}/cancel?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "GET",
+    "path": "/responses/{response_id}?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200`"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-12",
+    "id": "response-property-one-of-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed `#/components/schemas/BetaNamespaceToolParam` from the `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` response property `oneOf` list for the response status `200` (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-one-of-removed",
+    "operation": "POST",
+    "path": "/moderations",
+    "text": "removed `subschema #1, subschema #2, subschema #3` from the `input` request property `oneOf` list"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the request property `spend_control`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions/{session_id}",
+    "text": "removed the request property `spend_control`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/decisions",
+    "text": "removed the request property `input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/content`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/decisions",
+    "text": "removed the request property `input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/role`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/decisions",
+    "text": "removed the request property `input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/type`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "api-schema-removed",
+    "text": "removed the schema `SessionSpendControlParam`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "api-schema-removed",
+    "text": "removed the schema `SessionSpendControlResource`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `data/items/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control` from the response with the `201` status (media type: text/event-stream)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions",
+    "text": "removed the optional property `spend_control` from the response with the `201` status (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}",
+    "text": "removed the optional property `spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "POST",
+    "path": "/agents/sessions/{session_id}",
+    "text": "removed the optional property `spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/agents/sessions/{session_id}/events",
+    "text": "removed the optional property `oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control` from the response with the `200` status"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-non-success-status-removed",
+    "operation": "POST",
+    "path": "/organization/projects/{project_id}/service_accounts/{service_account_id}/api_keys",
+    "text": "removed the non-success response with the status `409`"
+  }
+]

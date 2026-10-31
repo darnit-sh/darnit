@@ -72,6 +72,9 @@ jobs:
       # Every pack's rules against its fixtures. Zero matches where fixtures
       # expect some is a failure, not a skip.
       - run: npm run test:fixtures
+      # Every deprecation in OpenAI's spec and every removal the corpus logged is covered by a
+      # record or has a reason in packs/openai/not-covered.yaml.
+      - run: npm run accounting
 
   package:
     strategy:

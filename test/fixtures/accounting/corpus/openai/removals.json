@@ -1,0 +1,16 @@
+[
+  {
+    "observedAt": "2026-10-05",
+    "id": "request-property-enum-value-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed the enum value `standard` of the request property `quality`"
+  },
+  {
+    "observedAt": "2026-10-26",
+    "id": "response-optional-property-removed",
+    "operation": "GET",
+    "path": "/models",
+    "text": "removed the optional property `data/items/owned_by` from the response with the `200` status"
+  }
+]

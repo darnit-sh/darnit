@@ -1,0 +1,33 @@
+# A small not-covered file for the tests, matching corpus/openai in this folder.
+
+- items:
+    - schema CreateImageRequest property model enum gpt-4o-search-preview
+  date: "2026-07-23"
+  needs-record: Breaking, report-only model record.
+
+- items:
+    - POST /assistants
+  date: "2026-08-26"
+  needs-record: Breaking, report-only endpoint record.
+
+- items:
+    - schema CreateImageRequest property user
+  date: "2099-01-01"
+  needs-record: Deprecation, report-only.
+
+- items:
+    - schema CreateImageRequest property seed
+  needs-record: Deprecation, report-only, with no date.
+
+- items:
+    - schema CreateImageRequest property model enum gpt-5.1-mini
+  reason: The spec's note on it reads "Not a supported model ID. Retained for SDK compatibility."
+
+- items:
+    - schema ImagesResponse property status
+    - "2026-10-26 GET /models response-optional-property-removed `data/items/owned_by` `200`"
+  reason: Response-only.
+
+- items:
+    - "2026-10-05 POST /images/generations request-property-enum-value-removed `standard` `quality`"
+  reason: Not a removal.
