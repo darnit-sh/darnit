@@ -1254,6 +1254,27 @@ describe("fix --prepare", () => {
     },
   );
 
+  const HEADER = `AUTHORIZATION: basic ${Buffer.from("x-access-token:ghs_fake_write_token_0123456789").toString("base64")}`;
+  it.each([
+    ["GIT_CONFIG_COUNT", { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader", GIT_CONFIG_VALUE_0: HEADER }],
+    ["GIT_CONFIG_PARAMETERS", { GIT_CONFIG_PARAMETERS: `'http.extraheader'='${HEADER}'` }],
+  ])("refuses to start with a checkout token in git config from darnit's environment, through %s", async (_, vars) => {
+    // darnit's own git calls drop these variables, but the repository's code can read them in darnit's environment.
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    for (const [k, v] of Object.entries(vars)) vi.stubEnv(k, v);
+    await expect(fix(dir, { prepare: plan, test: "node -e 1" })).rejects.toThrow("git config in darnit's environment holds");
+    expect(runs.count).toBe(0);
+    await expect(access(plan)).rejects.toThrow();
+  });
+
+  it("runs with other git config in its environment", async () => {
+    const dir = await repoFrom(BEFORE);
+    for (const [k, v] of Object.entries({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "url.https://github.com/.insteadOf", GIT_CONFIG_VALUE_0: "git@github.com:" })) vi.stubEnv(k, v);
+    vi.stubEnv("GIT_CONFIG_PARAMETERS", "'core.autocrlf'='false'");
+    expect((await fix(dir, { prepare: join(await planHome(), "plan"), noTest: true })).records[0]?.pr?.state).toBe("prepared");
+  });
+
   // The repository's tests look for a token in their own environment and in darnit's, which the system
   // keeps readable from the start of the run (/proc/<pid>/environ on Linux, ps -E on macOS).
   const PROBE = "{ env; tr '\\0' '\\n' < /proc/$PPID/environ; ps -wwE -o command= -p $PPID | tr ' ' '\\n'; } 2>/dev/null | grep -E 'TOKEN|DARNIT_NO_UPDATE' | tee seen.txt; true";

@@ -241,6 +241,18 @@ export const savedHeader = (root: string) =>
     (err: { code?: number }) => err.code !== 1,
   );
 
+const EXTRAHEADER = /^http\.(?:.+\.)?extraheader$/i;
+
+/**
+ * Whether the git config git takes from darnit's own environment holds an http extra header. darnit's git calls
+ * drop it, but everything darnit starts can read darnit's environment.
+ */
+export function envHeader(env: NodeJS.ProcessEnv = process.env): boolean {
+  const count = Math.min(Number(env.GIT_CONFIG_COUNT) || 0, 1000);
+  const keys = Array.from({ length: count }, (_, i) => env[`GIT_CONFIG_KEY_${i}`] ?? "");
+  return keys.some((k) => EXTRAHEADER.test(k.trim())) || /extraheader/i.test(env.GIT_CONFIG_PARAMETERS ?? "");
+}
+
 export const topLevel = async (root: string) => (await git(root, ["rev-parse", "--show-toplevel"])).trim();
 
 export const head = async (root: string) => (await git(root, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();

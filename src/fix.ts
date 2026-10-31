@@ -266,6 +266,9 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     // The system keeps darnit's starting environment readable by everything it starts, so no unsetting helps.
     const held = g.CREDENTIALS.find((k) => process.env[k]?.trim());
     if (held) throw new Refusal(`${held} is set; --prepare runs the repository's code, so its job must not hold a token. Run it in a job without one and publish from another`);
+    if (g.envHeader()) {
+      throw new Refusal("git config in darnit's environment holds an http extraheader (GIT_CONFIG_COUNT or GIT_CONFIG_PARAMETERS), which the repository's code can read; --prepare runs that code, so unset it");
+    }
   }
   const color = opts.color ?? false;
   const dryRun = opts.dryRun ?? false;
