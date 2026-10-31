@@ -43,19 +43,38 @@ export function cellModels(text: string): string[] | undefined {
 }
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', nbsp: " ", mdash: "—" };
-const cellText = (html: string) =>
-  html
-    .replace(/<[^>]*>/g, "")
+// Tags the page wraps cell text in. Any other tag, such as img or script, refuses the cell.
+const INLINE = new Set(["a", "b", "br", "code", "em", "i", "p", "span", "strong", "sub", "sup"]);
+const MAX_CELL = 10_000;
+// Left after decoding, these refuse the cell: markup, control characters and bidi controls.
+const UNSAFE = /[<>\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+
+/** A cell's text: inline tags skipped, entities decoded once, whitespace collapsed. Undefined for a cell holding anything else. */
+export function cellText(html: string): string | undefined {
+  if (html.length > MAX_CELL) return undefined;
+  let text = "";
+  let at = 0;
+  for (let open = html.indexOf("<"); open !== -1; open = html.indexOf("<", at)) {
+    const close = html.indexOf(">", open);
+    const name = close === -1 ? undefined : /^\/?([a-z0-9]+)(?:[\s/]|$)/i.exec(html.slice(open + 1, close))?.[1]?.toLowerCase();
+    if (name === undefined || !INLINE.has(name)) return undefined;
+    text += html.slice(at, open);
+    at = close + 1;
+  }
+  text += html.slice(at);
+  const decoded = text
     .replace(/&(amp|lt|gt|quot|nbsp|mdash|#\d{1,6});/g, (_, e: string) => ENTITIES[e] ?? String.fromCodePoint(Number(e.slice(1))))
-    .replace(/[‐‑]/g, "-")
     .replace(/\s+/g, " ")
+    .replace(/[\u2010\u2011]/g, "-")
     .trim();
+  return UNSAFE.test(decoded) ? undefined : decoded;
+}
 const cells = (row: string) =>
   row
     .split(/<\/tr>/i)[0]!
     .split(/(?=<t[dh][\s>])/i)
     .filter((c) => /^<t[dh]/i.test(c))
-    .map((c) => cellText(c.slice(c.indexOf(">") + 1)));
+    .map((c) => cellText(c.slice(c.indexOf(">") + 1).split(/<\/t[dh]\s*>/i)[0]!));
 
 const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
 
@@ -68,26 +87,37 @@ export function readPage(html: string): Page {
   const skipped: string[] = [];
   for (const table of html.split(/<table[\s>]/i).slice(1)) {
     const [head = [], ...rows] = table.split(/<\/table>/i)[0]!.split(/<tr[\s>]/i).slice(1).map(cells);
-    const to = head.findIndex((h) => REPLACEMENT.has(h.toLowerCase()));
+    const to = head.findIndex((h) => h !== undefined && REPLACEMENT.has(h.toLowerCase()));
     if (head[0]?.toLowerCase() !== "shutdown date" || to < 2) {
-      skipped.push(`table headed ${head.join(" | ")}`);
+      skipped.push(`table headed ${head.map((h) => h ?? "(refused)").join(" | ")}`);
       continue;
     }
     for (const row of rows) {
-      const models = row.length === head.length ? cellModels(row[1]!) : undefined;
-      if (!models) skipped.push(`row ${row.join(" | ")}`);
+      const refused = row.some((c) => c === undefined);
+      const models = refused || row.length !== head.length ? undefined : cellModels(row[1]!);
+      if (!models) skipped.push(refused ? `row refused: a cell holds markup, control characters or over ${MAX_CELL} characters` : `row ${row.join(" | ")}`);
       for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), row[to]!]);
     }
   }
   return { replacements, skipped };
 }
 
-/** A replacement cell as fix.models holds it: one model id is a rename, anything else is for a person. */
+const SETTING = /^(\S+) \(([A-Za-z0-9._: -]{1,60})\)$/;
+
+/**
+ * A replacement cell as fix.models holds it: one model id is a rename. Model ids joined by commas or "or", or one
+ * model id with a setting, become a reason built from those parts. Any other cell gets a fixed reason, never its text.
+ */
 function entry(record: ChangeRecord, text: string): Replacement {
   const vendor = vendorName(record.vendor);
-  if (text === "" || text === "—" || text === "-") return { human: `${vendor} names no replacement` };
-  if (isModel(text)) return { model: text, source: record.sources[0]!.url };
-  return { human: `not a plain swap: ${vendor} recommends ${text.replace(/\.+$/, "")}` };
+  const source = record.sources[0]!.url;
+  if (isModel(text)) return { model: text, source };
+  if (text === "" || text === "—" || text === "-") return { human: `${vendor} names no replacement`, source };
+  const setting = text.length <= 200 ? SETTING.exec(text) : null;
+  if (setting && isModel(setting[1]!)) return { human: `not a plain swap: ${vendor} recommends ${setting[1]} with ${setting[2]}`, source };
+  const ids = text.length <= 200 ? text.split(/,? or |, /) : [];
+  if (ids.length > 1 && ids.every(isModel)) return { human: `not a plain swap: ${vendor} recommends one of ${ids.join(", ")}`, source };
+  return { human: `${vendor} names no single replacement model`, source };
 }
 
 /**
@@ -103,10 +133,10 @@ export function replacementsFor(records: readonly ChangeRecord[], page: Page): {
     while ("model" in at) {
       const text = newest(at.model);
       if (text === undefined) return at;
-      if (seen.has(at.model)) return { human: `the recommended replacements loop back to ${at.model}` };
+      if (seen.has(at.model)) return { human: `the recommended replacements loop back to ${at.model}`, source: at.source };
       seen.add(at.model);
       const after = entry(record, text);
-      if ("human" in after) return { human: `${vendorName(record.vendor)} recommends ${at.model}, which also shuts down; ${after.human}` };
+      if ("human" in after) return { human: `${vendorName(record.vendor)} recommends ${at.model}, which also shuts down; ${after.human}`, source: after.source };
       at = after;
     }
     return at;

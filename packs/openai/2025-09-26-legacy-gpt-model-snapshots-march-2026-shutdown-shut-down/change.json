@@ -204,16 +204,20 @@
   "fix": {
     "models": {
       "gpt-4-0314": {
-        "human": "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*"
+        "human": "OpenAI names no single replacement model",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-0125-preview": {
-        "human": "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*"
+        "human": "OpenAI names no single replacement model",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-turbo-preview": {
-        "human": "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*"
+        "human": "OpenAI names no single replacement model",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-turbo-preview-completions": {
-        "human": "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*"
+        "human": "OpenAI names no single replacement model",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }
   }

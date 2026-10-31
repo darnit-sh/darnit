@@ -130,7 +130,7 @@ report names each one.
 Under each retiring model it finds, `check` prints the model OpenAI recommends
 instead, or in one line why the swap needs a person (a setting the new model
 also needs, several candidates, or none named); `--json` adds it to each finding
-as `replacement`, `{ model, source }` or `{ human }`.
+as `replacement`, `{ model, source }` or `{ human, source }`.
 
 ```
 $ npx darnit check
@@ -138,7 +138,7 @@ openai 2026-06-11: o3-2025-04-16, gpt-5-2025-08-07, o3-pro-2025-06-10 and 3 more
   app.ts:3:50  model: "o3-2025-04-16"
     use gpt-5.6-sol instead (OpenAI's recommendation)
   app.ts:4:50  model: "gpt-5-pro-2025-10-06"
-    not a plain swap: OpenAI recommends gpt-5.6-sol (reasoning.mode: pro)
+    not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro
   2 call sites in 1 file
   https://developers.openai.com/api/docs/deprecations
 ```

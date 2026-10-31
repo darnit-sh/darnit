@@ -317,7 +317,8 @@
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4o-mini-transcribe-2025-03-20": {
-        "human": "OpenAI recommends gpt-4o-mini-transcribe-2025-12-15, which also shuts down; not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe"
+        "human": "OpenAI recommends gpt-4o-mini-transcribe-2025-12-15, which also shuts down; not a plain swap: OpenAI recommends one of gpt-live-transcribe, gpt-transcribe",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }
   }

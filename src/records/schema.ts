@@ -28,7 +28,8 @@ export const ModelId = z.string().regex(/^[a-z0-9][a-z0-9._:-]{0,99}$/, "a model
 /** The vendor's recommended replacement for a model: a plain rename, or why the swap needs a person. */
 export const ReplacementSchema = z.union([
   z.object({ model: ModelId, source: Url }).strict(),
-  z.object({ human: z.string().regex(/^[^\p{Cc}\u2028\u2029]{1,200}$/u, "human is one short line") }).strict(),
+  // Written by darnit from fixed words and model ids, never copied from a page: no markup, quotes or control characters.
+  z.object({ human: z.string().regex(/^[^\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069<>&"'`]{1,200}$/u, "human is one short line of plain words"), source: Url }).strict(),
 ]);
 export type Replacement = z.infer<typeof ReplacementSchema>;
 

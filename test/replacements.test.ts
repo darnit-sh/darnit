@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { cellModels, pageMismatches, readPage, recommended, replacementsFor } from "../src/corpus/replacements.js";
+import { cellModels, cellText, pageMismatches, readPage, recommended, replacementsFor } from "../src/corpus/replacements.js";
 import { loadRecords } from "../src/records/load.js";
 import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/records/schema.js";
 
@@ -88,20 +88,63 @@ describe("the deprecations page", () => {
     expect(skipped).toContain("row 2022-12-03 | /v1/search | View transition guide");
   });
 
-  it("reads the page as text: tags, entities and hostile markup are data", () => {
+  it("reads the page as text: inline tags skipped, entities decoded once, other tables and short rows listed", () => {
     const { replacements, skipped } = readPage(
       [
-        table(["<code>a&#45;1</code> | <code>a&#x2D;2</code> || <script>alert(1)</script><code>b&amp;1</code>", "a‑3 || <b>b-1</b>"]),
+        table(["<code>a&#45;1</code> | <span class=\"x\">a&#x2D;2</span> || <code>b&amp;1</code>", "a\u20113 || <b>b-1</b><br/>"]),
         table(["x-1 || y-1"], "<th>Date</th><th>Model</th><th>Recommended replacement</th>"),
         table(["x-2 || $1 || y-1"]),
       ].join(""),
     );
     expect(replacements).toEqual(new Map([["a-3", ["b-1"]]]));
-    expect(skipped).toEqual([
-      "row 2026 | a-1 | a&#x2D;2 | alert(1)b&1",
-      "table headed Date | Model | Recommended replacement",
-      "row 2026 | x-2 | $1 | y-1",
-    ]);
+    expect(skipped).toEqual(["row 2026 | a-1 | a&#x2D;2 | b&1", "table headed Date | Model | Recommended replacement", "row 2026 | x-2 | $1 | y-1"]);
+  });
+
+  it("refuses a cell holding markup, a control or bidi character, or a megabyte, and never cleans it up", () => {
+    const hostile = [
+      "&lt;script&gt;alert(1)&lt;/script&gt;",
+      "<scr<script>ipt>alert(1)</script>",
+      "&#60;script&#62;",
+      "<img src=x onerror=alert(1)>gpt-5",
+      "gpt-5<!-- x -->",
+      "gpt-5 <code",
+      "gpt-5\u202e",
+      "gpt-5\u0007",
+      `gpt-5${" ".repeat(1_000_000)}`,
+    ];
+    for (const cell of hostile) {
+      expect(cellText(cell)).toBeUndefined();
+      const page = readPage(table([`a-1 || ${cell}`, `${cell} || b-1`]));
+      expect(page.replacements).toEqual(new Map());
+      expect(page.skipped).toEqual(Array(2).fill("row refused: a cell holds markup, control characters or over 10000 characters"));
+    }
+    // Decoded once: the entities stay text, and the cell gets darnit's fixed words, never its own.
+    expect(cellText("&amp;lt;script&amp;gt;")).toBe("&lt;script&gt;");
+  });
+
+  it("keeps no page text in fix.models: only model ids, one plain setting, or darnit's own words", () => {
+    const r = shutdown("one", ["a-1", "a-2", "a-3", "a-4", "a-5", "a-6", "a-7"]);
+    const page = readPage(
+      table([
+        "a-1 || &amp;lt;script&amp;gt;",
+        "a-2 || The most capable model available to you.",
+        "a-3 || x-1 (see the <a href=\"/guide\">guide</a>)",
+        "a-4 || x-1 (mode: \"pro\")",
+        "a-5 || x-1 or gpt-4.1*",
+        "a-6 || x-1, y-1, or z-1",
+        "a-7 || View transition guide",
+      ]),
+    );
+    const none = { human: "OpenAI names no single replacement model", source: PAGE };
+    expect(replacementsFor([r], page).models.get(r.id)).toEqual({
+      "a-1": none,
+      "a-2": none,
+      "a-3": { human: "not a plain swap: OpenAI recommends x-1 with see the guide", source: PAGE },
+      "a-4": none,
+      "a-5": none,
+      "a-6": { human: "not a plain swap: OpenAI recommends one of x-1, y-1, z-1", source: PAGE },
+      "a-7": none,
+    });
   });
 });
 
@@ -116,10 +159,10 @@ describe("fix.models from the page", () => {
           {
             "a-1": { model: "x-1", source: PAGE },
             a: { model: "x-1", source: PAGE },
-            "b-1": { human: "not a plain swap: OpenAI recommends x-1 (reasoning.mode: pro)" },
-            "c-1": { human: "not a plain swap: OpenAI recommends x-1 or y-1" },
-            "d-1": { human: "not a plain swap: OpenAI recommends gpt-4.1*" },
-            "e-1": { human: "OpenAI names no replacement" },
+            "b-1": { human: "not a plain swap: OpenAI recommends x-1 with reasoning.mode: pro", source: PAGE },
+            "c-1": { human: "not a plain swap: OpenAI recommends one of x-1, y-1", source: PAGE },
+            "d-1": { human: "OpenAI names no single replacement model", source: PAGE },
+            "e-1": { human: "OpenAI names no replacement", source: PAGE },
           },
         ],
       ]),
@@ -132,8 +175,8 @@ describe("fix.models from the page", () => {
     const page = readPage(table(["a-1 || b-1", "b-1 | b || c-1", "c-1 || d-1", "a-2 || b-2", "b-2 || x-1 or y-1", "a-3 || c-3", "c-3 || c-4", "c-4 || c-3"]));
     expect(replacementsFor([r], page).models.get(r.id)).toEqual({
       "a-1": { model: "d-1", source: PAGE },
-      "a-2": { human: "OpenAI recommends b-2, which also shuts down; not a plain swap: OpenAI recommends x-1 or y-1" },
-      "a-3": { human: "the recommended replacements loop back to c-3" },
+      "a-2": { human: "OpenAI recommends b-2, which also shuts down; not a plain swap: OpenAI recommends one of x-1, y-1", source: PAGE },
+      "a-3": { human: "the recommended replacements loop back to c-3", source: PAGE },
     });
   });
 
@@ -159,6 +202,10 @@ describe("fix.models from the page", () => {
     const swaps = new Map(shipped.flatMap((r) => Object.entries(r.fix!.models!)));
     const retiring = new Set([...records.flatMap(recordModels), ...page.replacements.keys()]);
     expect([...swaps.values()].flatMap((s) => ("model" in s && retiring.has(s.model) ? [s.model] : []))).toEqual([]);
+    // Every reason is darnit's own words around model ids and one plain setting.
+    const ID = "[a-z0-9][a-z0-9._:-]*";
+    const built = new RegExp(`^(OpenAI recommends ${ID}, which also shuts down; )?(OpenAI names no replacement|OpenAI names no single replacement model|not a plain swap: OpenAI recommends (one of ${ID}(, ${ID})+|${ID} with [A-Za-z0-9._: -]+))$`);
+    expect([...swaps.values()].flatMap((s) => ("human" in s && !built.test(s.human) ? [s.human] : []))).toEqual([]);
     expect(Object.fromEntries(["gpt-4", "gpt-3.5-turbo", "o1", "o3-mini", "o4-mini", "gpt-4.5-preview", "o1-mini", "o1-pro"].map((m) => [m, swaps.get(m)]))).toEqual({
       "gpt-4": { model: "gpt-5.6-sol", source: PAGE },
       "gpt-3.5-turbo": { model: "gpt-5.6-terra", source: PAGE },
@@ -167,7 +214,7 @@ describe("fix.models from the page", () => {
       "o4-mini": { model: "gpt-5.6-terra", source: PAGE },
       "gpt-4.5-preview": { model: "gpt-6-luna", source: PAGE }, // gpt-4.1, itself retiring
       "o1-mini": { model: "gpt-5.6-terra", source: PAGE }, // o4-mini, itself retiring
-      "o1-pro": { human: "not a plain swap: OpenAI recommends gpt-5.6-sol (reasoning.mode: pro)" },
+      "o1-pro": { human: "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro", source: PAGE },
     });
   });
 });

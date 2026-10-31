@@ -248,14 +248,16 @@
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-5-pro-2025-10-06": {
-        "human": "not a plain swap: OpenAI recommends gpt-5.6-sol (reasoning.mode: pro)"
+        "human": "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "o3-2025-04-16": {
         "model": "gpt-5.6-sol",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "o3-pro-2025-06-10": {
-        "human": "not a plain swap: OpenAI recommends gpt-5.6-sol (reasoning.mode: pro)"
+        "human": "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }
   }
