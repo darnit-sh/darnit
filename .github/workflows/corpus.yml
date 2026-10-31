@@ -11,6 +11,10 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    env:
+      # npm runs scripts and npx with this shell whatever an .npmrc in the checkout says: npm reads
+      # npm_config_* variables after project config, so they win.
+      npm_config_script_shell: /bin/sh
     outputs:
       count: ${{ steps.changes.outputs.count }}
     steps:
