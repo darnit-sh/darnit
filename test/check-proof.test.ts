@@ -41,8 +41,11 @@ const baseFiles: Record<string, string> = {
   "README.md": "x\n",
 };
 
-/** Runs the proof check on a crafted repo whose head commit writes (or, for null, removes) `edits`. */
-async function proof(title: string, edits: Record<string, string | null>, body = "") {
+/**
+ * Runs the proof check on a crafted repo whose head commit writes (or, for null, removes) `edits`, and adds
+ * `indexed` to git without writing it to disk, so a name that differs only in case means the same on any disk.
+ */
+async function proof(title: string, edits: Record<string, string | null>, body = "", indexed: Record<string, string> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "darnit-proof-"));
   tempDirs.push(dir);
   const git = (...args: string[]) =>
@@ -65,6 +68,10 @@ async function proof(title: string, edits: Record<string, string | null>, body =
   const base = git("rev-parse", "HEAD");
   await write(edits);
   git("add", "-A");
+  for (const [f, text] of Object.entries(indexed)) {
+    const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: dir, input: text, encoding: "utf8" }).trim();
+    git("update-index", "--add", "--cacheinfo", `100644,${blob},${f}`);
+  }
   git("commit", "-q", "-m", "head");
   const head = git("rev-parse", "HEAD");
   const summary = join(dir, ".git", "summary");
@@ -179,7 +186,7 @@ describe("the proof check", { timeout: 120_000 }, () => {
     expect(none).toMatchObject({ status: 1, asked: false });
     expect(none.summary).toContain("**Failed:** no new or changed test.");
     // On a macOS runner's disk SRC/ is src/.
-    const upper = await proof("fix: add", { "SRC/extra.ts": "export const x = 1;\n" });
+    const upper = await proof("fix: add", {}, "", { "SRC/extra.ts": "export const x = 1;\n" });
     expect(upper).toMatchObject({ status: 1, asked: false });
     expect(upper.summary).toContain("**Failed:** no new or changed test.");
   });

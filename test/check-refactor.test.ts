@@ -32,11 +32,12 @@ const baseFiles = [
 const pkg = (files = ["dist"], test = "vitest run") =>
   `${JSON.stringify({ files, scripts: { test, check: "npm test" }, dependencies: { zod: "4.6.6" } })}\n`;
 
-type Edit = { write?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean };
+type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean };
 
 /**
  * A repo whose head commit applies `edits` to a base holding `baseFiles`, each file holding its own path, and
- * package.json. Base's last commit applies `landed`, and `revert` in `edits` reverts that commit.
+ * package.json. Base's last commit applies `landed`, and `revert` in `edits` reverts that commit. `index` adds a
+ * file to git without writing it to disk, so a name that differs only in case means the same on any disk.
  */
 async function repo(edits: Edit[], landed: Edit[] = []) {
   const dir = await mkdtemp(join(tmpdir(), "darnit-rule-"));
@@ -62,6 +63,10 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
       if (e.revert) git("revert", "--no-commit", "HEAD");
     }
     git("add", "-A");
+    for (const e of es.filter((e) => e.index)) {
+      const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: dir, input: e.text ?? "changed\n", encoding: "utf8" }).trim();
+      git("update-index", "--add", "--cacheinfo", `100644,${blob},${e.index}`);
+    }
   };
   git("init", "-q");
   for (const f of baseFiles) await write(f, `${f}\n`);
@@ -369,14 +374,16 @@ describe("the rule picked by the title's type", () => {
       "SRC/b.ts",
       "packs/v/p/CHANGE.JSON",
     ]) {
-      const r = await rule("docs: x", [{ write: f }]);
+      const r = await rule("docs: x", [{ index: f }]);
       expect(r.status, f).toBe(1);
       expect(r.out).toContain(`- ${f}`);
     }
     for (const f of ["TEST/A.TEST.TS", "packs/v/p/FIXTURES/basic/input.ts"]) {
-      expect((await rule("refactor: x", [{ write: f }])).status, f).toBe(1);
+      const r = await rule("refactor: x", [{ index: f }]);
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
     }
-    expect((await rule("fix: x", [{ write: ".Npmrc" }])).status).toBe(1);
+    expect((await rule("fix: x", [{ index: ".Npmrc" }])).status).toBe(1);
   });
 
   it("passes a revert only when it is exactly the inverse of the one commit it names", async () => {
