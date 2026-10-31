@@ -299,6 +299,7 @@ export const notCheckedNotes = (coverage?: Coverage) => [...tooLargeNote(coverag
 
 /** Terminal report, grouped by vendor change, then the model values and other mentions. Always ends by saying what was and was not covered. */
 export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelValueHit[] = [], mentions: readonly MentionHit[] = [], allMentions = false): string {
+  const exit = exitCodeForCheck(hits, coverage);
   const footer = [
     ...(coverage
       ? [`Scanned ${plural(coverage.files, "JavaScript, TypeScript or Python file")} against ${plural(coverage.records, "change record")}.`]
@@ -310,6 +311,7 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
         ]
       : []),
     ...notCheckedNotes(coverage),
+    ...(exit === 2 ? ["The check fails because darnit failed to scan a file."] : []),
     NOT_CHECKED,
   ];
   const section = [...(values.length > 0 ? [...VALUES_INTRO, "", ...grouped(values, "value")] : []), ...(mentions.length > 0 ? mentionSection(mentions, allMentions) : [])];
@@ -320,7 +322,7 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
     return [clean, "", ...section, ...footer].join("\n");
   }
   const out = [...grouped(hits, "call site"), ...section];
-  if (exitCodeForCheck(hits) === 0) out.push("Unreviewed changes are reported but do not fail the check.");
+  if (exit === 0) out.push("Unreviewed changes are reported but do not fail the check.");
   out.push(...footer);
   return out.join("\n");
 }

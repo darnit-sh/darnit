@@ -1660,12 +1660,18 @@ describe("check on a file built to overflow the stack", () => {
     if (process.platform === "linux") expect(peakOf(dir).peak).toBeLessThan(400);
   });
 
-  it("reports a request whose URL is too long to read for its address as the vendor's", async () => {
-    const long = `"https://openrouter.ai/api/v1/chat/completions?${"a".repeat(3000)}"`;
-    const dir = await scratch({ "long.js": `export const r = fetch(${long}, { max_tokens: 5 });\n`, "short.js": `export const r = fetch("https://openrouter.ai/api/v1/chat/completions", { max_tokens: 5 });\n` });
-    const { hits, foreign } = await checkReport(dir);
-    expect(locations(hits.filter((h) => h.record.id.includes("max-tokens")))).toEqual(["long.js:1"]);
-    expect(locations(foreign)).toEqual(["short.js:1"]);
+  it("reads the address of a URL longer than 2,048 characters from its start", async () => {
+    const call = (host: string) => `export const r = fetch("${host}/v1/chat/completions?k=" + "${"x".repeat(2100)}", { body: JSON.stringify({ max_tokens: 5 }) });\n`;
+    // The first 2,048 characters, quote included, end inside the host, on a known look-alike's name.
+    const cut = `"https://${"a".repeat(2048 - '"https://.api.groq.com'.length)}.api.groq.com`;
+    const dir = await scratch({ "groq.js": call("https://api.groq.com/openai"), "local.js": call("http://localhost:11434"), "cut.js": call(`${cut.slice(1)}b`) });
+    const { hits, foreign, coverage } = await checkReport(dir);
+    expect(locations(foreign)).toEqual(["groq.js:1"]);
+    expect(hits.filter((h) => h.record.id.includes("max-tokens")).map((h) => [h.file, h.local])).toEqual([
+      ["cut.js", undefined],
+      ["local.js", ["localhost:11434"]],
+    ]);
+    expect(render(hits, coverage)).toContain("(sent to localhost:11434; ignore if that server isn't OpenAI)");
   });
 });
 
@@ -1693,6 +1699,17 @@ describe("check on a file the scanner fails on", () => {
     expect(render(hits, coverage)).toContain("\nNot checked: 1 file darnit failed to scan: b.ts.\n");
     const json = JSON.parse([...checkJson({ version: "t", scanned: coverage }, { hits, possiblyAffected: values, mentions })].join("")) as { scanned: Coverage };
     expect(json.scanned.skipped).toEqual([{ path: "b.ts", reason: "could not be scanned" }]);
+  });
+
+  it("says the check fails, not that unreviewed changes do not fail it", async () => {
+    const dir = await scratch({ "a.ts": call, "b.ts": `${call}// FAILS\n` });
+    const { hits, coverage } = await failing(() => checkReport(dir));
+    const unreviewed = hits.map((h) => ({ ...h, record: { ...h.record, status: "candidate" as const } }));
+    expect(exitCodeForCheck(unreviewed, coverage)).toBe(2);
+    const text = render(unreviewed, coverage);
+    expect(text).not.toContain("do not fail the check");
+    expect(text).toContain("\nThe check fails because darnit failed to scan a file.\n");
+    expect(render(unreviewed, { ...coverage, skipped: [] })).toContain("Unreviewed changes are reported but do not fail the check.");
   });
 
   it("does not call the repository clean when that file is the only one", async () => {

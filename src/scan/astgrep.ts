@@ -160,7 +160,7 @@ type Frame = { node: SgNode; url?: string | null };
  * an endpoint URL as an argument. Stops at a function, so a route handler, mock or test body
  * never borrows the URL of the call it is passed to. `up` holds the match's ancestors.
  */
-function endpointUrl(up: readonly Frame[], namesEndpoint: (call: SgNode, url: SgNode) => boolean): string | undefined {
+function endpointUrl(up: readonly Frame[], namesEndpoint: (call: SgNode, url: SgNode) => boolean, source: string): string | undefined {
   const read: Frame[] = [];
   let url: string | null = null;
   for (let i = up.length - 1; i >= 0; i--) {
@@ -173,9 +173,10 @@ function endpointUrl(up: readonly Frame[], namesEndpoint: (call: SgNode, url: Sg
     if (FUNCTIONS.has(String(node.kind()))) break;
     const found = isCall(node) ? urlCandidates(node).find((u) => namesEndpoint(node, u)) : undefined;
     if (found) {
-      // Only an address is read from the URL; a longer one, which can hold every request nested in it, counts as the vendor's.
+      // Only the address is needed, so a long URL, which can hold every request nested in it, is read up to MAX_URL. The
+      // mark at the cut keeps a host cut short from matching another provider's or a local one: its call counts as the vendor's.
       const { start, end } = span(found);
-      url = end - start > MAX_URL ? "" : (stringText(found) ?? found.text().replace(/^[fFrRbBuU]*[`'"]/, ""));
+      url = end - start > MAX_URL ? `${source.slice(start, start + MAX_URL).replace(/^[fFrRbBuU]*(?:"""|'''|[`'"])/, "")}…` : (stringText(found) ?? found.text().replace(/^[fFrRbBuU]*[`'"]/, ""));
       break;
     }
   }
@@ -191,7 +192,7 @@ type Request = { call: SgNode | undefined; symbol: string | undefined; url: stri
  * or else the URL of the raw request around it. One walk down from the root keeps each node's
  * ancestors, since asking a node for its parent walks down from the root each time.
  */
-function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly string[], namesEndpoint: ((call: SgNode, url: SgNode) => boolean) | undefined, isVendorClass: (callee: string) => boolean): Map<number, Request> {
+function requests(root: SgNode, source: string, nodes: readonly SgNode[], symbols: readonly string[], namesEndpoint: ((call: SgNode, url: SgNode) => boolean) | undefined, isVendorClass: (callee: string) => boolean): Map<number, Request> {
   const wanted = new Set(nodes.map((n) => n.id()));
   const starts = [...new Set(nodes.map((n) => n.range().start.index))].sort((a, b) => a - b);
   /** The first match starting at or after `at`. */
@@ -215,7 +216,7 @@ function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly stri
       const raw = call?.field("function")?.text();
       const callee = raw === undefined ? undefined : normalized(raw);
       const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s) && (!isStatic(s) || isVendorClass(callee))).sort((a, b) => b.length - a.length)[0];
-      const url = symbol === undefined && namesEndpoint ? endpointUrl(up, namesEndpoint) : undefined;
+      const url = symbol === undefined && namesEndpoint ? endpointUrl(up, namesEndpoint, source) : undefined;
       out.set(node.id(), { call, symbol, url });
     }
     up.push({ node });
@@ -333,7 +334,7 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
     if (!classes.has(name)) classes.set(name, vendorClass(root, grammar, callee, gate.vendor));
     return classes.get(name)!;
   };
-  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, found.flat(), symbols, endpoints.length > 0 ? endpointTest(root, grammar, endpoints) : undefined, isVendorClass) : undefined;
+  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, source, found.flat(), symbols, endpoints.length > 0 ? endpointTest(root, grammar, endpoints) : undefined, isVendorClass) : undefined;
   const matches: Match[] = [];
   for (const nodes of found) {
     for (const node of nodes) {
