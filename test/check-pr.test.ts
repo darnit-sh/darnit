@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -77,10 +77,11 @@ describe("npm in CI", () => {
     const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_config_/i.test(k)));
     return spawnSync("npm", args, { cwd: dir, env: { ...clean, ...env } }).status;
   };
-  // Every job that installs or runs npm, on pull requests or on main.
+  // Every job in every workflow that installs or runs npm.
   const npmJobs = async () => {
     const jobs: [string, Job][] = [];
-    for (const name of ["pr", "ci", "golden"]) {
+    const names = (await readdir(".github/workflows")).filter((f) => /\.ya?ml$/.test(f)).map((f) => f.replace(/\.ya?ml$/, ""));
+    for (const name of names.sort()) {
       for (const [id, job] of Object.entries((await workflow(name)).jobs)) {
         const steps = job.steps ?? [];
         if (steps.some((s) => s.uses?.startsWith("actions/setup-node@") || /\bnp[mx]\b|check-(proof|refactor)\.sh/.test(s.run ?? ""))) {
@@ -93,7 +94,9 @@ describe("npm in CI", () => {
 
   it("runs scripts with /bin/sh in every job that runs npm, whatever an .npmrc in the change says", async () => {
     const jobs = await npmJobs();
-    expect(jobs.map(([id]) => id)).toEqual(["pr/refactor", "pr/proof", "ci/lint", "ci/test", "ci/package", "golden/compare"]);
+    expect(jobs.map(([id]) => id).sort()).toEqual(
+      ["ci/lint", "ci/package", "ci/test", "corpus/refresh", "golden/compare", "pr/proof", "pr/refactor", "publish/build", "publish/publish", "publish/verify"],
+    );
     for (const [id, job] of jobs) expect(job.env?.npm_config_script_shell, id).toBe("/bin/sh");
     // npm reads npm_config_* variables after a project .npmrc, so the job's setting wins.
     const dir = await mkdtemp(join(tmpdir(), "darnit-npmrc-"));
@@ -101,7 +104,7 @@ describe("npm in CI", () => {
     await writeFile(join(dir, "package.json"), JSON.stringify({ name: "x", version: "1.0.0", scripts: { t: "exit 3" } }));
     await writeFile(join(dir, "x.sh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     await writeFile(join(dir, ".npmrc"), "script-shell=./x.sh\n");
-    const job = jobs[0]![1].env!;
+    const job = jobs.find(([id]) => id === "pr/refactor")![1].env!;
     expect(npm(dir, {}, "run", "t")).toBe(0);
     expect(npm(dir, job, "run", "t")).toBe(3);
     expect(npm(dir, job, "exec", "-c", "exit 3")).toBe(3);
