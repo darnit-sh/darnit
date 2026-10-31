@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
 import { detectApis, readText, skippedNote, tooLargeNote, VENDORS, type Skipped } from "./detect.js";
 import { isRepo, uncommitted, uncommittedReasons } from "./git.js";
@@ -40,8 +40,11 @@ jobs:
 
 const { O_WRONLY, O_CREAT, O_EXCL, O_NOFOLLOW } = constants;
 
-/** Refuses `path` when its folder, links followed, is not inside root: a cloned repository can plant links. */
-async function refuseOutside(root: string, path: string, rel: string): Promise<void> {
+/**
+ * Refuses `path` when its folder, links followed, is not inside root: a cloned repository can plant links.
+ * Returns that folder, or its nearest existing parent, relative to root.
+ */
+async function refuseOutside(root: string, path: string, rel: string): Promise<string> {
   let dir = dirname(path);
   for (;;) {
     try {
@@ -57,6 +60,7 @@ async function refuseOutside(root: string, path: string, rel: string): Promise<v
   }
   const inside = relative(await realpath(root), dir);
   if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) throw new Error(`${rel} is outside the repository; darnit only writes files inside it`);
+  return inside;
 }
 
 const unchanged = (rel: string) => `${rel} exists, left unchanged (--force to rewrite)`;
@@ -64,9 +68,12 @@ const unchanged = (rel: string) => `${rel} exists, left unchanged (--force to re
 /** Only darnit names files like this; one is left behind if a run is killed between writing and renaming it. */
 const TEMP = /^\.darnit-[0-9a-f-]{36}\.tmp$/;
 
-/** Checks root/rel before anything is written. Returns why it is left alone, or the file a rewrite replaces. */
-async function inspect(root: string, rel: string, text: string, force: boolean): Promise<{ skip?: string; old?: Stats }> {
-  await refuseOutside(root, join(root, rel), rel);
+/**
+ * Checks root/rel before anything is written. Returns why it is left alone, or the file a rewrite replaces and
+ * its path with folder links resolved, the name git has it under.
+ */
+async function inspect(root: string, rel: string, text: string, force: boolean): Promise<{ skip?: string; old?: Stats; real?: string }> {
+  const folder = await refuseOutside(root, join(root, rel), rel);
   const old = await lstat(join(root, rel)).catch((err: NodeJS.ErrnoException) => {
     if (err.code === "ENOENT") return undefined;
     throw err;
@@ -79,17 +86,19 @@ async function inspect(root: string, rel: string, text: string, force: boolean):
   if (!force) return { skip: unchanged(rel) };
   if (!old.isFile()) throw new Error(`${rel} is not a file; darnit only rewrites files`);
   if ((await readText(join(root, rel))) === text) return { skip: `${rel} is up to date, left unchanged` };
-  return { old };
+  return { old, real: join(folder, basename(rel)) };
 }
 
 /** Refuses to rewrite files git could not put back, since the rewrite would lose their only copy. */
-async function refuseUncommitted(root: string, rels: string[]): Promise<void> {
-  if (rels.length === 0) return;
+async function refuseUncommitted(root: string, files: { rel: string; real: string }[]): Promise<void> {
+  if (files.length === 0) return;
+  const rels = files.map((f) => f.rel);
   if (!(await isRepo(root))) {
     const it = rels.length > 1 ? "them" : "it";
     throw new Error(`not a checked-out git repository, so git could not put back ${rels.join(", ")} if --force rewrote ${it}; move ${it} aside first, then run init again`);
   }
-  const why = uncommittedReasons(await uncommitted(root, rels), "init --force would rewrite");
+  const unsafe = await uncommitted(root, files.map((f) => f.real));
+  const why = uncommittedReasons(unsafe.map((u) => ({ ...u, file: files.find((f) => f.real === u.file)!.rel })), "init --force would rewrite");
   if (why.length > 0) throw new Error(why.join("; "));
 }
 
@@ -114,7 +123,7 @@ export async function init(root: string, { force = false } = {}): Promise<string
     [".github/workflows/darnit.yml", WORKFLOW],
   ] as const;
   const plans = await Promise.all(files.map(([rel, text]) => inspect(root, rel, text, force)));
-  await refuseUncommitted(root, files.filter((_, i) => plans[i]?.old).map(([rel]) => rel));
+  await refuseUncommitted(root, files.flatMap(([rel], i) => (plans[i]?.real ? [{ rel, real: plans[i].real }] : [])));
   // Every file is written before any is renamed into place, so a failed write changes nothing. A rewrite goes to a new
   // file, so the old one, and any hard link to it, is never written.
   const made: string[] = [];

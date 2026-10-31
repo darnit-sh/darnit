@@ -429,6 +429,19 @@ describe("init --force rewrites only what git could put back", () => {
     expect((await init(join(dir, "app"), { force: true })).slice(1)).toEqual(["Rewrote darnit.yml", "Wrote .github/workflows/darnit.yml"]);
   });
 
+  it("checks a workflow under a .github link inside the repository by the file the link leads to", async () => {
+    const dir = await committed("small", { "ci/workflows/darnit.yml": "name: mine\n" });
+    await symlink("ci", join(dir, ".github"));
+    await commitAll(dir);
+    expect((await init(dir, { force: true })).slice(1)).toEqual(["Wrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
+    expect(await readFile(join(dir, "ci/workflows/darnit.yml"), "utf8")).toContain("npx darnit@");
+
+    await git(dir, ["checkout", "--", "ci"]);
+    await appendFile(join(dir, "ci/workflows/darnit.yml"), "# mine\n");
+    await expect(init(dir, { force: true })).rejects.toThrow(/^uncommitted changes in files init --force would rewrite: \.github\/workflows\/darnit\.yml;/);
+    expect(await readFile(join(dir, "ci/workflows/darnit.yml"), "utf8")).toBe("name: mine\n# mine\n");
+  });
+
   it("says when darnit.yml differs from git's name only in case", async () => {
     const dir = await committed("small", { "Darnit.yml": "version: 1\n" });
     // Git sets core.ignorecase on a disk that ignores case, as on macOS and Windows, where this rename leaves git status clean.
