@@ -12,23 +12,34 @@ afterEach(async () => {
 
 const baseFiles = [
   "src/a.ts",
+  "README.md",
   "test/a.test.ts",
+  "test/helpers.ts",
   "test/golden/repo.txt",
   "packs/v/p/fixtures/basic/input.ts",
   "packs/v/p/rules/r.yml",
   "packs/v/p/change.json",
-  "package.json",
   "scripts/e2e.ts",
+  "scripts/e2e-env.ts",
   "scripts/golden.ts",
   "scripts/fixtures.ts",
+  "scripts/check-pr.sh",
+  "scripts/pr-common.sh",
   "vitest.config.ts",
   ".github/workflows/ci.yml",
 ];
 
-type Edit = { write?: string; remove?: string; move?: [string, string]; link?: string };
+const pkg = (files = ["dist"], test = "vitest run") =>
+  `${JSON.stringify({ files, scripts: { test, check: "npm test" }, dependencies: { zod: "4.6.6" } })}\n`;
 
-/** A repo whose head commit applies `edits` to a base holding `baseFiles`, each file holding its own path. */
-async function repo(edits: Edit[]) {
+type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean };
+
+/**
+ * A repo whose head commit applies `edits` to a base holding `baseFiles`, each file holding its own path, and
+ * package.json. Base's last commit applies `landed`, and `revert` in `edits` reverts that commit. `index` adds a
+ * file to git without writing it to disk, so a name that differs only in case means the same on any disk.
+ */
+async function repo(edits: Edit[], landed: Edit[] = []) {
   const dir = await mkdtemp(join(tmpdir(), "darnit-rule-"));
   tempDirs.push(dir);
   const git = (...args: string[]) =>
@@ -37,25 +48,38 @@ async function repo(edits: Edit[]) {
     await mkdir(dirname(join(dir, f)), { recursive: true });
     await writeFile(join(dir, f), text);
   };
+  const apply = async (es: Edit[]) => {
+    for (const e of es) {
+      if (e.write) await write(e.write, e.text ?? "changed\n");
+      if (e.remove) await rm(join(dir, e.remove));
+      if (e.move) {
+        await mkdir(dirname(join(dir, e.move[1])), { recursive: true });
+        await rename(join(dir, e.move[0]), join(dir, e.move[1]));
+      }
+      if (e.link) {
+        await rm(join(dir, e.link));
+        await symlink("../src/a.ts", join(dir, e.link));
+      }
+      if (e.revert) git("revert", "--no-commit", "HEAD");
+    }
+    git("add", "-A");
+    for (const e of es.filter((e) => e.index)) {
+      const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: dir, input: e.text ?? "changed\n", encoding: "utf8" }).trim();
+      git("update-index", "--add", "--cacheinfo", `100644,${blob},${e.index}`);
+    }
+  };
   git("init", "-q");
   for (const f of baseFiles) await write(f, `${f}\n`);
+  await write("package.json", pkg());
   git("add", ".");
   git("commit", "-q", "-m", "base");
-  const base = git("rev-parse", "HEAD");
-  for (const e of edits) {
-    if (e.write) await write(e.write, "changed\n");
-    if (e.remove) await rm(join(dir, e.remove));
-    if (e.move) {
-      await mkdir(dirname(join(dir, e.move[1])), { recursive: true });
-      await rename(join(dir, e.move[0]), join(dir, e.move[1]));
-    }
-    if (e.link) {
-      await rm(join(dir, e.link));
-      await symlink("../src/a.ts", join(dir, e.link));
-    }
+  if (landed.length) {
+    await apply(landed);
+    git("commit", "-q", "-m", "landed");
   }
-  git("add", "-A");
-  git("commit", "-q", "-m", "head");
+  const base = git("rev-parse", "HEAD");
+  await apply(edits);
+  git("commit", "-q", "--allow-empty", "-m", "head");
   return { dir, base, head: git("rev-parse", "HEAD") };
 }
 
@@ -66,9 +90,43 @@ async function scratch(name: string) {
   return file;
 }
 
-/** Runs the rule for `title` and `body` on a crafted repo. */
-async function rule(title: string, edits: Edit[], body = "", env: Record<string, string> = {}) {
-  const { dir, base, head } = await repo(edits);
+// One edit to each kind of file that changes what the suite proves.
+const suiteEdits: Edit[] = [
+  { write: "vitest.config.ts" },
+  { remove: "vitest.config.ts" },
+  { write: "vitest.config.mts" },
+  { write: "vitest.config.json" },
+  { write: "vitest.workspace.json" },
+  { write: "vite.config.js" },
+  { write: "test/helpers.js" },
+  { write: "test/helpers.mjs" },
+  { write: "scripts/fixtures.js" },
+  { write: "scripts/fixtures.ts" },
+  { write: "scripts/e2e.ts" },
+  { write: "scripts/e2e-env.ts" },
+  { write: "scripts/golden.ts" },
+  { write: "test/helpers.ts" },
+  { link: "test/helpers.ts" },
+  { write: "scripts/check-pr.sh" },
+  { write: "scripts/check-pr.ts" },
+  { remove: "scripts/pr-common.sh" },
+  { write: ".github/workflows/ci.yml" },
+  { write: ".github/workflows/new.yml" },
+  { write: ".github/actions/a/action.yml" },
+  { write: "package.json", text: pkg(undefined, "vitest run --passWithNoTests") },
+  { write: "package.json", text: pkg().replace(',"check":"npm test"', "") },
+];
+
+/** Runs the rule for `title` and `body`, given base's head commit, on a crafted repo. */
+async function rule(
+  title: string,
+  edits: Edit[],
+  body: string | ((base: string, parent: string) => string) = "",
+  env: Record<string, string> = {},
+  landed: Edit[] = [],
+) {
+  const { dir, base, head } = await repo(edits, landed);
+  if (typeof body === "function") body = body(base, execFileSync("git", ["rev-parse", `${base}~1`], { cwd: dir, encoding: "utf8" }).trim());
   const output = await scratch("output");
   const summary = await scratch("summary");
   const run = spawnSync("sh", [script, base, head], {
@@ -109,6 +167,7 @@ describe("the rule picked by the title's type", () => {
       { write: "packs/v/new/change.json" },
       { write: "scripts/e2e.ts" },
       { write: "scripts/golden.ts" },
+      { write: "scripts/e2e-env.ts" },
     ]) {
       const r = await rule("refactor: x", [{ write: "src/a.ts" }, edit]);
       expect(r.status, JSON.stringify(edit)).toBe(1);
@@ -166,25 +225,232 @@ describe("the rule picked by the title's type", () => {
     expect(moved.out).toContain("- src/a.ts");
   });
 
-  it("passes dependency and workflow bumps, and tests or docs that leave code alone", async () => {
-    for (const [title, f] of [
-      ["chore(deps): bump zod from 4.6.6 to 4.6.7 in the runtime group", "package.json"],
-      ["chore(deps-dev): bump the tooling group with 2 updates", "package-lock.json"],
-      ["build(deps): bump yaml", "package.json"],
-      ["ci: bump actions/create-github-app-token from 3.2.0 to 3.3.0", ".github/workflows/ci.yml"],
-      ["test: cover x", "test/a.test.ts"],
-      ["docs: readme", "README.md"],
+  it("passes dependency and workflow bumps, and tests or docs that leave code and the suite alone", async () => {
+    const bump = { write: "package.json", text: pkg().replace("4.6.6", "4.6.7") };
+    for (const [title, edit] of [
+      ["chore(deps): bump zod from 4.6.6 to 4.6.7 in the runtime group", bump],
+      ["chore(deps-dev): bump the tooling group with 2 updates", { write: "package-lock.json" }],
+      ["build(deps): bump yaml", bump],
+      ["build: ship the docs", { write: "package.json", text: pkg(["dist", "docs"]) }],
+      ["test: cover x", { write: "test/a.test.ts" }],
+      ["test: add a helper", { write: "test/more.ts" }],
+      ["docs: readme", { write: "README.md" }],
     ] as const) {
-      const r = await rule(title, [{ write: f }]);
+      const r = await rule(title, [edit]);
       expect(r, title).toMatchObject({ status: 0, baseTests: false });
       expect(r.out).toContain("**Passed:**");
     }
   });
 
-  it("names the proof check for fix and feat, shows revert as exempt, and fails an unknown type", async () => {
+  it("fails a test change that changes what the suite proves", async () => {
+    for (const edit of suiteEdits) {
+      const r = await rule("test: x", [edit]);
+      expect(r.status, JSON.stringify(edit)).toBe(1);
+      expect(r.out).toContain("**Failed:**");
+    }
+  });
+
+  it("fails docs, chore, ci and build changes that change what the suite proves", async () => {
+    const cases = ["docs", "chore", "ci", "build"].flatMap((type) =>
+      [0, 6, 14, 18, suiteEdits.length - 2].map((i) => [type, suiteEdits[i]!] as const),
+    );
+    for (const [type, edit] of cases) {
+      const r = await rule(`${type}: x`, [edit]);
+      expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
+      expect(r.out).toContain("**Failed:**");
+    }
+    const r = await rule("test: x", [{ write: "package.json", text: pkg(undefined, "vitest run -x") }]);
+    expect(r.out).toContain('- package.json script "test"');
+    for (const added of ["pretest", "postinstall", "prepare", "preinstall"]) {
+      const text = pkg().replace('"scripts":{', `"scripts":{"${added}":"true",`);
+      const r = await rule("docs: x", [{ write: "package.json", text }]);
+      expect(r.status, added).toBe(1);
+      expect(r.out).toContain(`- package.json script "${added}"`);
+    }
+    for (const text of [pkg().replace(/"scripts":\{[^}]*\}/, '"scripts":[]'), pkg().replace(/"scripts":\{[^}]*\}/, '"scripts":null')]) {
+      expect((await rule("chore: x", [{ write: "package.json", text }])).status, text).toBe(1);
+    }
+  });
+
+  it("lets only test and ci change the suite, and only with a reason a reader sees", async () => {
+    const reason = "Proof: none, gives slow process tests more time\n";
+    const bump = "ci: bump actions/create-github-app-token from 3.2.0 to 3.3.0";
+    expect((await rule(bump, [{ write: ".github/workflows/ci.yml" }], "Proof: none, bumps one action pin\n")).status).toBe(0);
+    for (const type of ["test", "ci"]) {
+      const r = await rule(`${type}: x`, [{ write: "vitest.config.ts" }, { write: "test/helpers.ts" }], reason);
+      expect(r.status, type).toBe(0);
+      expect(r.out).toContain("::warning::");
+      expect(r.summary).toContain("Reason given: `gives slow process tests more time`");
+      expect(r.summary).toContain("- test/helpers.ts\n- vitest.config.ts");
+    }
+    for (const type of ["docs", "chore", "build"]) {
+      expect((await rule(`${type}: x`, [{ write: "vitest.config.ts" }], reason)).status, type).toBe(1);
+    }
+    expect((await rule("test: x", [{ write: "vitest.config.ts" }], `<!--\n${reason}-->`)).status).toBe(1);
+    expect((await rule("test: x", [{ write: "vitest.config.ts" }, { write: "src/a.ts" }], reason)).status).toBe(1);
+  });
+
+  it("lets only build change what ships, and counts an unreadable package.json as changed", async () => {
+    for (const type of ["test", "docs", "chore", "ci"]) {
+      for (const edit of [
+        { write: "package.json", text: pkg(["dist", "test"]) },
+        { write: "package.json", text: pkg().replace('"files":["dist"],', "") },
+        { write: "package.json" },
+        { write: "package.json", text: "null\n" },
+        { write: "package.json", text: "[]\n" },
+        { remove: "package.json" },
+      ]) {
+        const r = await rule(`${type}: x`, [edit], "Proof: none, ships the tests as well\n");
+        expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
+        expect(r.out).toMatch(/- package.json ("files"|\((removed or )?unreadable\))/);
+      }
+    }
+    const bump = { write: "package.json", text: pkg().replace("4.6.6", "4.6.7") };
+    const broken = await rule("docs: x", [bump], "", { NODE_OPTIONS: "--require=/nonexistent" });
+    expect(broken.status).toBe(1);
+    expect(broken.out).toContain("- package.json (unreadable)");
+  });
+
+  it("lets only build add or change an ignore file that drops shipped files", async () => {
+    for (const [type, f] of [
+      ["docs", "packs/.npmignore"],
+      ["test", ".npmignore"],
+      ["chore", "packs/v/p/.gitignore"],
+      ["ci", "dist/.gitignore"],
+    ] as const) {
+      const r = await rule(`${type}: x`, [{ write: f }], "Proof: none, drops nothing that ships\n");
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
+    }
+    expect((await rule("build: x", [{ write: "packs/.npmignore" }])).status).toBe(0);
+    expect((await rule("docs: x", [{ write: ".gitignore" }])).status).toBe(0);
+    expect((await rule("test: x", [{ write: "test/e2e/s/.gitignore" }])).status).toBe(0);
+  });
+
+  it("fails npm or yarn config under any type, unless test or ci gives a reason", async () => {
+    const reason = "Proof: none, the hostile scenario needs a new setting\n";
+    for (const [type, f] of [
+      ["fix", ".npmrc"],
+      ["feat", "packs/.npmrc"],
+      ["refactor", ".yarnrc.yml"],
+      ["perf", ".npmrc"],
+      ["revert", ".npmrc"],
+      ["docs", ".yarnrc"],
+      ["chore", ".npmrc"],
+      ["build", "packs/.npmrc"],
+      ["test", "test/e2e/s/.npmrc"],
+      ["ci", ".npmrc"],
+    ] as const) {
+      const r = await rule(`${type}: x`, [{ write: f }], type === "test" || type === "ci" ? "" : reason);
+      expect(r.status, `${type} ${f}`).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
+    }
+    for (const type of ["test", "ci"]) {
+      expect((await rule(`${type}: x`, [{ write: "test/e2e/s/.npmrc" }], reason)).status, type).toBe(0);
+    }
+  });
+
+  it("guards TypeScript and ESLint config anywhere outside test data", async () => {
+    for (const f of ["tsconfig.json", "tsconfig.build.json", "scripts/tsconfig.json", "eslint.config.js", "scripts/eslint.config.mjs"]) {
+      const r = await rule("docs: x", [{ write: f }]);
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
+    }
+    expect((await rule("test: x", [{ write: "test/e2e/s/tsconfig.json" }])).status).toBe(0);
+  });
+
+  it("matches every guarded name in any case, as a macOS runner's disk does", async () => {
+    for (const f of [
+      ".NPMRC",
+      "packs/.Npmrc",
+      ".YARNRC.YML",
+      "VITEST.CONFIG.TS",
+      ".GITHUB/WORKFLOWS/x.yml",
+      "Test/Helpers.js",
+      "Scripts/Fixtures.ts",
+      "PACKAGE.JSON",
+      "README.MD",
+      "PACKS/.NPMIGNORE",
+      "SRC/b.ts",
+      "packs/v/p/CHANGE.JSON",
+    ]) {
+      const r = await rule("docs: x", [{ index: f }]);
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
+    }
+    for (const f of ["TEST/A.TEST.TS", "packs/v/p/FIXTURES/basic/input.ts"]) {
+      const r = await rule("refactor: x", [{ index: f }]);
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
+    }
+    expect((await rule("fix: x", [{ index: ".Npmrc" }])).status).toBe(1);
+  });
+
+  it("passes a revert only when it is exactly the inverse of the one commit it names", async () => {
+    const landed = [{ write: "src/a.ts" }, { remove: "test/golden/repo.txt" }];
+    const line = (base: string) => `Text\r\nThis reverts commit ${base}.\r\n`;
+    const ok = await rule('revert: "fix: x"', [{ revert: true }], line, {}, landed);
+    expect(ok.status).toBe(0);
+    expect(ok.out).toContain("exactly the inverse");
+    const short = await rule("revert: x", [{ revert: true }], (b) => `This reverts commit ${b.slice(0, 7)}`, {}, landed);
+    expect(short.status).toBe(0);
+    for (const [edits, body] of [
+      [[{ revert: true }, { write: "src/b.ts" }], line],
+      [[{ revert: true }, { write: "vitest.config.ts" }], line],
+      [[{ write: "test/golden/repo.txt", text: "test/golden/repo.txt\n" }], line],
+      [[{ revert: true }], ""],
+      [[{ revert: true }], (b: string) => `<!-- This reverts commit ${b}. -->`],
+      [[{ revert: true }], (b: string) => `This reverts commit ${b}.\nThis reverts commit ${"0".repeat(40)}.`],
+      [[{ revert: true }], (b: string, parent: string) => `This reverts commit ${b}.\nThis reverts commit ${parent}.`],
+      [[{ revert: true }], `This reverts commit ${"0".repeat(40)}.`],
+    ] as const) {
+      const r = await rule("revert: x", [...edits], body, {}, landed);
+      expect(r.status, JSON.stringify([edits, String(body)])).toBe(1);
+      expect(r.out).toContain("**Failed:**");
+    }
+    const differs = await rule("revert: x", [{ revert: true }, { write: "src/b.ts" }], line, {}, landed);
+    expect(differs.out).toContain("- src/b.ts");
+  });
+
+  it("fails a revert that names a commit outside base's history, a merge, or one that does not revert cleanly", async () => {
+    const { dir, base } = await repo([], [{ write: "src/a.ts" }]);
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
+    const check = (from: string, head: string, named: string) =>
+      spawnSync("sh", [script, from, head], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { ...process.env, TITLE: "revert: x", BODY: `This reverts commit ${named}.`, GITHUB_STEP_SUMMARY: "" },
+      });
+    // A commit in the change itself, reverted by the next one: the change adds nothing in total.
+    await writeFile(join(dir, "src/b.ts"), "b\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "own");
+    const own = git("rev-parse", "HEAD");
+    git("revert", "--no-edit", "HEAD");
+    expect(check(base, git("rev-parse", "HEAD"), own).stdout).toContain("not a single-parent commit in this change's history");
+    // A merge on base.
+    git("checkout", "-q", "-b", "side", `${base}~1`);
+    git("commit", "-q", "--allow-empty", "-m", "side");
+    git("checkout", "-q", "-");
+    git("reset", "-q", "--hard", base);
+    git("merge", "-q", "--no-edit", "side");
+    const merge = git("rev-parse", "HEAD");
+    const r = check(merge, merge, merge);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("not a single-parent commit");
+    // A later commit on base that rewrites what the named one changed.
+    git("reset", "-q", "--hard", base);
+    await writeFile(join(dir, "src/a.ts"), "later\n");
+    git("commit", "-q", "-am", "later");
+    const later = check(git("rev-parse", "HEAD"), git("rev-parse", "HEAD"), base);
+    expect(later.status).toBe(1);
+    expect(later.stdout).toContain("does not revert cleanly");
+  });
+
+  it("names the proof check for fix and feat, and fails an unknown type", async () => {
     expect((await rule("fix: x", [{ write: "test/a.test.ts" }])).out).toContain("the proof check covers fix");
     expect((await rule("feat(packs): x", [{ write: "src/a.ts" }])).status).toBe(0);
-    expect((await rule('revert: "refactor: x"', [{ write: "test/a.test.ts" }])).out).toContain("exempt");
     for (const title of ["Refactor: x", "wip: x", "refactor x", ""]) {
       expect((await rule(title, [{ write: "test/a.test.ts" }])).status, title).toBe(1);
     }

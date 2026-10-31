@@ -17,6 +17,10 @@ jobs:
   compare:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # npm runs scripts and npx with this shell whatever an .npmrc in the change says: npm reads
+      # npm_config_* variables after project config, so they win.
+      npm_config_script_shell: /bin/sh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -48,6 +48,13 @@ describe("docs match the CLI", () => {
     for (const run of runs!) expect(run).toMatch(/- run: cd "\$\{RUNNER_TEMP:\?\}" && npx darnit (?:check|fix --pr) "\$\{GITHUB_WORKSPACE:\?\}"$/);
   });
 
+  it("the README says what init --force does in the words of its --help", async () => {
+    const row = /^\| `--force` \| (.*) \|$/m.exec(await read("README.md"))?.[1]?.replaceAll("`", "");
+    const said = /^ {2}--force +([^]*?)\n {2}-/m.exec(await help("init"))?.[1]?.replace(/\s+/g, " ").trim();
+    expect(said).toMatch(/committed/);
+    expect(row).toBe(said);
+  });
+
   it("each command's README section lists exactly the flags the command has", async () => {
     const sections = (await read("README.md")).split(/^(?=#{2,3} )/m);
     const documented = new Map(
