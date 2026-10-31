@@ -179,7 +179,8 @@ try {
     const dir = join(work, name);
     cpSync(join(SCENARIOS, name), dir, { recursive: true });
     // The .npmrc in 16-hostile-repo finds its files the way it would in a workflow run.
-    let env: NodeJS.ProcessEnv = { ...USER_ENV, GITHUB_WORKSPACE: dir };
+    // Outside GitHub Actions wherever this runs, so the output of two runs can be compared.
+    let env: NodeJS.ProcessEnv = { ...USER_ENV, GITHUB_ACTIONS: "", GITHUB_WORKSPACE: dir };
     // Scenarios that list pytest get a virtualenv with it, so their suite can run.
     const requirements = readdirSync(dir).includes("requirements.txt") ? readFileSync(join(dir, "requirements.txt"), "utf8") : "";
     if (requirements.includes("pytest")) {
