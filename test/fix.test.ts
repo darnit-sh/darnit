@@ -1441,7 +1441,9 @@ describe("fix --prepare", () => {
     if (where === "core.sshCommand") await git(dir, ["config", "core.sshCommand", command]);
     else if (where.includes("environment")) for (const [k, v] of Object.entries({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.sshCommand", GIT_CONFIG_VALUE_0: command })) vi.stubEnv(k, v);
     else vi.stubEnv(where, { GIT_SSH: "/usr/bin/ssh", SSH_AUTH_SOCK: "/tmp/ssh-agent.sock" }[where] ?? command);
-    await expect(fix(dir, { prepare: plan, test: `cat ${key}` })).rejects.toThrow("check out with persist-credentials: false");
+    // persist-credentials does nothing for an agent's socket, so that message says how to run without one.
+    const message = where === "SSH_AUTH_SOCK" ? "Run --prepare in a job with no ssh agent, or on your own machine unset it for the run: env -u SSH_AUTH_SOCK" : "check out with persist-credentials: false";
+    await expect(fix(dir, { prepare: plan, test: `cat ${key}` })).rejects.toThrow(message);
     expect(runs.count).toBe(0);
     await expect(access(plan)).rejects.toThrow();
   });

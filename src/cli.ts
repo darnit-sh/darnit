@@ -86,7 +86,7 @@ program
   .argument("[dir]", DIR)
   .option("--dry-run", "show what would change without writing anything")
   .option("--pr", "commit on a branch, push, and open one pull request per change")
-  .option("--prepare <dir>", "verify each change as --pr does, then write a plan to <dir> instead of committing; refuses to run with GITHUB_TOKEN or GH_TOKEN set")
+  .option("--prepare <dir>", "verify each change as --pr does, then write a plan to <dir> instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md)")
   .option("--allow-dirty", "let --pr or --prepare run with uncommitted changes present")
   .option("--repo <owner/name>", "GitHub repository, when origin is not a GitHub URL")
   .option("--only <id>", "restrict to one change record (repeatable)", (id: string, all: string[] = []) => [...all, id])
