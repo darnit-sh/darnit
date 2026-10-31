@@ -82,6 +82,9 @@ describe("parsePlan", () => {
     ["with a space name missing git's tab", PATCH.replaceAll("app.py", "a p.py")],
     ["with a binary patch missing its blank line", PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nliteral 3\nCcmZ\n\n")],
     ["with a binary patch holding a stray line", PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nrename to x\nliteral 3\nCcmZ\n\n")],
+    ["with more context lines than its hunk counts before", PATCH.replace(/@@ -1 \+1 @@\n[^]*$/, "@@ -1,1 +1,2 @@\n a\n b\n")],
+    ["with a binary patch holding a line that is not base85", PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nrm -rf /\n\nliteral 3\nCcmZ\n\n")],
+    ["for a symbolic link", PATCH.replace(" 100644\n", " 120000\n")],
     ["with a binary patch missing its size", PATCH.replace(/--- [^]*$/, "GIT binary patch\nCcmZ\n\nliteral 3\nCcmZ\n\n")],
   ])("rejects a patch %s", (_, patch) => {
     expect(() => parsePlan(text(group({ patch })), ids)).toThrow(/patch is not a git diff of exactly these files/);
