@@ -6,9 +6,12 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, syml
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { notUser, userEnv } from "./e2e-env.js";
 
 // No run may reach the npm registry.
 process.env.DARNIT_NO_UPDATE_CHECK = "1";
+// Scenarios run with the environment a user's shell has, not CI's npm settings (scripts/e2e-env.ts).
+const USER_ENV = userEnv(process.env);
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCENARIOS = join(ROOT, "test", "e2e");
@@ -177,7 +180,7 @@ try {
     cpSync(join(SCENARIOS, name), dir, { recursive: true });
     // The .npmrc in 16-hostile-repo finds its files the way it would in a workflow run.
     // Outside GitHub Actions wherever this runs, so the output of two runs can be compared.
-    let env: NodeJS.ProcessEnv = { ...process.env, GITHUB_ACTIONS: "", GITHUB_WORKSPACE: dir };
+    let env: NodeJS.ProcessEnv = { ...USER_ENV, GITHUB_ACTIONS: "", GITHUB_WORKSPACE: dir };
     // Scenarios that list pytest get a virtualenv with it, so their suite can run.
     const requirements = readdirSync(dir).includes("requirements.txt") ? readFileSync(join(dir, "requirements.txt"), "utf8") : "";
     if (requirements.includes("pytest")) {
@@ -191,7 +194,7 @@ try {
     git("add", "-A");
     git("commit", "-qm", "start");
 
-    const problems: string[] = [];
+    const problems: string[] = notUser(env).map((k) => `runs with ${k} set, which a user's shell does not have`);
     const expectRun = (label: string, r: { exit: number; out: string }, exp: Run) => {
       if (r.exit !== exp.exit) problems.push(`${label} exited ${r.exit}, expected ${exp.exit}`);
       for (const s of exp.has) if (!r.out.includes(s)) problems.push(`${label} output lacks: ${s}`);
@@ -243,7 +246,7 @@ try {
   // and goes away with the work folder.
   symlinkSync(join(must("npm", ["config", "get", "cache"], install).trim(), "_cacache"), join(npmCache, "_cacache"));
   const actions = {
-    ...process.env,
+    ...USER_ENV,
     RUNNER_TEMP: runnerTemp,
     GITHUB_WORKSPACE: hostile,
     npm_config_cache: npmCache,
@@ -268,11 +271,13 @@ try {
     const r = run("sh", ["-c", cmd], hostile, env);
     const markers = ran();
     for (const f of markers) rmSync(join(hostile, f));
-    const ok = exitOk(r.exit, r.out) && (want.length ? want.every((f) => markers.includes(f)) : markers.length === 0);
+    const ok =
+      notUser(env).length === 0 && exitOk(r.exit, r.out) && (want.length ? want.every((f) => markers.includes(f)) : markers.length === 0);
     if (ok) console.log(`✓ ${label}: exited ${r.exit}, the repository ran [${markers.join(", ")}]`);
     else {
       failures++;
-      console.log(`✗ ${label} (${cmd}): exited ${r.exit}, the repository ran [${markers.join(", ")}], expected [${want.join(", ")}]\n${r.out}`);
+      const leaked = notUser(env).map((k) => `, with ${k} set, which a user's shell does not have`).join("");
+      console.log(`✗ ${label} (${cmd}): exited ${r.exit}, the repository ran [${markers.join(", ")}], expected [${want.join(", ")}]${leaked}\n${r.out}`);
     }
   }
 } finally {

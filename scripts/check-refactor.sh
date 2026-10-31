@@ -1,7 +1,7 @@
 #!/bin/sh
 # One rule per pull request type, so a new title cannot dodge a guard. A refactor or perf change keeps
-# every existing test, a test, docs or tooling change leaves the code alone. Results go to the job
-# summary on the pull request page.
+# every existing test, a test, docs or tooling change leaves the code and what the suite proves alone,
+# and a revert is exactly the inverse of one commit. Results go to the job summary on the pull request page.
 #   TITLE=... BODY=... check-refactor.sh <base sha> <head sha>
 #   check-refactor.sh --base-tests <base sha>   runs base's tests and fixtures against the checked out code
 # The second form overwrites test/ and the fixtures in the working tree.
@@ -27,13 +27,78 @@ fi
 base=$1 head=$2
 type=$(title_type)
 
+mb=$(git merge-base "$base" "$head")
+# npm and yarn config anywhere, which can send every npm run and npx in CI through a script of its own.
+# Names match in any case, as they do on a macOS runner's disk.
+config=$(paths | grep -iE '(^|/)\.(npmrc|yarnrc[^/]*)"?$' || true)
+case $type in
+test | docs | chore | ci | build) ;;
+*)
+  if [ -n "$config" ]; then
+    say "**Failed:** npm or yarn config decides what every npm command in CI runs; only a test or ci change with a \`Proof: none, <reason>\` line may touch it. Touched:"
+    list "$config"
+    exit 1
+  fi
+  ;;
+esac
+
+# Added files whose name differs from one on base only in case: on a macOS runner's disk one replaces the other.
+collisions() {
+  { git ls-tree -r --name-only "$mb" | sed 's/^/B /'; paths --diff-filter=A | sed 's/^/A /'; } |
+    awk '{ p = substr($0, 3); k = tolower(p) } $1 == "B" { b[k] = 1; next } k in b { print p }'
+}
+# What the suite and the pull request checks run besides the tests: the runners, the checks and the
+# modules tests import.
+guarded() {
+  grep -iE '^"?(scripts/((fixtures|e2e|e2e-env|golden)\.ts|check-[^/]+|pr-common\.sh)|test/.*\.[cm]?[jt]s)"?$' |
+    grep -viE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
+}
+# Those this change edits or removes, or shadows with an added file of the same path minus its extension
+# (test/helpers.js beside test/helpers.ts), and any test runner, TypeScript or ESLint config or workflow at all.
+# tsx reads tsconfig paths, which can send an import to another file.
+suite_files() {
+  paths --diff-filter=DMT | guarded
+  { git ls-tree -r --name-only "$mb" | guarded | sed 's/^/G /'; paths --diff-filter=A | sed 's/^/A /'; } |
+    awk '{ p = substr($0, 3); s = p; sub(/^"/, "", s); sub(/\.[^.\/]*"?$/, "", s); s = tolower(s) } $1 == "G" { g[s] = 1; next } s in g { print p }'
+  paths | grep -iE '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|\.github/(workflows|actions)/.*)"?$' || true
+  paths | grep -iE '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' | grep -viE '^"?test/(e2e|fixtures|samples|golden)/' || true
+  collisions
+}
+# package.json's "files", or each script this change adds, alters or removes. A package.json this
+# change leaves unreadable, or not an object, counts as changed, as does a reader that fails.
+package_json() {
+  git diff --quiet "$base...$head" -- package.json && return 0
+  node -e '
+    const git = (rev) => require("node:child_process").execFileSync("git", ["show", `${rev}:package.json`], { encoding: "utf8", stdio: "pipe" });
+    const read = (rev) => { try { const j = JSON.parse(git(rev)); return j?.constructor === Object ? j : undefined; } catch { return undefined; } };
+    const [a, b] = [read(process.argv[1]), read(process.argv[2])];
+    const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    if (b === undefined) console.log("package.json (removed or unreadable)");
+    else if (process.argv[3] === "files") { if (!same(a?.files, b.files)) console.log("package.json \"files\""); }
+    else {
+      const [x, y] = [a?.scripts ?? {}, b.scripts ?? {}];
+      const keys = [...new Set([...Object.keys(x), ...Object.keys(y)])].filter((k) => !same(x[k], y[k]));
+      for (const k of keys) console.log(`package.json script "${k}"`);
+      if (!keys.length && !same(a?.scripts, b.scripts)) console.log("package.json \"scripts\"");
+    }
+  ' "$mb" "$head" "$1" || echo "package.json (unreadable)"
+}
+# What decides which files ship: package.json "files", and ignore files below the root, which drop files
+# inside "files" (a root one does not). Test scenarios do not ship.
+ships() {
+  package_json files
+  paths | grep -iE '(^|/)\.npmignore"?$' || true
+  paths | grep -iE '/\.gitignore"?$' | grep -viE '^"?test/' || true
+}
+
 case $type in
 refactor | perf)
   say "**Rule for \`$type\`:** (a) no existing test, fixture, golden file or test script changes, and no record (change.json) at all; (b) base's tests and fixtures pass against this code."
   # CI runs this change's copy of the test scripts, and records are data the tests do not check.
   edited=$(
-    paths --diff-filter=DMT | grep -E '^"?(test/|packs/[^/]+/[^/]+/fixtures/|scripts/(e2e|golden)\.ts"?$)' || true
-    paths | grep -E '(^|/)change\.json"?$' || true
+    paths --diff-filter=DMT | grep -iE '^"?(test/|packs/[^/]+/[^/]+/fixtures/|scripts/(e2e|e2e-env|golden)\.ts"?$)' || true
+    paths | grep -iE '(^|/)change\.json"?$' || true
+    collisions
   )
   if [ -n "$edited" ]; then
     say "**(a) failed:** a $type keeps every existing test, test script and record as it is (new test files are fine). Touched:"
@@ -51,17 +116,60 @@ refactor | perf)
   fi
   ;;
 test | docs | chore | ci | build)
-  say "**Rule for \`$type\`:** no change under src/, packs/*/*/rules/ or any change.json."
-  touched=$(paths | grep -E "$CODE" || true)
+  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, TypeScript and ESLint config, pull request checks, workflows or npm and yarn config"
+  case $type in
+  test | ci) allowed="$suite only with a \`Proof: none, <reason>\` line" ;;
+  *) allowed="nothing in $suite" ;;
+  esac
+  [ "$type" = build ] && ships="may change" || ships="stay"
+  say "**Rule for \`$type\`:** no change under src/, packs/*/*/rules/ or any change.json; $allowed; package.json \"files\", any .npmignore and any .gitignore below the root outside test/ $ships."
+  touched=$(paths | grep -iE "$CODE" || true)
+  [ "$type" = build ] || touched=$(printf '%s\n' "$touched" "$(ships)" | grep . || true)
+  changed=$(printf '%s\n' "$(suite_files)" "$(package_json scripts)" "$config" | grep . || true)
+  if [ -n "$changed" ]; then
+    reason=
+    case $type in test | ci) opt_out ;; esac
+    if [ -n "$reason" ]; then
+      echo "::warning::$type changes the suite, allowed by a 'Proof: none' line in the pull request body; the reason is in the job summary"
+      say "**Suite changed** under the opt-out line in the pull request body. Reason given: \`$reason\`"
+      list "$changed"
+    else
+      touched=$(printf '%s\n' "$touched" "$changed" | grep . || true)
+    fi
+  fi
   if [ -n "$touched" ]; then
-    say "**Failed:** a $type change leaves the code and the rule packs alone; use fix, feat, refactor or perf. Touched:"
+    say "**Failed:** a $type change leaves alone the code, the rule packs and what the rule above keeps. Code goes under fix, feat, refactor or perf, the suite under test or ci with a reason, and what ships under build. Touched:"
     list "$touched"
     exit 1
   fi
-  say "**Passed:** nothing under src/, packs/*/*/rules/ or change.json changed."
+  say "**Passed:** nothing the rule keeps changed."
   ;;
 fix | feat) say "**Rule for \`$type\`:** passes here; the proof check covers $type changes." ;;
-revert) say "**Rule for \`revert\`:** exempt." ;;
+revert)
+  say "**Rule for \`revert\`:** the change is exactly the inverse of the commit on a \`This reverts commit <sha>\` line in the title or body, a single-parent commit already in this change's history."
+  shas=$({ printf '%s\n' "${TITLE:-}"; visible; } | grep -oE 'This reverts commit [0-9a-f]+' | sed 's/.* //' | awk '!seen[$0]++')
+  if [ "$(printf '%s' "$shas" | grep -c .)" != 1 ]; then
+    say "**Failed:** name exactly one commit on a \`This reverts commit <sha>\` line; revert one commit per pull request."
+    exit 1
+  fi
+  sha=$(printf '%s\n' "$shas" | head -1)
+  commit=$(git rev-parse --verify --quiet "$sha^{commit}" || true)
+  if [ -z "$commit" ] || ! git merge-base --is-ancestor "$commit" "$mb" || git rev-parse --verify --quiet "$commit^2" >/dev/null; then
+    say "**Failed:** $sha is not a single-parent commit in this change's history."
+    exit 1
+  fi
+  if ! tree=$(git merge-tree --write-tree --merge-base="$commit" "$mb" "$commit^" 2>/dev/null); then
+    say "**Failed:** $sha does not revert cleanly onto this change's base."
+    exit 1
+  fi
+  differ=$(git diff --no-renames --name-only "$(printf '%s\n' "$tree" | head -1)" "$head")
+  if [ -n "$differ" ]; then
+    say "**Failed:** this change differs from the inverse of $sha in:"
+    list "$differ"
+    exit 1
+  fi
+  say "**Passed:** this change is exactly the inverse of $(git log -1 --format=%h "$commit")."
+  ;;
 *)
   say "**Failed:** the title has no type this check knows (see the title check)."
   exit 1
