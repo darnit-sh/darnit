@@ -486,3 +486,14 @@ describe("uncommitted where git composes file names, as on macOS", () => {
     expect(await g.uncommitted(dir, ["\u00e9.js", "e\u0301.js"])).toEqual([{ file: "e\u0301.js" }]);
   });
 });
+
+describe("uncommittedReasons", () => {
+  it("names changed files and case-only names in one clause each, with the command's own words", () => {
+    const files = ["a.js", "b.js", "c.js", "d.js", "e.js", "f.js"].map((file) => ({ file }));
+    expect(g.uncommittedReasons([...files, { file: "x.js", gitName: "X.js" }], "init --force would rewrite")).toEqual([
+      "uncommitted changes in files init --force would rewrite: a.js, b.js, c.js, d.js, e.js and 1 more; commit or stash them first so git can undo the rewrite",
+      "files init --force would rewrite differ only in case from the names git has: x.js (git has X.js); rename them back or commit the rename first",
+    ]);
+    expect(g.uncommittedReasons([], "darnit needs to edit")).toEqual([]);
+  });
+});

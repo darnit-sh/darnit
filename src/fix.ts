@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
-import { firstFive, shown, vendorName } from "./detect.js";
+import { shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
@@ -329,13 +330,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   }
   // Only files git can put back are edited; --allow-dirty tolerates edits elsewhere, never in these.
   const wanted = [...new Set(applicable.flatMap((grp) => grp.files))];
-  const unsafe = await g.uncommitted(root, wanted);
-  const changed = unsafe.filter((u) => !u.gitName).map((u) => u.file);
-  const renamed = unsafe.filter((u) => u.gitName).map((u) => `${u.file} (git has ${u.gitName})`);
-  const why = [
-    ...(changed.length > 0 ? [`uncommitted changes in files darnit needs to edit: ${firstFive(changed)}; commit or stash them first so git can undo the rewrite`] : []),
-    ...(renamed.length > 0 ? [`files darnit needs to edit differ only in case from the names git has: ${firstFive(renamed)}; rename them back or commit the rename first`] : []),
-  ];
+  const why = g.uncommittedReasons(await g.uncommitted(root, wanted), "darnit needs to edit");
   if (why.length > 0) throw new Refusal(`${why.join("; ")}, or preview with --dry-run`);
   if (opts.pr) return pullRequests(root, applicable, base, commands, opts);
 
@@ -439,12 +434,23 @@ function code(text: string): string {
   return `${fence}${pad}${t}${pad}${fence}`;
 }
 
-/** Text from the repository on its way to a terminal: control characters go, and color codes too unless `color`. */
-export const forTerminal = (text: string, color = false) =>
+/**
+ * Text from the repository on its way to a terminal: control characters go, and color codes too unless `color`.
+ * In GitHub Actions it is fenced by a one-time token so no line of it runs as a workflow command, while
+ * darnit's own annotations printed outside it still work.
+ */
+export function forTerminal(text: string, color = false, env = process.env): string {
   // eslint-disable-next-line no-control-regex
-  text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g : /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (m) =>
+  const clean = text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g : /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (m) =>
     m.length > 1 ? m : "",
   );
+  if (env.GITHUB_ACTIONS !== "true") return clean;
+  const token = randomUUID();
+  return `::stop-commands::${token}\n${clean}\n::${token}::`;
+}
+
+/** JSON on its way out: `#`, which only a string can hold, as `\u0023`, so no `##[` in it runs as a workflow command. Safe per chunk. */
+export const forJson = (json: string) => json.replaceAll("#", "\\u0023");
 
 /** Verbatim vendor text: GitHub renders a code span as literal text, so no links, HTML or mentions. */
 const plain = (text: string) => {
