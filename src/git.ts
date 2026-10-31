@@ -220,6 +220,20 @@ export const push = (root: string, branch: string, site = GITHUB) => git(root, [
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
 
+export const head = async (root: string) => (await git(root, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
+
+// Settings the repository can set that change a diff's bytes; pinned so two checkouts produce the same patch.
+const PINNED_DIFF = ["core.quotePath=false", "diff.noprefix=false", "diff.mnemonicPrefix=false", "diff.suppressBlankEmpty=false", "diff.orderFile=/dev/null"];
+
+/** `files` (relative to `root`) against HEAD as `git diff --binary` prints them, with paths relative to `root`. */
+export const patch = (root: string, files: readonly string[]) =>
+  git(root, [
+    ...PINNED_DIFF.flatMap((c) => ["-c", c]),
+    "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--relative",
+    "--src-prefix=a/", "--dst-prefix=b/", "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers", "--indent-heuristic",
+    "HEAD", "--", ...files,
+  ]);
+
 /** Diff between two dirs under cwd, no repo needed. git exits 1 when they differ, which is not an error here. */
 export async function diffDirs(cwd: string, before: string, after: string, color: boolean): Promise<string> {
   try {

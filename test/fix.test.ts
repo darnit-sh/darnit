@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
+import { CAPS, type Plan } from "../src/plan.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 import { cpuTime } from "./helpers.js";
 
@@ -39,6 +40,12 @@ async function repoFrom(source: string): Promise<string> {
   await git(dir, ["init", "-q"]);
   await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "add", "."]);
   await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]);
+  return dir;
+}
+
+async function planHome(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "darnit-plan-"));
+  tempDirs.push(dir);
   return dir;
 }
 
@@ -839,6 +846,27 @@ describe("fix --pr", () => {
     expect(renderSummary(result)).toContain("pull request opened https://github.com/o/r/pull/1");
   });
 
+  it("--prepare writes the patch --pr commits, byte for byte, and leaves the tree as it found it", async () => {
+    const { dir, bare, branch } = await repoWithOrigin();
+    const plan = join(await planHome(), "plan");
+    const result = await fix(dir, { prepare: plan, noTest: true, version: "t" });
+    expect(result.records[0]?.pr).toEqual({ state: "prepared", build: undefined, tests: undefined });
+    expect(renderSummary(result)).toContain("Rename max_tokens to max_completion_tokens on chat completions: verified, in the plan");
+    expect(renderSummary(result)).toContain(`\nplan written to ${join(plan, "plan.json")}`);
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+    expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+
+    stubGitHub(branch);
+    await fix(dir, { pr: true, noTest: true, repo: "o/r" });
+    const base = (await git(dir, ["rev-parse", "HEAD"])).trim();
+    const committed = await git(bare, ["diff", "--binary", "--full-index", base, BRANCH]);
+    const written = JSON.parse(await readFile(join(plan, "plan.json"), "utf8")) as Plan;
+    expect(written).toMatchObject({ version: 1, darnit: "t", base, groups: [{ id: result.records[0]!.record.id, files: ["app.js", "app.py", "app.ts"], build: null, tests: null }] });
+    expect(Buffer.from(written.groups[0]!.patch)).toEqual(Buffer.from(committed));
+  });
+
   it("commits and pushes in the folder it was given when the environment points git at another repository", async () => {
     const { dir, bare, branch } = await repoWithOrigin();
     // Same files, so git sees nothing amiss when it reads this one instead.
@@ -1068,6 +1096,169 @@ console.log(config);`,
     const workflow = readme.split("```").find((block) => block.includes("darnit fix --pr"))!;
     expect(await run(true)).toBe("git config,git-credentials-1.config");
     expect(await run(!/persist-credentials: false/.test(workflow))).toBe("");
+  });
+});
+
+describe("fix --prepare", () => {
+  const BEFORE = join(PACKS, "openai", "2024-09-12-max-tokens-to-max-completion-tokens", "fixtures", "basic", "before");
+  const TOKEN = "ghp_fake0123456789abcdefghijklmnopqrstuv";
+  const forms = [TOKEN, Buffer.from(TOKEN).toString("base64").replace(/=+$/, ""), Buffer.from(`x-access-token:${TOKEN}`).toString("base64").replace(/=+$/, "")];
+  const readPlan = async (dir: string) => JSON.parse(await readFile(join(dir, "plan.json"), "utf8")) as Plan;
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("never reads GITHUB_TOKEN or GH_TOKEN", async () => {
+    const dir = await repoFrom(BEFORE);
+    vi.stubEnv("GITHUB_TOKEN", TOKEN);
+    vi.stubEnv("GH_TOKEN", TOKEN);
+    const real = process.env;
+    const reads: string[] = [];
+    process.env = new Proxy(real, {
+      get: (env, key) => {
+        if ((key === "GITHUB_TOKEN" || key === "GH_TOKEN") && Reflect.has(env, key)) reads.push(key);
+        return Reflect.get(env, key) as unknown;
+      },
+    });
+    try {
+      const result = await fix(dir, { prepare: join(await planHome(), "plan"), test: "node -e 1" });
+      expect(result.records[0]?.pr?.state).toBe("prepared");
+    } finally {
+      process.env = real;
+    }
+    expect(reads).toEqual([]);
+  });
+
+  it("leaves no token in the plan, its output or any file the run writes", async () => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    // The repository's tests print and save every environment variable they get.
+    const probe = "node -e \"const e = JSON.stringify(process.env); console.log(e); require('fs').writeFileSync('seen.txt', e)\"";
+    const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_TOKEN: TOKEN, GH_TOKEN: TOKEN, GITHUB_ACTIONS: "true" };
+    const run = await new Promise<{ code: number; out: string }>((resolve) =>
+      execFile(process.execPath, ["--import", import.meta.resolve("tsx"), fileURLToPath(new URL("../src/cli.ts", import.meta.url)), "fix", "--prepare", plan, "--test", probe], { cwd: dir, env }, (err, stdout, stderr) =>
+        resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, out: stdout + stderr }),
+      ),
+    );
+    expect(run.code).toBe(0);
+    expect((await readPlan(plan)).groups[0]?.tests?.output).toContain("DARNIT_NO_UPDATE_CHECK");
+    expect(await readFile(join(dir, "seen.txt"), "utf8")).toContain("DARNIT_NO_UPDATE_CHECK");
+    const files = [plan, dir].map(async (root) => (await readdir(root, { recursive: true })).map((f) => readFile(join(root, f)).catch(() => Buffer.alloc(0))));
+    const written = (await Promise.all((await Promise.all(files)).flat())).map((b) => b.toString("latin1"));
+    for (const text of [run.out, ...written]) for (const f of forms) expect(text).not.toContain(f);
+  });
+
+  it("keeps a test's output redacted, escaped and capped in the plan", async () => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    const lab = await planHome();
+    await writeFile(
+      join(lab, "noisy.cjs"),
+      `process.stdout.write("x".repeat(1024 * 1024) + "\\n");
+console.log("Authorization: Bearer sekret-value-1234");
+console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[31mred\\u001b[0m end");`,
+    );
+    const result = await fix(dir, { prepare: plan, test: `node ${join(lab, "noisy.cjs")}` });
+    expect(result.records[0]?.pr?.state).toBe("prepared");
+    const text = await readFile(join(plan, "plan.json"), "utf8");
+    expect(text).not.toContain("sekret-value-1234");
+    // eslint-disable-next-line no-control-regex
+    expect(text).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]/);
+    expect(text.length).toBeLessThan(2 * CAPS.output + 8 * 1024);
+    const output = (await readPlan(plan)).groups[0]!.tests!.output;
+    expect(output.length).toBeLessThanOrEqual(CAPS.output);
+    expect(output).toContain("Authorization: Bearer ***\nbell\u0007 nul\u0000 del\u007f c1\u0085 sep\u2028 esc");
+    expect(output).toMatch(/escred end$/);
+  });
+
+  it("holds paths from the folder it was given, never from above it", async () => {
+    const dir = await repoWith({ "sub/sdk.js": SDK_CALL, "other/sdk.js": SDK_CALL });
+    const plan = join(await planHome(), "plan");
+    await fix(join(dir, "sub"), { prepare: plan, noTest: true });
+    const { groups } = await readPlan(plan);
+    expect(groups.map((g) => g.files)).toEqual([["sdk.js"]]);
+    expect(groups[0]!.patch).toMatch(/^diff --git a\/sdk.js b\/sdk.js\n/);
+    expect(groups[0]!.patch).not.toContain("sub/");
+    expect(await readFile(join(dir, "sub", "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
+
+  it("takes the patch before the tests run, so it holds darnit's change only", async () => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    await fix(dir, { prepare: plan, test: "node -e \"require('fs').appendFileSync('app.py', '# from the tests\\n')\"" });
+    const { patch } = (await readPlan(plan)).groups[0]!;
+    expect(patch).toContain("+        max_completion_tokens=256,");
+    expect(patch).not.toContain("from the tests");
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
+  });
+
+  it("puts the files back and keeps the failed check in the plan when the change breaks the tests", async () => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    const breaks = "node -e \"process.exit(require('fs').readFileSync('app.js','utf8').includes('max_completion_tokens') ? 1 : 0)\"";
+    const result = await fix(dir, { prepare: plan, test: breaks });
+    expect(result.records[0]?.pr).toMatchObject({ state: "tests-failed", tests: { attributed: "change" } });
+    expect(exitCodeFor(result)).toBe(1);
+    expect(renderSummary(result)).toContain("nothing pushed");
+    const [group] = (await readPlan(plan)).groups;
+    expect(group?.tests).toMatchObject({ passed: false, attributed: "change" });
+    expect(group?.patch).toContain("+    max_completion_tokens: 256,");
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
+  });
+
+  it("writes an empty plan when there is nothing to fix, and replaces an earlier plan", async () => {
+    const dir = await repoWith({ "a.js": "export const a = 1;\n" });
+    const plan = join(await planHome(), "plan");
+    await mkdir(plan);
+    await writeFile(join(plan, "plan.json"), "earlier");
+    await fix(dir, { prepare: plan });
+    expect(await readPlan(plan)).toEqual({ version: 1, darnit: "dev", base: (await git(dir, ["rev-parse", "HEAD"])).trim(), groups: [] });
+  });
+
+  it("refuses a plan folder that is a link, a file, or holds anything else, before touching a file", async () => {
+    const dir = await repoFrom(BEFORE);
+    const home = await planHome();
+    await mkdir(join(home, "real"));
+    await symlink(join(home, "real"), join(home, "link"));
+    await writeFile(join(home, "file"), "");
+    await mkdir(join(home, "full"));
+    await writeFile(join(home, "full", "notes.txt"), "keep");
+    await mkdir(join(home, "linked-plan"));
+    await symlink(join(home, "elsewhere"), join(home, "linked-plan", "plan.json"));
+    for (const [name, why] of [["link", "a symbolic link"], ["file", "not a folder"], ["full", "holds no earlier plan"], ["linked-plan", "holds no earlier plan"]]) {
+      await expect(fix(dir, { prepare: join(home, name!), test: "node -e 1" })).rejects.toThrow(why);
+    }
+    expect(await readdir(join(home, "real"))).toEqual([]);
+    expect(await readdir(join(home, "full"))).toEqual(["notes.txt"]);
+    await expect(access(join(home, "elsewhere"))).rejects.toThrow();
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
+    expect(runs.count).toBe(0);
+  });
+
+  it("refuses --pr and --dry-run alongside it, and a dirty tree as --pr does", async () => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    await expect(fix(dir, { prepare: plan, pr: true })).rejects.toThrow("--prepare and --pr can't be combined");
+    await expect(fix(dir, { prepare: plan, dryRun: true })).rejects.toThrow("--prepare and --dry-run can't be combined");
+    await writeFile(join(dir, "notes.txt"), "wip\n");
+    await expect(fix(dir, { prepare: plan, noTest: true })).rejects.toThrow(/uncommitted changes in the working tree/);
+    await expect(access(plan)).rejects.toThrow();
+  });
+
+  it.each([
+    [["--prepare", "PLAN", "--pr"], "--prepare and --pr can't be combined"],
+    [["--prepare", "PLAN", "--json"], "--prepare and --json can't be combined"],
+    [["--prepare", "PLAN", "--dry-run"], "--prepare and --dry-run can't be combined"],
+    [["--prepare", ""], "--prepare needs the folder to write the plan to"],
+    [["--prepare", "--json"], "--prepare needs the folder to write the plan to"],
+    [["--prepare"], "argument missing"],
+  ])("exits 2 with a clear error for fix %j", async (args, message) => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    const run = await darnit(dir, "fix", ...args.map((a) => (a === "PLAN" ? plan : a)));
+    expect(run.code).toBe(2);
+    expect(run.stderr).toContain(message);
+    await expect(access(plan)).rejects.toThrow();
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
   });
 });
 

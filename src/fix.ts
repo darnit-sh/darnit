@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
@@ -6,6 +6,7 @@ import * as g from "./git.js";
 import { firstFive, shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
+import { PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanOutcome } from "./plan.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, TIME_LIMIT_MINUTES, unreadSettings } from "./tests.js";
@@ -22,6 +23,8 @@ export type FixOptions = {
   noTest?: boolean;
   color?: boolean;
   version?: string;
+  /** Verify each change and write the plan to this folder, instead of committing it. */
+  prepare?: string;
 };
 
 export type TestOutcome = TestRun & {
@@ -41,7 +44,8 @@ export type PrResult =
   | { state: "exists"; url: string }
   | { state: "skipped"; reason: string }
   | { state: "tests-failed"; tests: TestOutcome }
-  | { state: "build-failed"; build: TestOutcome };
+  | { state: "build-failed"; build: TestOutcome }
+  | { state: "prepared"; build?: TestOutcome | undefined; tests?: TestOutcome | undefined };
 
 export type Site = { file: string; line: number; note?: string };
 
@@ -63,7 +67,10 @@ export type RecordResult = {
 export type FixResult = {
   records: RecordResult[];
   dryRun: boolean;
+  /** One result per record, under its `pr`: with --pr or --prepare. */
   pr: boolean;
+  /** Where --prepare wrote the plan. */
+  plan?: string;
   build?: TestOutcome | undefined;
   tests?: TestOutcome | undefined;
   testsSkipped: boolean;
@@ -250,6 +257,13 @@ async function runChecks(root: string, commands: Commands, snap: Map<string, str
 }
 
 export async function fix(root: string, opts: FixOptions = {}): Promise<FixResult> {
+  if (opts.prepare !== undefined) {
+    if (opts.pr) throw new Refusal("--prepare and --pr can't be combined: --prepare runs the repository's code, so it never pushes");
+    if (opts.dryRun) throw new Refusal("--prepare and --dry-run can't be combined: --prepare writes a plan");
+    // The job that runs the repository's code holds no write token: this run never reads one, and nothing it starts can.
+    for (const k of g.CREDENTIALS) delete process.env[k];
+    await planFolder(opts.prepare);
+  }
   const color = opts.color ?? false;
   const dryRun = opts.dryRun ?? false;
   if (!dryRun && !(await g.isRepo(root))) {
@@ -295,8 +309,9 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     if (applied) applicable.push(grp);
   }
   const resultOf = (grp: Group) => records.find((r) => r.record.id === grp.record.id)!;
-  const base: FixResult = { records, dryRun, pr: opts.pr ?? false, testsSkipped: opts.noTest ?? false, diff: "", reverted: false, coverage, namesElsewhere };
-  if (applicable.length === 0) return base;
+  const pr = opts.pr === true || opts.prepare !== undefined;
+  const base: FixResult = { records, dryRun, pr, testsSkipped: opts.noTest ?? false, diff: "", reverted: false, coverage, namesElsewhere };
+  if (applicable.length === 0) return opts.prepare !== undefined ? prepare(root, [], base, {}, opts.prepare, opts.version) : base;
 
   if (dryRun) {
     const tmp = await mkdtemp(join(tmpdir(), "darnit-dry-"));
@@ -324,7 +339,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     else if (skipped) base.testsNote = `${skipped}; pass the command with --test`;
     else if (noPython) base.testsNote = noPython;
   }
-  if (opts.pr && !opts.allowDirty && !(await g.isClean(root))) {
+  if (pr && !opts.allowDirty && !(await g.isClean(root))) {
     throw new Refusal("uncommitted changes in the working tree; commit or stash them, or pass --allow-dirty");
   }
   // Only files git can put back are edited; --allow-dirty tolerates edits elsewhere, never in these.
@@ -337,6 +352,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     ...(renamed.length > 0 ? [`files darnit needs to edit differ only in case from the names git has: ${firstFive(renamed)}; rename them back or commit the rename first`] : []),
   ];
   if (why.length > 0) throw new Refusal(`${why.join("; ")}, or preview with --dry-run`);
+  if (opts.prepare !== undefined) return prepare(root, applicable, base, commands, opts.prepare, opts.version);
   if (opts.pr) return pullRequests(root, applicable, base, commands, opts);
 
   const snap = await snapshotOf(root, wanted);
@@ -353,6 +369,56 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     await restore(root, snap);
     throw err;
   }
+}
+
+/** Runs the checks on one rewritten group, as --pr and --prepare both do. A failure, which has put the files back, goes on the record. */
+async function checkGroup(root: string, commands: Commands, snap: Map<string, string>, result: RecordResult) {
+  const { build, tests } = await runChecks(root, commands, snap);
+  if (failed(build)) result.pr = { state: "build-failed", build: build! };
+  else if (failed(tests)) result.pr = { state: "tests-failed", tests: tests! };
+  return { build, tests, passed: !failed(build) && !failed(tests) };
+}
+
+/** Refuses a plan folder that is a link, not a folder, or holds anything but an earlier plan. */
+async function planFolder(dir: string): Promise<void> {
+  const info = await lstat(dir).catch(() => undefined);
+  if (!info) return;
+  if (!info.isDirectory()) throw new Refusal(`${dir} is ${info.isSymbolicLink() ? "a symbolic link" : "not a folder"}; give --prepare a new or empty folder`);
+  const entries = await readdir(dir);
+  const earlier = entries.length === 1 && entries[0] === PLAN_FILE && (await lstat(join(dir, PLAN_FILE))).isFile();
+  if (entries.length > 0 && !earlier) throw new Refusal(`${dir} is not empty and holds no earlier plan; give --prepare a new or empty folder`);
+}
+
+const planOutcome = (t: TestOutcome | undefined): PlanOutcome | null =>
+  t ? { command: t.command, passed: t.passed, attributed: t.attributed ?? null, notChecked: t.notChecked ?? false, timedOut: t.timedOut, output: t.output } : null;
+
+// What --pr does for each change up to the commit, on the commit the tree is at. The patch is taken before the
+// repository's build and tests run, so it holds darnit's change only, and the files go back after each change.
+async function prepare(root: string, groups: Group[], base: FixResult, commands: Commands, dir: string, version = "dev"): Promise<FixResult> {
+  const plan: Plan = { version: PLAN_VERSION, darnit: version, base: await g.head(root), groups: [] };
+  let anyFailed = false;
+  for (const grp of groups) {
+    const result = base.records.find((r) => r.record.id === grp.record.id)!;
+    const snap = await snapshotOf(root, grp.files);
+    try {
+      const changed = settle(result, await applyAndVerify(root, grp), grp.held);
+      if (changed.length === 0) continue;
+      const patch = await g.patch(root, changed);
+      const { build, tests, passed } = await checkGroup(root, commands, snap, result);
+      if (passed) result.pr = { state: "prepared", build, tests };
+      anyFailed ||= !passed;
+      plan.groups.push({ id: grp.record.id, files: changed, patch, build: planOutcome(build), tests: planOutcome(tests) });
+    } finally {
+      await restore(root, snap);
+    }
+  }
+  const text = serializePlan(plan, new Set((await loadRecords()).map((l) => l.record.id)));
+  await mkdir(dir, { recursive: true });
+  await planFolder(dir);
+  await rm(join(dir, PLAN_FILE), { force: true });
+  // wx: never written through a link put there since the check.
+  await writeFile(join(dir, PLAN_FILE), text, { flag: "wx" });
+  return { ...base, reverted: anyFailed, plan: join(dir, PLAN_FILE) };
 }
 
 // One branch, one test run and one pull request per change. The working tree is
@@ -386,14 +452,8 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
     try {
       const changed = settle(result, await applyAndVerify(root, grp), grp.held);
       if (changed.length === 0) continue;
-      const { build, tests } = await runChecks(root, commands, snap);
-      if (build && failed(build)) {
-        result.pr = { state: "build-failed", build };
-        anyFailed = true;
-        continue;
-      }
-      if (tests && !tests.passed) {
-        result.pr = { state: "tests-failed", tests };
+      const { build, tests, passed } = await checkGroup(root, commands, snap, result);
+      if (!passed) {
         anyFailed = true;
         continue;
       }
@@ -581,6 +641,10 @@ export function renderSummary(result: FixResult): string {
       lines.push(`✓ ${r.title}: pull request opened ${r.pr.url}`);
       for (const c of [r.pr.build, r.pr.tests]) if (c) lines.push(`  ${testLine(c)}`);
     }
+    else if (r.pr.state === "prepared") {
+      lines.push(`✓ ${r.title}: verified, in the plan`);
+      for (const c of [r.pr.build, r.pr.tests]) if (c) lines.push(`  ${testLine(c)}`);
+    }
     else if (r.pr.state === "exists") lines.push(`= ${r.title}: pull request already open ${r.pr.url}`);
     else if (r.pr.state === "skipped") lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
@@ -605,6 +669,7 @@ export function renderSummary(result: FixResult): string {
     if (applied) lines.push("dry run: nothing written");
   } else if (result.pr) {
     // Per-record lines already carry the test result.
+    if (result.plan) lines.push(`plan written to ${result.plan}`);
   } else if (applied) {
     if (result.build) lines.push(testLine(result.build));
     else if (result.buildNote) lines.push(`build: none run (${result.buildNote})`);
