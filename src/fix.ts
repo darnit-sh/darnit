@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
-import { escapedPieces, escapeHidden, firstFive, shown, vendorName } from "./detect.js";
+import { escapedPieces, escapeHidden, shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
@@ -329,13 +329,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   }
   // Only files git can put back are edited; --allow-dirty tolerates edits elsewhere, never in these.
   const wanted = [...new Set(applicable.flatMap((grp) => grp.files))];
-  const unsafe = await g.uncommitted(root, wanted);
-  const changed = unsafe.filter((u) => !u.gitName).map((u) => u.file);
-  const renamed = unsafe.filter((u) => u.gitName).map((u) => `${u.file} (git has ${u.gitName})`);
-  const why = [
-    ...(changed.length > 0 ? [`uncommitted changes in files darnit needs to edit: ${firstFive(changed)}; commit or stash them first so git can undo the rewrite`] : []),
-    ...(renamed.length > 0 ? [`files darnit needs to edit differ only in case from the names git has: ${firstFive(renamed)}; rename them back or commit the rename first`] : []),
-  ];
+  const why = g.uncommittedReasons(await g.uncommitted(root, wanted), "darnit needs to edit");
   if (why.length > 0) throw new Refusal(`${why.join("; ")}, or preview with --dry-run`);
   if (opts.pr) return pullRequests(root, applicable, base, commands, opts);
 
