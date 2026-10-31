@@ -4,31 +4,73 @@
 # that a record now covers. An entry with needs-record instead of reason stays open and is listed
 # on every run, with the record it should get.
 #
-# Keys are what `npm run accounting` prints. Records cover items on their own when they can:
-# a schema property when every endpoint whose request reaches the schema has a record for that
-# field, and an enum value when a record's patterns name it.
+# Keys are what `npm run accounting` prints, quoted the same way. Records cover items on their own
+# when they can: an operation by a record for its endpoint or SDK call; a request schema or one of
+# its properties when every operation whose request reaches it has a record, for that field when
+# there is one; and an enum value when a record for a field that holds it names that value.
+#
+# A reason says only what a command shows: `darnit check` on a sample call, or a comparison of the
+# spec snapshots in git history.
 
-# Request side, still open
-
-- items:
-    - GET /assistants
-    - POST /assistants
-    - GET /assistants/{assistant_id}
-    - POST /assistants/{assistant_id}
-    - DELETE /assistants/{assistant_id}
-  needs-record: >-
-    Deprecation, report-only. Finds beta.assistants create, retrieve, update, delete and list
-    calls in JavaScript and Python, and raw HTTP calls to /v1/assistants. Moving to the Responses
-    API is a redesign, so there is nothing to rewrite.
+# Spec deprecations still open
 
 - items:
-    - POST /images/variations
-    - schema CreateImageVariationRequest
+    - schema ModelIdsShared anyOf 1 enum gpt-3.5-turbo-16k
+    - schema BetaModelIdsShared anyOf 1 enum gpt-3.5-turbo-16k
   needs-record: >-
-    Breaking, report-only. The spec says the endpoint is retired. Finds images.createVariation
-    (JavaScript) and images.create_variation (Python) calls and raw HTTP calls to
-    /v1/images/variations. The replacement is an image edit with a GPT image model, which takes
-    different inputs, so there is nothing to rewrite.
+    Add to openai:2023-06-13:updated-chat-models-shut-down-2024-09-13, which has the shutdown date
+    the spec gives and names only gpt-3.5-turbo-0301.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum o1-preview-2024-09-12
+    - schema BetaModelIdsShared anyOf 1 enum o1-preview-2024-09-12
+  needs-record: >-
+    Add to openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28, which has the shutdown
+    date the spec gives and names only o1-preview.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum o1-mini-2024-09-12
+    - schema BetaModelIdsShared anyOf 1 enum o1-mini-2024-09-12
+  needs-record: >-
+    Add to openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27, which has the shutdown
+    date the spec gives and names only o1-mini.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2024-12-17
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2025-06-03
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-audio-preview-2024-12-17
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2024-12-17
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2025-06-03
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-audio-preview-2024-12-17
+  needs-record: >-
+    Add these snapshots to openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down, which has
+    the shutdown date the spec gives and names only the gpt-4o-audio-preview aliases, if OpenAI's
+    deprecations page lists them.
+
+- items:
+    - schema CreateImageRequest property size anyOf 1 enum 256x256
+    - schema CreateImageRequest property size anyOf 1 enum 512x512
+    - schema CreateImageRequest property size anyOf 1 enum 1792x1024
+    - schema CreateImageRequest property size anyOf 1 enum 1024x1792
+    - schema CreateImageEditRequest property size anyOf 1 enum 256x256
+    - schema CreateImageEditRequest property size anyOf 1 enum 512x512
+    - schema CreateImageRequest property quality anyOf 0 enum standard
+    - schema CreateImageRequest property quality anyOf 0 enum hd
+    - schema CreateImageEditRequest property quality anyOf 0 enum standard
+  needs-record: >-
+    Report-only. Finds these sizes and qualities in images.generate and images.edit calls and raw
+    HTTP calls to /v1/images. They were DALL·E values, retired with DALL·E on the date the spec's
+    dall-e-2 entry gives, and dall-e-2 was the default model, so a call that sets no model never
+    names DALL·E: `darnit check` on images.generate with only a prompt and size 256x256 finds nothing.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-search-preview
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-search-preview
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-search-preview
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-search-preview
+  needs-record: >-
+    Breaking, report-only model record: finds these names as the model of any OpenAI call. The
+    spec gives this shutdown date.
 
 - items:
     - POST /videos
@@ -42,9 +84,91 @@
     - GET /videos/{video_id}/content
     - POST /videos/{video_id}/remix
   needs-record: >-
-    Deprecation, report-only. The Sora 2 record only finds the model names, so a call that uses
-    the default model or reads an existing video is missed. Finds every videos call in the SDKs
-    and raw HTTP calls to /v1/videos. OpenAI names no replacement.
+    Breaking, report-only endpoint record: finds every videos call in the SDKs and raw HTTP calls
+    to /v1/videos. The date is the removal date OpenAI's deprecations page gives for the Videos API,
+    as quoted by openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down, which
+    only finds the model names, so a call that uses the default model or reads an existing video
+    is missed.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-5
+    - schema ModelIdsShared anyOf 1 enum gpt-5-mini
+    - schema ModelIdsShared anyOf 1 enum gpt-5-nano
+    - schema ModelIdsShared anyOf 1 enum o3
+    - schema ModelIdsResponses anyOf 1 enum o3-pro
+    - schema ModelIdsResponses anyOf 1 enum gpt-5-pro
+    - schema BetaModelIdsShared anyOf 1 enum gpt-5
+    - schema BetaModelIdsShared anyOf 1 enum gpt-5-mini
+    - schema BetaModelIdsShared anyOf 1 enum gpt-5-nano
+    - schema BetaModelIdsShared anyOf 1 enum o3
+    - schema BetaModelIdsResponses anyOf 1 enum o3-pro
+    - schema BetaModelIdsResponses anyOf 1 enum gpt-5-pro
+  needs-record: >-
+    The spec gives the date of openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down, but
+    that record names only the dated snapshots, so code naming these aliases is not reported. Add
+    them to it if OpenAI's deprecations page lists them, or give them their own model record.
+
+- items:
+    - schema AssistantSupportedModels enum gpt-4.1
+    - schema AssistantSupportedModels enum gpt-4.1-mini
+    - schema AssistantSupportedModels enum gpt-4o
+    - schema AssistantSupportedModels enum gpt-4o-mini
+    - schema ModelIdsShared anyOf 1 enum gpt-4.1
+    - schema ModelIdsShared anyOf 1 enum gpt-4.1-2025-04-14
+    - schema ModelIdsShared anyOf 1 enum gpt-4.1-mini
+    - schema ModelIdsShared anyOf 1 enum gpt-4.1-mini-2025-04-14
+    - schema ModelIdsShared anyOf 1 enum gpt-4o
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-2024-08-06
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-2024-11-20
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini
+    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-2024-07-18
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-2025-04-14
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-mini
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-mini-2025-04-14
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-2024-08-06
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-2024-11-20
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini
+    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-2024-07-18
+  needs-record: >-
+    Deprecation, report-only model record in the same form as the others: finds these names as
+    the model of any OpenAI call. The spec gives this shutdown date; the record should cite
+    OpenAI's deprecations page for the date and the replacements.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
+    - schema BetaModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
+  needs-record: >-
+    Add to openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down, which has
+    the shutdown date the spec gives and names gpt-audio-mini but not this snapshot.
+
+- items:
+    - GET /assistants
+    - POST /assistants
+    - GET /assistants/{assistant_id}
+    - POST /assistants/{assistant_id}
+    - DELETE /assistants/{assistant_id}
+  needs-record: >-
+    Deprecation, report-only endpoint record. Finds beta.assistants create, retrieve, update,
+    delete and list calls in JavaScript and Python, and raw HTTP calls to /v1/assistants. Moving to
+    the Responses API is a redesign, so there is nothing to rewrite. The spec gives no date.
+
+- items:
+    - POST /images/variations
+    - schema CreateImageVariationRequest
+  needs-record: >-
+    Breaking, report-only endpoint record. The spec says the endpoint is retired but gives no
+    date. Finds images.createVariation (JavaScript) and images.create_variation (Python) calls and
+    raw HTTP calls to /v1/images/variations. The replacement is an image edit with a GPT image
+    model, which takes different inputs, so there is nothing to rewrite.
+
+- items:
+    - schema ChatCompletionRequestFunctionMessage
+  needs-record: >-
+    Deprecation, report-only. Finds a message with role function in chat.completions.create calls;
+    `darnit check` on one finds nothing today. It becomes a tool message with a tool_call_id, which
+    needs the id from the response, so there is nothing to rewrite.
 
 - items:
     - schema CreateChatCompletionRequest property seed
@@ -99,8 +223,16 @@
     - schema BetaMCPTool property connector_id
   needs-record: >-
     Deprecation, report-only. Finds connector_id in an MCP tool passed to responses.create and the
-    realtime calls. It is deprecated only for models released after September 1 2026, so the
-    record has to say which models are affected rather than flag every use as broken.
+    realtime calls. The spec deprecates it only for models released after September 1, 2026, so
+    the record has to say which models are affected rather than flag every use as broken.
+
+- items:
+    - schema WebSearchActionSearch property query
+    - schema BetaWebSearchActionSearch property query
+  needs-record: >-
+    Report-only. Finds query in the action of a web_search_call input item passed to
+    responses.create and the conversation calls, which reach this schema in the spec. Code
+    usually passes these items back from an earlier response unchanged, so expect few findings.
 
 - items:
     - schema CreateEvalStoredCompletionsDataSourceConfig
@@ -116,96 +248,7 @@
     SDKs do not cover the Administration API. The spec says to use residency instead, at project
     creation only.
 
-# Model names the spec lists as deprecated that no model record names yet
-
-- items:
-    - schema AssistantSupportedModels enum gpt-4.1
-    - schema AssistantSupportedModels enum gpt-4.1-mini
-    - schema AssistantSupportedModels enum gpt-4o
-    - schema AssistantSupportedModels enum gpt-4o-mini
-    - schema ModelIdsShared anyOf 1 enum gpt-4.1
-    - schema ModelIdsShared anyOf 1 enum gpt-4.1-2025-04-14
-    - schema ModelIdsShared anyOf 1 enum gpt-4.1-mini
-    - schema ModelIdsShared anyOf 1 enum gpt-4.1-mini-2025-04-14
-    - schema ModelIdsShared anyOf 1 enum gpt-4o
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-2024-08-06
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-2024-11-20
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-2024-07-18
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-2025-04-14
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-mini
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-mini-2025-04-14
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-2024-08-06
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-2024-11-20
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-2024-07-18
-  needs-record: >-
-    Deprecation, report-only, in the same form as the other model records: finds these names as
-    the model of any OpenAI call. The spec gives 2027-01-14 as the shutdown date; the record
-    should cite OpenAI's deprecations page for the date and the replacements.
-
-- items:
-    - schema ModelIdsShared anyOf 1 enum gpt-5
-    - schema ModelIdsShared anyOf 1 enum gpt-5-mini
-    - schema ModelIdsShared anyOf 1 enum gpt-5-nano
-    - schema ModelIdsShared anyOf 1 enum o3
-    - schema ModelIdsResponses anyOf 1 enum o3-pro
-    - schema ModelIdsResponses anyOf 1 enum gpt-5-pro
-    - schema BetaModelIdsShared anyOf 1 enum gpt-5
-    - schema BetaModelIdsShared anyOf 1 enum gpt-5-mini
-    - schema BetaModelIdsShared anyOf 1 enum gpt-5-nano
-    - schema BetaModelIdsShared anyOf 1 enum o3
-    - schema BetaModelIdsResponses anyOf 1 enum o3-pro
-    - schema BetaModelIdsResponses anyOf 1 enum gpt-5-pro
-  needs-record: >-
-    Deprecation, report-only. The spec gives 2026-12-11, the date of the gpt-5 and o3 record, but
-    that record names only the dated snapshots. Add these aliases to it if OpenAI's deprecations
-    page lists them, or give them their own model record.
-
-- items:
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-search-preview
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-search-preview
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-search-preview
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-search-preview
-  needs-record: >-
-    Breaking, report-only model record: the spec gives 2026-07-23 as the shutdown date, which has
-    passed, so calls naming these models fail now.
-
-- items:
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2024-12-17
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2025-06-03
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-audio-preview-2024-12-17
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2024-12-17
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2025-06-03
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-audio-preview-2024-12-17
-  needs-record: >-
-    Add these snapshots to openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down, which has
-    the same 2026-05-07 date and names only the gpt-4o-audio-preview aliases, if OpenAI's
-    deprecations page lists them.
-
-- items:
-    - schema ModelIdsShared anyOf 1 enum o1-preview-2024-09-12
-    - schema BetaModelIdsShared anyOf 1 enum o1-preview-2024-09-12
-    - schema ModelIdsShared anyOf 1 enum o1-mini-2024-09-12
-    - schema BetaModelIdsShared anyOf 1 enum o1-mini-2024-09-12
-    - schema ModelIdsShared anyOf 1 enum gpt-3.5-turbo-16k
-    - schema BetaModelIdsShared anyOf 1 enum gpt-3.5-turbo-16k
-  needs-record: >-
-    Add each to the record with the same shutdown date, which names only the other models
-    shut down that day: o1-preview-2024-09-12 to the 2025-07-28 o1-preview record,
-    o1-mini-2024-09-12 to the 2025-10-27 o1-mini record, gpt-3.5-turbo-16k to the 2024-09-13
-    record.
-
-- items:
-    - schema ModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
-    - schema BetaModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
-  needs-record: >-
-    Add to openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down, which has
-    the same 2027-01-20 date and names gpt-audio-mini but not this snapshot.
-
-# No record needed
+# Spec deprecations with no record needed
 
 - items:
     - schema ModelIdsShared anyOf 1 enum gpt-5.1-mini
@@ -215,113 +258,606 @@
     so there is no working call to migrate.
 
 - items:
-    - schema CreateImageRequest property size anyOf 1 enum 256x256
-    - schema CreateImageRequest property size anyOf 1 enum 512x512
-    - schema CreateImageRequest property size anyOf 1 enum 1792x1024
-    - schema CreateImageRequest property size anyOf 1 enum 1024x1792
-    - schema CreateImageEditRequest property size anyOf 1 enum 256x256
-    - schema CreateImageEditRequest property size anyOf 1 enum 512x512
-    - schema CreateImageRequest property quality anyOf 0 enum standard
-    - schema CreateImageRequest property quality anyOf 0 enum hd
-    - schema CreateImageEditRequest property quality anyOf 0 enum standard
-  reason: >-
-    Values only the retired DALL·E models took, so code sending them also names a DALL·E model,
-    which openai:2025-11-14:dall-e-model-snapshots-shut-down already reports.
-
-- items:
     - schema ChatCompletionFunctions
     - schema ChatCompletionRequestAssistantMessage property function_call anyOf 0
-    - schema ChatCompletionRequestFunctionMessage
   reason: >-
-    Already covered by openai:2023-11-06:chat-functions-to-tools. Function messages and an
-    assistant message's function_call only appear in conversations that send functions, which
-    that record finds, and its notes cover moving them to tool messages.
+    Covered by openai:2023-11-06:chat-functions-to-tools: `darnit check` reports both functions
+    and an assistant message's function_call inside a chat.completions.create call.
 
 - items:
     - schema ChatCompletionResponseMessage property function_call
     - schema ChatCompletionStreamResponseDelta property function_call
-  reason: >-
-    Response-only field. The request side is covered by openai:2023-11-06:chat-functions-to-tools,
-    whose notes cover reading tool_calls instead.
-
-- items:
     - schema CreateChatCompletionResponse property system_fingerprint
     - schema CreateChatCompletionStreamResponse property system_fingerprint
     - schema OpenAIFile property status
     - schema OpenAIFile property status_details
     - schema EvalStoredCompletionsDataSourceConfig
     - schema AssistantObject
-  reason: Response-only. Code reads these from a response, and darnit finds what code sends.
-
-- items:
-    - schema WebSearchActionSearch property query
-    - schema BetaWebSearchActionSearch property query
-  reason: >-
-    Part of a web search call item that the API writes. It reaches a request only when code passes
-    an earlier output item back unchanged, so no code names it.
-
-- items:
     - schema ItemField oneOf LocalShellToolCall
     - schema ItemField oneOf LocalShellToolCallOutput
     - schema BetaItemField oneOf BetaLocalShellToolCall
     - schema BetaItemField oneOf BetaLocalShellToolCallOutput
   reason: >-
-    Item types in the conversation item lists the API returns. The request side, the local_shell
-    tool, is not marked deprecated in the spec.
+    Response-only: no request body in the spec reaches these schemas, and darnit finds what code
+    sends, not what it reads.
 
 - items:
     - webhook live_call_incoming POST
     - schema WebhookLiveCallIncoming
   reason: >-
-    A webhook OpenAI sends to the user's server, not a call code makes. The spec says existing
-    subscriptions keep receiving it.
+    A webhook OpenAI sends to the user's server, under the spec's webhooks, not a call code makes.
+    The spec says existing subscriptions keep receiving it.
 
 - items:
     - x-oaiMeta navigationGroups 9
   reason: The Assistants group in the spec's documentation navigation, not part of the API.
 
-# Removals logged in corpus/openai/removals.json
+# Removals logged in corpus/openai/removals.json, rebuilt with `npm run corpus:backfill`
 
 - items:
-    - api-schema-removed SessionSpendControlParam
-    - api-schema-removed SessionSpendControlResource
+    - "POST /images/edits request-property-default-value-removed `model` `gpt-image-1.5` (multipart/form-data)"
+    - "POST /images/generations request-property-default-value-removed `model` `dall-e-2`"
+    - "POST /images/generations request-property-default-value-removed `response_format` `url`"
+    - "POST /images/generations request-property-default-value-removed `style` `vivid`"
+  needs-record: >-
+    Behavioral, report-only. Finds images.generate and images.edit calls that set no model, or no
+    response_format, and raw HTTP calls to /v1/images/generations and /v1/images/edits that leave
+    them out. The spec dropped the defaults dall-e-2 (generations), gpt-image-1.5 (edits), url and
+    vivid; its dall-e-2 entry says that model was retired on May 12, 2026, so such a call now gets
+    another model, and code reading data[0].url may get nothing.
+
+- items:
+    - "POST /evals/{eval_id}/runs/{run_id} api-removed-without-deprecation"
+  needs-record: >-
+    Breaking, report-only. Cancelling an eval run moved from POST /evals/{eval_id}/runs/{run_id} to
+    POST /evals/{eval_id}/runs/{run_id}/cancel. Finds raw HTTP POST calls to the old path, and
+    evals.runs.cancel calls once the SDK versions that still post there are confirmed.
+
+- items:
+    - "POST /audio/voices request-body-media-type-removed `application/json`"
+    - "POST /audio/voices request-body-one-of-removed `#/components/schemas/CreateVoicePromptRequest` `oneOf`"
+    - "api-schema-removed `CreateVoicePromptRequest`"
+  needs-record: >-
+    Breaking, report-only. The JSON body that created a voice from a text prompt is gone; the spec
+    now says voices created from text prompts are supported only in Live. Finds raw HTTP JSON POST
+    calls to /v1/audio/voices and the SDK's voice creation call when it passes a prompt.
+
+- items:
+    - "POST /live/sessions request-property-enum-value-removed `aube` `session/audio/output/voice/oneOf[subschema #1]/anyOf[subschema #2]/`"
+    - "POST /live/sessions request-property-enum-value-removed `shitan` `session/audio/output/voice/oneOf[subschema #1]/anyOf[subschema #2]/`"
+    - "POST /live/sessions/{session_id}/accept request-property-enum-value-removed `aube` `session/audio/output/voice/oneOf[subschema #1]/anyOf[subschema #2]/`"
+    - "POST /live/sessions/{session_id}/accept request-property-enum-value-removed `shitan` `session/audio/output/voice/oneOf[subschema #1]/anyOf[subschema #2]/`"
+  needs-record: >-
+    Breaking, report-only. The voices aube and shitan are no longer in the spec anywhere. Finds them
+    as the voice of Live session create and accept calls, in the SDKs and in raw HTTP calls to
+    /v1/live/sessions.
+
+- items:
+    - "POST /fine_tuning/alpha/graders/run request-property-one-of-removed `#/components/schemas/GraderStringCheck, #/components/schemas/GraderTextSimilarity, #/components/schemas/GraderPython, #/components/schemas/GraderScoreModel, #/components/schemas/GraderLabelModel` `grader/oneOf[subschema #5: MultiGrader]/graders` `oneOf`"
+    - "POST /fine_tuning/alpha/graders/validate request-property-one-of-removed `#/components/schemas/GraderStringCheck, #/components/schemas/GraderTextSimilarity, #/components/schemas/GraderPython, #/components/schemas/GraderScoreModel, #/components/schemas/GraderLabelModel` `grader/oneOf[subschema #5: MultiGrader]/graders` `oneOf`"
+    - "POST /fine_tuning/jobs request-property-one-of-removed `#/components/schemas/GraderStringCheck, #/components/schemas/GraderTextSimilarity, #/components/schemas/GraderPython, #/components/schemas/GraderScoreModel, #/components/schemas/GraderLabelModel` `method/reinforcement/grader/oneOf[subschema #5: MultiGrader]/graders` `oneOf`"
+  needs-record: >-
+    Check first: the spec changed a multi grader's graders from one grader to a map of named
+    graders. If the API ever took a single grader there, a report-only record finds graders set to
+    one grader object in fine_tuning.jobs.create and the alpha grader run and validate calls; if it
+    never did, this becomes a reason.
+
+- items:
+    - "POST /conversations request-property-one-of-removed `subschema #2` `items/anyOf[subschema #1]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /conversations request-property-one-of-removed `subschema #2` `items/anyOf[subschema #1]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /conversations/{conversation_id}/items request-property-one-of-removed `subschema #2` `items/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /conversations/{conversation_id}/items request-property-one-of-removed `subschema #2` `items/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /evals/{eval_id}/runs request-property-one-of-removed `subschema #2` `data_source/oneOf[subschema #3: ResponsesRunDataSource]/sampling_params/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/compact request-property-one-of-removed `subschema #2` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/compact request-property-one-of-removed `subschema #2` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/compact?beta=true request-property-one-of-removed `subschema #2` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/compact?beta=true request-property-one-of-removed `subschema #2` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/input_tokens request-property-one-of-removed `subschema #2` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/input_tokens request-property-one-of-removed `subschema #2` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/input_tokens request-property-one-of-removed `subschema #2` `tools/anyOf[subschema #1]/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/input_tokens?beta=true request-property-one-of-removed `subschema #2` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/input_tokens?beta=true request-property-one-of-removed `subschema #2` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses/input_tokens?beta=true request-property-one-of-removed `subschema #2` `tools/anyOf[subschema #1]/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /vector_stores/{vector_store_id}/search request-property-one-of-removed `subschema #2` `filters/oneOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses request-property-one-of-removed `subschema #2` `allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses request-property-one-of-removed `subschema #2` `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses request-property-one-of-removed `subschema #2` `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses?beta=true request-property-one-of-removed `subschema #2` `allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses?beta=true request-property-one-of-removed `subschema #2` `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
+    - "POST /responses?beta=true request-property-one-of-removed `subschema #2` `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf`"
   reason: >-
-    The schemas behind spend_control. Sending it is covered by
-    openai:2026-10-26:spend-control-removed.
+    Not a removal: a compound filter's filters list changed from $recursiveRef to a $ref to
+    CompoundFilter, the same schema by name. Shown by comparing CompoundFilter in the 2026-09-23 and
+    2026-10-03 snapshots.
 
 - items:
-    - GET /agents/sessions response-optional-property-removed data/items/spend_control
-    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control"
-    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control"
-    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control"
-    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control"
-    - "POST /agents/sessions response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control"
-    - POST /agents/sessions response-optional-property-removed spend_control
-    - GET /agents/sessions/{session_id} response-optional-property-removed spend_control
-    - POST /agents/sessions/{session_id} response-optional-property-removed spend_control
-    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control"
-    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control"
-    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control"
-    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control"
-    - "GET /agents/sessions/{session_id}/events response-optional-property-removed oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control"
+    - "POST /chat/completions request-property-one-of-removed `#/components/schemas/PredictionContent` `allOf[subschema #2]/prediction` `oneOf`"
   reason: >-
-    Response-only field. Sending spend_control is covered by
-    openai:2026-10-26:spend-control-removed.
+    Not a removal: prediction changed from a nullable oneOf to an anyOf of PredictionContent and
+    null, so the same content is accepted.
 
 - items:
-    - "POST /moderations request-property-one-of-removed subschema #1, subschema #2, subschema #3"
+    - "POST /images/edits request-property-enum-value-removed `auto` `background`"
+    - "POST /images/edits request-property-enum-value-removed `auto` `quality`"
+    - "POST /images/edits request-property-enum-value-removed `high` `quality`"
+    - "POST /images/edits request-property-enum-value-removed `jpeg` `output_format`"
+    - "POST /images/edits request-property-enum-value-removed `low` `quality`"
+    - "POST /images/edits request-property-enum-value-removed `max` `quality`"
+    - "POST /images/edits request-property-enum-value-removed `medium` `quality`"
+    - "POST /images/edits request-property-enum-value-removed `opaque` `background`"
+    - "POST /images/edits request-property-enum-value-removed `png` `output_format`"
+    - "POST /images/edits request-property-enum-value-removed `standard` `quality`"
+    - "POST /images/edits request-property-enum-value-removed `transparent` `background`"
+    - "POST /images/edits request-property-enum-value-removed `webp` `output_format`"
+    - "POST /images/edits request-property-enum-value-removed `xhigh` `quality`"
+    - "POST /images/generations request-property-enum-value-removed `auto` `background`"
+    - "POST /images/generations request-property-enum-value-removed `auto` `moderation`"
+    - "POST /images/generations request-property-enum-value-removed `auto` `quality`"
+    - "POST /images/generations request-property-enum-value-removed `hd` `quality`"
+    - "POST /images/generations request-property-enum-value-removed `high` `quality`"
+    - "POST /images/generations request-property-enum-value-removed `jpeg` `output_format`"
+    - "POST /images/generations request-property-enum-value-removed `low` `moderation`"
+    - "POST /images/generations request-property-enum-value-removed `low` `quality`"
+    - "POST /images/generations request-property-enum-value-removed `max` `quality`"
+    - "POST /images/generations request-property-enum-value-removed `medium` `quality`"
+    - "POST /images/generations request-property-enum-value-removed `opaque` `background`"
+    - "POST /images/generations request-property-enum-value-removed `png` `output_format`"
+    - "POST /images/generations request-property-enum-value-removed `standard` `quality`"
+    - "POST /images/generations request-property-enum-value-removed `transparent` `background`"
+    - "POST /images/generations request-property-enum-value-removed `webp` `output_format`"
+    - "POST /images/generations request-property-enum-value-removed `xhigh` `quality`"
   reason: >-
-    Not a removal: the three input forms are still in the spec. Only their inline examples
-    changed, which makes oasdiff see new subschemas.
+    Not a removal: these properties changed from nullable: true to an anyOf with a null type, and
+    each value is still listed in the same property.
 
 - items:
-    - "POST /decisions request-property-removed input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/content"
-    - "POST /decisions request-property-removed input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/role"
-    - "POST /decisions request-property-removed input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/type"
+    - "POST /audio/speech request-property-any-of-removed `#/components/schemas/VoiceIdsShared` `voice` `anyOf`"
+  reason: >-
+    Not a removal: voice still lists VoiceIdsShared, one anyOf deeper, next to fable, onyx and nova.
+
+- items:
+    - "POST /audio/transcriptions request-property-default-value-removed `` `[]`"
+  reason: >-
+    The spec dropped an invalid default, an empty list on the string schema TranscriptionInclude;
+    its value logprobs is unchanged.
+
+- items:
+    - "POST /conversations request-property-one-of-removed `#/components/schemas/NamespaceToolParam` `items/anyOf[subschema #1]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf`"
+    - "POST /conversations/{conversation_id}/items request-property-one-of-removed `#/components/schemas/NamespaceToolParam` `items/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf`"
+    - "POST /responses/compact request-property-one-of-removed `#/components/schemas/NamespaceToolParam` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf`"
+    - "POST /responses/compact?beta=true request-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf`"
+    - "POST /responses/input_tokens request-property-one-of-removed `#/components/schemas/NamespaceToolParam` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf`"
+    - "POST /responses/input_tokens?beta=true request-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `input/anyOf[subschema #1]/oneOf[subschema #2]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf`"
+    - "POST /responses request-property-one-of-removed `#/components/schemas/NamespaceToolParam` `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf`"
+    - "POST /responses?beta=true request-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `allOf[subschema #3]/input/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf`"
+  reason: >-
+    Not a removal: the tools of a tool search output item now use
+    ToolSearchOutputNamespaceToolParam, with the same type namespace and the same name, description
+    and tools fields.
+
+- items:
+    - "POST /live/sessions request-property-one-of-removed `#/components/schemas/LiveFunctionToolChoiceParam, #/components/schemas/LiveMCPToolChoiceParam` `session/delegation/anyOf[subschema #1]/oneOf[#/components/schemas/LiveResponsesDelegationParam]/responses/tool_choice` `oneOf`"
+    - "POST /live/sessions/{session_id}/accept request-property-one-of-removed `#/components/schemas/LiveFunctionToolChoiceParam, #/components/schemas/LiveMCPToolChoiceParam` `session/delegation/anyOf[subschema #1]/oneOf[#/components/schemas/LiveResponsesDelegationParam]/responses/tool_choice` `oneOf`"
+    - "POST /live/sessions/{session_id}/fork request-property-one-of-removed `#/components/schemas/LiveFunctionToolChoiceParam, #/components/schemas/LiveMCPToolChoiceParam` `session/delegation/responses/tool_choice` `oneOf`"
+  reason: >-
+    Not a removal: both tool choice types moved into a nested oneOf of tool_choice that still lists
+    them.
+
+- items:
+    - "POST /moderations request-property-one-of-removed `subschema #1, subschema #2, subschema #3` `input` `oneOf`"
+  reason: >-
+    Not a removal: the three input forms are still in the spec. Without their example values the old
+    and new input schemas are identical, so only the examples changed.
+
+- items:
+    - "POST /decisions request-property-removed `input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/content`"
+    - "POST /decisions request-property-removed `input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/role`"
+    - "POST /decisions request-property-removed `input/oneOf[subschema #2]/items/oneOf[#/components/schemas/DecisionInputMessage]/type`"
   reason: >-
     Not a removal: DecisionInputMessage was split into one schema per role, and each still takes
     role, content and type.
 
 - items:
-    - POST /organization/projects/{project_id}/service_accounts/{service_account_id}/api_keys response-non-success-status-removed 409
-  reason: An error status the spec no longer lists for this endpoint. Calling code sends the same request.
+    - "api-schema-removed `SessionSpendControlParam`"
+    - "api-schema-removed `SessionSpendControlResource`"
+  reason: >-
+    The schemas behind spend_control, which openai:2026-10-26:spend-control-removed covers sending.
+
+- items:
+    - "POST /chat/completions response-required-property-removed `usage/completion_tokens` `200` (text/event-stream)"
+    - "POST /chat/completions response-required-property-removed `usage/prompt_tokens` `200` (text/event-stream)"
+    - "POST /chat/completions response-required-property-removed `usage/total_tokens` `200` (text/event-stream)"
+    - "DELETE /evals/{eval_id} response-required-property-removed `code` `404`"
+    - "DELETE /evals/{eval_id} response-required-property-removed `message` `404`"
+    - "DELETE /evals/{eval_id} response-required-property-removed `param` `404`"
+    - "DELETE /evals/{eval_id} response-required-property-removed `type` `404`"
+    - "GET /evals/{eval_id}/runs response-required-property-removed `data/items/error/code` `200`"
+    - "GET /evals/{eval_id}/runs response-required-property-removed `data/items/error/message` `200`"
+    - "POST /evals/{eval_id}/runs response-required-property-removed `code` `400`"
+    - "POST /evals/{eval_id}/runs response-required-property-removed `error/code` `201`"
+    - "POST /evals/{eval_id}/runs response-required-property-removed `error/message` `201`"
+    - "POST /evals/{eval_id}/runs response-required-property-removed `message` `400`"
+    - "POST /evals/{eval_id}/runs response-required-property-removed `param` `400`"
+    - "POST /evals/{eval_id}/runs response-required-property-removed `type` `400`"
+    - "DELETE /evals/{eval_id}/runs/{run_id} response-required-property-removed `code` `404`"
+    - "DELETE /evals/{eval_id}/runs/{run_id} response-required-property-removed `message` `404`"
+    - "DELETE /evals/{eval_id}/runs/{run_id} response-required-property-removed `param` `404`"
+    - "DELETE /evals/{eval_id}/runs/{run_id} response-required-property-removed `type` `404`"
+    - "GET /evals/{eval_id}/runs/{run_id} response-required-property-removed `error/code` `200`"
+    - "GET /evals/{eval_id}/runs/{run_id} response-required-property-removed `error/message` `200`"
+    - "GET /evals/{eval_id}/runs/{run_id}/output_items response-required-property-removed `data/items/sample/error/code` `200`"
+    - "GET /evals/{eval_id}/runs/{run_id}/output_items response-required-property-removed `data/items/sample/error/message` `200`"
+    - "GET /evals/{eval_id}/runs/{run_id}/output_items/{output_item_id} response-required-property-removed `sample/error/code` `200`"
+    - "GET /evals/{eval_id}/runs/{run_id}/output_items/{output_item_id} response-required-property-removed `sample/error/message` `200`"
+    - "GET /files/{file_id}/content response-media-type-removed `application/json` `200`"
+    - "GET /fine_tuning/jobs response-required-property-removed `data/items/method/type` `200`"
+    - "POST /fine_tuning/jobs response-required-property-removed `method/type` `200`"
+    - "GET /fine_tuning/jobs/{fine_tuning_job_id} response-required-property-removed `method/type` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/cancel response-required-property-removed `method/type` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/pause response-required-property-removed `method/type` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/resume response-required-property-removed `method/type` `200`"
+    - "DELETE /responses/{response_id} response-required-property-removed `code` `404`"
+    - "DELETE /responses/{response_id} response-required-property-removed `message` `404`"
+    - "DELETE /responses/{response_id} response-required-property-removed `param` `404`"
+    - "DELETE /responses/{response_id} response-required-property-removed `type` `404`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `code` `404`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `message` `404`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `param` `404`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `type` `404`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `code` `404`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `message` `404`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `param` `404`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `type` `404`"
+    - "DELETE /responses/{response_id}?beta=true response-required-property-removed `code` `404`"
+    - "DELETE /responses/{response_id}?beta=true response-required-property-removed `message` `404`"
+    - "DELETE /responses/{response_id}?beta=true response-required-property-removed `param` `404`"
+    - "DELETE /responses/{response_id}?beta=true response-required-property-removed `type` `404`"
+    - "GET /chat/completions/{completion_id}/messages response-property-all-of-removed `#/components/schemas/ChatCompletionResponseMessage, subschema #2` `data/items/` `allOf` `200`"
+    - "POST /responses response-required-property-removed `allOf[subschema #3]/usage/input_tokens` `200` (application/json)"
+    - "POST /responses response-required-property-removed `allOf[subschema #3]/usage/input_tokens_details` `200` (application/json)"
+    - "POST /responses response-required-property-removed `allOf[subschema #3]/usage/output_tokens` `200` (application/json)"
+    - "POST /responses response-required-property-removed `allOf[subschema #3]/usage/output_tokens_details` `200` (application/json)"
+    - "POST /responses response-required-property-removed `allOf[subschema #3]/usage/total_tokens` `200` (application/json)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "GET /responses/{response_id} response-required-property-removed `allOf[subschema #3]/usage/input_tokens` `200`"
+    - "GET /responses/{response_id} response-required-property-removed `allOf[subschema #3]/usage/input_tokens_details` `200`"
+    - "GET /responses/{response_id} response-required-property-removed `allOf[subschema #3]/usage/output_tokens` `200`"
+    - "GET /responses/{response_id} response-required-property-removed `allOf[subschema #3]/usage/output_tokens_details` `200`"
+    - "GET /responses/{response_id} response-required-property-removed `allOf[subschema #3]/usage/total_tokens` `200`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `allOf[subschema #3]/usage/input_tokens` `200`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `allOf[subschema #3]/usage/input_tokens_details` `200`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `allOf[subschema #3]/usage/output_tokens` `200`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `allOf[subschema #3]/usage/output_tokens_details` `200`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `allOf[subschema #3]/usage/total_tokens` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `allOf[subschema #3]/usage/input_tokens` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `allOf[subschema #3]/usage/input_tokens_details` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `allOf[subschema #3]/usage/output_tokens` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `allOf[subschema #3]/usage/output_tokens_details` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `allOf[subschema #3]/usage/total_tokens` `200`"
+    - "GET /responses/{response_id}?beta=true response-required-property-removed `allOf[subschema #3]/usage/input_tokens` `200`"
+    - "GET /responses/{response_id}?beta=true response-required-property-removed `allOf[subschema #3]/usage/input_tokens_details` `200`"
+    - "GET /responses/{response_id}?beta=true response-required-property-removed `allOf[subschema #3]/usage/output_tokens` `200`"
+    - "GET /responses/{response_id}?beta=true response-required-property-removed `allOf[subschema #3]/usage/output_tokens_details` `200`"
+    - "GET /responses/{response_id}?beta=true response-required-property-removed `allOf[subschema #3]/usage/total_tokens` `200`"
+    - "POST /responses?beta=true response-required-property-removed `allOf[subschema #3]/usage/input_tokens` `200` (application/json)"
+    - "POST /responses?beta=true response-required-property-removed `allOf[subschema #3]/usage/input_tokens_details` `200` (application/json)"
+    - "POST /responses?beta=true response-required-property-removed `allOf[subschema #3]/usage/output_tokens` `200` (application/json)"
+    - "POST /responses?beta=true response-required-property-removed `allOf[subschema #3]/usage/output_tokens_details` `200` (application/json)"
+    - "POST /responses?beta=true response-required-property-removed `allOf[subschema #3]/usage/total_tokens` `200` (application/json)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/input_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/input_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/output_tokens` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/output_tokens_details` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/usage/total_tokens` `200` (text/event-stream)"
+    - "POST /threads/runs response-property-all-of-removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` `tool_choice` `allOf` `200`"
+    - "POST /threads/runs response-property-all-of-removed `#/components/schemas/TruncationObject, subschema #2` `truncation_strategy` `allOf` `200`"
+    - "GET /threads/{thread_id}/runs response-property-all-of-removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` `data/items/tool_choice` `allOf` `200`"
+    - "GET /threads/{thread_id}/runs response-property-all-of-removed `#/components/schemas/TruncationObject, subschema #2` `data/items/truncation_strategy` `allOf` `200`"
+    - "POST /threads/{thread_id}/runs response-property-all-of-removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` `tool_choice` `allOf` `200`"
+    - "POST /threads/{thread_id}/runs response-property-all-of-removed `#/components/schemas/TruncationObject, subschema #2` `truncation_strategy` `allOf` `200`"
+    - "GET /threads/{thread_id}/runs/{run_id} response-property-all-of-removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` `tool_choice` `allOf` `200`"
+    - "GET /threads/{thread_id}/runs/{run_id} response-property-all-of-removed `#/components/schemas/TruncationObject, subschema #2` `truncation_strategy` `allOf` `200`"
+    - "POST /threads/{thread_id}/runs/{run_id} response-property-all-of-removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` `tool_choice` `allOf` `200`"
+    - "POST /threads/{thread_id}/runs/{run_id} response-property-all-of-removed `#/components/schemas/TruncationObject, subschema #2` `truncation_strategy` `allOf` `200`"
+    - "POST /threads/{thread_id}/runs/{run_id}/cancel response-property-all-of-removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` `tool_choice` `allOf` `200`"
+    - "POST /threads/{thread_id}/runs/{run_id}/cancel response-property-all-of-removed `#/components/schemas/TruncationObject, subschema #2` `truncation_strategy` `allOf` `200`"
+    - "POST /threads/{thread_id}/runs/{run_id}/submit_tool_outputs response-property-all-of-removed `#/components/schemas/AssistantsApiToolChoiceOption, subschema #2` `tool_choice` `allOf` `200`"
+    - "POST /threads/{thread_id}/runs/{run_id}/submit_tool_outputs response-property-all-of-removed `#/components/schemas/TruncationObject, subschema #2` `truncation_strategy` `allOf` `200`"
+    - "POST /uploads response-property-all-of-removed `#/components/schemas/OpenAIFile, subschema #2` `file` `allOf` `200`"
+    - "POST /uploads/{upload_id}/cancel response-property-all-of-removed `#/components/schemas/OpenAIFile, subschema #2` `file` `allOf` `200`"
+    - "POST /uploads/{upload_id}/complete response-property-all-of-removed `#/components/schemas/OpenAIFile, subschema #2` `file` `allOf` `200`"
+    - "POST /audio/transcriptions response-body-one-of-removed `#/components/schemas/CreateTranscriptionResponseJson, #/components/schemas/CreateTranscriptionResponseDiarizedJson, #/components/schemas/CreateTranscriptionResponseVerboseJson` `oneOf` `200`"
+    - "POST /chat/completions response-optional-property-removed `usage/completion_tokens_details` `200` (text/event-stream)"
+    - "POST /chat/completions response-optional-property-removed `usage/prompt_tokens_details` `200` (text/event-stream)"
+    - "POST /completions response-property-enum-value-removed `content_filter` `choices/items/finish_reason` `200`"
+    - "POST /completions response-property-enum-value-removed `length` `choices/items/finish_reason` `200`"
+    - "POST /completions response-property-enum-value-removed `stop` `choices/items/finish_reason` `200`"
+    - "GET /conversations/{conversation_id}/items response-property-one-of-removed `subschema #2` `data/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /conversations/{conversation_id}/items response-property-one-of-removed `subschema #2` `data/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /conversations/{conversation_id}/items response-property-one-of-removed `subschema #2` `data/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /conversations/{conversation_id}/items response-property-one-of-removed `subschema #2` `data/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /conversations/{conversation_id}/items/{item_id} response-property-one-of-removed `subschema #2` `oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /conversations/{conversation_id}/items/{item_id} response-property-one-of-removed `subschema #2` `oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "DELETE /evals/{eval_id} response-optional-property-removed `misalignment` `404`"
+    - "GET /evals/{eval_id}/runs response-property-one-of-removed `subschema #2` `data/items/data_source/oneOf[subschema #3: ResponsesRunDataSource]/sampling_params/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /evals/{eval_id}/runs response-optional-property-removed `misalignment` `400`"
+    - "POST /evals/{eval_id}/runs response-property-one-of-removed `subschema #2` `data_source/oneOf[subschema #3: ResponsesRunDataSource]/sampling_params/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `201`"
+    - "DELETE /evals/{eval_id}/runs/{run_id} response-optional-property-removed `misalignment` `404`"
+    - "GET /evals/{eval_id}/runs/{run_id} response-property-one-of-removed `subschema #2` `data_source/oneOf[subschema #3: ResponsesRunDataSource]/sampling_params/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /fine_tuning/alpha/graders/validate response-property-one-of-removed `#/components/schemas/GraderStringCheck, #/components/schemas/GraderTextSimilarity, #/components/schemas/GraderPython, #/components/schemas/GraderScoreModel, #/components/schemas/GraderLabelModel` `grader/oneOf[subschema #5: MultiGrader]/graders` `oneOf` `200`"
+    - "GET /fine_tuning/jobs response-optional-property-removed `data/items/method/dpo` `200`"
+    - "GET /fine_tuning/jobs response-optional-property-removed `data/items/method/reinforcement` `200`"
+    - "GET /fine_tuning/jobs response-optional-property-removed `data/items/method/supervised` `200`"
+    - "POST /fine_tuning/jobs response-optional-property-removed `method/dpo` `200`"
+    - "POST /fine_tuning/jobs response-optional-property-removed `method/reinforcement` `200`"
+    - "POST /fine_tuning/jobs response-optional-property-removed `method/supervised` `200`"
+    - "GET /fine_tuning/jobs/{fine_tuning_job_id} response-optional-property-removed `method/dpo` `200`"
+    - "GET /fine_tuning/jobs/{fine_tuning_job_id} response-optional-property-removed `method/reinforcement` `200`"
+    - "GET /fine_tuning/jobs/{fine_tuning_job_id} response-optional-property-removed `method/supervised` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/cancel response-optional-property-removed `method/dpo` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/cancel response-optional-property-removed `method/reinforcement` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/cancel response-optional-property-removed `method/supervised` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/pause response-optional-property-removed `method/dpo` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/pause response-optional-property-removed `method/reinforcement` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/pause response-optional-property-removed `method/supervised` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/resume response-optional-property-removed `method/dpo` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/resume response-optional-property-removed `method/reinforcement` `200`"
+    - "POST /fine_tuning/jobs/{fine_tuning_job_id}/resume response-optional-property-removed `method/supervised` `200`"
+    - "POST /realtime/client_secrets response-optional-property-removed `session/oneOf[subschema #1: Realtime session configuration object]/audio/input/transcription/language` `200`"
+    - "POST /realtime/client_secrets response-optional-property-removed `session/oneOf[subschema #1: Realtime session configuration object]/audio/input/transcription/languages` `200`"
+    - "POST /realtime/client_secrets response-optional-property-removed `session/oneOf[subschema #1: Realtime session configuration object]/audio/input/transcription/model` `200`"
+    - "POST /realtime/client_secrets response-optional-property-removed `session/oneOf[subschema #1: Realtime session configuration object]/audio/input/transcription/prompt` `200`"
+    - "POST /realtime/client_secrets response-optional-property-removed `session/oneOf[subschema #2: Realtime transcription session configuration object]/audio/input/transcription/language` `200`"
+    - "POST /realtime/client_secrets response-optional-property-removed `session/oneOf[subschema #2: Realtime transcription session configuration object]/audio/input/transcription/languages` `200`"
+    - "POST /realtime/client_secrets response-optional-property-removed `session/oneOf[subschema #2: Realtime transcription session configuration object]/audio/input/transcription/model` `200`"
+    - "POST /realtime/client_secrets response-optional-property-removed `session/oneOf[subschema #2: Realtime transcription session configuration object]/audio/input/transcription/prompt` `200`"
+    - "POST /responses response-property-one-of-removed `subschema #2` `allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/ResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses/compact response-property-one-of-removed `subschema #2` `output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/compact response-property-one-of-removed `subschema #2` `output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/compact?beta=true response-property-one-of-removed `subschema #2` `output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/compact?beta=true response-property-one-of-removed `subschema #2` `output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "DELETE /responses/{response_id} response-optional-property-removed `misalignment` `404`"
+    - "GET /responses/{response_id} response-property-one-of-removed `subschema #2` `allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id} response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id} response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id} response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id} response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel response-optional-property-removed `misalignment` `404`"
+    - "POST /responses/{response_id}/cancel response-property-one-of-removed `subschema #2` `allOf[#/components/schemas/ResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/AdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-optional-property-removed `misalignment` `404`"
+    - "POST /responses/{response_id}/cancel?beta=true response-property-one-of-removed `subschema #2` `allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id}/input_items response-property-one-of-removed `subschema #2` `data/items/oneOf[#/components/schemas/AdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id}/input_items response-property-one-of-removed `subschema #2` `data/items/oneOf[#/components/schemas/ToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/Filters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id}/input_items?beta=true response-property-one-of-removed `subschema #2` `data/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id}/input_items?beta=true response-property-one-of-removed `subschema #2` `data/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "DELETE /responses/{response_id}?beta=true response-optional-property-removed `misalignment` `404`"
+    - "GET /responses/{response_id}?beta=true response-property-one-of-removed `subschema #2` `allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id}?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id}?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id}?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "GET /responses/{response_id}?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200`"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (application/json)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[#/components/schemas/BetaResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[#/components/schemas/BetaResponseProperties]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaAdditionalToolsItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaAdditionalTools]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `subschema #2` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaToolSearchOutput]/tools/items/oneOf[subschema #2: File search]/filters/anyOf[#/components/schemas/BetaFilters]/anyOf[subschema #2: Compound Filter]/filters/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /threads/runs response-property-one-of-removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` `response_format` `oneOf` `200`"
+    - "GET /threads/{thread_id}/runs response-property-one-of-removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` `data/items/response_format` `oneOf` `200`"
+    - "POST /threads/{thread_id}/runs response-property-one-of-removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` `response_format` `oneOf` `200`"
+    - "GET /threads/{thread_id}/runs/{run_id} response-property-one-of-removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` `response_format` `oneOf` `200`"
+    - "POST /threads/{thread_id}/runs/{run_id} response-property-one-of-removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` `response_format` `oneOf` `200`"
+    - "POST /threads/{thread_id}/runs/{run_id}/cancel response-property-one-of-removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` `response_format` `oneOf` `200`"
+    - "POST /threads/{thread_id}/runs/{run_id}/submit_tool_outputs response-property-one-of-removed `#/components/schemas/ResponseFormatText, #/components/schemas/ResponseFormatJsonObject, #/components/schemas/ResponseFormatJsonSchema, subschema #1` `response_format` `oneOf` `200`"
+    - "POST /vector_stores/{vector_store_id}/file_batches response-property-enum-value-removed `vector_store.files_batch` `object` `200`"
+    - "GET /vector_stores/{vector_store_id}/file_batches/{batch_id} response-property-enum-value-removed `vector_store.files_batch` `object` `200`"
+    - "POST /vector_stores/{vector_store_id}/file_batches/{batch_id}/cancel response-property-enum-value-removed `vector_store.files_batch` `object` `200`"
+  reason: >-
+    Response-only: oasdiff files these 2026-10-03 removals under a response, and darnit finds what
+    code sends, not what it reads.
+
+- items:
+    - "GET /conversations/{conversation_id}/items response-required-property-removed `data/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "POST /conversations/{conversation_id}/items response-required-property-removed `data/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "GET /conversations/{conversation_id}/items/{item_id} response-required-property-removed `oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "POST /responses response-required-property-removed `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (application/json)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[#/components/schemas/ResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses/compact response-required-property-removed `output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "POST /responses/compact?beta=true response-required-property-removed `output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "GET /responses/{response_id} response-required-property-removed `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "POST /responses/{response_id}/cancel response-required-property-removed `allOf[subschema #3]/output/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-required-property-removed `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "GET /responses/{response_id}/input_items response-required-property-removed `data/items/oneOf[#/components/schemas/ComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "GET /responses/{response_id}/input_items?beta=true response-required-property-removed `data/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "GET /responses/{response_id}?beta=true response-required-property-removed `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200`"
+    - "POST /responses?beta=true response-required-property-removed `allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (application/json)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseOutputItemAddedEvent]/item/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[#/components/schemas/BetaResponseOutputItemDoneEvent]/item/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-required-property-removed `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/output/items/oneOf[#/components/schemas/BetaComputerToolCallOutputResource]/allOf[subschema #2]/id` `200` (text/event-stream)"
+    - "POST /audio/voices response-property-enum-value-removed `prompt` `type` `200`"
+    - "POST /responses response-property-one-of-removed `#/components/schemas/NamespaceToolParam` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (application/json)"
+    - "POST /responses response-property-one-of-removed `#/components/schemas/NamespaceToolParam` `anyOf[#/components/schemas/ResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `#/components/schemas/NamespaceToolParam` `anyOf[#/components/schemas/ResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `#/components/schemas/NamespaceToolParam` `anyOf[#/components/schemas/ResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `#/components/schemas/NamespaceToolParam` `anyOf[#/components/schemas/ResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `#/components/schemas/NamespaceToolParam` `anyOf[#/components/schemas/ResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses response-property-one-of-removed `#/components/schemas/NamespaceToolParam` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "GET /responses/{response_id} response-property-one-of-removed `#/components/schemas/NamespaceToolParam` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel response-property-one-of-removed `#/components/schemas/NamespaceToolParam` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/ToolSearchOutputItemParam]/tools/items/` `oneOf` `200`"
+    - "POST /responses/{response_id}/cancel?beta=true response-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf` `200`"
+    - "GET /responses/{response_id}?beta=true response-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf` `200`"
+    - "POST /responses?beta=true response-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (application/json)"
+    - "POST /responses?beta=true response-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `anyOf[#/components/schemas/BetaResponseCompletedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `anyOf[#/components/schemas/BetaResponseCreatedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `anyOf[#/components/schemas/BetaResponseFailedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `anyOf[#/components/schemas/BetaResponseInProgressEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `anyOf[#/components/schemas/BetaResponseIncompleteEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+    - "POST /responses?beta=true response-property-one-of-removed `#/components/schemas/BetaNamespaceToolParam` `anyOf[subschema #57: ResponseQueuedEvent]/response/allOf[subschema #3]/instructions/anyOf[subschema #1]/oneOf[subschema #2: Input item list]/items/oneOf[subschema #2: Item]/oneOf[#/components/schemas/BetaToolSearchOutputItemParam]/tools/items/` `oneOf` `200` (text/event-stream)"
+  reason: >-
+    Response-only: oasdiff files these 2026-10-12 removals under a response, and darnit finds what
+    code sends, not what it reads.
+
+- items:
+    - "GET /agents/sessions response-optional-property-removed `data/items/spend_control` `200`"
+    - "POST /agents/sessions response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control` `201` (text/event-stream)"
+    - "POST /agents/sessions response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control` `201` (text/event-stream)"
+    - "POST /agents/sessions response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control` `201` (text/event-stream)"
+    - "POST /agents/sessions response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control` `201` (text/event-stream)"
+    - "POST /agents/sessions response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control` `201` (text/event-stream)"
+    - "POST /agents/sessions response-optional-property-removed `spend_control` `201` (application/json)"
+    - "GET /agents/sessions/{session_id} response-optional-property-removed `spend_control` `200`"
+    - "POST /agents/sessions/{session_id} response-optional-property-removed `spend_control` `200`"
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionCreated]/session/spend_control` `200`"
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionFailed]/session/spend_control` `200`"
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionIdle]/session/spend_control` `200`"
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionInProgress]/session/spend_control` `200`"
+    - "GET /agents/sessions/{session_id}/events response-optional-property-removed `oneOf[#/components/schemas/SessionEventAgentSessionRequiresAction]/session/spend_control` `200`"
+    - "POST /organization/projects/{project_id}/service_accounts/{service_account_id}/api_keys response-non-success-status-removed `409`"
+  reason: >-
+    Response-only: oasdiff files these 2026-10-26 removals under a response, and darnit finds what
+    code sends, not what it reads.

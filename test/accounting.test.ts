@@ -1,11 +1,24 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { parse as parseYaml } from "yaml";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { account, NotCoveredSchema, RemovalSchema, removalsFrom, type Removal } from "../src/corpus/accounting.js";
+import {
+  account,
+  appendRemovals,
+  deprecatedItems,
+  NotCoveredSchema,
+  RemovalSchema,
+  removalItems,
+  removalsFrom,
+  requestSchemas,
+  type Removal,
+} from "../src/corpus/accounting.js";
 import { deriveCandidates } from "../src/corpus/candidates.js";
 import { changelog } from "../src/corpus/oasdiff.js";
 import { parseSpec, type Spec } from "../src/corpus/spec.js";
@@ -16,7 +29,7 @@ import { cpuTime } from "./helpers.js";
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const read = (rel: string) => readFile(join(ROOT, rel), "utf8");
 
-const record = (slug: string, endpoints: string[], fields: string[], contexts = [`({ ${fields[0]}: $V })`]) =>
+const record = (slug: string, endpoints: string[], fields: string[], contexts = [`({ ${fields[0] ?? "x"}: $V })`], sdkSymbols?: string[]) =>
   parseChangeRecord(
     {
       id: `openai:2026-01-01:${slug}`,
@@ -24,7 +37,7 @@ const record = (slug: string, endpoints: string[], fields: string[], contexts = 
       vendor: "openai",
       announcedAt: "2026-01-01",
       kind: "deprecation",
-      surface: { endpoints, fields },
+      surface: { endpoints, fields, ...(sdkSymbols ? { sdkSymbols } : {}) },
       classification: "semantic",
       sources: [{ url: "https://example.com/openapi.yaml" }],
       detection: { astGrepPatterns: { js: contexts.map((context) => ({ context, selector: "pair" })) } },
@@ -83,11 +96,15 @@ describe("account", () => {
     expect(both.unaccounted).toEqual(["schema Model enum gpt-4", "schema Model enum gpt-4o", "schema Response property status"]);
   });
 
-  it("covers a deprecated enum value only when a record's patterns name that exact value", () => {
+  it("covers a deprecated enum value only when a record for a field holding it sets that field to that exact value", () => {
     const gpt4o = record("gpt-4o", ["/v1/a"], ["model"], ['({ model: "gpt-4o" })']);
     const result = account({ vendor: "openai", spec: small, removals: [], records: [gpt4o], notCovered: [] });
     expect(result.covered.get("schema Model enum gpt-4o")).toEqual([gpt4o.id]);
     expect(result.unaccounted).toContain("schema Model enum gpt-4");
+
+    const voice = record("voice", ["/v1/a"], ["voice"], ['({ voice: "gpt-4o" })']);
+    const other = account({ vendor: "openai", spec: small, removals: [], records: [voice], notCovered: [] });
+    expect(other.unaccounted).toContain("schema Model enum gpt-4o");
   });
 
   it("does not credit a record for /v1/chat/completions with a field on the legacy /completions", () => {
@@ -104,6 +121,26 @@ describe("account", () => {
     const entries = [{ id: "request-property-deprecated", level: 1 as const, text: "request property `max_tokens` deprecated", operation: "POST", path: "/completions" }];
     const derived = deriveCandidates({ vendor: "openai", config: { spec: "https://example.com/openapi.yaml" }, entries, spec: {}, existing: [maxTokens], observedAt: "2026-01-01" });
     expect(derived.candidates.map((c) => c.record.surface.endpoints)).toEqual([["/completions"]]);
+  });
+
+  it("covers a deprecated operation or request schema by a record for the endpoint or its SDK call", () => {
+    const spec = {
+      paths: { "/old": { post: { deprecated: true, ...body("OldRequest") }, get: { deprecated: true } } },
+      components: { schemas: { OldRequest: { deprecated: true } } },
+    };
+    const run = (...records: ReturnType<typeof record>[]) =>
+      account({ vendor: "openai", spec, removals: [], records, notCovered: [], symbols: { "POST /old": "old.create" } });
+    expect(run().unaccounted).toEqual(["POST /old", "GET /old", "schema OldRequest"]);
+    expect(run(record("post-old", ["POST /v1/old"], [])).unaccounted).toEqual(["GET /old"]);
+    expect(run(record("old", ["/v1/old"], [])).unaccounted).toEqual([]);
+    expect(run(record("old-call", ["/v1/elsewhere"], [], undefined, ["old.create"])).unaccounted).toEqual(["GET /old"]);
+    // A record for one field of the endpoint does not cover the whole operation.
+    expect(run(record("old-field", ["/v1/old"], ["x"])).unaccounted).toEqual(["POST /old", "GET /old", "schema OldRequest"]);
+  });
+
+  it("walks a YAML alias that contains itself once", () => {
+    const spec = parseSpec("components:\n  schemas:\n    Loop: &loop\n      deprecated: true\n      properties:\n        again: *loop\n");
+    expect(deprecatedItems(spec).map((i) => i.key)).toEqual(["schema Loop"]);
   });
 
   it("sorts not-covered entries into reasons, open items, and entries that name nothing or a covered item", () => {
@@ -131,10 +168,42 @@ describe("account", () => {
       { observedAt: "2026-01-01", id: "request-property-removed", operation: "POST", path: "/b", text: "removed the request property `gone`" },
       { observedAt: "2026-01-01", id: "request-property-removed", operation: "POST", path: "/b", text: "removed the request property `a/b`" },
       { observedAt: "2026-01-01", id: "api-schema-removed", text: "removed the schema `Old`" },
+      { observedAt: "2026-01-01", id: "api-removed-without-deprecation", operation: "POST", path: "/c", text: "api removed without deprecation" },
     ];
-    const result = account({ vendor: "openai", spec: {}, removals, records: [record("gone", ["/b"], ["gone"])], notCovered: [] });
-    expect([...result.covered.keys()]).toEqual(["POST /b request-property-removed gone"]);
-    expect(result.unaccounted).toEqual(["POST /b request-property-removed a/b", "api-schema-removed Old"]);
+    const result = account({ vendor: "openai", spec: {}, removals, records: [record("gone", ["/b"], ["gone"]), record("c", ["POST /v1/c"], [])], notCovered: [] });
+    expect([...result.covered.keys()]).toEqual(["POST /b request-property-removed `gone`", "POST /c api-removed-without-deprecation"]);
+    expect(result.unaccounted).toEqual(["POST /b request-property-removed `a/b`", "api-schema-removed `Old`"]);
+  });
+
+  it("keys each removal on everything that names it, so one entry cannot stand for another", () => {
+    const at = { observedAt: "2026-01-01", operation: "GET", path: "/files" };
+    const removals: Removal[] = [
+      { ...at, id: "request-parameter-removed", text: "deleted the `query` request parameter `limit`" },
+      { ...at, id: "request-parameter-removed", text: "deleted the `query` request parameter `purpose`" },
+      { ...at, operation: "POST", path: "/images/edits", id: "request-property-enum-value-removed", text: "removed the enum value `auto` of the request property `background`" },
+      { ...at, operation: "POST", path: "/images/edits", id: "request-property-enum-value-removed", text: "removed the enum value `auto` of the request property `quality`" },
+      { ...at, operation: "POST", path: "/x", id: "request-property-removed", text: "removed the request property `a` (media type: multipart/form-data)" },
+      { ...at, operation: "POST", path: "/x", id: "request-property-removed", text: "removed the request property `a` (media type: application/json)" },
+    ];
+    expect(removalItems(removals).map((i) => i.key)).toEqual([
+      "GET /files request-parameter-removed `query` `limit`",
+      "GET /files request-parameter-removed `query` `purpose`",
+      "POST /images/edits request-property-enum-value-removed `auto` `background`",
+      "POST /images/edits request-property-enum-value-removed `auto` `quality`",
+      "POST /x request-property-removed `a` (multipart/form-data)",
+      "POST /x request-property-removed `a` (application/json)",
+    ]);
+    const result = account({
+      vendor: "openai",
+      spec: {},
+      removals: removals.slice(0, 2),
+      records: [record("purpose", ["/v1/files"], ["purpose"])],
+      notCovered: [{ items: ["GET /files request-parameter-removed `query` `limit`"], reason: "Meant for limit only." }],
+    });
+    expect(result.covered.get("GET /files request-parameter-removed `query` `purpose`")).toEqual(["openai:2026-01-01:purpose"]);
+    expect(account({ vendor: "openai", spec: {}, removals: removals.slice(0, 2), records: [], notCovered: [{ items: ["GET /files request-parameter-removed `query` `limit`"], reason: "Meant for limit only." }] }).unaccounted).toEqual([
+      "GET /files request-parameter-removed `query` `purpose`",
+    ]);
   });
 
   it("logs every removal in a corpus diff, and nothing else", async () => {
@@ -145,6 +214,23 @@ describe("account", () => {
       ["request-property-removed", "POST", "/chat/completions"],
     ]);
     expect(RemovalSchema.array().parse(removed)).toEqual(removed);
+  });
+
+  it("appends to the removals log, starts one when there is none, and never replaces one it cannot read", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-removals-"));
+    try {
+      const file = join(dir, "removals.json");
+      const one: Removal = { observedAt: "2026-01-01", id: "api-schema-removed", text: "removed the schema `A`" };
+      const two: Removal = { ...one, text: "removed the schema `B`" };
+      await appendRemovals(file, [one]);
+      await appendRemovals(file, [two]);
+      expect(JSON.parse(await readFile(file, "utf8"))).toEqual([one, two]);
+      const denied = () => Promise.reject(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }));
+      await expect(appendRemovals(file, [one], denied)).rejects.toThrow("EACCES");
+      expect(JSON.parse(await readFile(file, "utf8"))).toEqual([one, two]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("rejects an entry listed twice, or with both a reason and needs-record", () => {
@@ -189,7 +275,26 @@ describe("npm run accounting", () => {
     });
     expect({ unaccounted: result.unaccounted, stale: result.stale, redundant: result.redundant }).toEqual({ unaccounted: [], stale: [], redundant: [] });
     expect(result.deprecated).toBeGreaterThan(200);
-    expect(result.removals).toBeGreaterThan(20);
+    expect(result.removals).toBeGreaterThan(400);
+  });
+
+  it("says response-only only of schemas no request body reaches and of removals oasdiff files under a response", async () => {
+    const reached = new Set(requestSchemas(spec).flatMap((op) => [...op.names]));
+    const notCovered = NotCoveredSchema.parse(parseYaml(await read("packs/openai/not-covered.yaml")));
+    const claims = notCovered.filter((e) => e.reason?.startsWith("Response-only")).flatMap((e) => e.items);
+    expect(claims.length).toBeGreaterThan(300);
+    for (const key of claims) {
+      const [first, name] = key.split(" ");
+      if (first === "schema") expect(reached.has(name!), key).toBe(false);
+      else expect(key.split(" ").find((w) => /^[a-z]+(-[a-z]+)+$/.test(w)), key).toMatch(/^response-/);
+    }
+  });
+
+  it("credits no record with a field on an endpoint it does not name", async () => {
+    const copy = structuredClone(spec);
+    schema(copy, "CreateCompletionRequest").properties!.max_tokens!.deprecated = true;
+    const result = account({ vendor: "openai", spec: copy, removals: [], records: (await loadRecords()).map((l) => l.record), notCovered: [] });
+    expect(result.unaccounted).toContain("schema CreateCompletionRequest property max_tokens");
   });
 
   it("fails on a new deprecated property, naming it with control characters escaped", async () => {
@@ -215,12 +320,62 @@ describe("npm run accounting", () => {
     const extra = { observedAt: "2026-01-01", id: "request-property-removed", operation: "POST", path: "/responses", text: "removed the request property `fake_removed`" };
     const out = await run(() => {}, JSON.stringify([...(JSON.parse(removals) as unknown[]), extra]));
     expect(out.status).toBe(1);
-    expect(out.stdout).toContain('  "POST /responses request-property-removed fake_removed"\n');
+    expect(out.stdout).toContain('  "POST /responses request-property-removed `fake_removed`"\n');
   });
 
   it("accounts for OpenAI's whole spec within its time budget", async () => {
     const records = (await loadRecords()).map((l) => l.record);
     const ms = await cpuTime(() => account({ vendor: "openai", spec, removals: [], records, notCovered: [] }), 3, 500);
     expect(ms).toBeLessThan(500);
+  });
+});
+
+describe("npm run corpus", () => {
+  const tsx = join(ROOT, "node_modules", ".bin", "tsx");
+  // Removals that make no candidate record: a schema, and an enum value of a request property.
+  const spec = (values: string, extra: string) =>
+    `openapi: 3.1.0\ninfo: { title: t, version: "1" }\npaths:\n  /speak:\n    post:\n      requestBody:\n        content:\n          application/json:\n            schema:\n              type: object\n              properties:\n                voice: { type: string, enum: [${values}] }\n      responses:\n        "200": { description: ok }\ncomponents:\n  schemas:\n    Kept: { type: string }\n${extra}`;
+  const before = spec("alloy, aube", "    Gone: { type: string }\n");
+  const after = spec("alloy", "");
+
+  // Serves `after` as the vendor's spec to a corpus run whose last snapshot is `before`.
+  async function refresh(seed: (dir: string) => Promise<void>) {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-corpus-"));
+    const server = createServer((_, res) => res.end(after));
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    try {
+      const { port } = server.address() as AddressInfo;
+      await mkdir(join(dir, "corpus", "openai"), { recursive: true });
+      await writeFile(join(dir, "vendors.yml"), `openai:\n  spec: http://127.0.0.1:${port}/openapi.yaml\n`);
+      await writeFile(join(dir, "corpus", "openai", "openapi.yaml"), before);
+      await writeFile(join(dir, "corpus", "openai", "snapshot.json"), JSON.stringify({ sha256: "older" }));
+      await seed(join(dir, "corpus", "openai"));
+      const run = await promisify(execFile)(tsx, ["scripts/corpus.ts", "--root", dir], { cwd: ROOT }).then(
+        () => 0,
+        (err: { code?: number }) => err.code ?? 1,
+      );
+      const file = (name: string) => readFile(join(dir, "corpus", "openai", name), "utf8");
+      return { run, removals: await file("removals.json"), spec: await file("openapi.yaml") };
+    } finally {
+      server.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("appends the removals of each refresh to the log", async () => {
+    const earlier: Removal = { observedAt: "2026-01-01", id: "api-schema-removed", text: "removed the schema `Earlier`" };
+    const out = await refresh((dir) => writeFile(join(dir, "removals.json"), JSON.stringify([earlier])));
+    expect(out.run).toBe(0);
+    const log = RemovalSchema.array().parse(JSON.parse(out.removals));
+    expect(log[0]).toEqual(earlier);
+    expect(removalItems(log.slice(1)).map((i) => i.key)).toEqual(["POST /speak request-property-enum-value-removed `aube` `voice`", "api-schema-removed `Gone`"]);
+    expect(out.spec).toBe(after);
+  });
+
+  it("keeps the old spec when the log cannot be read, so the removals are taken again next run", async () => {
+    const out = await refresh((dir) => writeFile(join(dir, "removals.json"), "not json"));
+    expect(out.run).not.toBe(0);
+    expect(out.removals).toBe("not json");
+    expect(out.spec).toBe(before);
   });
 });

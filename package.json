@@ -30,6 +30,7 @@
     "test:fixtures": "tsx scripts/fixtures.ts",
     "test:e2e": "npm run build && tsx scripts/e2e.ts",
     "corpus": "tsx scripts/corpus.ts",
+    "corpus:backfill": "tsx scripts/backfill-removals.ts",
     "accounting": "tsx scripts/accounting.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:fixtures",
     "golden": "npm run build && tsx scripts/golden.ts"

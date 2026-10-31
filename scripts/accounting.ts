@@ -2,9 +2,10 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { account, NotCoveredSchema, RemovalSchema } from "../src/corpus/accounting.js";
-import { forTerminal } from "../src/fix.js";
+import { account, NotCoveredSchema, readOptional, RemovalSchema } from "../src/corpus/accounting.js";
+import type { VendorConfig } from "../src/corpus/candidates.js";
 import { parseSpec } from "../src/corpus/spec.js";
+import { forTerminal } from "../src/fix.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 
 // Every deprecation in each vendor's spec and every removal in its corpus history is either covered
@@ -16,28 +17,26 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const at = process.argv.indexOf("--corpus");
 const corpus = at > 0 ? resolve(process.argv[at + 1] ?? "") : join(ROOT, "corpus");
 
-const vendors = Object.keys(parseYaml(await readFile(join(ROOT, "vendors.yml"), "utf8")) as Record<string, unknown>);
+const vendors = parseYaml(await readFile(join(ROOT, "vendors.yml"), "utf8")) as Record<string, VendorConfig>;
 const records = (await loadRecords()).map((l) => l.record);
-const optional = (file: string) => readFile(file, "utf8").catch((err: NodeJS.ErrnoException) => (err.code === "ENOENT" ? "" : Promise.reject(err)));
 // Keys are spec text: quoted, and anything outside printable ASCII written as an escape, so a name cannot hide or forge a line.
 const show = (key: string) => JSON.stringify(key).replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
-const log = (line: string) => console.log(forTerminal(line));
+const out: string[] = [];
 
-for (const vendor of vendors) {
+for (const [vendor, config] of Object.entries(vendors)) {
   const notCoveredFile = `packs/${vendor}/not-covered.yaml`;
   const result = account({
     vendor,
     spec: parseSpec(await readFile(join(corpus, vendor, "openapi.yaml"), "utf8")),
-    removals: RemovalSchema.array().parse(JSON.parse((await optional(join(corpus, vendor, "removals.json"))) || "[]")),
+    removals: RemovalSchema.array().parse(JSON.parse((await readOptional(join(corpus, vendor, "removals.json"))) || "[]")),
     records,
-    notCovered: NotCoveredSchema.parse(parseYaml(await optional(join(PACKS_DIR, vendor, "not-covered.yaml"))) ?? []),
+    notCovered: NotCoveredSchema.parse(parseYaml(await readOptional(join(PACKS_DIR, vendor, "not-covered.yaml"))) ?? []),
+    symbols: config.symbols,
   });
-  log(`${vendor}: ${result.deprecated} deprecated in the spec, ${result.removals} removals in the corpus history`);
-  log(`  ${result.covered.size} covered by records, ${result.reasons.length} with a reason, ${result.needsRecord.length} need a record, ${result.unaccounted.length} unaccounted for`);
+  out.push(`${vendor}: ${result.deprecated} deprecated in the spec, ${result.removals} removals in the corpus history`);
+  out.push(`  ${result.covered.size} covered by records, ${result.reasons.length} with a reason, ${result.needsRecord.length} need a record, ${result.unaccounted.length} unaccounted for`);
   const section = (title: string, lines: string[]) => {
-    if (lines.length === 0) return;
-    log(`\n${title}`);
-    for (const line of lines) log(`  ${line}`);
+    if (lines.length > 0) out.push("", title, ...lines.map((line) => `  ${line}`));
   };
   const open = new Map<string, string[]>();
   for (const n of result.needsRecord) open.set(n.proposal, [...(open.get(n.proposal) ?? []), n.key]);
@@ -47,3 +46,4 @@ for (const vendor of vendors) {
   section(`Entries in ${notCoveredFile} for items a record covers (remove them):`, result.redundant.map((r) => `${show(r.key)}: ${r.ids.join(", ")}`));
   if (result.unaccounted.length + result.stale.length + result.redundant.length > 0) process.exitCode = 1;
 }
+console.log(forTerminal(out.join("\n")));
