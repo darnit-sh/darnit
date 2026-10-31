@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { detectBuildCommand, detectTestCommand, runTests, unreadSettings } from "../src/tests.js";
 
 const tempDirs: string[] = [];
@@ -152,6 +152,21 @@ describe("runTests", () => {
     }
   });
 
+  it("runs the commands on the repository it was given when the environment points git at another one", async () => {
+    const [mine, other] = [await dirWith({}), await dirWith({})];
+    for (const d of [mine, other]) execFileSync("git", ["init", "-q"], { cwd: d });
+    vi.stubEnv("GIT_DIR", join(other, ".git"));
+    try {
+      // What a husky `prepare` script runs.
+      expect(await runTests(mine, "git config core.hooksPath .husky")).toMatchObject({ passed: true });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    const hooksPath = (d: string) => execFileSync("git", ["config", "--default", "", "core.hooksPath"], { cwd: d, encoding: "utf8" }).trim();
+    expect(hooksPath(other)).toBe("");
+    expect(hooksPath(mine)).toBe(".husky");
+  });
+
   it("never hands darnit's GitHub token to the repository's commands, and never shows it", async () => {
     const dir = await dirWith({ "leak.txt": "ghp_testtoken1234567890" });
     const saved = { GITHUB_TOKEN: process.env.GITHUB_TOKEN, GH_TOKEN: process.env.GH_TOKEN };
@@ -164,6 +179,14 @@ describe("runTests", () => {
       const file = await runTests(dir, "cat leak.txt");
       expect(file.output).not.toContain("ghp_testtoken1234567890");
       expect(file.output).toContain("***");
+      // Nor any auth header's value, such as one git config shows.
+      await writeFile(join(dir, "leak.txt"), "http.https://github.com/.extraheader AUTHORIZATION: basic c29tZW9uZTpzZWNyZXQ=");
+      expect((await runTests(dir, "cat leak.txt")).output).toBe("http.https://github.com/.extraheader AUTHORIZATION: basic ***");
+      // Nor in base64, as a git auth header carries it, with no header around it.
+      for (const plain of ["x-access-token:ghp_testtoken1234567890", "ghp_testtoken1234567890"]) {
+        await writeFile(join(dir, "leak.txt"), Buffer.from(plain).toString("base64"));
+        expect((await runTests(dir, "cat leak.txt")).output).toMatch(/^\*\*\*=*$/);
+      }
       // Nor by wrapping it in terminal codes that, once removed, would cut or join it.
       for (const wrapped of ["\u001bghp_testtoken1234567890", "\u001b[ghp_testtoken1234567890", "gh\u001b[0mp_testtoken1234567890"]) {
         await writeFile(join(dir, "leak.txt"), wrapped);
@@ -175,6 +198,25 @@ describe("runTests", () => {
         else process.env[k] = v;
       }
     }
+  });
+
+  it("hides a token stored with surrounding whitespace, as darnit sends it trimmed", async () => {
+    const header = Buffer.from("x-access-token:ghp_testtoken1234567890").toString("base64");
+    const dir = await dirWith({ "leak.txt": `token ghp_testtoken1234567890 end ${header}` });
+    const saved = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = " ghp_testtoken1234567890\n";
+    try {
+      expect((await runTests(dir, "cat leak.txt")).output).toMatch(/^token \*\*\* end \*\*\*=*$/);
+    } finally {
+      if (saved === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = saved;
+    }
+  });
+
+  it("hides the credential on a basic, bearer or token Authorization line, and nothing else", async () => {
+    const lines = ["Authorization: see the docs", "authorization: basic", "next line", "Authorization: Basic c2VjcmV0 x", "AUTHORIZATION: bearer abc.def", "Proxy-Authorization:\tTOKEN ghx_1"];
+    const dir = await dirWith({ "leak.txt": lines.join("\n") });
+    expect((await runTests(dir, "cat leak.txt")).output.split("\n")).toEqual([...lines.slice(0, 3), "Authorization: Basic *** x", "AUTHORIZATION: bearer ***", "Proxy-Authorization:\tTOKEN ***"]);
   });
 
   it("kills a hung command after the timeout", async () => {

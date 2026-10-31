@@ -172,9 +172,15 @@ nothing affects the repository.
 ### `darnit fix`
 
 Rewrites the affected code, runs your build and tests, and shows the diff. It only runs
-inside a git repository, so everything it does can be undone with git. Commit
-first if those files have changes of your own. It touches only the files `check`
-reported.
+inside a git repository, so everything it does can be undone with git. It touches
+only the files `check` reported, and refuses (exit 2) when any of them is not
+committed as it is: changed (even only in line endings git would convert),
+staged, untracked, ignored, marked `assume-unchanged` or `skip-worktree`,
+inside a nested repository or submodule, or named differently from git only in
+case. Commit or stash those first, or preview with `--dry-run`. One case is not
+caught: with a clean filter that changes text as git stores it, such as one that
+strips a secret, git reports no change, but the rewritten file cannot be put
+back byte for byte.
 
 It finds your checks on its own: a `typecheck` or `build` script (or the
 repo's own TypeScript compiler), then your tests (`npm test`, `pnpm test`,
@@ -292,12 +298,26 @@ permissions:
   contents: write
   pull-requests: write
 
-# ...same as above, then replace the last step with:
+# ...same as above, with the checkout keeping no token on disk:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+# ...and the last step replaced with:
       - run: npm ci   # or whatever installs your project
       - run: cd "${RUNNER_TEMP:?}" && npx darnit fix --pr "${GITHUB_WORKSPACE:?}"
         env:
           GITHUB_TOKEN: ${{ github.token }}
 ```
+
+With `persist-credentials: false` the checkout leaves no token in git config or
+under `$RUNNER_TEMP` for your install scripts and tests to read. darnit hands the
+token to its own git calls to github.com through each command's environment.
+That does not hold against the repository's own code: your install scripts and
+tests run in the same job, and git config they write to the repository, such as
+`http.curloptResolve` with `http.sslVerify false`, can send darnit's git calls to
+GitHub, and the token with them, to another server. That includes the check for
+an existing branch, which runs before any test, even when nothing is pushed.
+This workflow cannot prevent that. On code you do not trust, run `check` only.
 
 Also turn on *Settings → Actions → General → Allow GitHub Actions to create
 and approve pull requests*. Pull requests opened this way don't trigger your
@@ -362,7 +382,7 @@ To add a vendor, open a pull request adding its spec URL and SDK calls to
   wrappers, proxies, a client passed in from elsewhere, and an address read from
   configuration.
 - `fix` runs in your working tree, not a sandbox. Your test command runs as you.
-- Tested on macOS and Linux with Node 22 and 24. Windows is not supported yet.
+- Tested on macOS and Linux with Node 22, 24 and 26. Windows is not supported yet.
 
 ## License
 
