@@ -90,6 +90,18 @@ describe("parsePlan", () => {
     expect(() => parsePlan(text(group({ patch })), ids)).toThrow(/patch is not a git diff of exactly these files/);
   });
 
+  it("rejects .git with backslashes, which NTFS reads as folder separators", () => {
+    // The patch git prints for such a name: quoted, with each backslash doubled.
+    const quoted = (f: string) => {
+      const q = (p: string) => `"${p.replaceAll("\\", "\\\\")}"`;
+      return PATCH.replace("diff --git a/app.py b/app.py", `diff --git ${q(`a/${f}`)} ${q(`b/${f}`)}`).replace("--- a/app.py", `--- ${q(`a/${f}`)}`).replace("+++ b/app.py", `+++ ${q(`b/${f}`)}`);
+    };
+    expect(parsePlan(text(group({ files: ["sub\\app.py"], patch: quoted("sub\\app.py") })), ids).groups[0]!.files).toEqual(["sub\\app.py"]);
+    for (const file of [".git\\config", "sub\\.git\\hooks\\pre-commit", "GIT~1\\config"]) {
+      expect(() => parsePlan(text(group({ files: [file], patch: quoted(file) })), ids)).toThrow(/not a path inside the repository/);
+    }
+  });
+
   it("rejects a file listed that the patch does not change", () => {
     expect(() => parsePlan(text(group({ files: ["app.py", "b.py"] })), ids)).toThrow(/patch is not a git diff/);
   });
