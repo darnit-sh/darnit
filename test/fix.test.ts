@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -8,10 +8,13 @@ import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parse } from "yaml";
 import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
+import { WORKFLOW } from "../src/init.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
-import { cpuTime } from "./helpers.js";
+import { runTests } from "../src/tests.js";
+import { annotations, cpuTime, matchersAtDarnit, SETUP_NODE_MATCHERS } from "./helpers.js";
 
 // A short limit for the build and test runs, and a count of them, so a hung check costs a test half a second.
 const runs = vi.hoisted(() => ({ limitMs: undefined as number | undefined, count: 0 }));
@@ -87,6 +90,101 @@ async function darnitWith(extra: NodeJS.ProcessEnv, cwd: string, ...args: string
     ),
   );
 }
+
+describe("text from the repository in output", () => {
+  const HIDDEN = /[\u0080-\u009f\u061C\u200B\u200E\u200F\u2028\u2029\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/;
+  const call = 'max_tokens: /*\u202E\u2066*/ cap("\u202Eab\u2069\u009b\u200B\uFEFF1A")';
+  const plain = 'max_tokens: cap("café 日本 🎉 👨‍👩‍👧 שלום")';
+  const source = `import OpenAI from "openai";\nconst c = new OpenAI();\nexport const r = c.chat.completions.create({ ${call} });\nexport const s = c.chat.completions.create({ ${plain} });\n`;
+
+  it("writes out direction-changing and C1 characters in check and check --json, and leaves ordinary Unicode alone", async () => {
+    const dir = await repoWith({ "app.ts": source });
+    const { stdout } = await darnit(dir, "check");
+    expect(stdout).not.toMatch(HIDDEN);
+    expect(stdout).toContain(String.raw`app.ts:3:46  max_tokens: /*\u202e\u2066*/ cap("\u202eab\u2069\u009b\u200b\ufeff1A")`);
+    expect(stdout).toContain(`app.ts:4:46  ${plain}`);
+    const json = await darnit(dir, "check", "--json");
+    expect(json.stdout).not.toMatch(HIDDEN);
+    expect((JSON.parse(json.stdout) as { hits: { text: string }[] }).hits.map((h) => h.text)).toEqual([call, plain]);
+  });
+
+  it("writes them out in fix's diff and fix --json", async () => {
+    const dir = await repoWith({ "app.ts": source });
+    const { stdout } = await darnit(dir, "fix", "--dry-run", "--no-test");
+    expect(stdout).not.toMatch(HIDDEN);
+    expect(stdout).toContain(String.raw`-export const r = c.chat.completions.create({ max_tokens: /*\u202e\u2066*/ cap("\u202eab\u2069\u009b\u200b\ufeff1A") });`);
+    expect(stdout).toContain(String.raw`+export const r = c.chat.completions.create({ max_completion_tokens: cap("\u202eab\u2069\u009b\u200b\ufeff1A") });`);
+    expect(stdout).toContain(`+export const s = c.chat.completions.create({ ${plain.replace("max_tokens", "max_completion_tokens")} });`);
+    const json = await darnit(dir, "fix", "--dry-run", "--no-test", "--json");
+    expect(json.stdout).not.toMatch(HIDDEN);
+    expect((JSON.parse(json.stdout) as { diff: string }).diff).toContain(`-export const r = c.chat.completions.create({ ${call} });`);
+  });
+
+  it("gives fix --json the address and path as they are, and writes them out on screen", async () => {
+    const local = 'import OpenAI from "openai";\nconst c = new OpenAI({ baseURL: "http://localhost:1\u202E\u001b[2Jabc/v1" });\nexport const r = c.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n';
+    const old = '{ "name": "openai", "version": "4.0.0" }';
+    for (const [files, expected, written] of [
+      [{ "local.ts": local }, "sent to localhost:1\u202E\u001b[2jabc, which may not be OpenAI", String.raw`needs a human: local.ts:3 (sent to localhost:1\u202e?[2jabc, which may not be OpenAI)`],
+      [{ "w\u202E\nd/app.js": SDK_CALL, "w\u202E\nd/node_modules/openai/package.json": old }, `(${join("w\u202E\nd", "node_modules", "openai")})`, String.raw`(w\u202e?d/node_modules/openai); upgrade it first`],
+    ] as const) {
+      const dir = await repoWith(files);
+      const json = await darnit(dir, "fix", "--dry-run", "--no-test", "--json");
+      expect(json.stdout).not.toMatch(HIDDEN);
+      const record = (JSON.parse(json.stdout) as { records: { reason: string; remaining: { note: string }[] }[] }).records[0]!;
+      expect([record.reason, ...record.remaining.map((r) => r.note)].join("\n")).toContain(expected);
+      const { stdout } = await darnit(dir, "fix", "--dry-run", "--no-test");
+      expect(stdout).not.toMatch(HIDDEN);
+      expect(stdout).toContain(written);
+    }
+    const note = "sent to localhost:1\u202E\u001b[2jabc, which may not be OpenAI";
+    const body = prBody((await loadRecords())[0]!.record, ["local.ts"], "t", { remaining: [{ file: "local.ts", line: 3, note }] });
+    expect(body).not.toContain("\u001b");
+    expect(body).not.toContain("\u202E");
+    expect(body).toContain("?[2jabc");
+  });
+
+  /**
+   * Peak live heap of darnit running `args` in `cwd`, collected at its first write to stdout and then at least every
+   * million characters, and the characters it wrote. Live heap, unlike resident memory, does not depend on when V8
+   * gets round to collecting, so two runs doing the same work measure the same.
+   */
+  const liveWhileWriting = (cwd: string, args: string[]) =>
+    new Promise<{ live: number; chars: number }>((resolve, reject) => {
+      const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+      // No "%" in it: a data URL reads that as an escape.
+      const hook =
+        "data:text/javascript,let last=-1,live=0,chars=0;const write=process.stdout.write.bind(process.stdout);" +
+        "process.stdout.write=(c,...r)=>{chars+=c.length;if(last<0||chars-last>=1048576){last=chars;gc();live=Math.max(live,process.memoryUsage().heapUsed)}return write(c,...r)};" +
+        "process.on('exit',()=>process.stderr.write('live '+live+' chars '+chars+'\\n'))";
+      const child = spawn(process.execPath, ["--expose-gc", "--import", import.meta.resolve("tsx"), "--import", hook, cli, ...args], {
+        cwd,
+        env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" },
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+      child.on("error", reject);
+      child.on("close", () => {
+        const [, live = NaN, chars = NaN] = (/live (\d+) chars (\d+)/.exec(stderr) ?? []).map(Number);
+        resolve({ live, chars });
+      });
+    });
+
+  it("holds no escaped copy of the output while writing it", async () => {
+    const file = (chars: string) =>
+      `import OpenAI from "openai";\nconst c = new OpenAI();\nexport const r = c.chat.completions.create({ max_tokens: cap("${chars.repeat(1_162_000)}") });\n`;
+    // 9.3 MB each, with as many characters: U+202E, U+2066 and U+009B take 3, 3 and 2 bytes in UTF-8, as do 日, 本 and é.
+    const crafted = await repoWith({ "app.ts": file("\u202E\u2066\u009b") });
+    const plain = await repoWith({ "app.ts": file("日本é") });
+    for (const args of [["check", "--json"], ["fix", "--dry-run", "--no-test"], ["fix", "--dry-run", "--no-test", "--json"]]) {
+      const [hidden, ordinary] = await Promise.all([liveWhileWriting(crafted, args), liveWhileWriting(plain, args)]);
+      // Both runs do the same work but for escaping, which makes the crafted output six times longer: holding even
+      // one escaped copy of it would add at least its length in bytes.
+      expect(hidden.chars, args.join(" ")).toBeGreaterThan(5 * ordinary.chars);
+      expect(hidden.live - ordinary.live, args.join(" ")).toBeLessThan(hidden.chars / 4);
+    }
+  }, 180_000);
+});
 
 describe("fix checks package versions before rewriting", () => {
   const PY_CALL = "from openai import OpenAI\nr = OpenAI().chat.completions.create(model='x', messages=[], max_tokens=5)\n";
@@ -852,6 +950,18 @@ describe("fix in GitHub Actions", () => {
     expect(notDarnits(run.stdout + run.stderr)).toEqual({ ran: [], stopped: false });
   });
 
+  it("prints repository text that setup-node's problem matchers annotate, which the workflow init writes removes first", async () => {
+    const owners = Object.keys(SETUP_NODE_MATCHERS);
+    const tests = await repoWith({ "sdk.js": SDK_CALL, "noise.js": 'console.log("src/x.ts(1,1): error TS2322: pwned"); process.exit(1);\n' });
+    const fixed = await darnitWith({ GITHUB_ACTIONS: "true" }, tests, "fix", "--test", "node noise.js");
+    expect(annotations(fixed.stdout + fixed.stderr, owners)).toEqual(["tsc: src/x.ts(1,1): error TS2322: pwned"]);
+    const named = await repoWith({ "1:1  error  pwned  rule.js": SDK_CALL });
+    const checked = await darnitWith({ GITHUB_ACTIONS: "true" }, named, "check");
+    expect(annotations(checked.stdout, owners)).toEqual(["eslint-stylish:   1:1  error  pwned  rule.js:2:83  max_tokens: 5"]);
+    const { steps } = (parse(WORKFLOW) as { jobs: { check: { steps: { uses?: string; run?: string }[] } } }).jobs.check;
+    expect(annotations(fixed.stdout + checked.stdout, matchersAtDarnit(steps))).toEqual([]);
+  });
+
   it("is plain text outside GitHub Actions", async () => {
     const dir = await repoWith({ "::error::pwned.js": SDK_CALL });
     expect((await darnit(dir, "check")).stdout).not.toContain("stop-commands");
@@ -977,6 +1087,22 @@ describe("fix --pr", () => {
     expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
     expect((await git(dir, ["branch", "--list", BRANCH])).trim()).toBe("");
     expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+  });
+
+  it("pushes nothing when the description would be over GitHub's length limit", async () => {
+    const { dir, bare, branch } = await repoWithOrigin();
+    const posts = stubGitHub(branch);
+    // A test command that passes, long enough to take the description past 65,536 characters.
+    const result = await fix(dir, { pr: true, repo: "o/r", test: `true # ${"x".repeat(70_000)}` });
+
+    expect(result.records[0]?.pr?.state).toBe("skipped");
+    expect(renderSummary(result)).toMatch(/skipped, its description would be 7\d{4} characters, over GitHub's limit of 65536; nothing pushed\n/);
+    expect(posts).toEqual([]);
+    expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe(branch);
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
   });
 
   it("lists what a partial rewrite left behind in the pull request", async () => {
@@ -1258,11 +1384,37 @@ describe("prBody", () => {
     expect(lines).toContain(`- \`\`a\`\\n\\n- [x] approved by @someone\\n\\n\`.ts:3\`\`: ${prose(remaining[0]!.note)}`);
   });
 
-  it("drops direction overrides from file names and keeps their edge spaces", async () => {
+  it("writes out direction overrides and C1 controls in file names and keeps their edge spaces", async () => {
     const record = (await loadRecords())[0]!.record;
-    const lines = prBody(record, ["bidi-\u202Egnp.ts", " a "], "t").split("\n");
-    expect(lines).toContain("- `bidi-gnp.ts`");
+    const lines = prBody(record, ["bidi-\u202Egnp\u009b.ts", " a "], "t").split("\n");
+    expect(lines).toContain("- `bidi-\\u202egnp\\u009b.ts`");
     expect(lines).toContain("- `  a  `");
+  });
+
+  it("stays under GitHub's 65,536-character limit when every character of the test output is written out", async () => {
+    const dir = await repoWith({ "a.txt": "a\n" });
+    // Kept output is cut to 16,384 characters, and U+200B takes six once written out.
+    const run = await runTests(dir, `node -e "for (let i = 0; i < 60; i++) console.log('\\u200b'.repeat(2000))"`);
+    const tests = { ...run, kind: "tests" as const };
+    for (const { record } of await loadRecords()) expect(prBody(record, ["app.py"], "t", { tests }).length).toBeLessThan(65_536);
+    expect(run.output.length).toBeLessThanOrEqual(16 * 1024);
+    expect(run.output).toMatch(/^(\\u200b)+$/m);
+  });
+
+  it("writes out zero-width characters in file names and keeps joined emoji whole", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const lines = prBody(record, ["a👨\u200D👩.ts", "z\u200Bw\u2060\uFEFF.ts"], "t").split("\n");
+    expect(lines).toContain("- `a👨\u200D👩.ts`");
+    expect(lines).toContain("- `z\\u200bw\\u2060\\ufeff.ts`");
+  });
+
+  it("writes out direction-changing characters in test output and leaves ordinary Unicode alone", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const output = 'FAIL app.test.ts\n  max_tokens: /*\u202E\u2066*/ cap("\u202Eab\u2069\u009b1A") // café 日本 🎉 👨‍👩‍👧 שלום';
+    const tests = { kind: "tests" as const, command: "npm test", passed: false, timedOut: false, output };
+    const body = prBody(record, ["app.ts"], "t", { tests });
+    expect(body).not.toMatch(/[\u0080-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/);
+    expect(body).toContain('max_tokens: /*\\u202e\\u2066*/ cap("\\u202eab\\u2069\\u009b1A") // café 日本 🎉 👨‍👩‍👧 שלום');
   });
 
   it("links every record in the footer to its page on darnit.sh", async () => {
@@ -1277,10 +1429,18 @@ describe("prBody", () => {
 });
 
 describe("forTerminal", () => {
-  it("keeps colors and line breaks, and drops every other control character", () => {
-    const text = "\u001b[31mred\u001b[0m\tok\n\u001b]52;c;Zm9v\u0007clip\u001b[2Jwipe\rover\u009b1Ahide\u0000";
-    expect(forTerminal(text, true, {})).toBe("\u001b[31mred\u001b[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
-    expect(forTerminal(text, false, {})).toBe("[31mred[0m\tok\n]52;c;Zm9vclip[2Jwipeover1Ahide");
+  it("keeps colors and line breaks, drops C0 control characters and writes out C1 ones", () => {
+    const text = "\u001b[31mred\u001b[0m\tok\n\u001b]52;c;Zm9v\u0007clip\u001b[2Jwipe\rover\u009b1Ahide\u0000\u007f";
+    expect(forTerminal(text, true, {})).toBe("\u001b[31mred\u001b[0m\tok\n]52;c;Zm9vclip[2Jwipeover\\u009b1Ahide\\u007f");
+    expect(forTerminal(text, false, {})).toBe("[31mred[0m\tok\n]52;c;Zm9vclip[2Jwipeover\\u009b1Ahide\\u007f");
+  });
+
+  it("writes out every direction-changing, zero-width and line-separating character, and leaves ordinary Unicode alone", () => {
+    const hidden = "\u061c\u200b\u200e\u200f\u2028\u2029\u202a\u202b\u202c\u202d\u202e\u2060\u2061\u2062\u2063\u2064\u2066\u2067\u2068\u2069\ufeff";
+    expect(forTerminal(`a${hidden}b`, false, {})).toBe(`a${[...hidden].map((c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`).join("")}b`);
+    const plain = "café naïve 日本語 한국어 🎉 👨‍👩‍👧 👨\u200D👩 مرحبا שלום Ωµ ~!@#$%^&*()_+{}|:\"<>?`-=[]\\;',./";
+    expect(forTerminal(plain, false, {})).toBe(plain);
+    expect(forTerminal(plain, true, {})).toBe(plain);
   });
 
   it("fences the text with a new token each time in GitHub Actions only, and keeps it exact", () => {
@@ -1336,8 +1496,8 @@ describe("prose", () => {
     expect(out).not.toMatch(INVISIBLE);
   });
 
-  it("removes invisible and direction-changing characters from its input", () => {
-    expect(prose("a\u200Bb\u202Ec\uFEFFd")).toBe("abcd");
+  it("writes out invisible and direction-changing characters in its input", () => {
+    expect(prose("a\u200Bb\u202Ec\uFEFFd")).toBe("a\\\\u200bb\\\\u202ec\\\\ufeffd");
   });
 
   it("stays fast on hostile input", async () => {
