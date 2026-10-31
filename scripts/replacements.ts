@@ -2,12 +2,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { pageMismatches, readPage, replacementsFor } from "../src/corpus/replacements.js";
+import { modelIds, parseSpec } from "../src/corpus/spec.js";
 import { shown } from "../src/detect.js";
-import { loadRecords } from "../src/records/load.js";
+import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 import { parseChangeRecord, recordModels } from "../src/records/schema.js";
 
-// Writes fix.models into every record that detects models, from a saved copy of OpenAI's deprecations page,
-// and fails where a record's notes disagree with the page or the page has no row for a detected model.
+// Writes fix.models into every record that detects models, from a saved copy of OpenAI's deprecations page, renaming
+// only to models OpenAI's API spec in corpus/openai lists. Fails where a record's notes disagree with the page, or the
+// page has no row it could read for a detected model.
 // Usage: npm run replacements -- --page <saved page> [--check]
 // --check writes nothing and also fails when a record's fix.models is not what the page gives.
 
@@ -19,7 +21,8 @@ if (values.page === undefined) {
 const page = readPage(await readFile(values.page, "utf8"));
 const loaded = await loadRecords();
 const records = loaded.map((l) => l.record);
-const { models: wanted, problems } = replacementsFor(records, page);
+const known = modelIds(parseSpec(await readFile(join(PACKS_DIR, "../corpus/openai/openapi.yaml"), "utf8")));
+const { models: wanted, problems } = replacementsFor(records, page, known);
 problems.push(...pageMismatches(records, page));
 
 for (const { record, packDir, file } of loaded) {

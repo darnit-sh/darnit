@@ -42,14 +42,14 @@ export function cellModels(text: string): string[] | undefined {
   return ids && [name, ...ids];
 }
 
-const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', nbsp: " ", mdash: "—" };
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', nbsp: " ", mdash: "\u2014" };
 // Tags the page wraps cell text in. Any other tag, such as img or script, refuses the cell.
 const INLINE = new Set(["a", "b", "br", "code", "em", "i", "p", "span", "strong", "sub", "sup"]);
 const MAX_CELL = 10_000;
 // Left after decoding, these refuse the cell: markup, control characters and bidi controls.
 const UNSAFE = /[<>\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 
-/** A cell's text: inline tags skipped, entities decoded once, whitespace collapsed. Undefined for a cell holding anything else. */
+/** A cell's text: each inline tag read as a space, entities decoded once, whitespace collapsed. Undefined for a cell holding anything else. */
 export function cellText(html: string): string | undefined {
   if (html.length > MAX_CELL) return undefined;
   let text = "";
@@ -58,13 +58,14 @@ export function cellText(html: string): string | undefined {
     const close = html.indexOf(">", open);
     const name = close === -1 ? undefined : /^\/?([a-z0-9]+)(?:[\s/]|$)/i.exec(html.slice(open + 1, close))?.[1]?.toLowerCase();
     if (name === undefined || !INLINE.has(name)) return undefined;
-    text += html.slice(at, open);
+    text += `${html.slice(at, open)} `;
     at = close + 1;
   }
   text += html.slice(at);
   const decoded = text
     .replace(/&(amp|lt|gt|quot|nbsp|mdash|#\d{1,6});/g, (_, e: string) => ENTITIES[e] ?? String.fromCodePoint(Number(e.slice(1))))
     .replace(/\s+/g, " ")
+    .replace(/\( | (?=[),])/g, (m) => m.trim())
     .replace(/[\u2010\u2011]/g, "-")
     .trim();
   return UNSAFE.test(decoded) ? undefined : decoded;
@@ -78,31 +79,41 @@ const cells = (row: string) =>
 
 const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
 
-/** What the page's tables say: each model's replacement cells in page order, newest first, and every table or row not read. */
-export type Page = { replacements: Map<string, string[]>; skipped: string[] };
+/**
+ * What the page's tables say: each model's replacement cells in page order, newest first, every table or row not
+ * read, and the markup of each row refused or cut short, so a detected model it names fails the run.
+ */
+export type Page = { replacements: Map<string, string[]>; skipped: string[]; refused: string[] };
 
 /** The page's deprecation tables: shutdown date first, then the model, any price columns, and the replacement column. */
 export function readPage(html: string): Page {
   const replacements = new Map<string, string[]>();
   const skipped: string[] = [];
+  const refused: string[] = [];
   for (const table of html.split(/<table[\s>]/i).slice(1)) {
-    const [head = [], ...rows] = table.split(/<\/table>/i)[0]!.split(/<tr[\s>]/i).slice(1).map(cells);
+    const raw = table.split(/<\/table>/i)[0]!.split(/<tr[\s>]/i).slice(1);
+    const [head = [], ...rows] = raw.map(cells);
     const to = head.findIndex((h) => h !== undefined && REPLACEMENT.has(h.toLowerCase()));
     if (head[0]?.toLowerCase() !== "shutdown date" || to < 2) {
       skipped.push(`table headed ${head.map((h) => h ?? "(refused)").join(" | ")}`);
       continue;
     }
-    for (const row of rows) {
-      const refused = row.some((c) => c === undefined);
-      const models = refused || row.length !== head.length ? undefined : cellModels(row[1]!);
-      if (!models) skipped.push(refused ? `row refused: a cell holds markup, control characters or over ${MAX_CELL} characters` : `row ${row.join(" | ")}`);
+    for (const [i, row] of rows.entries()) {
+      const bad = row.some((c) => c === undefined) || row.length !== head.length;
+      const models = bad ? undefined : cellModels(row[1]!);
+      if (bad) refused.push(raw[i + 1]!);
+      const why = row.length !== head.length ? `it has ${row.length} cells, the table ${head.length}` : `a cell holds markup, control characters or over ${MAX_CELL} characters`;
+      if (!models) skipped.push(bad ? `row refused: ${why}` : `row ${row.join(" | ")}`);
       for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), row[to]!]);
     }
   }
-  return { replacements, skipped };
+  return { replacements, skipped, refused };
 }
 
-const SETTING = /^(\S+) \(([A-Za-z0-9._: -]{1,60})\)$/;
+// One model id and one setting such as "(reasoning.mode: pro)"; any other words get the fixed reason.
+const SETTING = /^(\S+) \(([a-z_.]{1,40}: [a-z0-9_.-]{1,40})\)$/;
+const isListed = (s: string) => isModel(s) || (s.endsWith("*") && isModel(s.slice(0, -1)));
+const either = (ids: string[]) => (ids.length === 2 ? ids.join(" or ") : `${ids.slice(0, -1).join(", ")}, or ${ids.at(-1)}`);
 
 /**
  * A replacement cell as fix.models holds it: one model id is a rename. Model ids joined by commas or "or", or one
@@ -112,20 +123,43 @@ function entry(record: ChangeRecord, text: string): Replacement {
   const vendor = vendorName(record.vendor);
   const source = record.sources[0]!.url;
   if (isModel(text)) return { model: text, source };
-  if (text === "" || text === "—" || text === "-") return { human: `${vendor} names no replacement`, source };
+  if (text === "" || text === "\u2014" || text === "-") return { human: `${vendor} names no replacement`, source };
   const setting = text.length <= 200 ? SETTING.exec(text) : null;
   if (setting && isModel(setting[1]!)) return { human: `not a plain swap: ${vendor} recommends ${setting[1]} with ${setting[2]}`, source };
   const ids = text.length <= 200 ? text.split(/,? or |, /) : [];
-  if (ids.length > 1 && ids.every(isModel)) return { human: `not a plain swap: ${vendor} recommends one of ${ids.join(", ")}`, source };
+  if (ids.length > 1 && ids.every(isListed)) return { human: `not a plain swap: ${vendor} recommends ${either(ids)}`, source };
   return { human: `${vendor} names no single replacement model`, source };
+}
+
+const ID_CHAR = /[a-z0-9._:-]/i;
+/** Whether `text` holds `id` as a whole name, not inside a longer one. */
+function names(text: string, id: string): boolean {
+  for (let at = text.indexOf(id); at !== -1; at = text.indexOf(id, at + 1))
+    if (!ID_CHAR.test(text[at - 1] ?? " ") && !ID_CHAR.test(text[at + id.length] ?? " ")) return true;
+  return false;
+}
+
+/**
+ * A rename only to a model the API lists in `known`, read from the vendor's API spec. A family name the spec lists
+ * only as its "-latest" alias, such as omni-moderation, becomes that alias; any other model is for a person.
+ */
+function listed(r: Replacement, known: ReadonlySet<string>, vendor: string): Replacement {
+  if (!("model" in r) || known.has(r.model)) return r;
+  if (known.has(`${r.model}-latest`)) return { ...r, model: `${r.model}-latest` };
+  return { human: `not a plain swap: ${vendor} recommends ${r.model}, which its API spec does not list`, source: r.source };
 }
 
 /**
  * fix.models for every record that detects models, keyed by record id, from the newest row naming each model.
  * A replacement the page retires too is followed to one it does not; one that ends with no plain swap, or loops,
- * becomes `human`. A detected model the page has no row for is a problem.
+ * becomes `human`, and so does one the API spec does not list. A detected model the page has no row for, or that
+ * a refused row names, is a problem: an older row must not stand in for a newer one darnit could not read.
  */
-export function replacementsFor(records: readonly ChangeRecord[], page: Page): { models: Map<string, Record<string, Replacement>>; problems: string[] } {
+export function replacementsFor(
+  records: readonly ChangeRecord[],
+  page: Page,
+  known: ReadonlySet<string>,
+): { models: Map<string, Record<string, Replacement>>; problems: string[] } {
   const newest = (m: string) => page.replacements.get(m)?.[0];
   const follow = (record: ChangeRecord, start: Replacement): Replacement => {
     let at = start;
@@ -146,8 +180,13 @@ export function replacementsFor(records: readonly ChangeRecord[], page: Page): {
   for (const r of records) {
     const ids = recordModels(r);
     const missing = ids.filter((m) => newest(m) === undefined);
+    const unread = ids.filter((m) => page.refused.some((row) => names(row, m)));
     if (missing.length > 0) problems.push(`${r.id}: the page has no row for ${missing.join(", ")}`);
-    else if (ids.length > 0) models.set(r.id, Object.fromEntries(ids.map((m) => [m, ReplacementSchema.parse(follow(r, entry(r, newest(m)!)))])));
+    if (unread.length > 0) problems.push(`${r.id}: a row darnit refused names ${unread.join(", ")}`);
+    if (missing.length === 0 && unread.length === 0 && ids.length > 0) {
+      const vendor = vendorName(r.vendor);
+      models.set(r.id, Object.fromEntries(ids.map((m) => [m, ReplacementSchema.parse(listed(follow(r, entry(r, newest(m)!)), known, vendor))])));
+    }
   }
   return { models, problems };
 }

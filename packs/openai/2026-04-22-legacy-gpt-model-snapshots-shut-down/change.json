@@ -565,7 +565,7 @@
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-image-1": {
-        "human": "not a plain swap: OpenAI recommends one of gpt-image-2.5-sunburst, gpt-image-2.5-flare",
+        "human": "not a plain swap: OpenAI recommends gpt-image-2.5-sunburst or gpt-image-2.5-flare",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "o1-2024-12-17": {

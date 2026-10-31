@@ -188,15 +188,15 @@
   "fix": {
     "models": {
       "gpt-image-1-mini": {
-        "human": "not a plain swap: OpenAI recommends one of gpt-image-2.5-sunburst, gpt-image-2.5-flare",
+        "human": "not a plain swap: OpenAI recommends gpt-image-2.5-sunburst or gpt-image-2.5-flare",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-image-1.5": {
-        "human": "not a plain swap: OpenAI recommends one of gpt-image-2.5-sunburst, gpt-image-2.5-flare",
+        "human": "not a plain swap: OpenAI recommends gpt-image-2.5-sunburst or gpt-image-2.5-flare",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "chatgpt-image-latest": {
-        "human": "not a plain swap: OpenAI recommends one of gpt-image-2.5-sunburst, gpt-image-2.5-flare",
+        "human": "not a plain swap: OpenAI recommends gpt-image-2.5-sunburst or gpt-image-2.5-flare",
         "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }

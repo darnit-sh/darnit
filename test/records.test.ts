@@ -95,6 +95,12 @@ describe("ChangeRecord schema", () => {
       expect(() => parseChangeRecord(withModels(models), "x.json")).toThrow(error);
     });
 
+    it("rejects a __proto__ key, which zod would otherwise drop without a word", () => {
+      const json = JSON.parse(`{"gpt-4": {"model": "gpt-5", "source": "${source}"}, "o1": {"human": "x", "source": "${source}"}, "__proto__": {"human": "x", "source": "${source}"}}`) as object;
+      expect(Object.hasOwn(json, "__proto__")).toBe(true);
+      expect(() => parseChangeRecord(withModels(json), "x.json")).toThrow(/__proto__/);
+    });
+
     it("counts a model detected in both languages once", () => {
       expect(parseChangeRecord(withModels({ "gpt-4": { human: "x", source } }, ["gpt-4"]), "x.json").fix?.models).toEqual({ "gpt-4": { human: "x", source } });
     });

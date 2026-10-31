@@ -935,7 +935,7 @@ describe("model shutdowns", () => {
     const under = (at: string) => lines[lines.findIndex((l) => l.startsWith(`  ${at}`)) + 1];
     expect(under("app.ts:3:")).toBe("    use gpt-5.6-sol instead (OpenAI's recommendation)");
     expect(under("app.ts:4:")).toBe("    not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro");
-    expect(under("app.ts:5:")).toBe("    not a plain swap: OpenAI recommends one of gpt-live-transcribe, gpt-transcribe");
+    expect(under("app.ts:5:")).toBe("    not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe");
     // text-ada-001's replacement, gpt-3.5-turbo-instruct, shuts down too: its own replacement is named.
     expect(under("config.py:1:")).toBe("    use gpt-5.6-terra instead (OpenAI's recommendation)");
     expect(under("app.ts:6:")).toMatch(/^ {2}\d+ call sites? in/);
@@ -946,7 +946,7 @@ describe("model shutdowns", () => {
     expect(json(hits).sort((a, b) => a.line - b.line).map((h) => [h.line, h.replacement])).toEqual([
       [3, { model: "gpt-5.6-sol", source }],
       [4, { human: "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro", source }],
-      [5, { human: "not a plain swap: OpenAI recommends one of gpt-live-transcribe, gpt-transcribe", source }],
+      [5, { human: "not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe", source }],
       [6, undefined],
     ]);
     expect(json(values)).toMatchObject([{ model: "text-ada-001", replacement: { model: "gpt-5.6-terra", source } }]);

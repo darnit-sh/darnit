@@ -156,7 +156,7 @@
   "fix": {
     "models": {
       "codex-mini-latest": {
-        "model": "gpt-5-codex-mini",
+        "human": "not a plain swap: OpenAI recommends gpt-5-codex-mini, which its API spec does not list",
         "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }

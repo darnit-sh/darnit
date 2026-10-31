@@ -60,3 +60,28 @@ export function requestProperty(spec: Spec, method: string, path: string, field:
   const own = parts.find((p) => p?.properties && Object.hasOwn(p.properties, field))?.properties?.[field];
   return resolve(spec, own) ?? own;
 }
+
+/** The ids in a schema's own enum and in the enums of its anyOf, oneOf and allOf parts, not in its properties. */
+function enumIds(schema: unknown, out: Set<string>): void {
+  if (!schema || typeof schema !== "object") return;
+  const s = schema as { enum?: unknown; anyOf?: unknown; oneOf?: unknown; allOf?: unknown };
+  if (Array.isArray(s.enum)) for (const v of s.enum as unknown[]) if (typeof v === "string") out.add(v);
+  for (const parts of [s.anyOf, s.oneOf, s.allOf]) if (Array.isArray(parts)) for (const p of parts as unknown[]) enumIds(p, out);
+}
+
+/** Every model id the spec lists: the enums of each `model` property and of the schemas of model ids, such as ModelIdsShared. */
+export function modelIds(spec: Spec): Set<string> {
+  const out = new Set<string>();
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== "object") return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "model") enumIds(value, out);
+      walk(value);
+    }
+  };
+  for (const [name, schema] of Object.entries(spec.components?.schemas ?? {})) {
+    if (/ModelIds|SupportedModels$/.test(name)) enumIds(schema, out);
+    walk(schema);
+  }
+  return out;
+}

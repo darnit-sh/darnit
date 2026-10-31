@@ -91,7 +91,11 @@ export const ChangeRecordSchema = z
           .strict()
           .optional(),
         /** Each model the record detects, mapped to its replacement. */
-        models: z.record(ModelId, ReplacementSchema).optional(),
+        // zod drops a "__proto__" key without a word, so it is refused before the record is read.
+        models: z
+          .custom<unknown>((v) => !(v !== null && typeof v === "object" && Object.hasOwn(v, "__proto__")), "fix.models must not hold a __proto__ key")
+          .pipe(z.record(ModelId, ReplacementSchema))
+          .optional(),
       })
       .strict()
       .optional(),
