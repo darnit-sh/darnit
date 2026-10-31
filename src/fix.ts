@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
-import { shown, vendorName } from "./detect.js";
+import { escapedPieces, escapeHidden, shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { pathProblem, PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanOutcome } from "./plan.js";
@@ -112,6 +112,9 @@ function heldReason(held: readonly Site[]): string {
 
 const NOT_COVERED = "the rewrite rules don't cover this call shape yet";
 
+/** The longest pull request description GitHub accepts, in characters. */
+const PR_BODY_LIMIT = 65_536;
+
 async function groupHits(root: string, only: string[] | undefined): Promise<{ groups: Group[]; coverage: Coverage; namesElsewhere: boolean }> {
   const packs = new Map((await loadRecords()).map((l) => [l.record.id, l.packDir]));
   for (const id of only ?? []) if (!packs.has(id)) throw new Refusal(`unknown change record: ${id}`);
@@ -125,7 +128,7 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
     if (only && !only.includes(hit.record.id)) continue;
     const group = byId.get(hit.record.id) ?? { record: hit.record, packDir: packs.get(hit.record.id)!, files: [], sites: 0 };
     if (mixed.has(key(hit)) || local.has(key(hit))) {
-      const note = hit.local ? `sent to ${hit.local.map(shown).join(" or ")}, which may not be OpenAI` : mixed.has(key(hit)) ? MIXED : LOCAL;
+      const note = hit.local ? `sent to ${hit.local.join(" or ")}, which may not be OpenAI` : mixed.has(key(hit)) ? MIXED : LOCAL;
       (group.held ??= []).push({ file: hit.file, line: hit.line, note });
     } else {
       if (!group.files.includes(hit.file)) group.files.push(hit.file);
@@ -180,7 +183,7 @@ async function versionGate(root: string, grp: Group): Promise<{ blocked?: string
   const py = grp.files.length > js.length;
   const unconfirmed: string[] = [];
   const tooOld = (pkg: string, min: string, found: Found) =>
-    `needs ${pkg} >= ${min}, this repo has ${found.version} (${shown(found.from)}); upgrade it first`;
+    `needs ${pkg} >= ${min}, this repo has ${found.version} (${found.from}); upgrade it first`;
 
   for (const [pkg, min] of js.length > 0 ? Object.entries(requires.npm ?? {}) : []) {
     let unknown = false;
@@ -512,10 +515,6 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         anyFailed = true;
         continue;
       }
-      await g.add(root, changed);
-      await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
-      committed = true;
-      await g.push(root, branch);
       const body = prBody(grp.record, changed, opts.version ?? "dev", {
         build,
         tests,
@@ -523,6 +522,16 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         ...notRunNotes(changed, base),
         unconfirmed: result.unconfirmed,
       });
+      // GitHub refuses a longer description, and by then the branch would already be pushed.
+      if (body.length > PR_BODY_LIMIT) {
+        await restore(root, snap);
+        result.pr = { state: "skipped", reason: `its description would be ${body.length} characters, over GitHub's limit of ${PR_BODY_LIMIT}; nothing pushed` };
+        continue;
+      }
+      await g.add(root, changed);
+      await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
+      committed = true;
+      await g.push(root, branch);
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
       result.pr = { state: "opened", url, build, tests };
       opened = true;
@@ -543,29 +552,34 @@ const longestBacktickRun = (s: string) => Math.max(0, ...(s.match(/`+/g) ?? []).
 /**
  * Text from the repository (a file name, a command) as one code span that GitHub shows literally:
  * control characters are written out (a newline as \\n), and the fence is longer than any backtick run inside.
+ * `prBody` writes out the characters that could hide or reorder it.
  */
 function code(text: string): string {
   // eslint-disable-next-line no-control-regex
-  const t = text.replace(INVISIBLE, "").replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => JSON.stringify(c).slice(1, -1));
+  const t = text.replace(/[\u0000-\u001f]/g, (c) => JSON.stringify(c).slice(1, -1));
   const fence = "`".repeat(longestBacktickRun(t) + 1);
   const pad = /^[` ]|[` ]$/.test(t) ? " " : "";
   return `${fence}${pad}${t}${pad}${fence}`;
 }
 
-/**
- * Text from the repository on its way to a terminal: control characters go, and color codes too unless `color`.
- * In GitHub Actions it is fenced by a one-time token so no line of it runs as a workflow command, while
- * darnit's own annotations printed outside it still work.
- */
-export function forTerminal(text: string, color = false, env = process.env): string {
+const withoutControls = (text: string, color: boolean) =>
   // eslint-disable-next-line no-control-regex
-  const clean = text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g : /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (m) =>
-    m.length > 1 ? m : "",
-  );
-  if (env.GITHUB_ACTIONS !== "true") return clean;
-  const token = randomUUID();
-  return `::stop-commands::${token}\n${clean}\n::${token}::`;
+  text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f]/g : /[\u0000-\u0008\u000b-\u001f]/g, (m) => (m.length > 1 ? m : ""));
+
+/**
+ * Text from the repository on its way to a terminal, a piece at a time: control characters go, and color codes too
+ * unless `color`; `escapeHidden` writes out the rest. In GitHub Actions it is fenced by a one-time token so no line
+ * of it runs as a workflow command, while darnit's own annotations printed outside it still work.
+ */
+export function* forTerminalPieces(text: string, color = false, env = process.env): Generator<string> {
+  const token = env.GITHUB_ACTIONS === "true" ? randomUUID() : undefined;
+  if (token) yield `::stop-commands::${token}\n`;
+  yield* escapedPieces(withoutControls(text, color));
+  if (token) yield `\n::${token}::`;
 }
+
+/** `forTerminalPieces` as one string, for short text. */
+export const forTerminal = (text: string, color = false, env = process.env) => [...forTerminalPieces(text, color, env)].join("");
 
 /** JSON on its way out: `#`, which only a string can hold, as `\u0023`, so no `##[` in it runs as a workflow command. Safe per chunk. */
 export const forJson = (json: string) => json.replaceAll("#", "\\u0023");
@@ -579,7 +593,6 @@ const plain = (text: string) => {
 // Characters GitHub can turn into something live: mentions, references, URLs, emoji, math,
 // commit links, custom references like ABC-123, HTML and entities.
 const RISKY = /[@#/$]|:\S|www[.)\]]?$|www\.|[0-9a-f]{7}|[A-Za-z]+-\d|^[<&]/i;
-const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\u061C\uFEFF]/g;
 const escapeMarkdown = (s: string) => s.replace(/[\\`*_[\]()<>!|~{}&#$]/g, (c) => `\\${c}`);
 
 /**
@@ -589,7 +602,7 @@ const escapeMarkdown = (s: string) => s.replace(/[\\`*_[\]()<>!|~{}&#$]/g, (c) =
  * Each rule was checked against GitHub's own renderer.
  */
 export function prose(text: string): string {
-  const clean = text.replace(INVISIBLE, "").replace(/\s+/g, " ").trim();
+  const clean = escapeHidden(text).replace(/\s+/g, " ").trim();
   // A cap keeps every pattern below fast on any input; real notes are a few sentences.
   const capped = clean.length > 2000 ? `${clean.slice(0, 2000)}…` : clean;
   return capped
@@ -626,7 +639,8 @@ export type PrEvidence = {
 export function prBody(record: ChangeRecord, files: readonly string[], version: string, evidence: PrEvidence = {}): string {
   const { build, tests, remaining = [], testsNote, buildNote, unconfirmed = [] } = evidence;
   const source = record.sources[0]!;
-  return [
+  // Test output from the repository goes in as it is; this writes out any character that could reorder or hide it.
+  return escapeHidden([
     prose(record.notes?.migration ?? title(record)),
     "",
     "## Why",
@@ -650,7 +664,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     ...(tests?.output ? ["", "<details><summary>test output</summary>", "", fence(tests.output), tests.output, fence(tests.output), "", "</details>"] : []),
     "",
     ...(remaining.length > 0
-      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- ${code(`${r.file}:${r.line}`)}${r.note ? `: ${prose(r.note)}` : ""}`), ""]
+      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- ${code(`${r.file}:${r.line}`)}${r.note ? `: ${prose(shown(r.note))}` : ""}`), ""]
       : []),
     "## Not verified",
     ...unconfirmed.map((u) => `- This change needs ${u}; darnit could not find the version this repository uses.`),
@@ -661,7 +675,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     "---",
     `darnit ${version}, change record [\`${record.id}\`](${recordUrl(record.id)})`,
     "",
-  ].join("\n");
+  ].join("\n"));
 }
 
 // Opened pull requests can't be edited later, so the footer links a darnit.sh path
@@ -698,7 +712,7 @@ export function renderSummary(result: FixResult): string {
   const lines: string[] = [];
   for (const r of result.records) {
     const where = `${r.files.length} file${r.files.length === 1 ? "" : "s"}`;
-    if (!r.applied) lines.push(`- ${r.title}: found in ${where}, not rewritten: ${r.reason}`);
+    if (!r.applied) lines.push(`- ${r.title}: found in ${where}, not rewritten: ${shown(r.reason ?? "")}`);
     else if (!r.pr && result.reverted) lines.push(`✗ ${r.title}: rewritten, then put back`);
     else if (!r.pr) lines.push(`✓ ${r.title}: ${r.remaining ? `${r.sites - r.remaining.length} of ${r.sites} call sites rewritten` : where}`);
     else if (r.pr.state === "opened") {
@@ -715,7 +729,7 @@ export function renderSummary(result: FixResult): string {
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;
-    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}:${s.line}${s.note ? ` (${s.note})` : ""}`);
+    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}:${s.line}${s.note ? ` (${shown(s.note)})` : ""}`);
     if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
   const notChecked = notCheckedNotes(result.coverage);

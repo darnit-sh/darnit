@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parse, SgNode } from "@ast-grep/napi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, scan, snippet, toJson, type Hit } from "../src/check.js";
-import { MAX_FILE_BYTES } from "../src/detect.js";
+import { escapedPieces, escapeHidden, MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { compilePatterns, findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { SDK_CLASSES } from "../src/scan/clients.js";
@@ -471,13 +471,110 @@ describe.skipIf(process.platform === "win32")("check prints crafted file and fol
       expect(lines(text).filter((l) => l.startsWith("::"))).toEqual([]);
       expect(text).not.toMatch(/[\r\t\u202E]/);
       expect(text).toContain("a?::error::b.ts:2:");
-      expect(text).toContain("?gpj.ts:2:");
+      expect(text).toContain("\\u202egpj.ts:2:");
       expect(text).toContain("m?::warning::.md");
     }
     expect(render(hits, coverage, values, mentions)).toContain("v?::notice::.py:1:");
-    expect(render(hits, coverage, values, mentions)).toContain("(sent to localhost:1?abc;");
+    expect(render(hits, coverage, values, mentions)).toContain("(sent to localhost:1\\u202eabc;");
     const json = JSON.parse([...checkJson({ version: "t" }, { hits, possiblyAffected: values, mentions })].join("")) as { hits: { file: string }[] };
     expect(json.hits.map((h) => h.file)).toContain("a\n::error::b.ts");
+  });
+
+  it("escapes direction-changing and C1 characters in every part of the JSON report", () => {
+    const report = { version: "t", scanned: { files: 1, records: 1, tooLarge: ["\u202Ex\u2066\u009b.ts", "café 日本 🎉.ts"] } };
+    const text = [...checkJson(report, { hits: [], possiblyAffected: [], mentions: [] })].join("");
+    expect(text).not.toMatch(/[\u0080-\u009f\u202e\u2066]/);
+    expect(text).toContain(String.raw`"\u202ex\u2066\u009b.ts"`);
+    expect(JSON.parse(text)).toEqual({ ...report, hits: [], possiblyAffected: [], mentions: [] });
+  });
+
+  it("writes a long escaped line of the JSON report in pieces, never as one string", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const hit = { record, file: "app.ts", line: 1, column: 1, text: "\u202E".repeat(200_000) } as unknown as Hit;
+    const chunks = [...checkJson({ version: "t" }, { hits: [hit], possiblyAffected: [], mentions: [] })];
+    expect(Math.max(...chunks.map((c) => c.length))).toBeLessThanOrEqual(6 * 8_192);
+    expect((JSON.parse(chunks.join("")) as { hits: { text: string }[] }).hits[0]!.text).toBe(hit.text);
+  });
+});
+
+describe("escapeHidden", () => {
+  const cp = (...points: number[]) => String.fromCodePoint(...points);
+  const units = (s: string) => s.split("").map((u) => `\\u${u.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+  const tags = (s: string) => cp(...[...s].map((c) => 0xe0000 + c.charCodeAt(0)));
+  const [ZWJ, VS16] = ["\u200D", "\uFE0F"];
+
+  it.each([
+    0x00ad, 0x034f, 0x061c, 0x115f, 0x1160, 0x17b4, 0x17b5, 0x180e, 0x200b, 0x200c, 0x200d, 0x200e, 0x200f, 0x202a, 0x202e,
+    0x2028, 0x2029, 0x2060, 0x2064, 0x2066, 0x2069, 0x206a, 0x206b, 0x206c, 0x206d, 0x206e, 0x206f, 0x3164, 0xfe00, 0xfe0e,
+    0xfe0f, 0xfeff, 0xffa0, 0x007f, 0x0085, 0x009b, 0xe0000, 0xe0001, 0xe0020, 0xe0041, 0xe007f, 0xe0100, 0x1d173,
+  ])("writes out U+%s, which can hide or reorder text", (point) => {
+    const text = `a${cp(point)}b`;
+    expect(escapeHidden(text)).toBe(`a${units(cp(point))}b`);
+    expect(JSON.parse(`"${escapeHidden(text)}"`)).toBe(text);
+  });
+
+  it("writes out tag characters that spell hidden text, and a joiner or U+FE0F anywhere but inside an emoji", () => {
+    expect(escapeHidden(`app${tags("delete prod db")}.ts`)).toBe(`app${units(tags("delete prod db"))}.ts`);
+    expect(escapeHidden(`a${ZWJ}b`)).toBe("a\\u200db");
+    expect(escapeHidden(`${cp(0x1f44d)}${ZWJ}X`)).toBe(`${cp(0x1f44d)}\\u200dX`);
+    expect(escapeHidden(`${cp(0x1f468)}${ZWJ}${ZWJ}${cp(0x1f469)}`)).toBe(`${cp(0x1f468)}\\u200d\\u200d${cp(0x1f469)}`);
+    expect(escapeHidden(`a${ZWJ.repeat(5)}b`)).toBe(`a${"\\u200d".repeat(5)}b`);
+    expect(escapeHidden(`a${VS16}`)).toBe("a\\ufe0f");
+    // Only England, Scotland and Wales have flags: any other tags in the shape of one could spell a word.
+    for (const code of ["evil", "usca", "gbeng1", "gbe", "g b", "GBENG", "deleteproddb"]) expect(escapeHidden(`${cp(0x1f3f4)}${tags(code)}${cp(0xe007f)}`)).toBe(`${cp(0x1f3f4)}${units(tags(code) + cp(0xe007f))}`);
+    // A tag right after a whole flag is not part of it.
+    expect(escapeHidden(`${cp(0x1f3f4)}${tags("gbsct")}${cp(0xe007f, 0xe0041)}`)).toBe(`${cp(0x1f3f4)}${tags("gbsct")}${cp(0xe007f)}${units(cp(0xe0041))}`);
+  });
+
+  it("keeps a joiner after a pictograph, a skin tone and U+FE0F, and before a pictograph, and only there", () => {
+    for (let tone = 0x1f3fb; tone <= 0x1f3ff; tone++) {
+      const coder = `${cp(0x1f469, tone)}${ZWJ}${cp(0x1f4bb)}`;
+      expect(escapeHidden(coder)).toBe(coder);
+      // U+FE0F after a skin tone is in no emoji, so it is written out; the joiner after both still stays.
+      expect(escapeHidden(`${cp(0x1f3cc, tone)}${VS16}${ZWJ}${cp(0x2640)}${VS16}`)).toBe(`${cp(0x1f3cc, tone)}\\ufe0f${ZWJ}${cp(0x2640)}${VS16}`);
+      expect(escapeHidden(`a${cp(tone)}${ZWJ}${cp(0x1f4bb)}`)).toBe(`a${cp(tone)}\\u200d${cp(0x1f4bb)}`);
+      expect(escapeHidden(`${cp(0x1f469, tone)}${ZWJ}a`)).toBe(`${cp(0x1f469, tone)}\\u200da`);
+    }
+    expect(escapeHidden(`${cp(0x1f3cc)}${VS16}${ZWJ}${cp(0x2640)}${VS16}`)).toBe(`${cp(0x1f3cc)}${VS16}${ZWJ}${cp(0x2640)}${VS16}`);
+  });
+
+  it("judges pictographs by a fixed list, the same on every Node version", () => {
+    // U+2605 and U+1F0A1 are pictographs in Unicode 16.0 and not in 17.0; Node ships one or the other depending on its version.
+    const symbols = `${cp(0x2605)}${ZWJ}${cp(0x1f0a1)}${VS16}`;
+    expect(escapeHidden(symbols)).toBe(symbols);
+  });
+
+  it.each([
+    ["family", `${cp(0x1f468)}${ZWJ}${cp(0x1f469)}${ZWJ}${cp(0x1f467)}${ZWJ}${cp(0x1f466)}`],
+    ["skin tone", cp(0x1f44d, 0x1f3fd)],
+    ["skin tone and joiner", `${cp(0x1f469, 0x1f3fd)}${ZWJ}${cp(0x1f4bb)}`],
+    ["emoji presentation", `${cp(0x2764)}${VS16}`],
+    ["flag and joiner", `${cp(0x1f3f3)}${VS16}${ZWJ}${cp(0x1f308)}`],
+    ["joiner then U+FE0F", `${cp(0x1f3f4)}${ZWJ}${cp(0x2620)}${VS16}`],
+    ["kiss", `${cp(0x1f469)}${ZWJ}${cp(0x2764)}${VS16}${ZWJ}${cp(0x1f48b)}${ZWJ}${cp(0x1f468)}`],
+    ["gender", `${cp(0x1f3c3)}${ZWJ}${cp(0x2640)}${VS16}`],
+    ["hair", `${cp(0x1f468)}${ZWJ}${cp(0x1f9b0)}`],
+    ["England flag", `${cp(0x1f3f4)}${tags("gbeng")}${cp(0xe007f)}`],
+    ["Scotland flag", `${cp(0x1f3f4)}${tags("gbsct")}${cp(0xe007f)}`],
+    ["Wales flag", `${cp(0x1f3f4)}${tags("gbwls")}${cp(0xe007f)}`],
+    ["keycap", `1${VS16}\u20E3`],
+    ["country flag", cp(0x1f1fa, 0x1f1f8)],
+  ])("keeps the %s emoji whole", (_name, emoji) => {
+    expect(escapeHidden(`a ${emoji} b`)).toBe(`a ${emoji} b`);
+    expect([...escapedPieces(`${"x".repeat(8_190)}${emoji}`)].join("")).toBe(`${"x".repeat(8_190)}${emoji}`);
+  });
+});
+
+describe("escapedPieces", () => {
+  it("escapes as escapeHidden does, in pieces that never cut a character in two", () => {
+    const text = `${"a".repeat(8_191)}🎉\u202E${"b".repeat(8_190)}👨\u200D👩${"\u2066".repeat(70_000)}`;
+    const pieces = [...escapedPieces(text)];
+    expect(pieces.length).toBeGreaterThan(2);
+    expect(pieces.join("")).toBe(escapeHidden(text));
+    // Each piece is written on its own, and a lone half of an emoji would be written as U+FFFD.
+    for (const piece of pieces) expect(Buffer.from(piece).toString()).toBe(piece);
+    expect(Math.max(...pieces.map((p) => p.length))).toBeLessThanOrEqual(6 * 8_192);
+    expect([...escapedPieces("")]).toEqual([]);
   });
 });
 
