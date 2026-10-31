@@ -152,5 +152,12 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "o1-mini": {
+        "human": "o4-mini, the recommended replacement, also shuts down: OpenAI names no replacement"
+      }
+    }
   }
 }

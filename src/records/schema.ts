@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelNames } from "../scan/astgrep.js";
 
 // Absent fields are omitted, never null; hence .optional() throughout
 // and .strict() so a typo'd key fails loudly instead of being silently ignored.
@@ -19,6 +20,17 @@ export type AstGrepPattern = z.infer<typeof AstGrepPatternSchema>;
 
 const IsoDate = z.iso.date();
 const Version = z.string().regex(/^\d+\.\d+\.\d+$/, "versions are x.y.z");
+// Rendered into pull requests and commit messages, so plain https only.
+const Url = z.url({ protocol: /^https$/ }).regex(/^[^\s<>[\]()`]+$/, "url must not contain spaces, brackets or backticks");
+// A model as a call names it: no spaces, wildcards or prose.
+export const ModelId = z.string().regex(/^[a-z0-9][a-z0-9._:-]{0,99}$/, "a model id is lowercase letters, digits and . _ : -");
+
+/** The vendor's recommended replacement for a model: a plain rename, or why the swap needs a person. */
+export const ReplacementSchema = z.union([
+  z.object({ model: ModelId, source: Url }).strict(),
+  z.object({ human: z.string().regex(/^[^\p{Cc}\u2028\u2029]{1,160}$/u, "human is one short line") }).strict(),
+]);
+export type Replacement = z.infer<typeof ReplacementSchema>;
 
 export const ChangeRecordSchema = z
   .object({
@@ -50,8 +62,7 @@ export const ChangeRecordSchema = z
       .array(
         z
           .object({
-            // Rendered into pull requests and commit messages, so plain https only.
-            url: z.url({ protocol: /^https$/ }).regex(/^[^\s<>[\]()`]+$/, "url must not contain spaces, brackets or backticks"),
+            url: Url,
             quoteId: z.string().min(1).optional(),
           })
           .strict(),
@@ -78,6 +89,8 @@ export const ChangeRecordSchema = z
           })
           .strict()
           .optional(),
+        /** Each model the record detects, mapped to its replacement. */
+        models: z.record(ModelId, ReplacementSchema).optional(),
       })
       .strict()
       .optional(),
@@ -95,7 +108,18 @@ export const ChangeRecordSchema = z
   .refine((r) => r.id.startsWith(`${r.vendor}:${r.announcedAt}:`), {
     message: "id must be <vendor>:<announcedAt>:<slug> and agree with the vendor/announcedAt fields",
     path: ["id"],
+  })
+  .refine((r) => !r.fix?.models || sameSet(Object.keys(r.fix.models), recordModels(r)), {
+    message: "fix.models needs exactly one entry for each model the record detects, and no other",
+    path: ["fix", "models"],
   });
+
+/** The model names a record detects, such as a shutdown record's models. */
+export const recordModels = (r: { detection: { astGrepPatterns: Partial<Record<Lang, AstGrepPattern[]>> } }) => [
+  ...new Set(Object.values(r.detection.astGrepPatterns).flatMap((p) => modelNames(p))),
+];
+
+const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && new Set([...a, ...b]).size === a.length;
 
 export type ChangeRecord = z.infer<typeof ChangeRecordSchema>;
 

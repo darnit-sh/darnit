@@ -200,5 +200,21 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "whisper-1": {
+        "human": "not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe"
+      },
+      "gpt-4o-transcribe": {
+        "human": "not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe"
+      },
+      "gpt-4o-mini-transcribe": {
+        "human": "not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe"
+      },
+      "gpt-4o-transcribe-diarize": {
+        "human": "not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe"
+      }
+    }
   }
 }

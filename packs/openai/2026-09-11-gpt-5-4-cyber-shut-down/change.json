@@ -152,5 +152,12 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "gpt-5.4-cyber": {
+        "human": "not a plain swap: OpenAI recommends The most capable cyber model available to you"
+      }
+    }
   }
 }

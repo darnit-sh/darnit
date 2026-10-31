@@ -152,5 +152,13 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "codex-mini-latest": {
+        "model": "gpt-5-codex-mini",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }

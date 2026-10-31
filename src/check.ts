@@ -1,10 +1,10 @@
 import { join } from "node:path";
 import { parse, type SgNode } from "@ast-grep/napi";
 import { parse as parseYaml } from "yaml";
-import { byPath, firstFive, listFiles, plural, readText, shown, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
+import { byPath, firstFive, listFiles, plural, readText, shown, skippedNote, tooLargeNote, vendorClients, vendorName, type Skipped } from "./detect.js";
 import { loadRecords } from "./records/load.js";
-import type { ChangeRecord } from "./records/schema.js";
-import { findMatches, grammarFor, modelNames, type Match, type Span } from "./scan/astgrep.js";
+import { recordModels, type ChangeRecord, type Replacement } from "./records/schema.js";
+import { findMatches, grammarFor, type Match, type Span } from "./scan/astgrep.js";
 import { findMentions, isBinary } from "./scan/mentions.js";
 import { findModelValues, inside, isTestPath, joined } from "./scan/values.js";
 
@@ -15,8 +15,6 @@ export type ModelValueHit = Hit & { model: string };
 
 /** Any other exact mention of a model name from a record, in any text file: counted, never failing the check. */
 export type MentionHit = { file: string; line: number; model: string; record: ChangeRecord };
-
-const recordNames = (r: ChangeRecord) => Object.values(r.detection.astGrepPatterns).flatMap((p) => modelNames(p));
 
 /** Vendors listed in darnit.yml, when the file exists and lists any; otherwise no restriction. */
 async function configuredVendors(root: string): Promise<Set<string> | undefined> {
@@ -48,7 +46,7 @@ export async function scan(
   const hits: Hit[] = [];
   const values: ModelValueHit[] = [];
   const mentions: MentionHit[] = [];
-  const namesOf = new Map(records.map((r) => [r, new Set(recordNames(r))]));
+  const namesOf = new Map(records.map((r) => [r, new Set(recordModels(r))]));
   // Every record naming a model: a value or mention is listed under each, the same way call sites are.
   const byName = new Map<string, ChangeRecord[]>();
   for (const r of modelValues || withMentions ? records : []) for (const n of namesOf.get(r)!) byName.set(n, [...(byName.get(n) ?? []), r]);
@@ -150,7 +148,26 @@ const LABELS: Record<ChangeRecord["status"], string> = {
   reviewed: "",
 };
 
+const modelSets = new WeakMap<object, Set<string>>();
+
+/** The record's replacement for each retiring model a finding names. */
+export function replacements(h: Hit | ModelValueHit): [string, Replacement][] {
+  const models = h.record.fix?.models;
+  if (!models) return [];
+  if (!modelSets.has(models)) modelSets.set(models, new Set(Object.keys(models)));
+  const named = "model" in h ? [h.model] : findMentions(h.text, modelSets.get(models)!, h.file).map((m) => m.model);
+  return [...new Set(named)].flatMap((m) => (Object.hasOwn(models, m) ? [[m, models[m]!] as [string, Replacement]] : []));
+}
+
+const advice = (r: Replacement, vendor: string) => ("model" in r ? `use ${shown(r.model)} instead (${vendorName(vendor)}'s recommendation)` : shown(r.human));
+
 const heading = (r: ChangeRecord) => `${r.vendor} ${r.announcedAt}: ${title(r)}${LABELS[r.status]}`;
+
+// A call site or value names one model, so it has at most one replacement.
+const replacement = (h: Hit | ModelValueHit) => {
+  const swap = replacements(h)[0];
+  return swap ? { replacement: swap[1] } : {};
+};
 
 /** Machine-readable form of the hits. */
 export function toJson(hits: readonly (Hit | ModelValueHit)[]): object[] {
@@ -168,6 +185,7 @@ export function toJson(hits: readonly (Hit | ModelValueHit)[]): object[] {
     sources: h.record.sources.map((s) => s.url),
     ...(h.local ? { localAddresses: h.local } : {}),
     ...("model" in h ? { model: h.model } : {}),
+    ...replacement(h),
   }));
 }
 
@@ -231,9 +249,11 @@ function grouped(hits: readonly Hit[], noun: string): string[] {
     const locations = group.map((h) => `${shown(h.file)}:${h.line}:${h.column}`);
     const width = locations.reduce((w, l) => Math.max(w, l.length), 0) + 2;
     out.push(heading(record));
-    group.forEach((h, i) =>
-      out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.map(shown).join(" or ")}; ignore if that server isn't OpenAI)` : ""}`),
-    );
+    group.forEach((h, i) => {
+      out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.map(shown).join(" or ")}; ignore if that server isn't OpenAI)` : ""}`);
+      const swaps = replacements(h);
+      for (const [model, r] of swaps) out.push(`    ${swaps.length > 1 ? `${shown(model)}: ` : ""}${advice(r, record.vendor)}`);
+    });
     out.push(`  ${plural(group.length, noun)} in ${plural(new Set(group.map((h) => h.file)).size, "file")}`);
     for (const source of record.sources) out.push(`  ${source.url}`);
     out.push("");

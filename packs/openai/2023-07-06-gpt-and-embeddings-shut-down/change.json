@@ -600,5 +600,125 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "text-ada-001": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-babbage-001": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-curie-001": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-davinci-001": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-davinci-002": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-davinci-003": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "ada": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "babbage": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "curie": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "davinci": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "code-davinci-002": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-davinci-edit-001": {
+        "model": "gpt-4o",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "code-davinci-edit-001": {
+        "model": "gpt-4o",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-similarity-ada-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-search-ada-doc-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-search-ada-query-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "code-search-ada-code-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "code-search-ada-text-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-similarity-babbage-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-search-babbage-doc-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-search-babbage-query-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "code-search-babbage-code-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "code-search-babbage-text-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-similarity-curie-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-search-curie-doc-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-search-curie-query-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-similarity-davinci-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-search-davinci-doc-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-search-davinci-query-001": {
+        "model": "text-embedding-3-small",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }

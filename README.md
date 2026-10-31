@@ -127,6 +127,22 @@ parser are marked `(parser-verified, not read by a person)` and do fail the chec
 Calls made through another provider's look-alike client are left out, and the
 report names each one.
 
+Under each retiring model it finds, `check` prints the model OpenAI recommends
+instead, or in one line why the swap needs a person (a setting the new model
+also needs, several candidates, or none named); `--json` adds it to each finding
+as `replacement`, `{ model, source }` or `{ human }`.
+
+```
+$ npx darnit check
+openai 2026-06-11: o3-2025-04-16, gpt-5-2025-08-07, o3-pro-2025-06-10 and 3 more shut down on 2026-12-11 (parser-verified, not read by a person)
+  app.ts:3:50  model: "o3-2025-04-16"
+    use gpt-5.6-sol instead (OpenAI's recommendation)
+  app.ts:4:50  model: "gpt-5-pro-2025-10-06"
+    not a plain swap: OpenAI recommends gpt-5.6-sol (reasoning.mode: pro)
+  2 call sites in 1 file
+  https://developers.openai.com/api/docs/deprecations
+```
+
 A retired or retiring model name set as a value outside the call, such as
 `DEFAULT_MODEL = "gpt-4"`, `os.getenv("MODEL", "gpt-4")` or a `model="gpt-4"`
 default, is listed after the call sites under "Possibly affected", grouped by

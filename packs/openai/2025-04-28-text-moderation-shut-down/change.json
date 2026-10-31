@@ -184,5 +184,21 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "text-moderation-007": {
+        "model": "omni-moderation",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-moderation-stable": {
+        "model": "omni-moderation",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "text-moderation-latest": {
+        "model": "omni-moderation",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }

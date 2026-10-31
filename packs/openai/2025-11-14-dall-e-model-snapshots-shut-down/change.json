@@ -168,5 +168,15 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "dall-e-2": {
+        "human": "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-1, or gpt-image-1-mini"
+      },
+      "dall-e-3": {
+        "human": "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-1, or gpt-image-1-mini"
+      }
+    }
   }
 }

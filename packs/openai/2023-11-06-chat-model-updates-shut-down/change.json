@@ -168,5 +168,15 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "gpt-3.5-turbo-0613": {
+        "human": "gpt-3.5-turbo, the recommended replacement, also shuts down: OpenAI names no replacement"
+      },
+      "gpt-3.5-turbo-16k-0613": {
+        "human": "gpt-3.5-turbo, the recommended replacement, also shuts down: OpenAI names no replacement"
+      }
+    }
   }
 }

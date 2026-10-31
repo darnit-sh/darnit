@@ -200,5 +200,21 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "gpt-4-0314": {
+        "human": "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*"
+      },
+      "gpt-4-0125-preview": {
+        "human": "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*"
+      },
+      "gpt-4-turbo-preview": {
+        "human": "OpenAI names no replacement"
+      },
+      "gpt-4-turbo-preview-completions": {
+        "human": "OpenAI names no replacement"
+      }
+    }
   }
 }
