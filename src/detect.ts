@@ -79,11 +79,9 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 const HIDDEN = /[\p{Default_Ignorable_Code_Point}\u007f-\u009f\u2028\u2029]/gu;
-// The skin tones and U+FE0F in one class are alternatives, not one combined character.
-// eslint-disable-next-line no-misleading-character-class
-const JOINS_AFTER = /\p{Extended_Pictographic}[\u{1F3FB}-\u{1F3FF}\uFE0F]?$/u;
-const PICTOGRAPH = /^\p{Extended_Pictographic}/u;
-const PICTOGRAPH_BEFORE = /\p{Extended_Pictographic}$/u;
+// Extended_Pictographic as of Unicode 16.0, written out: Unicode 17.0 dropped 689 symbols from it (other dingbats,
+// playing cards, mahjong tiles), so `\p{Extended_Pictographic}` gives Node 22 and Node 24 different answers.
+const PICTOGRAPH = /[\u00A9\u00AE\u203C\u2049\u2122\u2139\u2194-\u2199\u21A9\u21AA\u231A\u231B\u2328\u2388\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u2605\u2607-\u2612\u2614-\u2685\u2690-\u2705\u2708-\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763-\u2767\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299\u{1F000}-\u{1F0FF}\u{1F10D}-\u{1F10F}\u{1F12F}\u{1F16C}-\u{1F171}\u{1F17E}\u{1F17F}\u{1F18E}\u{1F191}-\u{1F19A}\u{1F1AD}-\u{1F1E5}\u{1F201}-\u{1F20F}\u{1F21A}\u{1F22F}\u{1F232}-\u{1F23A}\u{1F23C}-\u{1F23F}\u{1F249}-\u{1F3FA}\u{1F400}-\u{1F53D}\u{1F546}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F774}-\u{1F77F}\u{1F7D5}-\u{1F7FF}\u{1F80C}-\u{1F80F}\u{1F848}-\u{1F84F}\u{1F85A}-\u{1F85F}\u{1F888}-\u{1F88F}\u{1F8AE}-\u{1F8FF}\u{1F90C}-\u{1F93A}\u{1F93C}-\u{1F945}\u{1F947}-\u{1FAFF}\u{1FC00}-\u{1FFFD}]/u;
 const FLAG = /\u{1F3F4}[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/uy;
 
 /**
@@ -92,8 +90,15 @@ const FLAG = /\u{1F3F4}[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/uy
  * character in a subdivision flag (U+1F3F4, a short code in tag letters, U+E007F).
  */
 function inEmoji(text: string, at: number, c: string): boolean {
-  if (c === "\u200D") return JOINS_AFTER.test(text.slice(Math.max(0, at - 4), at)) && PICTOGRAPH.test(text.slice(at + 1, at + 3));
-  if (c === "\uFE0F") return PICTOGRAPH_BEFORE.test(text.slice(Math.max(0, at - 2), at)) || (/[0-9#*]/.test(text[at - 1] ?? "") && text[at + 1] === "\u20E3");
+  if (c === "\u200D") {
+    // Read back code point by code point: Node 26 fails to match an end-anchored pattern of two astral classes.
+    let end = at;
+    if (pointBefore(text, end) === 0xfe0f) end -= 1;
+    const tone = pointBefore(text, end);
+    if (tone !== undefined && tone >= 0x1f3fb && tone <= 0x1f3ff) end -= 2;
+    return isPictograph(pointBefore(text, end)) && isPictograph(text.codePointAt(at + 1));
+  }
+  if (c === "\uFE0F") return isPictograph(pointBefore(text, at)) || (/[0-9#*]/.test(text[at - 1] ?? "") && text[at + 1] === "\u20E3");
   const point = c.codePointAt(0)!;
   if (point < 0xe0000 || point > 0xe007f) return false;
   for (let start = at - 2; start >= Math.max(0, at - 12); start -= 2) {
@@ -103,6 +108,14 @@ function inEmoji(text: string, at: number, c: string): boolean {
   }
   return false;
 }
+
+/** The code point that ends just before `end` in `text`, if any. */
+function pointBefore(text: string, end: number): number | undefined {
+  const pair = end >= 2 ? text.codePointAt(end - 2)! : 0;
+  return pair > 0xffff ? pair : text.codePointAt(end - 1);
+}
+
+const isPictograph = (point: number | undefined) => point !== undefined && PICTOGRAPH.test(String.fromCodePoint(point));
 
 const unit = (code: number) => `\\u${code.toString(16).padStart(4, "0")}`;
 /** Each UTF-16 unit of `c` as \u0000, which is visible on screen and, inside a JSON string, decodes back to `c`. */

@@ -524,6 +524,24 @@ describe("escapeHidden", () => {
     for (const code of ["g b", "GBENG", "deleteproddb"]) expect(escapeHidden(`${cp(0x1f3f4)}${tags(code)}${cp(0xe007f)}`)).toBe(`${cp(0x1f3f4)}${units(tags(code) + cp(0xe007f))}`);
   });
 
+  it("keeps a joiner after a pictograph, a skin tone and U+FE0F, and before a pictograph, and only there", () => {
+    for (let tone = 0x1f3fb; tone <= 0x1f3ff; tone++) {
+      const coder = `${cp(0x1f469, tone)}${ZWJ}${cp(0x1f4bb)}`;
+      expect(escapeHidden(coder)).toBe(coder);
+      // U+FE0F after a skin tone is in no emoji, so it is written out; the joiner after both still stays.
+      expect(escapeHidden(`${cp(0x1f3cc, tone)}${VS16}${ZWJ}${cp(0x2640)}${VS16}`)).toBe(`${cp(0x1f3cc, tone)}\\ufe0f${ZWJ}${cp(0x2640)}${VS16}`);
+      expect(escapeHidden(`a${cp(tone)}${ZWJ}${cp(0x1f4bb)}`)).toBe(`a${cp(tone)}\\u200d${cp(0x1f4bb)}`);
+      expect(escapeHidden(`${cp(0x1f469, tone)}${ZWJ}a`)).toBe(`${cp(0x1f469, tone)}\\u200da`);
+    }
+    expect(escapeHidden(`${cp(0x1f3cc)}${VS16}${ZWJ}${cp(0x2640)}${VS16}`)).toBe(`${cp(0x1f3cc)}${VS16}${ZWJ}${cp(0x2640)}${VS16}`);
+  });
+
+  it("judges pictographs by a fixed list, the same on every Node version", () => {
+    // U+2605 and U+1F0A1 are pictographs in Unicode 16.0, which Node 22 has, and not in 17.0, which Node 24 and 26 have.
+    const symbols = `${cp(0x2605)}${ZWJ}${cp(0x1f0a1)}${VS16}`;
+    expect(escapeHidden(symbols)).toBe(symbols);
+  });
+
   it.each([
     ["family", `${cp(0x1f468)}${ZWJ}${cp(0x1f469)}${ZWJ}${cp(0x1f467)}${ZWJ}${cp(0x1f466)}`],
     ["skin tone", cp(0x1f44d, 0x1f3fd)],
