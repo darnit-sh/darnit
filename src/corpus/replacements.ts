@@ -49,6 +49,10 @@ const MAX_CELL = 10_000;
 // Left after decoding, these refuse the cell: markup, control characters and bidi controls.
 const UNSAFE = /[<>\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 
+/** Entities decoded once, and the page's non-breaking hyphens read as hyphens. */
+const decode = (text: string) =>
+  text.replace(/&(amp|lt|gt|nbsp|mdash|#\d{1,6});/g, (_, e: string) => ENTITIES[e] ?? String.fromCodePoint(Number(e.slice(1)))).replace(/[\u2010\u2011]/g, "-");
+
 /** A cell's text: each inline tag read as a space, entities decoded once, whitespace collapsed. Undefined for a cell holding anything else. */
 export function cellText(html: string): string | undefined {
   if (html.length > MAX_CELL) return undefined;
@@ -62,11 +66,9 @@ export function cellText(html: string): string | undefined {
     at = close + 1;
   }
   text += html.slice(at);
-  const decoded = text
-    .replace(/&(amp|lt|gt|nbsp|mdash|#\d{1,6});/g, (_, e: string) => ENTITIES[e] ?? String.fromCodePoint(Number(e.slice(1))))
+  const decoded = decode(text)
     .replace(/\s+/g, " ")
     .replace(/\( | (?=[),])/g, (m) => m.trim())
-    .replace(/[\u2010\u2011]/g, "-")
     .trim();
   return UNSAFE.test(decoded) ? undefined : decoded;
 }
@@ -107,7 +109,7 @@ export function readPage(html: string): Page {
       const label = bad ? `row ${i + 1} of the table headed ${head.join(" | ")}, refused: ${why}` : `row ${row.join(" | ")}`;
       skipped.push(label);
       // A row retiring fine-tuning on a model, not calls to it, names the model and is rightly not read.
-      if (bad || !/fine-tuning/i.test(row[1]!)) unread.push({ text: bad ? raw[i + 1]! : row[1]!, row: label });
+      if (bad || !/^New fine-tuning training on [a-z0-9._:-]+$/.test(row[1]!)) unread.push({ text: bad ? decode(raw[i + 1]!) : row[1]!, row: label });
     }
   }
   return { replacements, skipped, unread };
@@ -173,13 +175,17 @@ export function replacementsFor(
 ): { models: Map<string, Record<string, Replacement>>; problems: string[] } {
   const newest = (m: string) => page.replacements.get(m)?.[0];
   // Where the page sends a model a reason offers: itself if it is not retiring, else the models its newest row offers.
-  const retiring = (id: string, seen: readonly string[] = []): string[] => {
+  // Each id is worked out once; one met again while its own answer is pending loops, and retires too.
+  const sent = new Map<string, string[]>();
+  const retiring = (id: string): string[] => {
     const base = id.replace(/\*$/, "");
     const text = newest(base);
     if (text === undefined) return [id];
+    if (sent.has(id)) return sent.get(id)!;
+    sent.set(id, [`${id} (retiring too)`]);
     const next = isModel(text) ? [text] : choice(text);
-    if (!next || base !== id || seen.includes(base)) return [`${id} (retiring too)`];
-    return next.flatMap((n) => retiring(n, [...seen, base]));
+    if (next && base === id) sent.set(id, [...new Set(next.flatMap((n) => retiring(n)))]);
+    return sent.get(id)!;
   };
   const follow = (record: ChangeRecord, start: Replacement): Replacement => {
     let at = start;
@@ -203,10 +209,12 @@ export function replacementsFor(
     const unread = page.unread.flatMap((u) => ids.filter((m) => names(u.text, m)).map((m) => `${r.id}: ${m} is named in a row darnit could not read, ${u.row.slice(0, 200)}`));
     if (missing.length > 0) problems.push(`${r.id}: the page has no row for ${missing.join(", ")}`);
     problems.push(...unread);
-    if (missing.length === 0 && unread.length === 0 && ids.length > 0) {
-      const vendor = vendorName(r.vendor);
-      models.set(r.id, Object.fromEntries(ids.map((m) => [m, ReplacementSchema.parse(listed(follow(r, entry(r, newest(m)!, retiring)), known, vendor))])));
-    }
+    if (missing.length > 0 || unread.length > 0 || ids.length === 0) continue;
+    const vendor = vendorName(r.vendor);
+    const entries = ids.map((m) => [m, ReplacementSchema.safeParse(listed(follow(r, entry(r, newest(m)!, retiring)), known, vendor))] as const);
+    const long = entries.filter(([, e]) => !e.success).map(([m]) => m);
+    if (long.length > 0) problems.push(`${r.id}: the reason for ${long.join(", ")} is not one line of plain words under 200 characters`);
+    else models.set(r.id, Object.fromEntries(entries.map(([m, e]) => [m, e.data!])));
   }
   return { models, problems };
 }

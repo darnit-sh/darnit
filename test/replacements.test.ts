@@ -4,6 +4,7 @@ import { cellModels, cellText, pageMismatches, readPage, recommended, replacemen
 import { modelIds, parseSpec } from "../src/corpus/spec.js";
 import { loadRecords } from "../src/records/load.js";
 import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/records/schema.js";
+import { cpuTime } from "./helpers.js";
 
 const PAGE = "https://developers.openai.com/api/docs/deprecations";
 const notes = (pairs: string) => `OpenAI removes these models. Recommended replacements: ${pairs}. A newer model can answer differently, so test the switch.`;
@@ -239,13 +240,21 @@ describe("fix.models from the page", () => {
     const fixture = await FIXTURE;
     const at = fixture.indexOf("<tr> <td>July 23, 2026</td> <td><code>gpt-5.2-codex</code>");
     expect(at).toBeGreaterThan(0);
-    const shapes = ["o1-mini (all snapshots)", "o1-mini*", "o1-mini<sup>2</sup>", "O1-mini", "o1-mini and o1-mini-2024-09-12", "o1&#8203;-mini", "o1-&#173;mini"];
-    for (const cell of shapes) {
+    const older = readPage(fixture).replacements;
+    const O1 = "openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27";
+    const DALLE = "openai:2025-11-14:dall-e-model-snapshots-shut-down";
+    const shapes = [
+      ...["o1-mini (all snapshots)", "o1-mini*", "o1-mini<sup>2</sup>", "O1-mini", "o1-mini and o1-mini-2024-09-12", "o1&#8203;-mini", "o1-&#173;mini"].map((c) => [c, O1, "o1-mini"]),
+      // Fine-tuning named anywhere but in the page's own "New fine-tuning training on <model>" row is no reason to skip the check.
+      ...["o1-mini (and fine-tuning)", "o1-mini, Fine-Tuning", "o1-mini<sup>fine-tuning</sup>", "<code>o1-mini</code> &mdash; fine-tuning and inference"].map((c) => [c, O1, "o1-mini"]),
+      ["<code>dall-e-3</code>, see fine-tuning notes", DALLE, "dall-e-3"],
+      // A refused row is matched after the same single decode readable cells get.
+      ["<code>dall&#8209;e&#8209;3</code> <abbr>new</abbr>", DALLE, "dall-e-3"],
+    ];
+    for (const [cell, record, model] of shapes) {
       const page = readPage(`${fixture.slice(0, at)}<tr><td>July 23, 2026</td><td>${cell}</td><td>gpt-5.6-sol</td></tr>\n${fixture.slice(at)}`);
-      expect(page.replacements.get("o1-mini")).toEqual(["o4-mini"]);
-      const { problems } = replacementsFor(records, page, known);
-      expect(problems).toHaveLength(1);
-      expect(problems[0]).toMatch(/^openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27: o1-mini is named in a row darnit could not read, row July 23, 2026 \| /);
+      expect(page.replacements.get(model!)).toEqual(older.get(model!));
+      expect(replacementsFor(records, page, known).problems).toEqual([expect.stringMatching(new RegExp(`^${record}: ${model} is named in a row darnit could not read, row `))]);
     }
     // The fixture's rows retiring fine-tuning on babbage-002 and davinci-002 name detected models and are rightly not read.
     expect(readPage(fixture).skipped).toContain("row 2024-10-28 | New fine-tuning training on davinci-002 | gpt-4o-mini");
@@ -281,6 +290,24 @@ describe("fix.models from the page", () => {
       "a-5": reason("x-2 with reasoning.mode: pro"),
       "a-6": reason("m-1 or n-1"),
     });
+  });
+
+  it("works out each offered model once, so models that offer each other cannot make it slow", async () => {
+    const r = shutdown("one", ["m-0"]);
+    const ids = Array.from({ length: 12 }, (_, i) => `a-${i}`);
+    const offer = `${ids.slice(0, -1).join(", ")}, or ${ids.at(-1)}`;
+    const page = readPage(table([`m-0 || ${offer}`, ...ids.map((id) => `${id} || ${offer}`)]));
+    let result: ReturnType<typeof replacementsFor> | undefined;
+    // A millisecond on a laptop; following every path takes hours.
+    expect(await cpuTime(() => (result = replacementsFor([r], page, KNOWN)))).toBeLessThan(1000);
+    expect(result!.problems).toEqual(["openai:2026-01-01:one: the reason for m-0 is not one line of plain words under 200 characters"]);
+  });
+
+  it("names the model whose reason is too long instead of crashing", () => {
+    const r = shutdown("one", ["a-1", "a-2"]);
+    const long = Array.from({ length: 8 }, (_, i) => `model-with-a-long-name-${i}`);
+    const page = readPage(table([`a-1 || ${long.join(" or ")}`.replace(/ or /g, ", ").replace(/, (?=[^,]*$)/, ", or "), "a-2 || x-1"]));
+    expect(replacementsFor([r], page, KNOWN)).toEqual({ models: new Map(), problems: ["openai:2026-01-01:one: the reason for a-1 is not one line of plain words under 200 characters"] });
   });
 
   it("gives every shipped model record what the page gives, agreeing with its notes, and never a retiring replacement", async () => {
