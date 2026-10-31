@@ -172,11 +172,11 @@
   "fix": {
     "models": {
       "gpt-4-vision-preview": {
-        "model": "gpt-4o",
+        "model": "gpt-6-luna",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-1106-vision-preview": {
-        "model": "gpt-4o",
+        "model": "gpt-6-luna",
         "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }

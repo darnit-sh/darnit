@@ -1,28 +1,32 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { pageMismatches, pageRows, replacementsFor } from "../src/corpus/replacements.js";
+import { pageMismatches, readPage, replacementsFor } from "../src/corpus/replacements.js";
+import { shown } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
-import { parseChangeRecord } from "../src/records/schema.js";
+import { parseChangeRecord, recordModels } from "../src/records/schema.js";
 
-// Writes fix.models into every record that detects models, from the replacements its notes.migration names.
-// Usage: npm run replacements [-- --check] [--page <saved copy of the deprecations page>]
-// --check writes nothing and fails when a record's fix.models is not what its notes give.
-// --page also fails when the notes and the page's tables disagree on a model's replacement.
+// Writes fix.models into every record that detects models, from a saved copy of OpenAI's deprecations page,
+// and fails where a record's notes disagree with the page or the page has no row for a detected model.
+// Usage: npm run replacements -- --page <saved page> [--check]
+// --check writes nothing and also fails when a record's fix.models is not what the page gives.
 
 const { values } = parseArgs({ options: { check: { type: "boolean" }, page: { type: "string" } } });
+if (values.page === undefined) {
+  console.error("usage: npm run replacements -- --page <saved copy of https://developers.openai.com/api/docs/deprecations> [--check]");
+  process.exit(2);
+}
+const page = readPage(await readFile(values.page, "utf8"));
 const loaded = await loadRecords();
 const records = loaded.map((l) => l.record);
-const problems: string[] = [];
-if (values.page !== undefined) problems.push(...pageMismatches(records, pageRows(await readFile(values.page, "utf8"))));
+const { models: wanted, problems } = replacementsFor(records, page);
+problems.push(...pageMismatches(records, page));
 
-const wanted = replacementsFor(records);
 for (const { record, packDir, file } of loaded) {
   const models = wanted.get(record.id);
-  if (!models) continue;
-  if (JSON.stringify(record.fix?.models) === JSON.stringify(models)) continue;
+  if (!models || JSON.stringify(record.fix?.models) === JSON.stringify(models)) continue;
   if (values.check) {
-    problems.push(`${file}: fix.models is not what its notes give; run npm run replacements`);
+    problems.push(`${file}: fix.models is not what the page gives; run npm run replacements -- --page <page>`);
     continue;
   }
   const path = join(packDir, "change.json");
@@ -32,5 +36,18 @@ for (const { record, packDir, file } of loaded) {
   await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`);
   console.log(`wrote ${file}`);
 }
-for (const p of problems) console.log(`✗ ${p}`);
+
+const list = (title: string, lines: string[]) => lines.length > 0 && console.log([`${title}:`, ...lines.map((l) => `  ${shown(l)}`)].join("\n"));
+const entries = [...wanted.values()].flatMap((m) => Object.entries(m));
+const people = entries.flatMap(([m, r]) => ("human" in r ? [`${m}: ${r.human}`] : []));
+console.log(`${entries.length} detected models: ${entries.length - people.length} plain renames, ${people.length} for a person`);
+list("For a person", people);
+list(
+  "Named in several rows with different replacements, newest row used",
+  [...page.replacements].flatMap(([m, texts]) => (new Set(texts).size > 1 ? [`${m}: ${texts.join(" | ")}`] : [])),
+);
+const detected = new Set(records.flatMap(recordModels));
+list("On the page, detected by no record", [...page.replacements.keys()].filter((m) => !detected.has(m)));
+list("Not read as model rows", page.skipped);
+list("✗ Problems", problems);
 process.exitCode = problems.length > 0 ? 1 : 0;

@@ -156,7 +156,7 @@
   "fix": {
     "models": {
       "gpt-4.5-preview": {
-        "model": "gpt-4.1",
+        "model": "gpt-6-luna",
         "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }

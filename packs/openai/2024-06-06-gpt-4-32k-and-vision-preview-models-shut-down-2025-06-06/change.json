@@ -188,15 +188,15 @@
   "fix": {
     "models": {
       "gpt-4-32k": {
-        "model": "gpt-4o",
+        "model": "gpt-6-luna",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-32k-0613": {
-        "model": "gpt-4o",
+        "model": "gpt-6-luna",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-32k-0314": {
-        "model": "gpt-4o",
+        "model": "gpt-6-luna",
         "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }

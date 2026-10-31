@@ -1,8 +1,8 @@
 import { vendorName } from "../detect.js";
 import { ModelId, recordModels, ReplacementSchema, type ChangeRecord, type Replacement } from "../records/schema.js";
 
-// fix.models for each model record, from the replacements its notes copy out of the vendor's deprecations page.
-// Notes and page are data: read with indexOf and slice, never turned into code, paths or patterns.
+// fix.models for each model record, from the vendor's deprecations page, with each record's notes as a cross-check.
+// Page and notes are data: read as text, never turned into code, paths or patterns.
 
 const START = "Recommended replacements: ";
 const END = ". A newer model can answer differently";
@@ -24,49 +24,22 @@ export function recommended(migration: string): Map<string, string> {
   return out;
 }
 
-/** The replacement a record names for `old`, before following it into other records. */
-function direct(record: ChangeRecord, text: string | undefined): Replacement {
-  const vendor = vendorName(record.vendor);
-  if (text === undefined) return { human: `${vendor} names no replacement` };
-  if (ModelId.safeParse(text).success) return { model: text, source: record.sources[0]!.url };
-  return { human: `not a plain swap: ${vendor} recommends ${text.replace(/\.+$/, "")}` };
-}
+const isModel = (s: string) => ModelId.safeParse(s).success;
+const allModels = (parts: string[]) => (parts.every(isModel) ? parts : undefined);
 
-/**
- * fix.models for every record that detects models, keyed by record id. A replacement that another record
- * retires is followed to one no record retires; one that ends with no plain swap, or loops, becomes `human`.
- */
-export function replacementsFor(records: readonly ChangeRecord[]): Map<string, Record<string, Replacement>> {
-  const named = new Map<string, Map<string, string>>();
-  const retired = new Map<string, Replacement>();
-  for (const r of records) {
-    const models = recordModels(r);
-    if (models.length === 0) continue;
-    const notes = recommended(r.notes?.migration ?? "");
-    const unknown = [...notes.keys()].filter((m) => !models.includes(m));
-    if (unknown.length > 0) throw new Error(`${r.id}: the notes name ${unknown.join(", ")}, which the record does not detect`);
-    named.set(r.id, notes);
-    for (const m of models) retired.set(m, direct(r, notes.get(m)));
-  }
-  const follow = (first: Replacement): Replacement => {
-    let next = first;
-    const seen = new Set<string>();
-    while ("model" in next && retired.has(next.model)) {
-      if (seen.has(next.model)) return { human: `the recommended replacements loop back to ${next.model}` };
-      seen.add(next.model);
-      const after = retired.get(next.model)!;
-      if ("human" in after) return { human: `${next.model}, the recommended replacement, also shuts down: ${after.human}` };
-      next = after;
-    }
-    return next;
-  };
-  const out = new Map<string, Record<string, Replacement>>();
-  for (const r of records) {
-    if (!named.has(r.id)) continue;
-    const models = Object.fromEntries(recordModels(r).map((m) => [m, ReplacementSchema.parse(follow(retired.get(m)!))]));
-    out.set(r.id, models);
-  }
-  return out;
+/** The model ids in a table's model cell, or undefined for a row about something else, such as an endpoint, a header or an API. */
+export function cellModels(text: string): string[] | undefined {
+  // "gpt-5", or a snapshot and the aliases pointing to it: "gpt-4-0613 | gpt-4, gpt-4-completions".
+  const listed = allModels(text.split(/\s*[|,]\s*/));
+  if (listed) return listed;
+  // "GPT-4o (gpt-4o-2024-08-06, gpt-4o-2024-11-20)", "gpt-4-0125-preview (including a and b, which point to this snapshot)".
+  // A family name stands for its alias: GPT-4o is gpt-4o, GPT-4o mini is gpt-4o-mini. Anything else, such as "Assistants API (v1)", is no model.
+  const open = text.indexOf(" (");
+  const name = text.slice(0, open).toLowerCase().replaceAll(" ", "-");
+  if (open === -1 || !text.endsWith(")") || !isModel(name) || !/\d/.test(name)) return undefined;
+  const inner = text.slice(open + 2, -1).replace(/^including /, "").replace(/,? which point to this snapshot$/, "");
+  const ids = allModels(inner.split(/,\s*|\s+and\s+/));
+  return ids && [name, ...ids];
 }
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', nbsp: " ", mdash: "—" };
@@ -74,34 +47,90 @@ const cellText = (html: string) =>
   html
     .replace(/<[^>]*>/g, "")
     .replace(/&(amp|lt|gt|quot|nbsp|mdash|#\d{1,6});/g, (_, e: string) => ENTITIES[e] ?? String.fromCodePoint(Number(e.slice(1))))
+    .replace(/[‐‑]/g, "-")
     .replace(/\s+/g, " ")
     .trim();
+const cells = (row: string) =>
+  row
+    .split(/<\/tr>/i)[0]!
+    .split(/(?=<t[dh][\s>])/i)
+    .filter((c) => /^<t[dh]/i.test(c))
+    .map((c) => cellText(c.slice(c.indexOf(">") + 1)));
 
-/** Each model in the page's tables with the replacements its rows name: model in the second cell, replacement in the last. */
-export function pageRows(html: string): Map<string, string[]> {
-  const out = new Map<string, string[]>();
-  for (const row of html.split(/<tr[\s>]/i).slice(1)) {
-    const cells = row
-      .split(/<\/tr>/i)[0]!
-      .split(/(?=<t[dh][\s>])/i)
-      .filter((c) => /^<t[dh]/i.test(c))
-      .map((c) => cellText(c.slice(c.indexOf(">") + 1)));
-    if (cells.length < 3) continue;
-    out.set(cells[1]!, [...(out.get(cells[1]!) ?? []), cells.at(-1)!]);
+const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
+
+/** What the page's tables say: each model's replacement cells in page order, newest first, and every table or row not read. */
+export type Page = { replacements: Map<string, string[]>; skipped: string[] };
+
+/** The page's deprecation tables: shutdown date first, then the model, any price columns, and the replacement column. */
+export function readPage(html: string): Page {
+  const replacements = new Map<string, string[]>();
+  const skipped: string[] = [];
+  for (const table of html.split(/<table[\s>]/i).slice(1)) {
+    const [head = [], ...rows] = table.split(/<\/table>/i)[0]!.split(/<tr[\s>]/i).slice(1).map(cells);
+    const to = head.findIndex((h) => REPLACEMENT.has(h.toLowerCase()));
+    if (head[0]?.toLowerCase() !== "shutdown date" || to < 2) {
+      skipped.push(`table headed ${head.join(" | ")}`);
+      continue;
+    }
+    for (const row of rows) {
+      const models = row.length === head.length ? cellModels(row[1]!) : undefined;
+      if (!models) skipped.push(`row ${row.join(" | ")}`);
+      for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), row[to]!]);
+    }
   }
-  return out;
+  return { replacements, skipped };
 }
 
-/** Where a record's notes and the page disagree: a replacement the page does not give, or one the notes leave out. */
-export function pageMismatches(records: readonly ChangeRecord[], rows: Map<string, string[]>): string[] {
+/** A replacement cell as fix.models holds it: one model id is a rename, anything else is for a person. */
+function entry(record: ChangeRecord, text: string): Replacement {
+  const vendor = vendorName(record.vendor);
+  if (text === "" || text === "—" || text === "-") return { human: `${vendor} names no replacement` };
+  if (isModel(text)) return { model: text, source: record.sources[0]!.url };
+  return { human: `not a plain swap: ${vendor} recommends ${text.replace(/\.+$/, "")}` };
+}
+
+/**
+ * fix.models for every record that detects models, keyed by record id, from the newest row naming each model.
+ * A replacement the page retires too is followed to one it does not; one that ends with no plain swap, or loops,
+ * becomes `human`. A detected model the page has no row for is a problem.
+ */
+export function replacementsFor(records: readonly ChangeRecord[], page: Page): { models: Map<string, Record<string, Replacement>>; problems: string[] } {
+  const newest = (m: string) => page.replacements.get(m)?.[0];
+  const follow = (record: ChangeRecord, start: Replacement): Replacement => {
+    let at = start;
+    const seen = new Set<string>();
+    while ("model" in at) {
+      const text = newest(at.model);
+      if (text === undefined) return at;
+      if (seen.has(at.model)) return { human: `the recommended replacements loop back to ${at.model}` };
+      seen.add(at.model);
+      const after = entry(record, text);
+      if ("human" in after) return { human: `${vendorName(record.vendor)} recommends ${at.model}, which also shuts down; ${after.human}` };
+      at = after;
+    }
+    return at;
+  };
+  const models = new Map<string, Record<string, Replacement>>();
+  const problems: string[] = [];
+  for (const r of records) {
+    const ids = recordModels(r);
+    const missing = ids.filter((m) => newest(m) === undefined);
+    if (missing.length > 0) problems.push(`${r.id}: the page has no row for ${missing.join(", ")}`);
+    else if (ids.length > 0) models.set(r.id, Object.fromEntries(ids.map((m) => [m, ReplacementSchema.parse(follow(r, entry(r, newest(m)!)))])));
+  }
+  return { models, problems };
+}
+
+/** Where a record's notes disagree with the page's newest row for a model, or name a model the record does not detect. */
+export function pageMismatches(records: readonly ChangeRecord[], page: Page): string[] {
   const out: string[] = [];
   for (const r of records) {
-    const notes = recommended(r.notes?.migration ?? "");
-    for (const m of recordModels(r)) {
-      const page = (rows.get(m) ?? []).filter((t) => t !== "" && t !== "—" && t !== "-");
-      const said = notes.get(m);
-      if (said !== undefined && !page.includes(said)) out.push(`${r.id}: notes say ${m} to ${said}, the page says ${page.join(" | ") || "nothing"}`);
-      if (said === undefined && page.length > 0) out.push(`${r.id}: the page says ${m} to ${page.join(" | ")}, the notes name none`);
+    const ids = recordModels(r);
+    for (const [m, said] of recommended(r.notes?.migration ?? "")) {
+      const newest = page.replacements.get(m)?.[0];
+      if (!ids.includes(m)) out.push(`${r.id}: the notes name ${m}, which the record does not detect`);
+      else if (newest !== said) out.push(`${r.id}: notes say ${m} to ${said}, the page says ${newest ?? "nothing"}`);
     }
   }
   return out;

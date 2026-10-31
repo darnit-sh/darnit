@@ -513,23 +513,28 @@
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-3.5-turbo": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-3.5-turbo-completions": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-0613": {
         "model": "gpt-5.6-sol",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-0613-completions": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-completions": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-1106-preview": {
         "model": "gpt-5.6-sol",
@@ -540,17 +545,20 @@
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-turbo-2024-04-09": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4-turbo-completions": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4.1-nano": {
         "model": "gpt-5.6-luna",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4.1-nano-2025-04-14": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-luna",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-4o-2024-05-13": {
         "model": "gpt-5.6-sol",
@@ -564,27 +572,30 @@
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "o1": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "o1-pro-2025-03-19": {
         "human": "not a plain swap: OpenAI recommends gpt-5.6-sol (reasoning.mode: pro)"
       },
       "o1-pro": {
-        "human": "OpenAI names no replacement"
+        "human": "not a plain swap: OpenAI recommends gpt-5.6-sol (reasoning.mode: pro)"
       },
       "o3-mini-2025-01-31": {
         "model": "gpt-5.6-sol",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "o3-mini": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "o4-mini-2025-04-16": {
         "model": "gpt-5.6-terra",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "o4-mini": {
-        "human": "OpenAI names no replacement"
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }
   }

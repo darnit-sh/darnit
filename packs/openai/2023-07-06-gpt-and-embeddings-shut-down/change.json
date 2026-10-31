@@ -648,11 +648,11 @@
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "text-davinci-edit-001": {
-        "model": "gpt-4o",
+        "model": "gpt-6-luna",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "code-davinci-edit-001": {
-        "model": "gpt-4o",
+        "model": "gpt-6-luna",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "text-similarity-ada-001": {

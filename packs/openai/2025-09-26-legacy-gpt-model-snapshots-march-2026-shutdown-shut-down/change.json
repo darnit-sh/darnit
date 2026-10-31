@@ -210,10 +210,10 @@
         "human": "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*"
       },
       "gpt-4-turbo-preview": {
-        "human": "OpenAI names no replacement"
+        "human": "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*"
       },
       "gpt-4-turbo-preview-completions": {
-        "human": "OpenAI names no replacement"
+        "human": "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*"
       }
     }
   }
