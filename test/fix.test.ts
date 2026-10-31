@@ -829,6 +829,16 @@ describe("fix in GitHub Actions", () => {
     expect(run.stdout.match(/^::stop-commands::/gm)).toHaveLength(1);
   });
 
+  it("prints no line of fix's diff as a workflow command", async () => {
+    // Git heads a hunk with the nearest line above it that starts with a letter, and indents context lines by one space.
+    const py = 'x ##[error]E5\n"""\n1\n2\n::stop-commands::E7\n"""\nfrom openai import OpenAI\nr = OpenAI().chat.completions.create(model=\'x\', messages=[], max_tokens=5)\n';
+    const dir = await repoWith({ "app.py": py, "requirements.txt": "openai==1.50.0\n" });
+    const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "fix", "--dry-run", "--no-test");
+    expect(run.stdout).toMatch(/^@@ .* @@ x ##\[error\]E5$/m);
+    expect(run.stdout).toContain("\n ::stop-commands::E7\n");
+    expect(notDarnits(run.stdout + run.stderr)).toEqual({ ran: [], stopped: false });
+  });
+
   it("is plain text outside GitHub Actions", async () => {
     const dir = await repoWith({ "::error::pwned.js": SDK_CALL });
     expect((await darnit(dir, "check")).stdout).not.toContain("stop-commands");
