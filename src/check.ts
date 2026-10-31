@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { parse, type SgNode } from "@ast-grep/napi";
 import { parse as parseYaml } from "yaml";
-import { byPath, firstFive, listFiles, plural, readText, shown, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
+import { byPath, escapedPieces, firstFive, listFiles, plural, readText, shown, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord, Lang } from "./records/schema.js";
 import { findMatches, grammarFor, modelNames, type Grammar, type Match, type Span } from "./scan/astgrep.js";
@@ -197,7 +197,7 @@ function* jsonArray<T>(items: readonly T[], toObjects: (items: readonly T[]) => 
   yield "[";
   for (let i = 0; i < items.length; i += 1000) {
     const parts = toObjects(items.slice(i, i + 1000)).map((m) => JSON.stringify(m, null, 2).replaceAll("\n", "\n    "));
-    yield `${i > 0 ? "," : ""}\n    ${parts.join(",\n    ")}`;
+    yield* escapedPieces(`${i > 0 ? "," : ""}\n    ${parts.join(",\n    ")}`);
   }
   yield "\n  ]";
 }
@@ -207,7 +207,7 @@ export function* checkJson(
   report: object,
   { hits, possiblyAffected, mentions }: { hits: readonly Hit[]; possiblyAffected: readonly ModelValueHit[]; mentions: readonly MentionHit[] },
 ): Generator<string> {
-  yield JSON.stringify(report, null, 2).slice(0, -"\n}".length);
+  yield* escapedPieces(JSON.stringify(report, null, 2).slice(0, -"\n}".length));
   for (const [key, list] of [
     ["hits", jsonArray(hits, toJson)],
     ["possiblyAffected", jsonArray(possiblyAffected, toJson)],
