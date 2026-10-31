@@ -361,7 +361,7 @@ describe("init never writes outside the repository", () => {
 
 describe("init --force rewrites only what git could put back", () => {
   const OLD = { "darnit.yml": "version: 1\n", ".github/workflows/darnit.yml": "name: mine\n" };
-  const REFUSED = "uncommitted changes in files init --force would rewrite: darnit.yml; commit or stash them first so git can put them back";
+  const REFUSED = "uncommitted changes in files init --force would rewrite: darnit.yml; commit or stash them first so git can undo the rewrite";
 
   it("refuses to rewrite an edited darnit.yml and keeps its bytes, then rewrites it once stashed", async () => {
     const dir = await committed("small", OLD);

@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
 import { detectApis, readText, skippedNote, tooLargeNote, VENDORS, type Skipped } from "./detect.js";
-import { isRepo, uncommitted } from "./git.js";
+import { isRepo, uncommitted, uncommittedReasons } from "./git.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -89,13 +89,7 @@ async function refuseUncommitted(root: string, rels: string[]): Promise<void> {
     const it = rels.length > 1 ? "them" : "it";
     throw new Error(`not a checked-out git repository, so git could not put back ${rels.join(", ")} if --force rewrote ${it}; move ${it} aside first, then run init again`);
   }
-  const unsafe = await uncommitted(root, rels);
-  const changed = unsafe.filter((u) => !u.gitName).map((u) => u.file);
-  const renamed = unsafe.filter((u) => u.gitName).map((u) => `${u.file} (git has ${u.gitName})`);
-  const why = [
-    ...(changed.length > 0 ? [`uncommitted changes in files init --force would rewrite: ${changed.join(", ")}; commit or stash them first so git can put them back`] : []),
-    ...(renamed.length > 0 ? [`files init --force would rewrite differ only in case from the names git has: ${renamed.join(", ")}; rename them back or commit the rename first`] : []),
-  ];
+  const why = uncommittedReasons(await uncommitted(root, rels), "init --force would rewrite");
   if (why.length > 0) throw new Error(why.join("; "));
 }
 
