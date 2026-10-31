@@ -12,10 +12,19 @@ export const PLAN_FILE = "plan.json";
 export const CAPS = { plan: 8 * 1024 * 1024, darnit: 64, groups: 64, files: 1000, path: 4096, patch: 1024 * 1024, command: 4096, output: TAIL_CHARS };
 
 const capped = (max: number) => z.string().max(max, `over the cap of ${max} characters`);
+const list = <T extends z.ZodType>(item: T, max: number) => z.array(item).max(max, `over the cap of ${max} entries`);
+
+/** Text with every DEL, C1 or line separator character written as a JSON escape. */
+const escaped = (text: string) => text.replace(/[\u007f-\u009f\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+/** Plan text in a message: quoted, escaped and cut short, since it came from the repository's code. */
+const shown = (value: string) => escaped(JSON.stringify(value.length > 64 ? `${value.slice(0, 64)}…` : value));
+
+// Names a file system can read as .git: any case, trailing dots or spaces, the NTFS short name, characters HFS+ ignores.
+const isGitDir = (part: string) => /^(?:\.git|git~1)$/i.test(part.replace(/[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g, "").replace(/[. ]+$/, ""));
 
 /** A path inside the repository: relative, `/`-separated, with no `.`, `..` or `.git` part. */
 const RelativePath = capped(CAPS.path).refine(
-  (p) => !p.includes("\0") && p.split("/").every((part) => part !== "" && part !== "." && part !== ".." && part.toLowerCase() !== ".git"),
+  (p) => !p.includes("\0") && p.split("/").every((part) => part !== "" && part !== "." && part !== ".." && !isGitDir(part)),
   "not a path inside the repository",
 );
 
@@ -86,7 +95,7 @@ function wellFormed(patch: string, files: readonly string[]): boolean {
 const GroupSchema = z
   .strictObject({
     id: z.string().max(200),
-    files: z.array(RelativePath).min(1).max(CAPS.files),
+    files: list(RelativePath, CAPS.files).min(1),
     patch: capped(CAPS.patch),
     build: OutcomeSchema.nullable(),
     tests: OutcomeSchema.nullable(),
@@ -97,7 +106,7 @@ const PlanSchema = z.strictObject({
   version: z.literal(PLAN_VERSION),
   darnit: capped(CAPS.darnit),
   base: z.string().regex(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/, "not a commit id"),
-  groups: z.array(GroupSchema).max(CAPS.groups),
+  groups: list(GroupSchema, CAPS.groups),
 });
 
 export type PlanOutcome = z.infer<typeof OutcomeSchema>;
@@ -106,6 +115,42 @@ export type Plan = z.infer<typeof PlanSchema>;
 
 // Every key in the order it is written, so the same plan is always the same bytes.
 const KEYS = ["version", "darnit", "base", "groups", "id", "files", "patch", "build", "tests", "command", "passed", "attributed", "notChecked", "timedOut", "output"];
+
+/** The first key any object in `text`, which JSON.parse has read, holds twice; JSON.parse keeps only the last. */
+function duplicateKey(text: string): string | undefined {
+  const objects: (Set<string> | undefined)[] = [];
+  let last = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === '"') {
+      let end = i + 1;
+      while (text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
+      const keys = objects.at(-1);
+      if (keys && (last === "{" || last === ",")) {
+        const key = JSON.parse(text.slice(i, end + 1)) as string;
+        if (keys.has(key)) return key;
+        keys.add(key);
+      }
+      [i, last] = [end, '"'];
+    } else if (c !== " " && c !== "\n" && c !== "\r" && c !== "\t") {
+      if (c === "{") objects.push(new Set());
+      else if (c === "[") objects.push(undefined);
+      else if (c === "}" || c === "]") objects.pop();
+      last = c;
+    }
+  }
+  return undefined;
+}
+
+/** What zod found, in messages that never repeat more than a short, escaped piece of the plan. */
+function problems(error: z.ZodError): string {
+  const lines = error.issues.slice(0, 5).map((issue) => {
+    const where = issue.path.map((p) => (typeof p === "number" ? `[${p}]` : `.${String(p)}`)).join("").replace(/^\./, "") || "plan";
+    const what = issue.code === "unrecognized_keys" ? `unknown field ${issue.keys.slice(0, 3).map(shown).join(", ")}${issue.keys.length > 3 ? " and more" : ""}` : issue.message;
+    return `${where}: ${what}`;
+  });
+  return [...lines, ...(error.issues.length > 5 ? [`and ${error.issues.length - 5} more`] : [])].join("\n");
+}
 
 /** Checks a plan against the format, its caps and darnit's own records. Throws on the first problem. */
 export function parsePlan(text: string, recordIds: ReadonlySet<string>): Plan {
@@ -116,11 +161,13 @@ export function parsePlan(text: string, recordIds: ReadonlySet<string>): Plan {
   } catch {
     throw new Error("plan is not JSON");
   }
+  const twice = duplicateKey(text);
+  if (twice !== undefined) throw new Error(`plan holds the field ${shown(twice)} twice`);
   const result = PlanSchema.safeParse(json);
-  if (!result.success) throw new Error(`invalid plan:\n${z.prettifyError(result.error)}`);
+  if (!result.success) throw new Error(`invalid plan:\n${problems(result.error)}`);
   const ids = result.data.groups.map((g) => g.id);
   const unknown = ids.find((id) => !recordIds.has(id));
-  if (unknown !== undefined) throw new Error(`plan names a change record this darnit does not have: ${JSON.stringify(unknown)}`);
+  if (unknown !== undefined) throw new Error(`plan names a change record this darnit does not have: ${shown(unknown)}`);
   if (new Set(ids).size < ids.length) throw new Error("plan names a change record twice");
   return result.data;
 }
@@ -130,7 +177,7 @@ export function parsePlan(text: string, recordIds: ReadonlySet<string>): Plan {
  * so the file shows as plain text. Checked with parsePlan first, so no plan darnit writes is one it would refuse.
  */
 export function serializePlan(plan: Plan, recordIds: ReadonlySet<string>): string {
-  const text = `${JSON.stringify(plan, KEYS, 2)}\n`.replace(/[\u007f-\u009f\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  const text = escaped(`${JSON.stringify(plan, KEYS, 2)}\n`);
   parsePlan(text, recordIds);
   return text;
 }

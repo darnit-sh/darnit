@@ -30,7 +30,7 @@ describe("parsePlan", () => {
     ["a group", group({ token: "x" })],
     ["a check", group({ tests: { ...outcome, env: "x" } })],
   ])("rejects an unknown field in %s", (_, plan) => {
-    expect(() => parsePlan(text(plan), ids)).toThrow(/Unrecognized key/);
+    expect(() => parsePlan(text(plan), ids)).toThrow(/unknown field/);
   });
 
   it.each([
@@ -38,6 +38,8 @@ describe("parsePlan", () => {
     ["the test output", group({ tests: { ...outcome, output: "x".repeat(CAPS.output + 1) } })],
     ["the command", group({ tests: { ...outcome, command: "x".repeat(CAPS.command + 1) } })],
     ["the darnit version", { ...valid(), darnit: "x".repeat(CAPS.darnit + 1) }],
+    ["the list of files", group({ files: Array.from({ length: CAPS.files + 1 }, (_, i) => `f${i}.py`) })],
+    ["the list of changes", { ...valid(), groups: Array.from({ length: CAPS.groups + 1 }, () => valid().groups[0]) }],
   ])("rejects %s over its cap", (_, plan) => {
     expect(() => parsePlan(text(plan), ids)).toThrow(/over the cap/);
   });
@@ -80,7 +82,7 @@ describe("parsePlan", () => {
     expect(() => parsePlan(text(group({ files: ["app.py", "b.py"] })), ids)).toThrow(/patch is not a git diff/);
   });
 
-  it.each(["../app.py", "/etc/passwd", "a/../../app.py", ".git/config", "sub/.GIT/hooks/pre-commit", "a//b", "./app.py", "a\0b", ""])(
+  it.each(["../app.py", "/etc/passwd", "a/../../app.py", ".git/config", "sub/.GIT/hooks/pre-commit", "a//b", "./app.py", ".git ", ".git.", "sub/.GIT. ./x", "git~1/config", "GIT~1", ".g\u200cit/hooks", "a/.git\ufeff/x", "a\0b", ""])(
     "rejects the path %j as not inside the repository",
     (file) => {
       expect(() => parsePlan(text(group({ files: [file], patch: PATCH.replaceAll("app.py", file) })), ids)).toThrow(/not a path inside the repository/);
@@ -123,7 +125,46 @@ describe("parsePlan", () => {
     expect(patch.match(/^@@/gm)?.length).toBe(names.length);
     expect(parsePlan(text(group({ files: names, patch })), ids).groups[0]!.files).toEqual(names);
   });
-});
 
+  it("rejects a field given twice, which JSON.parse would quietly read as the last one", () => {
+    const plan = text(valid());
+    expect(() => parsePlan(plan.replace('{"version":1,', '{"version":1,"version":1,'), ids)).toThrow('plan holds the field "version" twice');
+    expect(() => parsePlan(plan.replace('"build":null,', '"build":null,"build":null,'), ids)).toThrow('plan holds the field "build" twice');
+    // The same text inside a string is no field.
+    const quoted = PATCH.replace("+max_completion_tokens=5", '+x = {"a": 1, "a": 2}');
+    expect(parsePlan(text(group({ patch: quoted })), ids).groups[0]!.patch).toBe(quoted);
+  });
+
+  it("never repeats more than a short, escaped piece of the plan in its errors", () => {
+    const errorOf = (plan: unknown) => {
+      try {
+        parsePlan(typeof plan === "string" ? plan : text(plan), ids);
+      } catch (err) {
+        return (err as Error).message;
+      }
+      throw new Error("accepted");
+    };
+    const messages = [
+      errorOf({ ...valid(), "\n::warning::pwned\u2028\u0085": 1 }),
+      errorOf({ ...valid(), ["k".repeat(7 * 1024 * 1024)]: 1 }),
+      errorOf(group({ id: "openai:2024-01-01:x\n::error::pwned\u0085" })),
+      errorOf(text(valid()).replace('{"version":1,', '{"\\n::warning::x":1,"\\n::warning::x":1,"version":1,')),
+      errorOf({ ...valid(), groups: Array.from({ length: 20 }, () => ({ ...valid().groups[0], [`\n::x${"y".repeat(100)}`]: 1 })) }),
+    ];
+    for (const m of messages) {
+      expect(m.length).toBeLessThan(600);
+      // eslint-disable-next-line no-control-regex
+      expect(m.split("\n").every((line) => !line.includes("::") || !/^::|[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]/.test(line))).toBe(true);
+    }
+    expect(messages[0]).toContain('unknown field "\\n::warning::pwned\\u2028\\u0085"');
+    expect(messages[1]).toMatch(/^invalid plan:\nplan: unknown field "k{64}…"$/);
+    expect(messages[4]).toContain("and 15 more");
+  });
+
+  it("writes no plan it would refuse to read", () => {
+    expect(() => serializePlan({ ...valid(), darnit: "x".repeat(CAPS.darnit + 1) }, ids)).toThrow(/over the cap/);
+    expect(() => serializePlan(valid(), new Set())).toThrow(/does not have/);
+  });
+});
 const temp: string[] = [];
 afterAll(() => Promise.all(temp.map((d) => rm(d, { recursive: true, force: true }))));
