@@ -16,6 +16,8 @@ export type Item = {
   schema?: string | undefined;
   field?: string | undefined;
   value?: string | undefined;
+  /** For a removal, its oasdiff id. */
+  change?: string | undefined;
 };
 
 /** A removal as the corpus run logs it: an oasdiff entry and the day it was seen. */
@@ -141,34 +143,57 @@ export function removalItems(removals: Removal[]): Item[] {
     const name = r.id === "request-property-removed" ? names[0] : r.id === "request-parameter-removed" ? names.at(-1) : undefined;
     const field = endpoint && name && /^[^/\s]+$/.test(name) ? name : undefined;
     const at = endpoint && (field || ENDPOINT_GONE.test(r.id)) ? { method: r.operation, path: r.path } : {};
-    if (!items.has(key)) items.set(key, { key, ...at, field });
+    if (!items.has(key)) items.set(key, { key, ...at, field, change: r.id });
   }
   return [...items.values()];
 }
 
-/** Each operation with a request body, and the component schemas that body reaches through $refs. */
-export function requestSchemas(spec: unknown): { method: string; path: string; names: Set<string> }[] {
-  const out: { method: string; path: string; names: Set<string> }[] = [];
+/**
+ * For each component schema, the operations whose request body reaches it through $refs. Each component's own $refs
+ * are read once, so a large spec costs its size plus a walk of the component graph per operation.
+ */
+function requestSchemas(spec: unknown): Map<string, { method: string; path: string }[]> {
   const components = isNode(spec) && isNode(spec.components) ? spec.components : {};
+  const component = (id: string) => {
+    const [type, name] = id.split("/") as [string, string];
+    const group = Object.hasOwn(components, type) ? components[type] : undefined;
+    return isNode(group) && Object.hasOwn(group, name) ? group[name] : undefined;
+  };
+  // The components a node names by $ref anywhere inside it, as "schemas/Name", without following them.
+  const refsIn = (root: unknown): string[] => {
+    const found = new Set<string>();
+    const seen = new WeakSet<object>();
+    const stack = [root];
+    while (stack.length > 0) {
+      const n = stack.pop();
+      if (!isNode(n) || seen.has(n)) continue;
+      seen.add(n);
+      const ref = typeof n.$ref === "string" ? COMPONENT.exec(n.$ref) : null;
+      if (ref && component(`${ref[1]}/${ref[2]}`) !== undefined) found.add(`${ref[1]}/${ref[2]}`);
+      for (const child of Object.values(n)) stack.push(child);
+    }
+    return [...found];
+  };
+  const direct = new Map<string, string[]>();
+  const out = new Map<string, { method: string; path: string }[]>();
   for (const [path, ops] of Object.entries(isNode(spec) && isNode(spec.paths) ? spec.paths : {})) {
     for (const [m, op] of Object.entries(isNode(ops) ? ops : {})) {
       if (!METHODS.has(m) || !isNode(op)) continue;
-      const names = new Set<string>();
-      const seen = new WeakSet<object>();
-      const stack: unknown[] = [op.requestBody];
-      while (stack.length > 0) {
-        const n = stack.pop();
-        if (!isNode(n) || seen.has(n)) continue;
-        seen.add(n);
-        const ref = typeof n.$ref === "string" ? COMPONENT.exec(n.$ref) : null;
-        const group = ref && Object.hasOwn(components, ref[1]!) ? components[ref[1]!] : undefined;
-        if (ref && isNode(group) && Object.hasOwn(group, ref[2]!)) {
-          if (ref[1] === "schemas") names.add(ref[2]!);
-          stack.push(group[ref[2]!]);
-        }
-        for (const child of Object.values(n)) stack.push(child);
+      const reached = new Set<string>();
+      const queue = refsIn(op.requestBody);
+      for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
+        if (reached.has(id)) continue;
+        reached.add(id);
+        if (!direct.has(id)) direct.set(id, refsIn(component(id)));
+        queue.push(...direct.get(id)!);
       }
-      if (names.size > 0) out.push({ method: m.toUpperCase(), path, names });
+      const at = { method: m.toUpperCase(), path };
+      for (const id of reached) {
+        if (!id.startsWith("schemas/")) continue;
+        const name = id.slice("schemas/".length);
+        if (out.has(name)) out.get(name)!.push(at);
+        else out.set(name, [at]);
+      }
     }
   }
   return out;
@@ -215,6 +240,8 @@ export type Accounting = {
   stale: string[];
   /** Entries naming an item a record already covers. */
   redundant: { key: string; ids: string[] }[];
+  /** Items whose reason the spec or the log contradicts: see `holds`. */
+  contradicted: string[];
 };
 
 /**
@@ -255,7 +282,7 @@ export function account(input: {
     if (item.schema === undefined) return [];
     reach ??= requestSchemas(spec);
     const found = new Set<ChangeRecord>();
-    for (const op of reach.filter((o) => o.names.has(item.schema!))) {
+    for (const op of reach.get(item.schema) ?? []) {
       const these = records.filter((r) => coversOp(r, op.method, op.path, item.field));
       if (these.length === 0) return [];
       for (const r of these) found.add(r);
@@ -263,9 +290,22 @@ export function account(input: {
     return [...found];
   };
 
+  // A reason may only say what the spec or the log shows. "Response-only" holds for a schema no request body
+  // reaches and for a removal oasdiff files under a response; a sentence a reason quotes from the spec is in it.
+  let specText: string | undefined;
+  const holds = (reason: string, item: Item) => {
+    if (reason.startsWith("Response-only")) {
+      if (item.change !== undefined) return item.change.startsWith("response-");
+      const schema = item.key.startsWith("schema ") ? item.key.split(" ")[1] : undefined;
+      reach ??= requestSchemas(spec);
+      return schema !== undefined && !reach.has(schema);
+    }
+    return !/\bspec\b/.test(reason) || [...reason.matchAll(/"([^"]+)"/g)].every((m) => (specText ??= JSON.stringify(spec)).includes(m[1]!));
+  };
+
   const entries = new Map<string, NotCovered[number]>();
   for (const e of input.notCovered) for (const key of e.items) entries.set(key, e);
-  const result: Accounting = { deprecated: deprecated.length, removals: removals.length, covered: new Map(), reasons: [], needsRecord: [], unaccounted: [], stale: [], redundant: [] };
+  const result: Accounting = { deprecated: deprecated.length, removals: removals.length, covered: new Map(), reasons: [], needsRecord: [], unaccounted: [], stale: [], redundant: [], contradicted: [] };
   const known = new Set<string>();
   for (const item of [...deprecated, ...removals]) {
     known.add(item.key);
@@ -274,7 +314,10 @@ export function account(input: {
     if (ids.length > 0) {
       result.covered.set(item.key, ids);
       if (entry) result.redundant.push({ key: item.key, ids });
-    } else if (entry?.reason) result.reasons.push(item.key);
+    } else if (entry?.reason) {
+      result.reasons.push(item.key);
+      if (!holds(entry.reason, item)) result.contradicted.push(item.key);
+    }
     else if (entry?.["needs-record"]) result.needsRecord.push({ key: item.key, proposal: entry["needs-record"], date: entry.date });
     else result.unaccounted.push(item.key);
   }

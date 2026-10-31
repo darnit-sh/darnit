@@ -6,24 +6,20 @@ import { account, NotCoveredSchema, openItems, readOptional, readRemovals } from
 import type { VendorConfig } from "../src/corpus/candidates.js";
 import { parseSpec } from "../src/corpus/spec.js";
 import { forTerminal } from "../src/fix.js";
-import { loadRecords, PACKS_DIR } from "../src/records/load.js";
+import { loadRecords } from "../src/records/load.js";
 
 // Every deprecation in each vendor's spec and every removal in its corpus history is either covered
 // by a record or listed in packs/<vendor>/not-covered.yaml with the reason it has none. Exit 1 on
 // anything unaccounted for, and on entries that name an item no longer there or one a record covers.
 // Items marked needs-record stay open and are listed on every run, soonest date first.
-// --corpus <dir> reads another corpus folder; --today YYYY-MM-DD sets the date past dates are flagged against.
+// --root <dir> reads vendors.yml, corpus/ and packs/ from another folder.
 
-const ROOT = fileURLToPath(new URL("../", import.meta.url));
-const arg = (name: string) => {
-  const at = process.argv.indexOf(name);
-  return at > 0 ? (process.argv[at + 1] ?? "") : undefined;
-};
-const corpus = resolve(arg("--corpus") ?? join(ROOT, "corpus"));
-const today = arg("--today") ?? new Date().toISOString().slice(0, 10);
+const at = process.argv.indexOf("--root");
+const ROOT = at > 0 ? resolve(process.argv[at + 1] ?? "") : fileURLToPath(new URL("../", import.meta.url));
+const today = new Date().toISOString().slice(0, 10);
 
 const vendors = parseYaml(await readFile(join(ROOT, "vendors.yml"), "utf8")) as Record<string, VendorConfig>;
-const records = (await loadRecords()).map((l) => l.record);
+const records = (await loadRecords(join(ROOT, "packs"))).map((l) => l.record);
 // Keys are spec text: quoted, and anything outside printable ASCII written as an escape, so a name cannot hide or forge a line.
 const show = (key: string) => JSON.stringify(key).replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 const out: string[] = [];
@@ -32,10 +28,10 @@ for (const [vendor, config] of Object.entries(vendors)) {
   const notCoveredFile = `packs/${vendor}/not-covered.yaml`;
   const result = account({
     vendor,
-    spec: parseSpec(await readFile(join(corpus, vendor, "openapi.yaml"), "utf8")),
-    removals: await readRemovals(join(corpus, vendor, "removals.json")),
+    spec: parseSpec(await readFile(join(ROOT, "corpus", vendor, "openapi.yaml"), "utf8")),
+    removals: await readRemovals(join(ROOT, "corpus", vendor, "removals.json")),
     records,
-    notCovered: NotCoveredSchema.parse(parseYaml((await readOptional(join(PACKS_DIR, vendor, "not-covered.yaml"))) ?? "") ?? []),
+    notCovered: NotCoveredSchema.parse(parseYaml((await readOptional(join(ROOT, "packs", vendor, "not-covered.yaml"))) ?? "") ?? []),
     symbols: config.symbols,
   });
   out.push(`${vendor}: ${result.deprecated} deprecated in the spec, ${result.removals} removals in the corpus history`);
@@ -53,6 +49,7 @@ for (const [vendor, config] of Object.entries(vendors)) {
   section(`Not accounted for (add a record, or an entry in ${notCoveredFile}):`, result.unaccounted.map(show));
   section(`Entries in ${notCoveredFile} for items no longer in the spec or the corpus history (remove them):`, result.stale.map(show));
   section(`Entries in ${notCoveredFile} for items a record covers (remove them):`, result.redundant.map((r) => `${show(r.key)}: ${r.ids.join(", ")}`));
-  if (result.unaccounted.length + result.stale.length + result.redundant.length > 0) process.exitCode = 1;
+  section(`Reasons in ${notCoveredFile} that the spec or the corpus history contradicts (correct them):`, result.contradicted.map(show));
+  if (result.unaccounted.length + result.stale.length + result.redundant.length + result.contradicted.length > 0) process.exitCode = 1;
 }
 console.log(forTerminal(out.join("\n")));

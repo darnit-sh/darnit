@@ -1,0 +1,4 @@
+openai:
+  spec: https://example.com/openapi.yaml
+  symbols:
+    "POST /images/generations": images.generate
