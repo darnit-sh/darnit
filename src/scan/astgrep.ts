@@ -192,11 +192,32 @@ export const modelNames = (patterns: readonly AstGrepPattern[]) =>
     return m?.[1] === "model" ? literals(m[2]!) : [];
   });
 
+const JS_KEY = /^\(\{\s*([A-Za-z_]\w*)\s*:([\s\S]*)\}\)$/;
+const PY_KEY = /^f\(([A-Za-z_]\w*)=([\s\S]*)\)$/;
+const JS_QUOTED_KEY = /^\(\{\s*(["'])([A-Za-z_]\w*)\1\s*:([\s\S]*)\}\)$/;
+const PY_QUOTED_KEY = /^\{\s*(["'])([A-Za-z_]\w*)\1\s*:([\s\S]*)\}$/;
+
+/** A record's quoted-key pattern that its bare-key pattern already matches, as `ruleFor` adds the quoted key: matching both would count each node twice. */
+function covered(p: AstGrepPattern, all: readonly AstGrepPattern[]): boolean {
+  const js = p.selector === "pair" ? JS_QUOTED_KEY.exec(p.context) : null;
+  const quoted = js ?? (p.selector === "pair" ? PY_QUOTED_KEY.exec(p.context) : null);
+  if (!quoted) return false;
+  return all.some((b) => {
+    const bare = js ? (b.selector === "pair" ? JS_KEY.exec(b.context) : null) : b.selector === "keyword_argument" ? PY_KEY.exec(b.context) : null;
+    return bare !== null && bare[1] === quoted[2] && bare[2]!.trim() === quoted[3]!.trim();
+  });
+}
+
+// The key of a pattern that also matches the key quoted; no record uses this name.
+const KEY = "DARNIT_KEY";
+
 /**
  * A pattern whose value is one quoted string also matches that string as the last fallback:
  * `model: opts.model ?? "gpt-4"` (or `||`, or Python's `or`) sends gpt-4 whenever no model is passed.
+ * A bare key also matches it quoted, as raw HTTP bodies write it: `{ "max_tokens": 5 }`, and Python's
+ * `{"max_tokens": 5}` for `max_tokens=5`. Only when the file's `source` holds the quoted key, as that costs time.
  */
-function ruleFor(context: string, selector: string) {
+function ruleFor(context: string, selector: string, source?: string) {
   const js = JS_VALUE.exec(context);
   const py = PY_VALUE.exec(context);
   const fallbacks = js
@@ -204,7 +225,16 @@ function ruleFor(context: string, selector: string) {
     : py
       ? [`f(${py[1]}=$_ or ${py[2]})`]
       : [];
-  return { any: [context, ...fallbacks].map((c) => ({ pattern: { context: c, selector } })) };
+  const forms = [context, ...fallbacks].map((c) => ({ context: c, selector }));
+  const jsKey = selector === "pair" ? JS_KEY.exec(context)?.[1] : undefined;
+  const pyKey = selector === "keyword_argument" ? PY_KEY.exec(context)?.[1] : undefined;
+  const key = jsKey ?? pyKey;
+  if (key === undefined || (source !== undefined && !source.includes(`"${key}"`) && !source.includes(`'${key}'`))) return { rule: { any: forms.map((pattern) => ({ pattern })) } };
+  const patterns = jsKey
+    ? forms.map((f) => ({ context: f.context.replace(JS_KEY, `({ $${KEY}:$2})`), selector }))
+    : [...forms, ...forms.map((f) => ({ context: f.context.replace(PY_KEY, `{$${KEY}: $2}`), selector: "pair" }))];
+  const quoted = `"${key}"|'${key}'`;
+  return { rule: { any: patterns.map((pattern) => ({ pattern })) }, constraints: { [KEY]: { regex: `^(?:${jsKey ? `${key}|` : ""}${quoted})$` } } };
 }
 
 // Pattern sets that compiled, so records loaded again in the same process are not compiled again.
@@ -221,7 +251,8 @@ export function compilePatterns(lang: Lang, patterns: readonly AstGrepPattern[])
     const root = parse(grammar, "").root();
     for (const [i, { context, selector }] of patterns.entries()) {
       try {
-        root.findAll({ rule: ruleFor(context, selector) });
+        // With quoted keys: the same forms, an identifier key aside, so they compile when the plain ones do.
+        root.findAll(ruleFor(context, selector));
       } catch (err) {
         throw new Error(`${lang} pattern ${i + 1} does not compile for ${String(grammar).toLowerCase()}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
       }
@@ -233,12 +264,12 @@ export function compilePatterns(lang: Lang, patterns: readonly AstGrepPattern[])
 /** Every node in `source` matching any of `patterns`, optionally gated. `parsed` gives the file's syntax tree, so callers can share one. */
 export function findMatches(source: string, grammar: Grammar, allPatterns: readonly AstGrepPattern[], gate?: Gate, parsed = () => parse(grammar, source).root()): Match[] {
   // A plain text check before parsing: most files contain none of a pattern's quoted text.
-  const patterns = allPatterns.filter((p) => literals(p.context).every((l) => source.includes(l)));
+  const patterns = allPatterns.filter((p) => literals(p.context).every((l) => source.includes(l)) && !covered(p, allPatterns));
   if (patterns.length === 0) return [];
   const root = parsed();
   const symbols = gate?.symbols ?? [];
   const endpoints = gate?.endpoints ?? [];
-  const found = patterns.map(({ context, selector }) => root.findAll({ rule: ruleFor(context, selector) }));
+  const found = patterns.map(({ context, selector }) => root.findAll(ruleFor(context, selector, source)));
   // A static call counts only on the vendor's own class, never a local or another package's of the same name.
   const classes = new Map<string, boolean>();
   const isVendorClass = (callee: string) => {

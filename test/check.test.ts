@@ -674,6 +674,12 @@ describe("check", () => {
     expect(locations(hits)).toEqual(["app.js:4", "app.js:5", "app.js:6", "app.js:7", "app.py:5", "app.py:6", "app.py:7", "app.py:8"]);
   });
 
+  it("reports a quoted max_tokens in OpenAI calls and raw chat completions requests, not in other requests, objects or logs", async () => {
+    const dir = fileURLToPath(new URL("../packs/openai/2024-09-12-max-tokens-to-max-completion-tokens/fixtures/raw-http/before/", import.meta.url));
+    const hits = (await check(dir)).filter((h) => h.record.id.includes("max-tokens"));
+    expect(locations(hits)).toEqual(["app.js:8", "app.js:9", "app.js:12", "app.js:13", "app.js:14", "app.py:11", "app.py:12", "app.py:15", "app.py:16", "app.py:17"]);
+  });
+
   it("does not report an options object passed by name", async () => {
     const dir = await scratch({ "detached.js": 'import OpenAI from "openai";\nconst opts = { max_tokens: 5 };\nnew OpenAI().chat.completions.create(opts);\n' });
     expect(await check(dir)).toEqual([]);
@@ -880,6 +886,16 @@ describe("model shutdowns", () => {
     expect([...new Set(values.map((v) => `${v.file}:${v.line}`))].sort()).toEqual(["other.ts:6", "other.ts:7", "other.ts:8"]);
   });
 
+  it("reports a retiring model under a quoted key in a raw request, not in a config object", async () => {
+    const dir = await scratch({
+      "raw.py": 'import requests\n\nr = requests.post("https://api.openai.com/v1/chat/completions", json={"model": "gpt-4", "messages": []})\nCONFIG = {"model": "gpt-4"}\n',
+      "raw.js": 'export const r = fetch("https://api.openai.com/v1/chat/completions", { method: "POST", body: JSON.stringify({ "model": "gpt-4" }) });\nexport const config = { "model": "gpt-4" };\n',
+    });
+    const { hits, values } = await checkReport(dir);
+    expect([...new Set(locations(shutdowns(hits)))].sort()).toEqual(["raw.js:1", "raw.py:3"]);
+    expect([...new Set(values.map((v) => `${v.file}:${v.line}`))].sort()).toEqual(["raw.js:2", "raw.py:4"]);
+  });
+
   it("reports a retiring model written as the fallback when no model is passed", async () => {
     const dir = await scratch({
       "stt.ts": [
@@ -1037,7 +1053,7 @@ describe("model names set as values", () => {
   });
 
   it("lists a model value on a line another change already reported", async () => {
-    const dir = await scratch({ "app.py": 'from openai import OpenAI\n\nclient = OpenAI()\nclient.chat.completions.create(**{"model": "gpt-4"}, messages=[], max_tokens=5)\n' });
+    const dir = await scratch({ "app.py": 'from openai import OpenAI\n\nclient = OpenAI()\nMODEL = "gpt-4"; client.chat.completions.create(model=MODEL, messages=[], max_tokens=5)\n' });
     const { hits, values } = await checkReport(dir);
     expect(hits.map((h) => h.record.id)).not.toContain(values[0]?.record.id);
     expect(values.map((v) => `${v.line}:${v.model}`)).toEqual(["4:gpt-4"]);
@@ -1279,6 +1295,24 @@ describe("findMatches", () => {
     expect(findMatches("f({ max_tokens: 5 });\n", ts, [{ context: "({ max_tokens: $N })", selector: "pair" }])).toHaveLength(1);
   });
 
+  it("matches a bare key written in quotes, and a keyword argument written as a dict key", () => {
+    const js = 'f({ max_tokens: 5 });\nf({ "max_tokens": 5 });\nf({ \'max_tokens\': 5 });\nf({ "max_tokens_x": 5 });\nf("max_tokens", 5);\nf({ "model": o.model ?? "gpt-4" });\n';
+    expect(findMatches(js, ts, [{ context: "({ max_tokens: $N })", selector: "pair" }]).map((m) => m.line)).toEqual([1, 2, 3]);
+    expect(findMatches(js, ts, pattern).map((m) => m.line)).toEqual([6]);
+    const py = grammarFor("a.py")!.grammar;
+    const source = 'f(max_tokens=5)\nf(json={"max_tokens": 5})\nf(json={\'max_tokens\': 5})\nf(json={"max_tokens_x": 5})\nf("max_tokens", 5)\nf(json={"model": o or "gpt-4"})\n';
+    expect(findMatches(source, py, [{ context: "f(max_tokens=$N)", selector: "keyword_argument" }]).map((m) => m.line)).toEqual([1, 2, 3]);
+    expect(findMatches(source, py, [{ context: 'f(model="gpt-4")', selector: "keyword_argument" }]).map((m) => m.line)).toEqual([6]);
+  });
+
+  it("counts a node once when a record also lists its quoted form", () => {
+    const patterns = [
+      { context: "({ spend_control: $V })", selector: "pair" },
+      { context: '({ "spend_control": $V })', selector: "pair" },
+    ];
+    expect(findMatches('f({ "spend_control": 1 });\n', ts, patterns)).toHaveLength(1);
+  });
+
   it("never skips a pattern whose quoted text is a placeholder", () => {
     expect(findMatches('f({ model: "gpt-4" });\n', ts, [{ context: '({ model: "$M" })', selector: "pair" }])).toHaveLength(1);
     const py = grammarFor("a.py")!.grammar;
@@ -1420,6 +1454,7 @@ describe("check on a repository built to slow it down", () => {
 
   it.each([
     ["a request with thousands of keyword arguments", `import requests\n${request("max_tokens=5, ".repeat(2000))}\n`, 2000],
+    ["a request body with thousands of quoted keys", `import requests\n${request(`json={${'"max_tokens": 5, '.repeat(2000)}}`)}\n`, 2000],
     ["a request inside calls nested 1500 deep", `import requests\nx = ${"f(max_tokens=5, ".repeat(1500)}${request("max_tokens=5")}${")".repeat(1500)}\n`, 1],
   ])("finishes quickly on %s", async (_, text, count) => {
     const dir = await scratch({ "app.py": text });

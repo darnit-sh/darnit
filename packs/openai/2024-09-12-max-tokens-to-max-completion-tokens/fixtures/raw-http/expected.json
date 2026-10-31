@@ -1,0 +1,7 @@
+{
+  "note": "Quoted max_tokens keys: in raw HTTP bodies (requests, httpx, fetch, axios) and in SDK calls. Detection counts every quoted or bare max_tokens entry, ten per file; the log strings are not entries. check keeps only those in a chat completions SDK call or in a request whose URL names /v1/chat/completions, and drops another vendor's, legacy completions, the config object, the log call and the payload passed by name (test/check.test.ts). The quoted keys are reported only: the rules rename just the bare-key SDK call, as in basic/.",
+  "matches": {
+    "before/app.js": 10,
+    "before/app.py": 10
+  }
+}

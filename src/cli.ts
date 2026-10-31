@@ -36,7 +36,7 @@ program
   .command("init")
   .description("detect the APIs this repo uses and install the scheduled check")
   .argument("[dir]", DIR)
-  .option("--force", "rewrite darnit.yml and the workflow if they exist")
+  .option("--force", "rewrite darnit.yml and the workflow if they exist and are committed as they are")
   .action(async (dir: string | undefined, { force }: { force?: boolean }) => {
     const lines = await init(await folder(dir), { force: force ?? false });
     console.log(forTerminal(lines.map((line) => (line.startsWith("Not checked:") ? line : `✓ ${line}`)).join("\n")));
