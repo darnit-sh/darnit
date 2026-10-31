@@ -78,29 +78,63 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+const HIDDEN = /[\p{Default_Ignorable_Code_Point}\u007f-\u009f\u2028\u2029]/gu;
+// The skin tones and U+FE0F in one class are alternatives, not one combined character.
+// eslint-disable-next-line no-misleading-character-class
+const JOINS_AFTER = /\p{Extended_Pictographic}[\u{1F3FB}-\u{1F3FF}\uFE0F]?$/u;
+const PICTOGRAPH = /^\p{Extended_Pictographic}/u;
+const PICTOGRAPH_BEFORE = /\p{Extended_Pictographic}$/u;
+const FLAG = /\u{1F3F4}[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/uy;
+
 /**
- * Text from the repository with each DEL or C1 control (U+009B reads as ESC [ in some terminals), direction-changing,
- * zero-width or line-separating character written out as \u009b, so it can't hide or reorder text. On screen the escape
- * is visible; inside a JSON string it decodes to the same character, which JSON.stringify leaves raw. The joiners
- * U+200C and U+200D are kept: emoji sequences and some scripts need them.
+ * Whether the invisible character `c` at `at` is part of an emoji: a joiner between two pictographs (a family, or a
+ * person with a skin tone and a laptop), U+FE0F right after a pictograph (a red heart) or in a keycap, or a tag
+ * character in a subdivision flag (U+1F3F4, a short code in tag letters, U+E007F).
  */
-export const escapeHidden = (text: string) =>
-  text.replace(/[\u007f-\u009f\u061c\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+function inEmoji(text: string, at: number, c: string): boolean {
+  if (c === "\u200D") return JOINS_AFTER.test(text.slice(Math.max(0, at - 4), at)) && PICTOGRAPH.test(text.slice(at + 1, at + 3));
+  if (c === "\uFE0F") return PICTOGRAPH_BEFORE.test(text.slice(Math.max(0, at - 2), at)) || (/[0-9#*]/.test(text[at - 1] ?? "") && text[at + 1] === "\u20E3");
+  const point = c.codePointAt(0)!;
+  if (point < 0xe0000 || point > 0xe007f) return false;
+  for (let start = at - 2; start >= Math.max(0, at - 12); start -= 2) {
+    FLAG.lastIndex = start;
+    const flag = FLAG.exec(text);
+    if (flag) return start + flag[0].length > at;
+  }
+  return false;
+}
+
+const unit = (code: number) => `\\u${code.toString(16).padStart(4, "0")}`;
+/** Each UTF-16 unit of `c` as \u0000, which is visible on screen and, inside a JSON string, decodes back to `c`. */
+const written = (c: string) => unit(c.charCodeAt(0)) + (c.length > 1 ? unit(c.charCodeAt(1)) : "");
+
+/** `escapeHidden` over `text` from `start` to `end`, judging each character by what is next to it in all of `text`. */
+const escapeRange = (text: string, start: number, end: number) =>
+  text.slice(start, end).replace(HIDDEN, (c: string, at: number) => (inEmoji(text, start + at, c) ? c : written(c)));
+
+/**
+ * Text from the repository with each character that can hide or reorder text written out as \u202e: Unicode's
+ * default-ignorable code points (direction controls, zero-width characters and joiners, tag characters, variation
+ * selectors, fillers, the soft hyphen), DEL and C1 controls (U+009B reads as ESC [ in some terminals), and the line
+ * and paragraph separators. JSON.stringify leaves all of them raw. Only those inside an emoji stay as they are.
+ */
+export const escapeHidden = (text: string) => escapeRange(text, 0, text.length);
 
 // Escaped, a piece stays under 128 KB, small enough for V8 to free in a young-generation collection instead of
 // keeping it until a full one: with 65,536-character pieces, `fix --dry-run` on Node 24 peaked about 60 MB higher.
 const PIECE = 8_192;
 
 /**
- * `escapeHidden` over `text` a piece at a time, cut between surrogate pairs, for output written as it goes: escaping can
- * make text six times longer, and a long line escaped whole would hold that copy in memory, or pass V8's string limit.
+ * `escapeHidden` over `text`, given a piece at a time for output written as it goes: escaping can make text six times
+ * longer, and a long line escaped whole would hold that copy in memory, or pass V8's string limit. Pieces are cut
+ * between surrogate pairs, and each character is judged by what is next to it in the whole text, as in `escapeHidden`.
  */
 export function* escapedPieces(text: string): Generator<string> {
   for (let start = 0; start < text.length; ) {
     let end = Math.min(start + PIECE, text.length);
     const last = text.charCodeAt(end - 1);
     if (end < text.length && last >= 0xd800 && last <= 0xdbff) end--;
-    yield escapeHidden(text.slice(start, end));
+    yield escapeRange(text, start, end);
     start = end;
   }
 }

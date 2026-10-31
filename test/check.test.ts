@@ -497,6 +497,52 @@ describe.skipIf(process.platform === "win32")("check prints crafted file and fol
   });
 });
 
+describe("escapeHidden", () => {
+  const cp = (...points: number[]) => String.fromCodePoint(...points);
+  const units = (s: string) => s.split("").map((u) => `\\u${u.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+  const tags = (s: string) => cp(...[...s].map((c) => 0xe0000 + c.charCodeAt(0)));
+  const [ZWJ, VS16] = ["\u200D", "\uFE0F"];
+
+  it.each([
+    0x00ad, 0x034f, 0x061c, 0x115f, 0x1160, 0x17b4, 0x17b5, 0x180e, 0x200b, 0x200c, 0x200d, 0x200e, 0x200f, 0x202a, 0x202e,
+    0x2028, 0x2029, 0x2060, 0x2064, 0x2066, 0x2069, 0x206a, 0x206b, 0x206c, 0x206d, 0x206e, 0x206f, 0x3164, 0xfe00, 0xfe0e,
+    0xfe0f, 0xfeff, 0xffa0, 0x007f, 0x0085, 0x009b, 0xe0000, 0xe0001, 0xe0020, 0xe0041, 0xe007f, 0xe0100, 0x1d173,
+  ])("writes out U+%s, which can hide or reorder text", (point) => {
+    const text = `a${cp(point)}b`;
+    expect(escapeHidden(text)).toBe(`a${units(cp(point))}b`);
+    expect(JSON.parse(`"${escapeHidden(text)}"`)).toBe(text);
+  });
+
+  it("writes out tag characters that spell hidden text, and a joiner or U+FE0F anywhere but inside an emoji", () => {
+    expect(escapeHidden(`app${tags("delete prod db")}.ts`)).toBe(`app${units(tags("delete prod db"))}.ts`);
+    expect(escapeHidden(`a${ZWJ}b`)).toBe("a\\u200db");
+    expect(escapeHidden(`${cp(0x1f44d)}${ZWJ}X`)).toBe(`${cp(0x1f44d)}\\u200dX`);
+    expect(escapeHidden(`${cp(0x1f468)}${ZWJ}${ZWJ}${cp(0x1f469)}`)).toBe(`${cp(0x1f468)}\\u200d\\u200d${cp(0x1f469)}`);
+    expect(escapeHidden(`a${ZWJ.repeat(5)}b`)).toBe(`a${"\\u200d".repeat(5)}b`);
+    expect(escapeHidden(`a${VS16}`)).toBe("a\\ufe0f");
+    // A flag holds only a short subdivision code: no spaces, no capitals, nothing long enough to spell a message.
+    for (const code of ["g b", "GBENG", "deleteproddb"]) expect(escapeHidden(`${cp(0x1f3f4)}${tags(code)}${cp(0xe007f)}`)).toBe(`${cp(0x1f3f4)}${units(tags(code) + cp(0xe007f))}`);
+  });
+
+  it.each([
+    ["family", `${cp(0x1f468)}${ZWJ}${cp(0x1f469)}${ZWJ}${cp(0x1f467)}${ZWJ}${cp(0x1f466)}`],
+    ["skin tone", cp(0x1f44d, 0x1f3fd)],
+    ["skin tone and joiner", `${cp(0x1f469, 0x1f3fd)}${ZWJ}${cp(0x1f4bb)}`],
+    ["emoji presentation", `${cp(0x2764)}${VS16}`],
+    ["flag and joiner", `${cp(0x1f3f3)}${VS16}${ZWJ}${cp(0x1f308)}`],
+    ["joiner then U+FE0F", `${cp(0x1f3f4)}${ZWJ}${cp(0x2620)}${VS16}`],
+    ["kiss", `${cp(0x1f469)}${ZWJ}${cp(0x2764)}${VS16}${ZWJ}${cp(0x1f48b)}${ZWJ}${cp(0x1f468)}`],
+    ["gender", `${cp(0x1f3c3)}${ZWJ}${cp(0x2640)}${VS16}`],
+    ["hair", `${cp(0x1f468)}${ZWJ}${cp(0x1f9b0)}`],
+    ["subdivision flag", `${cp(0x1f3f4)}${tags("gbeng")}${cp(0xe007f)}`],
+    ["keycap", `1${VS16}\u20E3`],
+    ["country flag", cp(0x1f1fa, 0x1f1f8)],
+  ])("keeps the %s emoji whole", (_name, emoji) => {
+    expect(escapeHidden(`a ${emoji} b`)).toBe(`a ${emoji} b`);
+    expect([...escapedPieces(`${"x".repeat(8_190)}${emoji}`)].join("")).toBe(`${"x".repeat(8_190)}${emoji}`);
+  });
+});
+
 describe("escapedPieces", () => {
   it("escapes as escapeHidden does, in pieces that never cut a character in two", () => {
     const text = `${"a".repeat(8_191)}🎉\u202E${"b".repeat(8_190)}👨\u200D👩${"\u2066".repeat(70_000)}`;
