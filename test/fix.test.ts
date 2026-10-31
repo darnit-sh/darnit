@@ -1228,6 +1228,26 @@ describe("fix --prepare", () => {
     expect(await tree(dir)).toEqual(await tree(BEFORE));
   });
 
+  it.each(["in .git/config, as actions/checkout v5 saves it", "in a file .git/config includes, as actions/checkout v7 saves it"])(
+    "refuses to start with a checkout token saved %s",
+    async (where) => {
+      const dir = await repoFrom(BEFORE);
+      const plan = join(await planHome(), "plan");
+      const header = `AUTHORIZATION: basic ${Buffer.from("x-access-token:ghs_fake_write_token_0123456789").toString("base64")}`;
+      if (where.includes("v5")) await git(dir, ["config", "http.https://github.com/.extraheader", header]);
+      else {
+        const file = join(await planHome(), "git-credentials-1.config");
+        await git(dir, ["config", "-f", file, "http.https://github.com/.extraheader", header]);
+        await git(dir, ["config", `includeIf.gitdir:${await realpath(dir)}/.git.path`, file]);
+      }
+      // What the repository's tests would print into the plan.
+      const probe = "git config --get http.https://github.com/.extraheader | cut -d' ' -f3 | base64 -d; echo";
+      await expect(fix(dir, { prepare: plan, test: probe })).rejects.toThrow("check out with persist-credentials: false");
+      expect(runs.count).toBe(0);
+      await expect(access(plan)).rejects.toThrow();
+    },
+  );
+
   // The repository's tests look for a token in their own environment and in darnit's, which the system
   // keeps readable from the start of the run (/proc/<pid>/environ on Linux, ps -E on macOS).
   const PROBE = "{ env; tr '\\0' '\\n' < /proc/$PPID/environ; ps -wwE -o command= -p $PPID | tr ' ' '\\n'; } 2>/dev/null | grep -E 'TOKEN|DARNIT_NO_UPDATE' | tee seen.txt; true";

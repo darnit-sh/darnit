@@ -231,6 +231,16 @@ export const push = (root: string, branch: string, site = GITHUB) => git(root, [
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
 
+/**
+ * Whether git config, as read in `root` with its includes, holds an http extra header: where actions/checkout
+ * saves its token unless told not to. A config git cannot read counts as one.
+ */
+export const savedHeader = (root: string) =>
+  git(root, ["config", "--get-regexp", "^http\\..*\\.extraheader$"]).then(
+    (out) => out.trim() !== "",
+    (err: { code?: number }) => err.code !== 1,
+  );
+
 export const topLevel = async (root: string) => (await git(root, ["rev-parse", "--show-toplevel"])).trim();
 
 export const head = async (root: string) => (await git(root, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();

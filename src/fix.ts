@@ -275,7 +275,12 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   if (!dryRun && !(await g.hasCommit(root))) {
     throw new Refusal("the current branch has no commits yet; commit your files first. Use --dry-run to preview.");
   }
-  if (opts.prepare !== undefined) await startPlan(root, opts.prepare);
+  if (opts.prepare !== undefined) {
+    if (await g.savedHeader(root)) {
+      throw new Refusal("git config in this repository holds an http extraheader, where actions/checkout saves its token; --prepare runs the repository's code, so check out with persist-credentials: false");
+    }
+    await startPlan(root, opts.prepare);
+  }
 
   const { groups, coverage, namesElsewhere } = await groupHits(root, opts.only);
   const records: RecordResult[] = [];
