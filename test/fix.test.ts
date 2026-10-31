@@ -5,10 +5,12 @@ import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parse } from "yaml";
 import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
+import { WORKFLOW } from "../src/init.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
-import { cpuTime } from "./helpers.js";
+import { annotations, cpuTime, matchersAtDarnit, SETUP_NODE_MATCHERS } from "./helpers.js";
 
 // A short limit for the build and test runs, and a count of them, so a hung check costs a test half a second.
 const runs = vi.hoisted(() => ({ limitMs: undefined as number | undefined, count: 0 }));
@@ -847,6 +849,18 @@ describe("fix in GitHub Actions", () => {
     expect(run.stdout).toMatch(/^@@ .* @@ x ##\[error\]E5$/m);
     expect(run.stdout).toContain("\n ::stop-commands::E7\n");
     expect(notDarnits(run.stdout + run.stderr)).toEqual({ ran: [], stopped: false });
+  });
+
+  it("prints repository text that setup-node's problem matchers annotate, which the workflow init writes removes first", async () => {
+    const owners = Object.keys(SETUP_NODE_MATCHERS);
+    const tests = await repoWith({ "sdk.js": SDK_CALL, "noise.js": 'console.log("src/x.ts(1,1): error TS2322: pwned"); process.exit(1);\n' });
+    const fixed = await darnitWith({ GITHUB_ACTIONS: "true" }, tests, "fix", "--test", "node noise.js");
+    expect(annotations(fixed.stdout + fixed.stderr, owners)).toEqual(["tsc: src/x.ts(1,1): error TS2322: pwned"]);
+    const named = await repoWith({ "1:1  error  pwned  rule.js": SDK_CALL });
+    const checked = await darnitWith({ GITHUB_ACTIONS: "true" }, named, "check");
+    expect(annotations(checked.stdout, owners)).toEqual(["eslint-stylish:   1:1  error  pwned  rule.js:2:83  max_tokens: 5"]);
+    const { steps } = (parse(WORKFLOW) as { jobs: { check: { steps: { uses?: string; run?: string }[] } } }).jobs.check;
+    expect(annotations(fixed.stdout + checked.stdout, matchersAtDarnit(steps))).toEqual([]);
   });
 
   it("is plain text outside GitHub Actions", async () => {
