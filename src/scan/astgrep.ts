@@ -4,7 +4,6 @@ import { kind as kindId, Lang as NapiLang, parse, registerDynamicLanguage, type 
 import { escapeRegExp } from "../detect.js";
 import type { AstGrepPattern, Lang } from "../records/schema.js";
 import { clientOrigin, FUNCTIONS, isStatic, stringText, unwrap, urlOrigin, vendorClass, type VendorClients } from "./clients.js";
-import { inside, joined } from "./values.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
 export type Grammar = Parameters<typeof parse>[0];
@@ -92,26 +91,66 @@ function urlCandidates(call: SgNode): SgNode[] {
 /** Rules for `kinds`, leaving out the ones `grammar` lacks: asking for one is an error. */
 const anyKind = (grammar: Grammar, kinds: readonly string[]) => ({ any: kinds.filter((kind) => kindId(grammar, kind) !== 0).map((kind) => ({ kind })) });
 
+const span = (n: SgNode): Span => ({ start: n.range().start.index, end: n.range().end.index });
+const spanKey = ({ start, end }: Span) => `${start}:${end}`;
+
+// Every call and interpolation in a file, in document order, read once per tree.
+const codeSpans = new WeakMap<SgNode, Span[]>();
+
 /**
- * Whether a URL argument holds an endpoint as a URL or path would: in a literal piece of a string (between interpolations)
- * or of a concatenation, with nothing but URL text before it. The parser finds the pieces, so a concatenation
- * thousands deep is never walked here.
+ * Whether a call's URL argument holds an endpoint as a URL or path would: in a literal piece of a string (between interpolations)
+ * or of a concatenation, with nothing but URL text before it, and not inside other code in the URL. Each piece of the file
+ * holding an endpoint is found once, under the innermost call or interpolation around it, so a URL is tested by a binary
+ * search however deep its code is nested.
  */
-function endpointTest(grammar: Grammar, endpoints: readonly string[]): (url: SgNode) => boolean {
-  const pieces = { rule: { ...anyKind(grammar, ["string_fragment", "string_content"]), regex: endpoints.map(escapeRegExp).join("|") } };
-  const code = { rule: anyKind(grammar, OPAQUE) };
-  return (url) => {
-    if (!URL_KINDS.has(String(url.kind()))) return false;
-    const found = url.findAll(pieces);
-    if (found.length === 0) return false;
-    const opaque = joined(url.findAll(code).map((c) => ({ start: c.range().start.index, end: c.range().end.index })));
-    return found.some((piece) => {
-      const { start, end } = piece.range();
+function endpointTest(root: SgNode, grammar: Grammar, endpoints: readonly string[]): (call: SgNode, url: SgNode) => boolean {
+  let owned: Map<string, number[]> | undefined;
+  const index = () => {
+    let code = codeSpans.get(root);
+    if (!code) codeSpans.set(root, (code = root.findAll({ rule: anyKind(grammar, OPAQUE) }).map(span)));
+    const rule = { rule: { ...anyKind(grammar, ["string_fragment", "string_content"]), regex: endpoints.map(escapeRegExp).join("|") } };
+    const pieces = root.findAll(rule).filter((piece) => {
       const text = piece.text();
-      return !inside(opaque, start.index, end.index) && endpoints.some((e) => text.includes(e) && !/\s/.test(text.slice(0, text.indexOf(e))));
+      return endpoints.some((e) => text.includes(e) && !/\s/.test(text.slice(0, text.indexOf(e))));
     });
+    const out = new Map<string, number[]>();
+    // Spans nest, so the ones still open around a piece are its code ancestors, the innermost last.
+    const open: Span[] = [];
+    let c = 0;
+    const close = (at: number) => {
+      while (open.length > 0 && open.at(-1)!.end <= at) open.pop();
+    };
+    for (const piece of pieces.map(span)) {
+      for (; c < code.length && code[c]!.start <= piece.start; c++) {
+        close(code[c]!.start);
+        open.push(code[c]!);
+      }
+      close(piece.start);
+      // Outside every call, a piece is no request's URL.
+      if (open.length === 0) continue;
+      const key = spanKey(open.at(-1)!);
+      const list = out.get(key);
+      if (list) list.push(piece.start);
+      else out.set(key, [piece.start]);
+    }
+    return out;
+  };
+  return (call, url) => {
+    if (!URL_KINDS.has(String(url.kind()))) return false;
+    const starts = (owned ??= index()).get(spanKey(span(call)));
+    if (!starts) return false;
+    const { start, end } = span(url);
+    let [lo, hi] = [0, starts.length];
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (starts[mid]! < start) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < starts.length && starts[lo]! < end;
   };
 }
+
+const MAX_URL = 2048;
 
 /** An ancestor of a match. `url` is kept once read: the endpoint URL of the raw request a node directly inside it belongs to, or null. */
 type Frame = { node: SgNode; url?: string | null };
@@ -121,7 +160,7 @@ type Frame = { node: SgNode; url?: string | null };
  * an endpoint URL as an argument. Stops at a function, so a route handler, mock or test body
  * never borrows the URL of the call it is passed to. `up` holds the match's ancestors.
  */
-function endpointUrl(up: readonly Frame[], namesEndpoint: (url: SgNode) => boolean): string | undefined {
+function endpointUrl(up: readonly Frame[], namesEndpoint: (call: SgNode, url: SgNode) => boolean): string | undefined {
   const read: Frame[] = [];
   let url: string | null = null;
   for (let i = up.length - 1; i >= 0; i--) {
@@ -132,9 +171,11 @@ function endpointUrl(up: readonly Frame[], namesEndpoint: (url: SgNode) => boole
     }
     read.push(up[i]!);
     if (FUNCTIONS.has(String(node.kind()))) break;
-    const found = isCall(node) ? urlCandidates(node).find(namesEndpoint) : undefined;
+    const found = isCall(node) ? urlCandidates(node).find((u) => namesEndpoint(node, u)) : undefined;
     if (found) {
-      url = stringText(found) ?? found.text().replace(/^[fFrRbBuU]*[`'"]/, "");
+      // Only an address is read from the URL; a longer one, which can hold every request nested in it, counts as the vendor's.
+      const { start, end } = span(found);
+      url = end - start > MAX_URL ? "" : (stringText(found) ?? found.text().replace(/^[fFrRbBuU]*[`'"]/, ""));
       break;
     }
   }
@@ -150,7 +191,7 @@ type Request = { call: SgNode | undefined; symbol: string | undefined; url: stri
  * or else the URL of the raw request around it. One walk down from the root keeps each node's
  * ancestors, since asking a node for its parent walks down from the root each time.
  */
-function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly string[], namesEndpoint: ((url: SgNode) => boolean) | undefined, isVendorClass: (callee: string) => boolean): Map<number, Request> {
+function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly string[], namesEndpoint: ((call: SgNode, url: SgNode) => boolean) | undefined, isVendorClass: (callee: string) => boolean): Map<number, Request> {
   const wanted = new Set(nodes.map((n) => n.id()));
   const starts = [...new Set(nodes.map((n) => n.range().start.index))].sort((a, b) => a - b);
   /** The first match starting at or after `at`. */
@@ -292,7 +333,7 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
     if (!classes.has(name)) classes.set(name, vendorClass(root, grammar, callee, gate.vendor));
     return classes.get(name)!;
   };
-  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, found.flat(), symbols, endpoints.length > 0 ? endpointTest(grammar, endpoints) : undefined, isVendorClass) : undefined;
+  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, found.flat(), symbols, endpoints.length > 0 ? endpointTest(root, grammar, endpoints) : undefined, isVendorClass) : undefined;
   const matches: Match[] = [];
   for (const nodes of found) {
     for (const node of nodes) {

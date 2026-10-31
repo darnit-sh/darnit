@@ -67,7 +67,7 @@ program
       const notice = await update;
       if (notice) console.log(notice);
     }
-    process.exitCode = exitCodeForCheck(hits);
+    process.exitCode = exitCodeForCheck(hits, coverage);
   });
 
 type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean };

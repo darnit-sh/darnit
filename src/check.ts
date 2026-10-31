@@ -37,7 +37,7 @@ export type Coverage = { files: number; records: number; otherFiles?: number; fo
 /**
  * Hits for `records` in `files` (relative to `root`), with `modelValues` the model names set as values
  * outside test code, and with `mentions` every other mention of those names in any text file.
- * Files darnit cannot parse are skipped for hits and values; files it fails on go to `failed`, keeping what they gave before.
+ * Files darnit cannot parse are skipped for hits and values; files it fails on go to `failed`, with none of their hits or values.
  */
 export async function scan(
   root: string,
@@ -102,6 +102,7 @@ export async function scan(
       if (!large) unreadable.push(file);
       continue;
     }
+    const kept = [hits.length, foreign.length, values.length] as const;
     try {
       if (withMentions && !isBinary(text)) {
         // Known limit: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
@@ -114,7 +115,9 @@ export async function scan(
       await scanCode(file, grammar, text);
       scanned++;
     } catch {
-      // A file the scanner fails on never stops the check: it is named as not checked, and every other file's findings stay.
+      // A file the scanner fails on never stops the check: it is named as not checked, none of its call sites or values are
+      // reported, as some may be missing, and every other file's findings stay. Its mentions, read first, stay too.
+      [hits.length, foreign.length, values.length] = kept;
       failed.push(file);
     }
   }
@@ -225,8 +228,12 @@ export function snippet(text: string, width = 60): string {
 
 const NOT_CHECKED = "Not checked: request options built elsewhere and passed in as a variable.";
 
-/** 1 for call sites of any change but a candidate: a machine-written candidate nobody has checked should not fail anyone's build. */
-export const exitCodeForCheck = (hits: readonly Hit[]): 0 | 1 => (hits.some((h) => h.record.status !== "candidate") ? 1 : 0);
+/**
+ * 1 for call sites of any change but a candidate: a machine-written candidate nobody has checked should not fail anyone's build.
+ * 2 when `coverage` lists a file darnit failed to scan, since its call sites are unknown and the failure is darnit's.
+ */
+export const exitCodeForCheck = (hits: readonly Hit[], coverage?: Coverage): 0 | 1 | 2 =>
+  coverage?.skipped?.some((s) => s.reason === "could not be scanned") ? 2 : hits.some((h) => h.record.status !== "candidate") ? 1 : 0;
 
 /** One block per vendor change: heading, locations, count, sources. */
 function grouped(hits: readonly Hit[], noun: string): string[] {

@@ -334,7 +334,7 @@ describe("fix verifies its own rewrites", () => {
     );
     const dir = await repoWith({ "sdk.js": SDK_CALL });
     const record = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!.record;
-    const outcome = await applyAndVerify(dir, { record, packDir: pack, files: ["sdk.js"], sites: 1 });
+    const outcome = await applyAndVerify(dir, { record, packDir: pack, files: ["sdk.js"], sites: 1, sitesIn: { "sdk.js": 1 } });
     expect(outcome).toEqual({ changed: [], remaining: [{ file: "sdk.js", line: 2 }] });
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
@@ -894,11 +894,11 @@ describe("fix names what check did not read", () => {
     expect(summary).toContain("darnit check");
   });
 
-  /** `run`, with darnit failing to scan any file whose text holds `marker`. */
-  const failingOn = async <T>(marker: string, run: () => Promise<T>): Promise<T> => {
+  /** `run`, with darnit failing to scan any file whose text `fails`. */
+  const failingOn = async <T>(fails: (source: string) => boolean, run: () => Promise<T>): Promise<T> => {
     const real = vi.mocked(parse).getMockImplementation()!;
     vi.mocked(parse).mockImplementation((lang, source) => {
-      if (source.includes(marker)) throw new Error("crafted");
+      if (fails(source)) throw new Error("crafted");
       return real(lang, source);
     });
     try {
@@ -910,18 +910,50 @@ describe("fix names what check did not read", () => {
 
   it("names a file it failed to scan and still fixes the others", async () => {
     const dir = await repoWith({ "a.js": `${SDK_CALL}// FAILS\n`, "sdk.js": SDK_CALL });
-    const result = await failingOn("FAILS", () => fix(dir, { noTest: true }));
+    const result = await failingOn((source) => source.includes("FAILS"), () => fix(dir, { noTest: true }));
     expect(renderSummary(result)).toContain("Not checked: 1 file darnit failed to scan: a.js.");
     expect(toJson(result)).toMatchObject({ scanned: { skipped: [{ path: "a.js", reason: "could not be scanned" }] } });
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toContain("max_completion_tokens");
   });
 
-  it("does not count a rewritten file it then failed to scan as fixed", async () => {
+  const PUT_BACK = "darnit failed to scan it after the rewrite, so it was put back";
+  const rewritten = (marker: string) => (source: string) => source.includes("max_completion_tokens") && source.includes(marker);
+
+  it("puts back a rewritten file it then failed to scan, listed by name only", async () => {
     const dir = await repoWith({ "sdk.js": SDK_CALL });
-    const record = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!;
-    const outcome = await failingOn("max_completion_tokens", () => applyAndVerify(dir, { record: record.record, packDir: record.packDir, files: ["sdk.js"], sites: 1 }));
-    expect(outcome).toEqual({ changed: [], remaining: [{ file: "sdk.js", line: 1, note: "darnit failed to scan it after the rewrite" }] });
+    const { record, packDir } = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!;
+    const outcome = await failingOn(rewritten("OpenAI"), () => applyAndVerify(dir, { record, packDir, files: ["sdk.js"], sites: 1, sitesIn: { "sdk.js": 1 } }));
+    expect(outcome).toEqual({ changed: [], remaining: [{ file: "sdk.js", note: PUT_BACK, sites: 1 }] });
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+    const result = await failingOn(rewritten("OpenAI"), () => fix(dir, { noTest: true }));
+    expect(renderSummary(result)).toContain(`not rewritten: ${PUT_BACK}\n  needs a human: sdk.js (${PUT_BACK})`);
+  });
+
+  it("puts back only the file it failed to scan, and verifies the others as usual", async () => {
+    const twice = `${SDK_CALL}export const s = new OpenAI().chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n// a\n`;
+    const dir = await repoWith({ "a.js": twice, "b.js": SDK_CALL });
+    const result = await failingOn(rewritten("// a"), () => fix(dir, { noTest: true }));
+    expect(await readFile(join(dir, "a.js"), "utf8")).toBe(twice);
+    expect(await readFile(join(dir, "b.js"), "utf8")).toBe(SDK_CALL.replace("max_tokens", "max_completion_tokens"));
+    const summary = renderSummary(result);
+    expect(summary).toContain("1 of 3 call sites rewritten");
+    expect(summary).toContain(`  needs a human: a.js (${PUT_BACK})\n`);
+    expect(toJson(result)).toMatchObject({ records: [{ remaining: [{ file: "a.js", note: PUT_BACK, sites: 2 }] }] });
+    expect(prBody(result.records[0]!.record, ["b.js"], "t", { remaining: result.records[0]!.remaining })).toContain(`- \`a.js\`: ${PUT_BACK}\n`);
+  });
+
+  it("puts the other files back when their rewrite removed no call site", async () => {
+    // A broken pack: its rule edits a neighbouring key and never touches max_tokens.
+    const pack = await mkdtemp(join(tmpdir(), "darnit-pack-"));
+    tempDirs.push(pack);
+    await mkdir(join(pack, "rules", "js"), { recursive: true });
+    await writeFile(join(pack, "rules", "js", "01-wrong.yml"), "id: wrong\nlanguage: javascript\nrule:\n  pattern:\n    context: '({ model: $M })'\n    selector: pair\nfix: 'engine: $M'\n");
+    const dir = await repoWith({ "a.js": `${SDK_CALL}export const s = new OpenAI().chat.completions.create({ max_tokens: 5 });\n// a\n`, "b.js": SDK_CALL });
+    const { record } = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!;
+    const grp = { record, packDir: pack, files: ["a.js", "b.js"], sites: 3, sitesIn: { "a.js": 2, "b.js": 1 } };
+    const outcome = await failingOn((source) => source.includes("engine") && source.includes("// a"), () => applyAndVerify(dir, grp));
+    expect(outcome).toEqual({ changed: [], remaining: [{ file: "b.js", line: 2 }, { file: "a.js", note: PUT_BACK, sites: 2 }] });
+    expect(await readFile(join(dir, "b.js"), "utf8")).toBe(SDK_CALL);
   });
 
   it("lists them after the records it did fix", async () => {
