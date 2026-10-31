@@ -1195,6 +1195,19 @@ console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[3
     expect(await readFile(join(dir, "sub", "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
+  it("writes a plan for names git quotes or ends with a tab, and for files git diffs as binary", async () => {
+    const names = ["sp ace.js", 'q"uo\\te.js', "bin/sdk.js"];
+    const dir = await repoWith({ ...Object.fromEntries(names.map((n) => [n, SDK_CALL])), ".gitattributes": "bin/** -diff\n" });
+    const plan = join(await planHome(), "plan");
+    const result = await fix(dir, { prepare: plan, noTest: true });
+    expect(result.records[0]?.pr?.state).toBe("prepared");
+    const [group] = (await readPlan(plan)).groups;
+    expect([...group!.files].sort()).toEqual([...names].sort());
+    expect(group!.patch).toContain("GIT binary patch");
+    expect(group!.patch).toContain('--- "a/q\\"uo\\\\te.js"\n');
+    expect(group!.patch).toContain("--- a/sp ace.js\t\n");
+  });
+
   it("takes the patch before the tests run, so it holds darnit's change only", async () => {
     const dir = await repoFrom(BEFORE);
     const plan = join(await planHome(), "plan");

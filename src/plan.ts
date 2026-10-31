@@ -13,10 +13,9 @@ export const CAPS = { plan: 8 * 1024 * 1024, darnit: 64, groups: 64, files: 1000
 
 const capped = (max: number) => z.string().max(max, `over the cap of ${max} characters`);
 
-/** A path inside the repository: relative, `/`-separated, no `.`, `..` or `.git` part, and nothing git would quote. */
+/** A path inside the repository: relative, `/`-separated, with no `.`, `..` or `.git` part. */
 const RelativePath = capped(CAPS.path).refine(
-  // eslint-disable-next-line no-control-regex
-  (p) => !/[\\"\u0000-\u001f\u007f]/.test(p) && p.split("/").every((part) => part !== "" && part !== "." && part !== ".." && part.toLowerCase() !== ".git"),
+  (p) => !p.includes("\0") && p.split("/").every((part) => part !== "" && part !== "." && part !== ".." && part.toLowerCase() !== ".git"),
   "not a path inside the repository",
 );
 
@@ -30,18 +29,56 @@ const OutcomeSchema = z.strictObject({
 });
 
 const INDEX = /^index [0-9a-f]{40}(?:[0-9a-f]{24})?\.\.[0-9a-f]{40}(?:[0-9a-f]{24})? 100(?:644|755)$/;
+const HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
+const BINARY = /^(?:literal|delta) \d+$/;
+const BASE85 = /^[A-Za-z][0-9A-Za-z!#$%&()*+;<=>?@^_`{|}~-]+$/;
 
-/** Whether `patch` is a `git diff --binary` of a change to each of `files` and nothing else. */
+const C_ESCAPES: Record<string, string> = { "\u0007": "\\a", "\b": "\\b", "\t": "\\t", "\n": "\\n", "\v": "\\v", "\f": "\\f", "\r": "\\r", '"': '\\"', "\\": "\\\\" };
+/** A path as git prints it in a diff with core.quotePath off: in quotes, escaped C-style, when it holds `"`, `\` or a control character. */
+const gitName = (p: string) =>
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001f"\\\u007f]/.test(p) ? `"${p.replace(/[\u0000-\u001f"\\\u007f]/g, (c) => C_ESCAPES[c] ?? `\\${c.charCodeAt(0).toString(8).padStart(3, "0")}`)}"` : p;
+
+/**
+ * Whether `patch` is a `git diff --binary --full-index` of changes to each of `files` and nothing else, read line by
+ * line: per file its header, its index line, then its hunks with exactly the lines they count, or a binary patch.
+ */
 function wellFormed(patch: string, files: readonly string[]): boolean {
-  if (!patch.startsWith("diff --git ") || !patch.endsWith("\n") || patch.includes("\0")) return false;
-  const lines = patch.split("\n");
-  const headers = new Map(files.map((f) => [`diff --git a/${f} b/${f}`, f]));
+  if (!patch.endsWith("\n") || patch.includes("\0")) return false;
+  const lines = patch.slice(0, -1).split("\n");
+  const headers = new Map(files.map((f) => [`diff --git ${gitName(`a/${f}`)} ${gitName(`b/${f}`)}`, f]));
   const seen = new Set<string>();
-  for (let i = 0; i < lines.length; i++) {
-    if (!lines[i]!.startsWith("diff --git ")) continue;
-    const f = headers.get(lines[i]!);
-    if (!f || seen.has(f) || !INDEX.test(lines[i + 1] ?? "") || lines[i + 2] !== `--- a/${f}` || lines[i + 3] !== `+++ b/${f}`) return false;
+  let i = 0;
+  while (i < lines.length) {
+    const f = headers.get(lines[i++]!);
+    if (f === undefined || seen.has(f) || !INDEX.test(lines[i++] ?? "")) return false;
     seen.add(f);
+    if (lines[i] === "GIT binary patch") {
+      i++;
+      // The new contents, then the old: each a size line, base85 lines and a blank line.
+      for (let half = 0; half < 2; half++) {
+        if (!BINARY.test(lines[i++] ?? "")) return false;
+        while (BASE85.test(lines[i] ?? "")) i++;
+        if (lines[i++] !== "") return false;
+      }
+      continue;
+    }
+    // git ends these two lines with a tab when the name holds a space.
+    const tab = f.includes(" ") ? "\t" : "";
+    if (lines[i++] !== `--- ${gitName(`a/${f}`)}${tab}` || lines[i++] !== `+++ ${gitName(`b/${f}`)}${tab}`) return false;
+    let hunks = 0;
+    for (let m = HUNK.exec(lines[i] ?? ""); m; m = HUNK.exec(lines[i] ?? ""), hunks++) {
+      i++;
+      let [before, after] = [Number(m[1] ?? 1), Number(m[2] ?? 1)];
+      while (before > 0 || after > 0 || lines[i]?.startsWith("\\ ")) {
+        const line = lines[i++] ?? "";
+        if (line.startsWith(" ") && before > 0 && after > 0) [before, after] = [before - 1, after - 1];
+        else if (line.startsWith("-") && before > 0) before--;
+        else if (line.startsWith("+") && after > 0) after--;
+        else if (!line.startsWith("\\ ")) return false;
+      }
+    }
+    if (hunks === 0) return false;
   }
   return seen.size === files.length;
 }

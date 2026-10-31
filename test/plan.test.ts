@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { git, patch as gitPatch } from "../src/git.js";
 import { CAPS, parsePlan, serializePlan, type Plan } from "../src/plan.js";
 import { loadRecords } from "../src/records/load.js";
 import { cpuTime } from "./helpers.js";
@@ -57,6 +61,17 @@ describe("parsePlan", () => {
     ["with a second file not listed", PATCH + PATCH.replaceAll("app.py", "b.py")],
     ["with no final newline", PATCH.trimEnd()],
     ["holding a NUL", PATCH.replace("+max", "+\0max")],
+    ["with a stray line after its hunk", PATCH + "rename to ../../etc/x\n"],
+    ["with a mode line", PATCH.replace(/^index /m, "old mode 100644\nnew mode 100755\nindex ")],
+    ["with a hunk short of the lines it counts", PATCH.replace("+max_completion_tokens=5\n", "")],
+    ["with a hunk longer than it counts", PATCH + "+extra\n"],
+    ["with a blank line in a hunk", PATCH.replace("@@ -1 +1 @@\n", "@@ -1,2 +1,2 @@\n\n")],
+    ["with no hunk", PATCH.replace(/@@[^]*$/, "")],
+    ["with the same file twice", PATCH + PATCH],
+    ["with a space name missing git's tab", PATCH.replaceAll("app.py", "a p.py")],
+    ["with a binary patch missing its blank line", PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nliteral 3\nCcmZ\n\n")],
+    ["with a binary patch holding a stray line", PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nrename to x\nliteral 3\nCcmZ\n\n")],
+    ["with a binary patch missing its size", PATCH.replace(/--- [^]*$/, "GIT binary patch\nCcmZ\n\nliteral 3\nCcmZ\n\n")],
   ])("rejects a patch %s", (_, patch) => {
     expect(() => parsePlan(text(group({ patch })), ids)).toThrow(/patch is not a git diff of exactly these files/);
   });
@@ -65,7 +80,7 @@ describe("parsePlan", () => {
     expect(() => parsePlan(text(group({ files: ["app.py", "b.py"] })), ids)).toThrow(/patch is not a git diff/);
   });
 
-  it.each(["../app.py", "/etc/passwd", "a/../../app.py", ".git/config", "sub/.GIT/hooks/pre-commit", "a//b", "./app.py", "a\\b", 'a"b', "a\nb", ""])(
+  it.each(["../app.py", "/etc/passwd", "a/../../app.py", ".git/config", "sub/.GIT/hooks/pre-commit", "a//b", "./app.py", "a\0b", ""])(
     "rejects the path %j as not inside the repository",
     (file) => {
       expect(() => parsePlan(text(group({ files: [file], patch: PATCH.replaceAll("app.py", file) })), ids)).toThrow(/not a path inside the repository/);
@@ -88,4 +103,27 @@ describe("parsePlan", () => {
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan / 2);
     expect(await cpuTime(() => parsePlan(plan, ids), 3, 200)).toBeLessThan(200);
   });
+
+  it("accepts git's own patches for names it quotes or ends with a tab, and for binary files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-plan-git-"));
+    temp.push(dir);
+    const names = ["sp ace.js", 'q"uo\\te.js', "t\tab.js", "d\u007fe\u0001l y.js", "café.js", "bin.js", "two hunks.js"];
+    const long = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n");
+    await git(dir, ["init", "-q"]);
+    await writeFile(join(dir, ".gitattributes"), "bin.js -diff\n");
+    for (const n of names) await writeFile(join(dir, n), n === "two hunks.js" ? long : "a\n");
+    await git(dir, ["add", "."]);
+    await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "i"]);
+    for (const n of names) await writeFile(join(dir, n), n === "two hunks.js" ? long.replace("line 1\n", "one\n").replace("line 19", "last") : "b\n");
+    const patch = await gitPatch(dir, names);
+    expect(patch).toContain("GIT binary patch");
+    expect(patch).toContain("--- a/sp ace.js\t\n");
+    expect(patch).toContain('diff --git "a/d\\177e\\001l y.js" "b/d\\177e\\001l y.js"');
+    expect(patch).toContain("\\ No newline at end of file");
+    expect(patch.match(/^@@/gm)?.length).toBe(names.length);
+    expect(parsePlan(text(group({ files: names, patch })), ids).groups[0]!.files).toEqual(names);
+  });
 });
+
+const temp: string[] = [];
+afterAll(() => Promise.all(temp.map((d) => rm(d, { recursive: true, force: true }))));
