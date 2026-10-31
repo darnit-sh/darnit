@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { firstFive } from "./detect.js";
+import { envToken } from "./github.js";
 
 const exec = promisify(execFile);
 
@@ -213,8 +214,9 @@ export async function commit(root: string, subject: string, body: string): Promi
  * or hand it to another program (core.sshCommand, credential.helper, core.askPass).
  */
 function originAuth(site: string): NodeJS.ProcessEnv {
-  const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
-  if (!token || process.env.GITHUB_ACTIONS !== "true") return {};
+  if (process.env.GITHUB_ACTIONS !== "true") return {};
+  const token = envToken();
+  if (!token) return {};
   const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
   // git() drops any GIT_CONFIG_COUNT it inherits, so these are the only entries.
   return {

@@ -1,9 +1,13 @@
 import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { parse as parseCode } from "@ast-grep/napi";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { applyAndVerify, exitCodeFor, fix, type FixOptions, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
@@ -13,6 +17,11 @@ import { CAPS, type Plan } from "../src/plan.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 import { runTests } from "../src/tests.js";
 import { annotations, cpuTime, matchersAtDarnit, SETUP_NODE_MATCHERS } from "./helpers.js";
+
+vi.mock("@ast-grep/napi", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@ast-grep/napi")>();
+  return { ...real, parse: vi.fn(real.parse) };
+});
 
 // A short limit for the build and test runs, and a count of them, so a hung check costs a test half a second.
 const runs = vi.hoisted(() => ({ limitMs: undefined as number | undefined, count: 0 }));
@@ -433,7 +442,7 @@ describe("fix verifies its own rewrites", () => {
     );
     const dir = await repoWith({ "sdk.js": SDK_CALL });
     const record = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!.record;
-    const outcome = await applyAndVerify(dir, { record, packDir: pack, files: ["sdk.js"], sites: 1 });
+    const outcome = await applyAndVerify(dir, { record, packDir: pack, files: ["sdk.js"], sites: 1, sitesIn: { "sdk.js": 1 } });
     expect(outcome).toEqual({ changed: [], remaining: [{ file: "sdk.js", line: 2 }] });
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
@@ -1005,6 +1014,68 @@ describe("fix names what check did not read", () => {
     expect(summary).toContain("darnit check");
   });
 
+  /** `run`, with darnit failing to scan any file whose text `fails`. */
+  const failingOn = async <T>(fails: (source: string) => boolean, run: () => Promise<T>): Promise<T> => {
+    const real = vi.mocked(parseCode).getMockImplementation()!;
+    vi.mocked(parseCode).mockImplementation((lang, source) => {
+      if (fails(source)) throw new Error("crafted");
+      return real(lang, source);
+    });
+    try {
+      return await run();
+    } finally {
+      vi.mocked(parseCode).mockImplementation(real);
+    }
+  };
+
+  it("names a file it failed to scan and still fixes the others", async () => {
+    const dir = await repoWith({ "a.js": `${SDK_CALL}// FAILS\n`, "sdk.js": SDK_CALL });
+    const result = await failingOn((source) => source.includes("FAILS"), () => fix(dir, { noTest: true }));
+    expect(renderSummary(result)).toContain("Not checked: 1 file darnit failed to scan: a.js.");
+    expect(toJson(result)).toMatchObject({ scanned: { skipped: [{ path: "a.js", reason: "could not be scanned" }] } });
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toContain("max_completion_tokens");
+  });
+
+  const PUT_BACK = "darnit failed to scan it after the rewrite, so it was put back";
+  const rewritten = (marker: string) => (source: string) => source.includes("max_completion_tokens") && source.includes(marker);
+
+  it("puts back a rewritten file it then failed to scan, listed by name only", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    const { record, packDir } = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!;
+    const outcome = await failingOn(rewritten("OpenAI"), () => applyAndVerify(dir, { record, packDir, files: ["sdk.js"], sites: 1, sitesIn: { "sdk.js": 1 } }));
+    expect(outcome).toEqual({ changed: [], remaining: [{ file: "sdk.js", note: PUT_BACK, sites: 1 }] });
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+    const result = await failingOn(rewritten("OpenAI"), () => fix(dir, { noTest: true }));
+    expect(renderSummary(result)).toContain(`not rewritten: ${PUT_BACK}\n  needs a human: sdk.js (${PUT_BACK})`);
+  });
+
+  it("puts back only the file it failed to scan, and verifies the others as usual", async () => {
+    const twice = `${SDK_CALL}export const s = new OpenAI().chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n// a\n`;
+    const dir = await repoWith({ "a.js": twice, "b.js": SDK_CALL });
+    const result = await failingOn(rewritten("// a"), () => fix(dir, { noTest: true }));
+    expect(await readFile(join(dir, "a.js"), "utf8")).toBe(twice);
+    expect(await readFile(join(dir, "b.js"), "utf8")).toBe(SDK_CALL.replace("max_tokens", "max_completion_tokens"));
+    const summary = renderSummary(result);
+    expect(summary).toContain("1 of 3 call sites rewritten");
+    expect(summary).toContain(`  needs a human: a.js (${PUT_BACK})\n`);
+    expect(toJson(result)).toMatchObject({ records: [{ remaining: [{ file: "a.js", note: PUT_BACK, sites: 2 }] }] });
+    expect(prBody(result.records[0]!.record, ["b.js"], "t", { remaining: result.records[0]!.remaining })).toContain(`- \`a.js\`: ${PUT_BACK}\n`);
+  });
+
+  it("puts the other files back when their rewrite removed no call site", async () => {
+    // A broken pack: its rule edits a neighbouring key and never touches max_tokens.
+    const pack = await mkdtemp(join(tmpdir(), "darnit-pack-"));
+    tempDirs.push(pack);
+    await mkdir(join(pack, "rules", "js"), { recursive: true });
+    await writeFile(join(pack, "rules", "js", "01-wrong.yml"), "id: wrong\nlanguage: javascript\nrule:\n  pattern:\n    context: '({ model: $M })'\n    selector: pair\nfix: 'engine: $M'\n");
+    const dir = await repoWith({ "a.js": `${SDK_CALL}export const s = new OpenAI().chat.completions.create({ max_tokens: 5 });\n// a\n`, "b.js": SDK_CALL });
+    const { record } = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!;
+    const grp = { record, packDir: pack, files: ["a.js", "b.js"], sites: 3, sitesIn: { "a.js": 2, "b.js": 1 } };
+    const outcome = await failingOn((source) => source.includes("engine") && source.includes("// a"), () => applyAndVerify(dir, grp));
+    expect(outcome).toEqual({ changed: [], remaining: [{ file: "b.js", line: 2 }, { file: "a.js", note: PUT_BACK, sites: 2 }] });
+    expect(await readFile(join(dir, "b.js"), "utf8")).toBe(SDK_CALL);
+  });
+
   it("lists them after the records it did fix", async () => {
     const result = await fix(await repoWith({ "sdk.js": SDK_CALL, "vendor/openai.ts": SDK_CALL }), { noTest: true });
     expect(renderSummary(result).split("\n").at(-1)).toBe("Not checked: 1 dependency or build folder: vendor.");
@@ -1335,6 +1406,56 @@ console.log(config);`,
     expect(await run(true)).toBe("git config,git-credentials-1.config");
     expect(await run(!/persist-credentials: false/.test(workflow))).toBe("");
   });
+
+  it("refuses a token with a character outside printable ASCII inside before any request, and never prints it", async () => {
+    const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
+    const { dir } = await repoWithOrigin();
+    const tools = await mkdtemp(join(tmpdir(), "darnit-tools-"));
+    tempDirs.push(tools);
+    // The API is a local server here, never GitHub.
+    const asked: (string | undefined)[] = [];
+    const server = createServer((req, res) => {
+      asked.push(req.headers.authorization);
+      res.writeHead(500).end();
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    const preload = join(tools, "local-api.mjs");
+    await writeFile(preload, `const f = globalThis.fetch;\nglobalThis.fetch = (url, init) => f(String(url).replace(/^https:\\/\\/api\\.github\\.com\\//, ${JSON.stringify(api)}), init);\n`);
+    const ghOut = join(tools, "gh-out");
+    await writeFile(join(tools, "gh"), `#!/bin/sh\ncat '${ghOut}'\n`, { mode: 0o755 });
+    const run = async (env: NodeJS.ProcessEnv, gh = "") => {
+      await writeFile(ghOut, gh);
+      const out = await darnitWith(
+        { GITHUB_TOKEN: "", GH_TOKEN: "", PATH: `${tools}${delimiter}${process.env.PATH}`, NODE_OPTIONS: `--import ${preload}`, ...env },
+        dir,
+        ...["fix", "--pr", "--no-test", "--repo", "o/r"],
+      );
+      for (const f of await readdir(dir, { recursive: true })) {
+        expect(await readFile(join(dir, f), "latin1").catch(() => ""), f).not.toContain(token.slice(0, 12));
+      }
+      return out;
+    };
+    const refused = { code: 2, stdout: "", stderr: "darnit: the GitHub token holds a character other than printable ASCII (a space, control or zero-width character, or a letter outside ASCII); set it again without one\n" };
+    try {
+      for (const inner of ["\n", "\r", " ", "\t", "\u200b", "\u00e9"]) {
+        const bad = `${token}${inner}X`;
+        expect(await run({ GITHUB_TOKEN: bad }), JSON.stringify(inner)).toEqual(refused);
+        expect(await run({ GH_TOKEN: ` ${bad}\n` }), JSON.stringify(inner)).toEqual(refused);
+      }
+      for (const inner of ["\n", "\r", "\0", " ", "\u200b"]) expect(await run({}, `${token}${inner}X\n`), JSON.stringify(inner)).toEqual(refused);
+      expect(asked).toEqual([]);
+      expect((await git(dir, ["branch", "--list", "darnit/*"])).trim()).toBe("");
+      expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+      // A token with only whitespace around it is trimmed and sent as before.
+      const sent = await run({}, `  ${token}\n`);
+      expect(sent.stderr).toContain("darnit: GitHub GET /repos/o/r failed: 500");
+      expect(asked).toEqual([`Bearer ${token}`]);
+    } finally {
+      server.close();
+    }
+  }, 120_000);
 });
 
 describe("fix --prepare", () => {
