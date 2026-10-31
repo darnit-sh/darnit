@@ -4,11 +4,17 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { parse } from "@ast-grep/napi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 import { cpuTime } from "./helpers.js";
+
+vi.mock("@ast-grep/napi", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@ast-grep/napi")>();
+  return { ...real, parse: vi.fn(real.parse) };
+});
 
 // A short limit for the build and test runs, and a count of them, so a hung check costs a test half a second.
 const runs = vi.hoisted(() => ({ limitMs: undefined as number | undefined, count: 0 }));
@@ -886,6 +892,36 @@ describe("fix names what check did not read", () => {
     expect(result.records).toEqual([]);
     expect(summary).not.toMatch(/^Nothing to fix\.$/m);
     expect(summary).toContain("darnit check");
+  });
+
+  /** `run`, with darnit failing to scan any file whose text holds `marker`. */
+  const failingOn = async <T>(marker: string, run: () => Promise<T>): Promise<T> => {
+    const real = vi.mocked(parse).getMockImplementation()!;
+    vi.mocked(parse).mockImplementation((lang, source) => {
+      if (source.includes(marker)) throw new Error("crafted");
+      return real(lang, source);
+    });
+    try {
+      return await run();
+    } finally {
+      vi.mocked(parse).mockImplementation(real);
+    }
+  };
+
+  it("names a file it failed to scan and still fixes the others", async () => {
+    const dir = await repoWith({ "a.js": `${SDK_CALL}// FAILS\n`, "sdk.js": SDK_CALL });
+    const result = await failingOn("FAILS", () => fix(dir, { noTest: true }));
+    expect(renderSummary(result)).toContain("Not checked: 1 file darnit failed to scan: a.js.");
+    expect(toJson(result)).toMatchObject({ scanned: { skipped: [{ path: "a.js", reason: "could not be scanned" }] } });
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toContain("max_completion_tokens");
+  });
+
+  it("does not count a rewritten file it then failed to scan as fixed", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    const record = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!;
+    const outcome = await failingOn("max_completion_tokens", () => applyAndVerify(dir, { record: record.record, packDir: record.packDir, files: ["sdk.js"], sites: 1 }));
+    expect(outcome).toEqual({ changed: [], remaining: [{ file: "sdk.js", line: 1, note: "darnit failed to scan it after the rewrite" }] });
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
   it("lists them after the records it did fix", async () => {

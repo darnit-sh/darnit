@@ -1,8 +1,10 @@
 import { extname } from "node:path";
 import python from "@ast-grep/lang-python";
-import { Lang as NapiLang, parse, registerDynamicLanguage, type SgNode } from "@ast-grep/napi";
+import { kind as kindId, Lang as NapiLang, parse, registerDynamicLanguage, type SgNode } from "@ast-grep/napi";
+import { escapeRegExp } from "../detect.js";
 import type { AstGrepPattern, Lang } from "../records/schema.js";
 import { clientOrigin, FUNCTIONS, isStatic, stringText, unwrap, urlOrigin, vendorClass, type VendorClients } from "./clients.js";
+import { inside, joined } from "./values.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
 export type Grammar = Parameters<typeof parse>[0];
@@ -66,7 +68,7 @@ const isCall = (n: SgNode) => n.is("call_expression") || n.is("call");
 const normalized = (callee: string) => callee.replace(/\s+/g, "").replace(/\?\./g, ".");
 
 // Code inside a URL (an interpolation, a helper call) is not URL text.
-const OPAQUE = new Set(["template_substitution", "interpolation", "call_expression", "call"]);
+const OPAQUE = ["template_substitution", "interpolation", "call_expression", "call"];
 const URL_KINDS = new Set(["string", "template_string", "concatenated_string", "binary_expression", "binary_operator", "ternary_expression", "conditional_expression"]);
 
 /** Arguments that could be a request's URL: positional ones, `url=`, and `url:` in an options object. */
@@ -87,17 +89,29 @@ function urlCandidates(call: SgNode): SgNode[] {
   });
 }
 
-/** Literal text pieces of a string (between interpolations) and of each part of a concatenation. */
-const pieces = (n: SgNode): SgNode[] =>
-  n.is("string_fragment") || n.is("string_content") ? [n] : OPAQUE.has(String(n.kind())) ? [] : n.children().flatMap(pieces);
+/** Rules for `kinds`, leaving out the ones `grammar` lacks: asking for one is an error. */
+const anyKind = (grammar: Grammar, kinds: readonly string[]) => ({ any: kinds.filter((kind) => kindId(grammar, kind) !== 0).map((kind) => ({ kind })) });
 
-/** A string piece holds the endpoint as a URL or path would: with nothing but URL text before it. */
-const namesEndpoint = (url: SgNode, endpoints: readonly string[]) =>
-  URL_KINDS.has(String(url.kind())) &&
-  pieces(url).some((piece) => {
-    const text = piece.text();
-    return endpoints.some((e) => text.includes(e) && !/\s/.test(text.slice(0, text.indexOf(e))));
-  });
+/**
+ * Whether a URL argument holds an endpoint as a URL or path would: in a literal piece of a string (between interpolations)
+ * or of a concatenation, with nothing but URL text before it. The parser finds the pieces, so a concatenation
+ * thousands deep is never walked here.
+ */
+function endpointTest(grammar: Grammar, endpoints: readonly string[]): (url: SgNode) => boolean {
+  const pieces = { rule: { ...anyKind(grammar, ["string_fragment", "string_content"]), regex: endpoints.map(escapeRegExp).join("|") } };
+  const code = { rule: anyKind(grammar, OPAQUE) };
+  return (url) => {
+    if (!URL_KINDS.has(String(url.kind()))) return false;
+    const found = url.findAll(pieces);
+    if (found.length === 0) return false;
+    const opaque = joined(url.findAll(code).map((c) => ({ start: c.range().start.index, end: c.range().end.index })));
+    return found.some((piece) => {
+      const { start, end } = piece.range();
+      const text = piece.text();
+      return !inside(opaque, start.index, end.index) && endpoints.some((e) => text.includes(e) && !/\s/.test(text.slice(0, text.indexOf(e))));
+    });
+  };
+}
 
 /** An ancestor of a match. `url` is kept once read: the endpoint URL of the raw request a node directly inside it belongs to, or null. */
 type Frame = { node: SgNode; url?: string | null };
@@ -107,7 +121,7 @@ type Frame = { node: SgNode; url?: string | null };
  * an endpoint URL as an argument. Stops at a function, so a route handler, mock or test body
  * never borrows the URL of the call it is passed to. `up` holds the match's ancestors.
  */
-function endpointUrl(up: readonly Frame[], endpoints: readonly string[]): string | undefined {
+function endpointUrl(up: readonly Frame[], namesEndpoint: (url: SgNode) => boolean): string | undefined {
   const read: Frame[] = [];
   let url: string | null = null;
   for (let i = up.length - 1; i >= 0; i--) {
@@ -118,7 +132,7 @@ function endpointUrl(up: readonly Frame[], endpoints: readonly string[]): string
     }
     read.push(up[i]!);
     if (FUNCTIONS.has(String(node.kind()))) break;
-    const found = isCall(node) ? urlCandidates(node).find((u) => namesEndpoint(u, endpoints)) : undefined;
+    const found = isCall(node) ? urlCandidates(node).find(namesEndpoint) : undefined;
     if (found) {
       url = stringText(found) ?? found.text().replace(/^[fFrRbBuU]*[`'"]/, "");
       break;
@@ -136,7 +150,7 @@ type Request = { call: SgNode | undefined; symbol: string | undefined; url: stri
  * or else the URL of the raw request around it. One walk down from the root keeps each node's
  * ancestors, since asking a node for its parent walks down from the root each time.
  */
-function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly string[], endpoints: readonly string[], isVendorClass: (callee: string) => boolean): Map<number, Request> {
+function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly string[], namesEndpoint: ((url: SgNode) => boolean) | undefined, isVendorClass: (callee: string) => boolean): Map<number, Request> {
   const wanted = new Set(nodes.map((n) => n.id()));
   const starts = [...new Set(nodes.map((n) => n.range().start.index))].sort((a, b) => a - b);
   /** The first match starting at or after `at`. */
@@ -160,7 +174,7 @@ function requests(root: SgNode, nodes: readonly SgNode[], symbols: readonly stri
       const raw = call?.field("function")?.text();
       const callee = raw === undefined ? undefined : normalized(raw);
       const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s) && (!isStatic(s) || isVendorClass(callee))).sort((a, b) => b.length - a.length)[0];
-      const url = symbol === undefined && endpoints.length > 0 ? endpointUrl(up, endpoints) : undefined;
+      const url = symbol === undefined && namesEndpoint ? endpointUrl(up, namesEndpoint) : undefined;
       out.set(node.id(), { call, symbol, url });
     }
     up.push({ node });
@@ -278,7 +292,7 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
     if (!classes.has(name)) classes.set(name, vendorClass(root, grammar, callee, gate.vendor));
     return classes.get(name)!;
   };
-  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, found.flat(), symbols, endpoints, isVendorClass) : undefined;
+  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, found.flat(), symbols, endpoints.length > 0 ? endpointTest(grammar, endpoints) : undefined, isVendorClass) : undefined;
   const matches: Match[] = [];
   for (const nodes of found) {
     for (const node of nodes) {

@@ -1,10 +1,11 @@
+import { execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, SgNode } from "@ast-grep/napi";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, scan, snippet, toJson, type Hit } from "../src/check.js";
+import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, scan, snippet, toJson, type Coverage, type Hit } from "../src/check.js";
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { compilePatterns, findMatches, grammarFor } from "../src/scan/astgrep.js";
@@ -1499,5 +1500,77 @@ describe("check on a repository built to slow it down", () => {
     expect(maxTokens(hits)).toEqual(["small.js:2"]);
     expect(coverage).toMatchObject({ files: 1, tooLarge: ["big.js"] });
     expect(render(hits, coverage)).toContain("\nNot checked: 1 file over 10 MB: big.js.\n");
+  });
+});
+
+describe("check on a file built to overflow the stack", () => {
+  const maxTokens = (hits: Hit[]) => hits.filter((h) => h.record.id.includes("max-tokens")).map((h) => `${h.file}:${h.line}:${h.column}`);
+  const url = (n: number) => `"https://api.openai.com/v1/chat/completions"${' + "x"'.repeat(n)}`;
+  const deep = (n: number) => ({
+    "app.js": `export const r = fetch(${url(n)}, { method: "POST", body: JSON.stringify({ max_tokens: 5 }) });\n`,
+    "app.py": `import requests\n\nr = requests.post(${url(n)}, json=dict(max_tokens=5))\n`,
+  });
+  const at = (files: Record<string, string>) =>
+    Object.entries(files).map(([name, text]) => {
+      const lines = text.split("\n");
+      const line = lines.findIndex((l) => l.includes("max_tokens"));
+      return `${name}:${line + 1}:${lines[line]!.indexOf("max_tokens") + 1}`;
+    });
+
+  it.each([3000, 100_000])("finds the call site in a URL built from %i concatenations within a CPU budget", { timeout: 60_000 }, async (n) => {
+    const files = deep(n);
+    const dir = await scratch(files);
+    let hits: Hit[] = [];
+    // About 1.2 seconds at 100,000; over 6 when each piece of the URL was read in JavaScript, and a stack overflow at 3,000 when that read recursed.
+    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 3000)).toBeLessThan(3000);
+    expect(maxTokens(hits).sort()).toEqual(at(files));
+  });
+
+  // Linux only: the peak of a fresh process, which its parent's peak, carried over by maxRSS, would hide.
+  it.runIf(process.platform === "linux")("scans a URL built from 100,000 concatenations within a memory budget", { timeout: 60_000 }, async () => {
+    const dir = await scratch({ "app.js": deep(100_000)["app.js"] });
+    // About 160 MB; over 500 when each piece of the URL was read in JavaScript.
+    const script = [
+      "const { checkReport } = await import(process.argv[1]);",
+      "const { hits } = await checkReport(process.argv[2]);",
+      'const { readFileSync } = await import("node:fs");',
+      'console.log(JSON.stringify({ hits: hits.length, peak: Number(/VmHWM:\\s+(\\d+)/.exec(readFileSync("/proc/self/status", "utf8"))[1]) }));',
+    ].join(" ");
+    const out = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, fileURLToPath(new URL("../src/check.ts", import.meta.url)), dir], { encoding: "utf8" });
+    const { hits, peak } = JSON.parse(out) as { hits: number; peak: number };
+    expect(hits).toBe(1);
+    expect(peak / 1024).toBeLessThan(300);
+  });
+});
+
+describe("check on a file the scanner fails on", () => {
+  const call = "import OpenAI from 'openai';\nawait new OpenAI().chat.completions.create({ model: 'm', max_tokens: 5 });\n";
+  const failing = async <T>(run: () => Promise<T>): Promise<T> => {
+    const real = vi.mocked(parse).getMockImplementation()!;
+    vi.mocked(parse).mockImplementation((lang, source) => {
+      if (source.includes("FAILS")) throw new Error("crafted");
+      return real(lang, source);
+    });
+    try {
+      return await run();
+    } finally {
+      vi.mocked(parse).mockImplementation(real);
+    }
+  };
+
+  it("names it under Not checked and keeps every other file's findings and the exit code", async () => {
+    const dir = await scratch({ "a.ts": call, "b.ts": `${call}// FAILS\n`, "c.py": 'from openai import OpenAI\nOpenAI().chat.completions.create(model="m", max_tokens=5)\n' });
+    const { hits, coverage, values, mentions } = await failing(() => checkReport(dir));
+    expect(locations(hits.filter((h) => h.record.id.includes("max-tokens")))).toEqual(["a.ts:2", "c.py:2"]);
+    expect(coverage).toMatchObject({ files: 2, skipped: [{ path: "b.ts", reason: "could not be scanned" }] });
+    expect(exitCodeForCheck(hits)).toBe(1);
+    expect(render(hits, coverage)).toContain("\nNot checked: 1 file darnit failed to scan: b.ts.\n");
+    const json = JSON.parse([...checkJson({ version: "t", scanned: coverage }, { hits, possiblyAffected: values, mentions })].join("")) as { scanned: Coverage };
+    expect(json.scanned.skipped).toEqual([{ path: "b.ts", reason: "could not be scanned" }]);
+  });
+
+  it("does not call the repository clean when that file is the only one", async () => {
+    const { hits, coverage } = await failing(async () => checkReport(await scratch({ "b.ts": `${call}// FAILS\n` })));
+    expect(render(hits, coverage).split("\n")[0]).toBe("No call sites of known vendor changes found.");
   });
 });

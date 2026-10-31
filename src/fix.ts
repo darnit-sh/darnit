@@ -151,7 +151,9 @@ export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> 
   await applyRules(grp.packDir, grp.files.map((f) => join(dir, f)));
   const changed: string[] = [];
   for (const [f, text] of before) if ((await readFile(join(dir, f), "utf8")) !== text) changed.push(f);
-  const remaining = (await scan(dir, grp.files, [grp.record])).hits.map((h) => ({ file: h.file, line: h.line }));
+  const { hits, failed } = await scan(dir, grp.files, [grp.record]);
+  // A rewritten file darnit fails to scan is not confirmed fixed.
+  const remaining = [...hits.map((h) => ({ file: h.file, line: h.line })), ...failed.map((file) => ({ file, line: 1, note: "darnit failed to scan it after the rewrite" }))];
   if (changed.length > 0 && remaining.length >= grp.sites) {
     await restore(dir, before);
     return { changed: [], remaining };
