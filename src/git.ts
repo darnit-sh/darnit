@@ -236,7 +236,7 @@ export const diff = (root: string, files: readonly string[], color: boolean) =>
  * saves its token unless told not to. A config git cannot read counts as one.
  */
 export const savedHeader = (root: string) =>
-  git(root, ["config", "--get-regexp", "^http\\..*\\.extraheader$"]).then(
+  git(root, ["config", "--get-regexp", "^http\\.(.+\\.)?extraheader$"]).then(
     (out) => out.trim() !== "",
     (err: { code?: number }) => err.code !== 1,
   );
