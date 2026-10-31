@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -81,6 +81,35 @@ describe("git treats the repo as untrusted", () => {
       else process.env.GITHUB_TOKEN = token;
     }
     expect(await readFile(log, "utf8").catch(() => "")).toBe("");
+  });
+
+  it("runs no clean, smudge or process filter the repo's config names, on any of its commands", async () => {
+    const dir = await repoWith({ "a.ts": "a\n", ".gitattributes": "*.ts filter=p\n" });
+    const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+    tempDirs.push(mark);
+    const cmd = `touch '${mark}'; cat`;
+    for (const [k, v] of [["filter.p.process", cmd], ["filter.p.clean", cmd], ["filter.p.smudge", cmd], ["filter.p.required", "true"]]) {
+      await g.git(dir, ["config", k!, v!]);
+    }
+    await writeFile(join(dir, "a.ts"), "b\n");
+    await g.isClean(dir); // status
+    await g.add(dir, ["a.ts"]);
+    await g.commit(dir, "c", "b"); // re-stages through clean
+    await g.diff(dir, ["a.ts"]);
+    await writeFile(join(dir, "a.ts"), "c\n");
+    await g.discard(dir, ["a.ts"]); // checkout writes through smudge
+    expect(await access(mark).then(() => true, () => false)).toBe(false);
+  });
+
+  it("turns off a filter driver whose name holds an equals sign, which a -c pin would split", async () => {
+    const dir = await repoWith({ "a.ts": "a\n", ".gitattributes": "*.ts filter=a=b\n" });
+    const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+    tempDirs.push(mark);
+    await g.git(dir, ["config", "filter.a=b.clean", `touch '${mark}'; cat`]);
+    await g.git(dir, ["config", "filter.a=b.required", "true"]);
+    await writeFile(join(dir, "a.ts"), "b\n");
+    await g.add(dir, ["a.ts"]);
+    expect(await access(mark).then(() => true, () => false)).toBe(false);
   });
 
   it("takes file names literally, never as patterns", async () => {

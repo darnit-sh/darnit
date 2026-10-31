@@ -8,9 +8,60 @@ const exec = promisify(execFile);
 // darnit's GitHub credentials open the pull request; the repository's own commands never get them.
 export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
 
-// The repo's own commands can write .git/config and .git/hooks, so git runs none of their hooks or
-// fsmonitor, never sees darnit's credentials, and takes file names literally, never as patterns.
-const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
+// The repository's config can name programs git would run inside darnit's own calls, even with
+// `--no-test`. These pins, on every call, turn off the ones keyed by a fixed name: no hooks (on
+// commit or checkout), no fsmonitor, no gpg signing of a commit or on push. Clean/smudge/process
+// filters are keyed by driver name, so `filterConfig` empties each one git would use; an external
+// diff and textconv are turned off per diff, and a submodule's own status (which runs its filters)
+// is skipped, both in `git`. A pager never starts because darnit captures git's output rather than
+// writing to a terminal. git also never sees darnit's credentials and takes file names literally,
+// never as patterns. SECURITY.md lists the keys that still apply (an ssh command, credential helper
+// or proxy on a call to origin, a remote helper program).
+const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", "-c", "push.gpgSign=false"];
+
+// The git commands darnit runs that apply a clean, smudge or process filter to content: `add` and
+// `commit` and `status` and `diff` on the index side, `checkout` (discard) and `switch` on the worktree side.
+const FILTERED = new Set(["add", "status", "commit", "diff", "checkout", "switch"]);
+// More filter drivers than darnit will turn off one by one; past this it refuses rather than run them.
+const FILTER_CAP = 256;
+const FILTER_DRIVER = /^filter\.(.*)\.(?:clean|smudge|process)$/s;
+
+/**
+ * The git config entries that turn off every clean/smudge/process filter git would apply in `root`,
+ * from any scope. Setting a driver's `process` to empty is enough: git runs a configured process
+ * filter in place of that driver's clean and smudge, and an empty one marked optional passes content
+ * through unchanged, so one pin per driver covers all three directions. A driver's name can hold any
+ * byte, including the `=` that `-c name=value` splits on, so these go in the child's environment (see
+ * `configEnv`), where key and value stay apart. Fails closed: a listing that errors, overflows its
+ * buffer, or names more than `FILTER_CAP` drivers throws rather than leave a filter unpinned.
+ */
+async function filterConfig(root: string, env: NodeJS.ProcessEnv): Promise<[string, string][]> {
+  const names = new Set<string>();
+  try {
+    const { stdout } = await exec("git", [...UNTRUSTED_REPO, "config", "-z", "--name-only", "--get-regexp", String.raw`^filter\..*\.(clean|smudge|process)$`], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
+    for (const key of stdout.split("\0")) {
+      const m = FILTER_DRIVER.exec(key);
+      if (m) names.add(m[1]!);
+    }
+  } catch (err) {
+    // git config exits 1 with no output when nothing matches: no filters to turn off. Any other
+    // failure (a read error, or output past the buffer) must not pass for "none", or a filter runs.
+    const e = err as { code?: number | string; stdout?: string };
+    if (e.code !== 1 || (e.stdout ?? "") !== "") throw new Error(`could not read the repository's filter config (git config exited ${String(e.code)})`, { cause: err });
+  }
+  if (names.size > FILTER_CAP) throw new Error(`the repository configures ${names.size} git filter drivers, over darnit's limit of ${FILTER_CAP}; refusing to run git against it`);
+  return [...names].flatMap((n): [string, string][] => [[`filter.${n}.process`, ""], [`filter.${n}.required`, "false"]]);
+}
+
+/** git config entries as the variables git reads them from, so a key holding `=` is never split. */
+function configEnv(entries: readonly (readonly [string, string])[]): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { GIT_CONFIG_COUNT: String(entries.length) };
+  entries.forEach(([key, value], n) => {
+    env[`GIT_CONFIG_KEY_${n}`] = key;
+    env[`GIT_CONFIG_VALUE_${n}`] = value;
+  });
+  return env;
+}
 
 const GITHUB = "https://github.com/";
 // git commands that reach origin. git() refuses them without `stall`, which also brings the token.
@@ -46,16 +97,16 @@ export async function childEnv(): Promise<NodeJS.ProcessEnv> {
 }
 
 /** The git command `args` runs, after git's global options, and whether it can reach origin. */
-function command(args: string[]): { name: string; remote: boolean } {
+function command(args: string[]): { name: string; remote: boolean; at: number } {
   let i = 0;
   while (i < args.length && args[i]!.startsWith("-")) i += VALUED.has(args[i]!) ? 2 : 1;
   const [name = "", ...rest] = args.slice(i);
   // An alias set on the command line can stand for any command, so it counts as one that reaches origin.
   const opts = args.slice(0, i);
-  if (opts.some((a, j) => /^--config-env=alias\./i.test(a) || (["-c", "--config-env"].includes(a) && /^alias\./i.test(opts[j + 1] ?? "")))) return { name, remote: true };
-  if (name !== "remote") return { name, remote: REMOTE.has(name) };
+  if (opts.some((a, j) => /^--config-env=alias\./i.test(a) || (["-c", "--config-env"].includes(a) && /^alias\./i.test(opts[j + 1] ?? "")))) return { name, remote: true, at: i };
+  if (name !== "remote") return { name, remote: REMOTE.has(name), at: i };
   const sub = rest.find((a) => !a.startsWith("-"));
-  return { name, remote: sub !== undefined && (!LOCAL_REMOTE.has(sub) || (sub === "add" && rest.some((a) => a === "-f" || a === "--fetch"))) };
+  return { name, remote: sub !== undefined && (!LOCAL_REMOTE.has(sub) || (sub === "add" && rest.some((a) => a === "-f" || a === "--fetch"))), at: i };
 }
 
 /**
@@ -65,18 +116,27 @@ function command(args: string[]): { name: string; remote: boolean } {
  * running. In GitHub Actions the call also gets the token for `site` (see originAuth).
  */
 export async function git(root: string, args: string[], stall?: number, site = GITHUB): Promise<string> {
-  const { name, remote } = command(args);
+  const { name, remote, at } = command(args);
   if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
   const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1" };
+  const config: [string, string][] = [];
   let timeout = 0;
   if (stall) {
-    Object.assign(env, originAuth(site), { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
+    Object.assign(env, { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
+    config.push(...originAuth(site));
     // A process timeout would cut a slow but healthy HTTPS push and leave its helper pushing.
     const urls = (await git(root, ["remote", "get-url", "--all", ...(name === "push" ? ["--push"] : []), "origin"])).split("\n").filter(Boolean);
     if (!urls.every((u) => /^https?:\/\//i.test(u))) timeout = stall * 4 * 1000;
   }
+  // Read the repository's filters before adding config of our own to the environment.
+  if (FILTERED.has(name)) config.push(...(await filterConfig(root, env)));
+  if (config.length > 0) Object.assign(env, configEnv(config));
+  // No external diff or textconv runs a diff, and neither a diff nor a status descends into a
+  // submodule, where it would run a status (and the submodule's own filters) there.
+  const inject = name === "diff" ? ["--no-ext-diff", "--no-textconv", "--ignore-submodules=all"] : name === "status" ? ["--ignore-submodules=all"] : [];
+  const scoped = inject.length > 0 ? [...args.slice(0, at + 1), ...inject, ...args.slice(at + 1)] : args;
   try {
-    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...args], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
+    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...scoped], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
     return stdout;
   } catch (err) {
     const { killed, stderr } = err as { killed?: boolean; stderr?: string };
@@ -213,19 +273,13 @@ export async function commit(root: string, subject: string, body: string): Promi
  * can send the header to another server (http.curloptResolve with http.sslVerify false, http.proxy)
  * or hand it to another program (core.sshCommand, credential.helper, core.askPass).
  */
-function originAuth(site: string): NodeJS.ProcessEnv {
-  if (process.env.GITHUB_ACTIONS !== "true") return {};
+function originAuth(site: string): [string, string][] {
+  if (process.env.GITHUB_ACTIONS !== "true") return [];
   const token = envToken();
-  if (!token) return {};
+  if (!token) return [];
   const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
-  // git() drops any GIT_CONFIG_COUNT it inherits, so these are the only entries.
-  return {
-    GIT_CONFIG_COUNT: "2",
-    GIT_CONFIG_KEY_0: `http.${site}.extraheader`,
-    GIT_CONFIG_VALUE_0: "",
-    GIT_CONFIG_KEY_1: `http.${site}.extraheader`,
-    GIT_CONFIG_VALUE_1: header,
-  };
+  // The empty value first drops any header the checkout saved, since two would reach the server.
+  return [[`http.${site}.extraheader`, ""], [`http.${site}.extraheader`, header]];
 }
 
 export const push = (root: string, branch: string, site = GITHUB) => git(root, ["push", "-q", "-u", "origin", branch], 60, site);
@@ -269,7 +323,7 @@ const PINNED_DIFF = ["core.quotePath=false", "diff.suppressBlankEmpty=false", "d
 export const patch = (root: string, files: readonly string[]) =>
   git(root, [
     ...PINNED_DIFF.flatMap((c) => ["-c", c]),
-    "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--relative",
+    "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--relative",
     "--src-prefix=a/", "--dst-prefix=b/", "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers", "--indent-heuristic",
     "HEAD", "--", ...files,
   ]);

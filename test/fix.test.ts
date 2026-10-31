@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { access, appendFile, chmod, cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import { parse as parseCode } from "@ast-grep/napi";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
+import { checkReport } from "../src/check.js";
 import { applyAndVerify, exitCodeFor, fix, type FixOptions, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { WORKFLOW } from "../src/init.js";
@@ -2061,5 +2062,152 @@ describe("prose", () => {
 
   it("stays fast on hostile input", async () => {
     expect(await cpuTime(() => prose(`${".".repeat(50000)}a`), 3, 500)).toBeLessThan(500);
+  });
+});
+
+describe("the repository's config names no program git runs in darnit's own calls", () => {
+  const BEFORE = join(PACKS, "openai", "2024-09-12-max-tokens-to-max-completion-tokens", "fixtures", "basic", "before");
+  const execFileP = promisify(execFile);
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  // Each key class, set so git would run a marker-writing program if a darnit call let it. Programs
+  // reached through the shell (external diff, textconv, a filter, a pager) take an inline command; the
+  // ones git execs directly (fsmonitor, gpg, a hook) need a script, kept outside the repo so the tree stays clean.
+  const cmd = (marker: string, tail: string) => `touch '${marker}'; ${tail}`;
+  async function script(path: string, marker: string): Promise<string> {
+    await writeFile(path, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`);
+    await chmod(path, 0o755);
+    return path;
+  }
+  type Setup = (dir: string, probe: string, marker: string) => Promise<void>;
+  const KEYS: Record<string, Setup> = {
+    "diff.external": async (dir, _p, m) => void (await git(dir, ["config", "diff.external", cmd(m, "true")])),
+    "a textconv driver": async (dir, _p, m) => {
+      await appendFile(join(dir, ".gitattributes"), "*.py diff=probe\n");
+      await git(dir, ["config", "diff.probe.textconv", cmd(m, "cat")]);
+    },
+    "gpg.program with commit.gpgSign": async (dir, probe, m) => {
+      await git(dir, ["config", "commit.gpgSign", "true"]);
+      await git(dir, ["config", "gpg.format", "openpgp"]);
+      await git(dir, ["config", "gpg.program", await script(join(probe, "gpg"), m)]);
+    },
+    "core.fsmonitor": async (dir, probe, m) => void (await git(dir, ["config", "core.fsmonitor", await script(join(probe, "fsm"), m)])),
+    "a pre-commit hook via core.hooksPath": async (dir, probe, m) => {
+      await mkdir(join(probe, "hooks"), { recursive: true });
+      await script(join(probe, "hooks", "pre-commit"), m);
+      await git(dir, ["config", "core.hooksPath", join(probe, "hooks")]);
+    },
+    "a clean/smudge filter": async (dir, _p, m) => {
+      await appendFile(join(dir, ".gitattributes"), "*.py filter=probe\n");
+      await git(dir, ["config", "filter.probe.clean", cmd(m, "cat")]);
+      await git(dir, ["config", "filter.probe.smudge", cmd(m, "cat")]);
+      await git(dir, ["config", "filter.probe.required", "true"]);
+    },
+    // A driver name holding `=` would survive a `-c filter.<name>.clean=` pin, which git splits at the first `=`.
+    "a filter driver named with =": async (dir, _p, m) => {
+      await appendFile(join(dir, ".gitattributes"), "*.py filter=a=b\n");
+      await git(dir, ["config", "filter.a=b.clean", cmd(m, "cat")]);
+      await git(dir, ["config", "filter.a=b.required", "true"]);
+    },
+    // A process filter stands in for both clean and smudge, so its own pin must turn it off.
+    "a process filter": async (dir, _p, m) => {
+      await appendFile(join(dir, ".gitattributes"), "*.py filter=proc\n");
+      await git(dir, ["config", "filter.proc.process", cmd(m, "cat")]);
+      await git(dir, ["config", "filter.proc.required", "true"]);
+    },
+    "gpg.program with push.gpgSign": async (dir, probe, m) => {
+      await git(dir, ["config", "push.gpgSign", "true"]);
+      await git(dir, ["config", "gpg.format", "openpgp"]);
+      await git(dir, ["config", "gpg.program", await script(join(probe, "gpg"), m)]);
+    },
+    "core.pager": async (dir, _p, m) => void (await git(dir, ["config", "core.pager", cmd(m, "cat")])),
+  };
+
+  async function setup(set: Setup): Promise<{ dir: string; marker: string }> {
+    const dir = await repoFrom(BEFORE);
+    const probe = await mkdtemp(join(tmpdir(), "darnit-probe-"));
+    tempDirs.push(probe);
+    const marker = join(probe, "ran");
+    await set(dir, probe, marker);
+    return { dir, marker };
+  }
+  const ran = (marker: string) => access(marker).then(() => true, () => false);
+
+  it.each(Object.keys(KEYS))("runs no program %s names", async (key) => {
+    const set = KEYS[key]!;
+
+    // check, and the fix modes that read and rewrite the working tree.
+    const a = await setup(set);
+    await checkReport(a.dir);
+    await fix(a.dir, { dryRun: true, noTest: true });
+    await fix(a.dir, { noTest: true });
+    expect(await ran(a.marker), `${key}: check, --dry-run or fix`).toBe(false);
+
+    // --prepare writes the plan patch with no token and no ssh agent in the environment.
+    const b = await setup(set);
+    for (const k of ["GITHUB_TOKEN", "GH_TOKEN", "SSH_AUTH_SOCK"]) vi.stubEnv(k, "");
+    await fix(b.dir, { prepare: join(await planHome(), "plan"), noTest: true, allowDirty: true });
+    expect(await ran(b.marker), `${key}: --prepare`).toBe(false);
+    vi.unstubAllEnvs();
+
+    // --pr commits to a branch and pushes to a local bare remote, GitHub's API stubbed.
+    const c = await setup(set);
+    const bare = await mkdtemp(join(tmpdir(), "darnit-origin-"));
+    tempDirs.push(bare);
+    await git(bare, ["init", "-q", "--bare"]);
+    // Advertise push-cert support so push.gpgSign actually tries to sign.
+    await git(bare, ["config", "receive.certNonceSeed", "seed"]);
+    await git(c.dir, ["remote", "add", "origin", bare]);
+    const branch = (await git(c.dir, ["symbolic-ref", "--short", "HEAD"])).trim();
+    await git(c.dir, ["push", "-q", "-u", "origin", branch], 60);
+    vi.stubEnv("GITHUB_TOKEN", "test-token");
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit): Promise<Response> => {
+      const body = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status }));
+      void init;
+      if (url.endsWith("/repos/o/r")) return body({ default_branch: branch });
+      if (url.includes("/pulls?")) return body([]);
+      return body({ html_url: "https://github.com/o/r/pull/1" }, 201);
+    });
+    await fix(c.dir, { pr: true, noTest: true, repo: "o/r", allowDirty: true });
+    expect(await ran(c.marker), `${key}: --pr`).toBe(false);
+  });
+
+  // git's status and diff start a status inside a submodule, which runs that submodule's own filters.
+  it("does not descend into a submodule, whose own config names a filter", async () => {
+    const sub = await mkdtemp(join(tmpdir(), "darnit-sub-"));
+    tempDirs.push(sub);
+    await git(sub, ["init", "-q"]);
+    await writeFile(join(sub, "s.py"), "s\n");
+    await git(sub, ["add", "s.py"]);
+    await git(sub, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s"]);
+    const { dir, marker } = await setup(() => Promise.resolve());
+    await execFileP("git", ["-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "sub"], { cwd: dir });
+    await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "sub"]);
+    // The submodule's own config runs a filter on a stat-dirty file, even against -c diff.ignoreSubmodules.
+    await appendFile(join(dir, "sub", ".gitattributes"), "s.py filter=ev\n");
+    await git(join(dir, "sub"), ["config", "filter.ev.process", cmd(marker, "cat")]);
+    await git(join(dir, "sub"), ["config", "filter.ev.required", "true"]);
+    await git(dir, ["config", "submodule.sub.ignore", "none"]);
+    await writeFile(join(dir, "sub", "s.py"), "s\n");
+    await checkReport(dir);
+    await fix(dir, { noTest: true, allowDirty: true });
+    expect(await ran(marker)).toBe(false);
+  });
+
+  // A hostile repository with a vast filter list must not slip a real filter past a dropped or
+  // overlong set of pins: darnit refuses rather than run git against it.
+  it("refuses a repository that configures more filter drivers than it will turn off", async () => {
+    const { dir, marker } = await setup(async (d, _p, m) => {
+      await appendFile(join(d, ".gitattributes"), "*.py filter=evil\n");
+      const lines = [`[filter "evil"]\n\tclean = ${cmd(m, "cat")}\n\trequired = true\n`];
+      for (let i = 0; i < 400; i++) lines.push(`[filter "pad${"x".repeat(200)}${i}"]\n\tclean = cat\n`);
+      await writeFile(join(d, "filters.cfg"), lines.join(""));
+      await git(d, ["config", "include.path", join(d, "filters.cfg")]);
+    });
+    await expect(fix(dir, { noTest: true, allowDirty: true })).rejects.toThrow(/over darnit's limit/);
+    expect(await ran(marker)).toBe(false);
   });
 });
