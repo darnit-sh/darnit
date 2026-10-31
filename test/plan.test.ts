@@ -94,7 +94,7 @@ describe("parsePlan", () => {
     expect(() => parsePlan(text(group({ files: ["app.py", "b.py"] })), ids)).toThrow(/patch is not a git diff/);
   });
 
-  it.each(["../app.py", "/etc/passwd", "a/../../app.py", ".git/config", "sub/.GIT/hooks/pre-commit", "a//b", "./app.py", ".git ", ".git.", "sub/.GIT. ./x", "git~1/config", "GIT~1", ".g\u200cit/hooks", "a/.git\ufeff/x", "a\0b", ""])(
+  it.each(["../app.py", "/etc/passwd", "a/../../app.py", ".git/config", "sub/.GIT/hooks/pre-commit", "a//b", "./app.py", ".git ", ".git.", "sub/.GIT. ./x", "git~1/config", "GIT~1", ".g\u200cit/hooks", "a/.git\ufeff/x", ".git::$INDEX_ALLOCATION/config", ".git:x/config", "sub/GIT~1:x/y", "a\0b", ""])(
     "rejects the path %j as not inside the repository",
     (file) => {
       expect(() => parsePlan(text(group({ files: [file], patch: PATCH.replaceAll("app.py", file) })), ids)).toThrow(/not a path inside the repository/);

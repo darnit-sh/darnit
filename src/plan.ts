@@ -19,11 +19,12 @@ const escaped = (text: string) => text.replace(/[\u007f-\u009f\u2028\u2029]/g, (
 /** Plan text in a message: quoted, escaped and cut short, since it came from the repository's code. */
 const shown = (value: string) => escaped(JSON.stringify(value.length > 64 ? `${value.slice(0, 64)}…` : value));
 
-// A part a file system can read as .git: any case, trailing dots or spaces, the NTFS short name, characters HFS+ ignores.
+// A part a file system can read as .git: any case, trailing dots or spaces, the NTFS short name or a stream (`.git:x`),
+// characters HFS+ ignores.
 // One pass over the whole path, so a path of thousands of parts costs what its length does.
 const IGNORED = "\\u200c-\\u200f\\u202a-\\u202e\\u206a-\\u206f\\ufeff";
 const I = `[${IGNORED}]*`;
-const GIT_PART = new RegExp(`(?:^|/)${I}(?:\\.${I}g${I}i${I}t|g${I}i${I}t${I}~${I}1)[. ${IGNORED}]*(?:/|$)`, "i");
+const GIT_PART = new RegExp(`(?:^|/)${I}(?:\\.${I}g${I}i${I}t|g${I}i${I}t${I}~${I}1)[. ${IGNORED}]*(?::|/|$)`, "i");
 /** An empty, `.` or `..` part. */
 const DOT_PART = /(?:^|\/)\.{0,2}(?:\/|$)/;
 
