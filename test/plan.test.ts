@@ -118,6 +118,14 @@ describe("parsePlan", () => {
     expect(await cpuTime(() => parsePlan(plan, ids), 3, 200)).toBeLessThan(200);
   });
 
+  it("stays fast on paths of thousands of parts", async () => {
+    const deep = Array(2048).fill("a").join("/");
+    const plan = text({ ...valid(), groups: [...ids].slice(0, 2).map((id) => ({ ...valid().groups[0]!, id, files: Array(CAPS.files).fill(deep) })) });
+    expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan * 0.95);
+    const reject = () => expect(() => parsePlan(plan, ids)).toThrow(/patch is not a git diff/);
+    expect(await cpuTime(reject, 3, 200)).toBeLessThan(200);
+  });
+
   it("accepts git's own patches for names it quotes or ends with a tab, and for binary files", async () => {
     const dir = await mkdtemp(join(tmpdir(), "darnit-plan-git-"));
     temp.push(dir);

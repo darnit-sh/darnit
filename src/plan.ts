@@ -19,12 +19,17 @@ const escaped = (text: string) => text.replace(/[\u007f-\u009f\u2028\u2029]/g, (
 /** Plan text in a message: quoted, escaped and cut short, since it came from the repository's code. */
 const shown = (value: string) => escaped(JSON.stringify(value.length > 64 ? `${value.slice(0, 64)}…` : value));
 
-// Names a file system can read as .git: any case, trailing dots or spaces, the NTFS short name, characters HFS+ ignores.
-const isGitDir = (part: string) => /^(?:\.git|git~1)$/i.test(part.replace(/[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g, "").replace(/[. ]+$/, ""));
+// A part a file system can read as .git: any case, trailing dots or spaces, the NTFS short name, characters HFS+ ignores.
+// One pass over the whole path, so a path of thousands of parts costs what its length does.
+const IGNORED = "\\u200c-\\u200f\\u202a-\\u202e\\u206a-\\u206f\\ufeff";
+const I = `[${IGNORED}]*`;
+const GIT_PART = new RegExp(`(?:^|/)${I}(?:\\.${I}g${I}i${I}t|g${I}i${I}t${I}~${I}1)[. ${IGNORED}]*(?:/|$)`, "i");
+/** An empty, `.` or `..` part. */
+const DOT_PART = /(?:^|\/)\.{0,2}(?:\/|$)/;
 
 /** A path inside the repository: relative, `/`-separated, with no `.`, `..` or `.git` part. */
 const RelativePath = capped(CAPS.path).refine(
-  (p) => !p.includes("\0") && p.split("/").every((part) => part !== "" && part !== "." && part !== ".." && !isGitDir(part)),
+  (p) => !p.includes("\0") && !DOT_PART.test(p) && !GIT_PART.test(p),
   "not a path inside the repository",
 );
 
