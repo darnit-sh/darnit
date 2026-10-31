@@ -7,9 +7,33 @@ const exec = promisify(execFile);
 // darnit's GitHub credentials open the pull request; the repository's own commands never get them.
 export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
 
-// The repo's own commands can write .git/config and .git/hooks, so git runs none of their hooks or
-// fsmonitor, never sees darnit's credentials, and takes file names literally, never as patterns.
-const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
+// The repository's config can name programs git would run inside darnit's own calls. These pins turn
+// off the ones keyed by no name: no hooks (on commit or checkout), no fsmonitor, no gpg signing of a
+// commit or tag. Clean/smudge/process filters are keyed by driver name, so `filterPins` empties each
+// one git would use; an external diff and textconv are turned off per diff in `git`. A pager never
+// starts because darnit captures git's output rather than writing to a terminal. git also never sees
+// darnit's credentials and takes file names literally, never as patterns. SECURITY.md lists the keys
+// that still apply (an ssh command or credential helper on a call to origin, a remote helper program).
+const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false"];
+
+// git commands that apply a clean, smudge or process filter to worktree or index content.
+const FILTERED = new Set(["add", "status", "commit", "checkout", "switch", "restore", "reset", "stash", "diff", "apply", "mv", "rm", "read-tree", "merge"]);
+const FILTER_DRIVER = /^filter\.(.*)\.(?:clean|smudge|process)$/s;
+
+/**
+ * The `-c` pins that empty every clean/smudge/process filter git would apply in `root`, from any
+ * scope: their programs are a key darnit cannot pin off without the driver's name, so it reads the
+ * names and empties each, marking it optional so a required filter does not abort the command.
+ */
+async function filterPins(root: string, env: NodeJS.ProcessEnv): Promise<string[]> {
+  const { stdout } = await exec("git", [...UNTRUSTED_REPO, "config", "-z", "--name-only", "--get-regexp", String.raw`^filter\..*\.(clean|smudge|process)$`], { cwd: root, env }).catch(() => ({ stdout: "" }));
+  const names = new Set<string>();
+  for (const key of stdout.split("\0")) {
+    const m = FILTER_DRIVER.exec(key);
+    if (m) names.add(m[1]!);
+  }
+  return [...names].flatMap((n) => ["-c", `filter.${n}.clean=`, "-c", `filter.${n}.smudge=`, "-c", `filter.${n}.process=`, "-c", `filter.${n}.required=false`]);
+}
 
 const GITHUB = "https://github.com/";
 // git commands that reach origin. git() refuses them without `stall`, which also brings the token.
@@ -45,16 +69,16 @@ export async function childEnv(): Promise<NodeJS.ProcessEnv> {
 }
 
 /** The git command `args` runs, after git's global options, and whether it can reach origin. */
-function command(args: string[]): { name: string; remote: boolean } {
+function command(args: string[]): { name: string; remote: boolean; at: number } {
   let i = 0;
   while (i < args.length && args[i]!.startsWith("-")) i += VALUED.has(args[i]!) ? 2 : 1;
   const [name = "", ...rest] = args.slice(i);
   // An alias set on the command line can stand for any command, so it counts as one that reaches origin.
   const opts = args.slice(0, i);
-  if (opts.some((a, j) => /^--config-env=alias\./i.test(a) || (["-c", "--config-env"].includes(a) && /^alias\./i.test(opts[j + 1] ?? "")))) return { name, remote: true };
-  if (name !== "remote") return { name, remote: REMOTE.has(name) };
+  if (opts.some((a, j) => /^--config-env=alias\./i.test(a) || (["-c", "--config-env"].includes(a) && /^alias\./i.test(opts[j + 1] ?? "")))) return { name, remote: true, at: i };
+  if (name !== "remote") return { name, remote: REMOTE.has(name), at: i };
   const sub = rest.find((a) => !a.startsWith("-"));
-  return { name, remote: sub !== undefined && (!LOCAL_REMOTE.has(sub) || (sub === "add" && rest.some((a) => a === "-f" || a === "--fetch"))) };
+  return { name, remote: sub !== undefined && (!LOCAL_REMOTE.has(sub) || (sub === "add" && rest.some((a) => a === "-f" || a === "--fetch"))), at: i };
 }
 
 /**
@@ -64,7 +88,7 @@ function command(args: string[]): { name: string; remote: boolean } {
  * running. In GitHub Actions the call also gets the token for `site` (see originAuth).
  */
 export async function git(root: string, args: string[], stall?: number, site = GITHUB): Promise<string> {
-  const { name, remote } = command(args);
+  const { name, remote, at } = command(args);
   if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
   const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1" };
   let timeout = 0;
@@ -74,8 +98,11 @@ export async function git(root: string, args: string[], stall?: number, site = G
     const urls = (await git(root, ["remote", "get-url", "--all", ...(name === "push" ? ["--push"] : []), "origin"])).split("\n").filter(Boolean);
     if (!urls.every((u) => /^https?:\/\//i.test(u))) timeout = stall * 4 * 1000;
   }
+  // No external diff or textconv runs the diff; no filter runs the commands that transform content.
+  const scoped = name === "diff" ? [...args.slice(0, at + 1), "--no-ext-diff", "--no-textconv", ...args.slice(at + 1)] : args;
+  const filters = FILTERED.has(name) ? await filterPins(root, env) : [];
   try {
-    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...args], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
+    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...filters, ...scoped], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
     return stdout;
   } catch (err) {
     const { killed, stderr } = err as { killed?: boolean; stderr?: string };
@@ -268,7 +295,7 @@ const PINNED_DIFF = ["core.quotePath=false", "diff.suppressBlankEmpty=false", "d
 export const patch = (root: string, files: readonly string[]) =>
   git(root, [
     ...PINNED_DIFF.flatMap((c) => ["-c", c]),
-    "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--relative",
+    "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--relative",
     "--src-prefix=a/", "--dst-prefix=b/", "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers", "--indent-heuristic",
     "HEAD", "--", ...files,
   ]);

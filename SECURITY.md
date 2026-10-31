@@ -59,6 +59,21 @@ for example `http.curloptResolve` pointing github.com at another address with
 `http.sslVerify false`. The README workflow cannot prevent either. On code you do not trust, run
 `check` only.
 
+A repository's own config (`.git/config` and the files it includes) can name programs git would
+otherwise run inside darnit's own git calls, even under `--no-test` and in `check`. In its own calls
+darnit turns these off: no hooks (`core.hooksPath`), no `core.fsmonitor`, no gpg signing of a commit
+or tag (`commit.gpgSign`, `tag.gpgSign`, so `gpg.program` and `gpg.ssh.program` never run), no
+external diff or textconv (`diff.external`, a `diff.<driver>.command` or `.textconv`), and no
+clean/smudge/process filter (`filter.<driver>.*`, which are keyed by name, so darnit reads the names
+git would use and empties each). A pager (`core.pager`, `pager.*`) never starts because darnit
+captures git's output rather than writing to a terminal. darnit's own commit therefore does not run
+the repository's commit hooks; they are repository code, and `fix --pr` runs the repository's tests
+separately. This does not cover config that only matters on a call that reaches origin, which darnit
+makes only to push or query its own remote: `core.sshCommand`, a credential helper or `core.askPass`,
+`remote.<name>.uploadpack`/`receivepack`/`vcs`, `protocol.ext.allow`, and an http header or URL that
+carries a credential. Those are the token-handling surface above; on code you do not trust, run
+`check` only.
+
 `fix --prepare` runs the repository's code, and its plan is uploaded for another job to read, so its
 job must hold no secrets at all: no token or other secret in its environment or git config, and no
 `id-token: write`. darnit refuses to start when it finds one in these places only: `GITHUB_TOKEN` or
