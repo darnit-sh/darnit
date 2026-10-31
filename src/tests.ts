@@ -94,7 +94,7 @@ async function pythonOnPath(path: string): Promise<string | undefined> {
 const TAIL_LINES = 40;
 // Output can be any size; only the end is kept, small enough for a pull request body (65536 characters).
 // A credential cut in two by the limit can't be redacted, so the margin it could sit in is dropped after redaction.
-const TAIL_CHARS = 16 * 1024;
+export const TAIL_CHARS = 16 * 1024;
 const CUT_MARGIN = 1024;
 
 const base64 = (s: string) => Buffer.from(s).toString("base64").replace(/=+$/, "");

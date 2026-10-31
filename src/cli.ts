@@ -78,7 +78,7 @@ program
     process.exitCode = exitCodeForCheck(hits);
   });
 
-type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean };
+type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean; prepare?: string };
 
 program
   .command("fix")
@@ -86,13 +86,17 @@ program
   .argument("[dir]", DIR)
   .option("--dry-run", "show what would change without writing anything")
   .option("--pr", "commit on a branch, push, and open one pull request per change")
-  .option("--allow-dirty", "let --pr run with uncommitted changes present")
+  .option("--prepare <dir>", "verify each change as --pr does, then write a plan to <dir> instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md)")
+  .option("--allow-dirty", "let --pr or --prepare run with uncommitted changes present")
   .option("--repo <owner/name>", "GitHub repository, when origin is not a GitHub URL")
   .option("--only <id>", "restrict to one change record (repeatable)", (id: string, all: string[] = []) => [...all, id])
   .option("--test <command>", "run this instead of the detected test command")
   .option("--no-test", "skip tests and the build check")
   .option("--json", "machine-readable output")
   .action(async (dir: string | undefined, flags: FixFlags) => {
+    const plan = flags.prepare;
+    if (plan !== undefined && (!plan.trim() || plan.startsWith("-"))) throw new Error("--prepare needs the folder to write the plan to");
+    if (plan !== undefined && flags.json) throw new Error("--prepare and --json can't be combined: the plan is the machine-readable output");
     const root = await folder(dir);
     const update = updateNotice(version, { env: process.env, json: flags.json });
     const result = await fix(root, {
@@ -102,6 +106,7 @@ program
       noTest: flags.test === false,
       version,
       ...(flags.repo ? { repo: flags.repo } : {}),
+      ...(plan !== undefined ? { prepare: resolve(plan) } : {}),
       ...(flags.only ? { only: flags.only } : {}),
       ...(typeof flags.test === "string" ? { test: flags.test } : {}),
     });
