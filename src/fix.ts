@@ -135,14 +135,15 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
   return { groups: [...byId.values()], coverage, namesElsewhere: values.length + mentions.length > 0 };
 }
 
-async function snapshotOf(root: string, files: readonly string[]): Promise<Map<string, string>> {
-  const snap = new Map<string, string>();
-  for (const f of files) snap.set(f, await readFile(join(root, f), "utf8"));
+// Bytes, not text: a file that is not UTF-8 must come back as it was.
+async function snapshotOf(root: string, files: readonly string[]): Promise<Map<string, Buffer>> {
+  const snap = new Map<string, Buffer>();
+  for (const f of files) snap.set(f, await readFile(join(root, f)));
   return snap;
 }
 
-async function restore(root: string, snap: Map<string, string>): Promise<void> {
-  for (const [f, text] of snap) await writeFile(join(root, f), text);
+async function restore(root: string, snap: Map<string, Buffer>): Promise<void> {
+  for (const [f, bytes] of snap) await writeFile(join(root, f), bytes);
 }
 
 /**
@@ -156,7 +157,7 @@ export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> 
   const before = await snapshotOf(dir, grp.files);
   await applyRules(grp.packDir, grp.files.map((f) => join(dir, f)));
   const changed: string[] = [];
-  for (const [f, text] of before) if ((await readFile(join(dir, f), "utf8")) !== text) changed.push(f);
+  for (const [f, bytes] of before) if (!(await readFile(join(dir, f))).equals(bytes)) changed.push(f);
   const remaining = (await scan(dir, grp.files, [grp.record])).hits.map((h) => ({ file: h.file, line: h.line }));
   if (changed.length > 0 && remaining.length >= grp.sites) {
     await restore(dir, before);
@@ -214,7 +215,7 @@ function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = 
  * Runs a check; on failure puts the files back and runs it again to say whether the change was the cause.
  * A run that timed out checked nothing, so its files go back with no verdict, and no second run when it was the first.
  */
-async function testAndAttribute(root: string, command: string, snap: Map<string, string>, kind: TestOutcome["kind"]): Promise<TestOutcome> {
+async function testAndAttribute(root: string, command: string, snap: Map<string, Buffer>, kind: TestOutcome["kind"]): Promise<TestOutcome> {
   const outcome: TestOutcome = { ...(await runTests(root, command)), kind };
   if (!outcome.passed) {
     const changed = await snapshotOf(root, [...snap.keys()]);
@@ -241,7 +242,7 @@ const COMPILED = /\.(m?[jt]sx?|c[jt]s)$/;
  * The build check first, then the tests; stops at the first failure, which has already put the files back.
  * The build only runs when JavaScript or TypeScript changed: it says nothing about a Python fix.
  */
-async function runChecks(root: string, commands: Commands, snap: Map<string, string>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
+async function runChecks(root: string, commands: Commands, snap: Map<string, Buffer>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
   // Builds and tests can write tracked files (a committed dist/, generated types). Put back anything
   // they touched that was clean before, so the tree only differs by the rewrite.
   const dirtyBefore = new Set(await g.modified(root));
@@ -373,7 +374,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
 }
 
 /** Runs the checks on one rewritten group, as --pr and --prepare both do. A failure, which has put the files back, goes on the record. */
-async function checkGroup(root: string, commands: Commands, snap: Map<string, string>, result: RecordResult) {
+async function checkGroup(root: string, commands: Commands, snap: Map<string, Buffer>, result: RecordResult) {
   const { build, tests } = await runChecks(root, commands, snap);
   if (failed(build)) result.pr = { state: "build-failed", build: build! };
   else if (failed(tests)) result.pr = { state: "tests-failed", tests: tests! };

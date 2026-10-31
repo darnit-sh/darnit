@@ -1208,6 +1208,20 @@ console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[3
     expect(group!.patch).toContain("--- a/sp ace.js\t\n");
   });
 
+  it("puts back a file that is not UTF-8 byte for byte, as plain fix does when the tests fail", async () => {
+    // Both files hold a call site; only the UTF-8 one gets rewritten, but both are put back.
+    const latin1 = Buffer.concat([Buffer.from(SDK_CALL), Buffer.from("// caf\xe9\n", "latin1")]);
+    const dir = await repoWith({ "a.js": SDK_CALL, "b.js": "" });
+    await writeFile(join(dir, "b.js"), latin1);
+    await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "latin1"]);
+    const prepared = await fix(dir, { prepare: join(await planHome(), "plan"), test: "node -e 1" });
+    expect(prepared.records[0]?.pr?.state).toBe("prepared");
+    expect(await readFile(join(dir, "b.js"))).toEqual(latin1);
+    const fixed = await fix(dir, { test: "node -e \"process.exit(1)\"" });
+    expect(fixed.reverted).toBe(true);
+    expect(await readFile(join(dir, "b.js"))).toEqual(latin1);
+  });
+
   it("takes the patch before the tests run, so it holds darnit's change only", async () => {
     const dir = await repoFrom(BEFORE);
     const plan = join(await planHome(), "plan");
