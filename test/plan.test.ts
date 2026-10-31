@@ -90,16 +90,26 @@ describe("parsePlan", () => {
     expect(() => parsePlan(text(group({ patch })), ids)).toThrow(/patch is not a git diff of exactly these files/);
   });
 
-  it("rejects .git with backslashes, which NTFS reads as folder separators", () => {
-    // The patch git prints for such a name: quoted, with each backslash doubled.
-    const quoted = (f: string) => {
-      const q = (p: string) => `"${p.replaceAll("\\", "\\\\")}"`;
-      return PATCH.replace("diff --git a/app.py b/app.py", `diff --git ${q(`a/${f}`)} ${q(`b/${f}`)}`).replace("--- a/app.py", `--- ${q(`a/${f}`)}`).replace("+++ b/app.py", `+++ ${q(`b/${f}`)}`);
-    };
-    expect(parsePlan(text(group({ files: ["sub\\app.py"], patch: quoted("sub\\app.py") })), ids).groups[0]!.files).toEqual(["sub\\app.py"]);
-    for (const file of [".git\\config", "sub\\.git\\hooks\\pre-commit", "GIT~1\\config"]) {
-      expect(() => parsePlan(text(group({ files: [file], patch: quoted(file) })), ids)).toThrow(/not a path inside the repository/);
-    }
+  // Windows reads a backslash as a folder separator and a drive letter as the start of an absolute path.
+  const quoted = (f: string) => {
+    // The patch git prints for a name with a backslash: quoted, with each backslash doubled.
+    const q = (p: string) => (p.includes("\\") ? `"${p.replaceAll("\\", "\\\\")}"` : p);
+    return PATCH.replace("diff --git a/app.py b/app.py", `diff --git ${q(`a/${f}`)} ${q(`b/${f}`)}`).replace("--- a/app.py", `--- ${q(`a/${f}`)}`).replace("+++ b/app.py", `+++ ${q(`b/${f}`)}`);
+  };
+  it.each(["..\\..\\etc\\passwd", "a\\..\\..\\x", "\\abs", "\\\\server\\share\\x", "sub\\app.py", ".git\\config", "sub\\.git\\hooks\\pre-commit", "GIT~1\\config"])(
+    "rejects the path %j, whose backslashes Windows reads as separators",
+    (file) => {
+      expect(() => parsePlan(text(group({ files: [file], patch: quoted(file) })), ids)).toThrow(/holds a backslash/);
+    },
+  );
+
+  // A one-letter name before a colon, such as a:b, reads as a drive too.
+  it.each(["C:\\Windows\\x", "C:x", "c:/x", "a:b"])("rejects the path %j, which starts with a drive letter", (file) => {
+    expect(() => parsePlan(text(group({ files: [file], patch: quoted(file) })), ids)).toThrow(/starts with a drive letter/);
+  });
+
+  it.each(["ab:c", "sub/a:b", "sub/C:x", "app.py"])("accepts the path %j", (file) => {
+    expect(parsePlan(text(group({ files: [file], patch: quoted(file) })), ids).groups[0]!.files).toEqual([file]);
   });
 
   it("rejects a file listed that the patch does not change", () => {
@@ -141,7 +151,7 @@ describe("parsePlan", () => {
   it("accepts git's own patches for names it quotes or ends with a tab, and for binary files", async () => {
     const dir = await mkdtemp(join(tmpdir(), "darnit-plan-git-"));
     temp.push(dir);
-    const names = ["sp ace.js", 'q"uo\\te.js', "t\tab.js", "d\u007fe\u0001l y.js", "café.js", "bin.js", "two hunks.js"];
+    const names = ["sp ace.js", 'q"uo"te.js', "t\tab.js", "d\u007fe\u0001l y.js", "café.js", "bin.js", "two hunks.js"];
     const long = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n");
     await git(dir, ["init", "-q"]);
     await writeFile(join(dir, ".gitattributes"), "bin.js -diff\n");

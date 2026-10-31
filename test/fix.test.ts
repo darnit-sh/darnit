@@ -1418,8 +1418,21 @@ console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[3
     expect(await readFile(join(dir, "sub", "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
 
+  it.each(["sub\\sdk.js", "C:sdk.js"])("leaves out a change to %j, a name the plan cannot hold, and says why", async (name) => {
+    const dir = await repoWith({ [name]: SDK_CALL });
+    const plan = join(await planHome(), "plan");
+    const result = await fix(dir, { prepare: plan, test: "node -e 1" });
+    const pr = result.records[0]?.pr;
+    expect(pr?.state).toBe("skipped");
+    expect(pr && "reason" in pr ? pr.reason : "").toContain(`the plan cannot hold ${JSON.stringify(name)}`);
+    expect(renderSummary(result)).toContain("skipped, the plan cannot hold");
+    expect(runs.count).toBe(0);
+    expect((await readPlan(plan)).groups).toEqual([]);
+    expect(await readFile(join(dir, name), "utf8")).toBe(SDK_CALL);
+  });
+
   it("writes a plan for names git quotes or ends with a tab, and for files git diffs as binary", async () => {
-    const names = ["sp ace.js", 'q"uo\\te.js', "bin/sdk.js"];
+    const names = ["sp ace.js", 'q"uo"te.js', "bin/sdk.js"];
     const dir = await repoWith({ ...Object.fromEntries(names.map((n) => [n, SDK_CALL])), ".gitattributes": "bin/** -diff\n" });
     const plan = join(await planHome(), "plan");
     const result = await fix(dir, { prepare: plan, noTest: true });
@@ -1427,7 +1440,7 @@ console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[3
     const [group] = (await readPlan(plan)).groups;
     expect([...group!.files].sort()).toEqual([...names].sort());
     expect(group!.patch).toContain("GIT binary patch");
-    expect(group!.patch).toContain('--- "a/q\\"uo\\\\te.js"\n');
+    expect(group!.patch).toContain('--- "a/q\\"uo\\"te.js"\n');
     expect(group!.patch).toContain("--- a/sp ace.js\t\n");
   });
 

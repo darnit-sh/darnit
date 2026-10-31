@@ -7,7 +7,7 @@ import * as g from "./git.js";
 import { shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
-import { PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanOutcome } from "./plan.js";
+import { pathProblem, PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanOutcome } from "./plan.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, TIME_LIMIT_MINUTES, unreadSettings } from "./tests.js";
@@ -437,6 +437,12 @@ async function prepare(root: string, groups: Group[], base: FixResult, commands:
   let anyFailed = false;
   for (const grp of groups) {
     const result = base.records.find((r) => r.record.id === grp.record.id)!;
+    // A plan darnit writes is one its parser reads, so a change it could not hold is left out and said so.
+    const unheld = grp.files.find((f) => pathProblem(f));
+    if (unheld !== undefined) {
+      result.pr = { state: "skipped", reason: `the plan cannot hold ${JSON.stringify(unheld)}: its name ${pathProblem(unheld)}` };
+      continue;
+    }
     const snap = await snapshotOf(root, grp.files);
     try {
       const changed = settle(result, await applyAndVerify(root, grp), grp.held);

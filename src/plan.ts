@@ -20,19 +20,28 @@ const escaped = (text: string) => text.replace(/[\u007f-\u009f\u2028\u2029]/g, (
 const shown = (value: string) => escaped(JSON.stringify(value.length > 64 ? `${value.slice(0, 64)}…` : value));
 
 // A part a file system can read as .git: any case, trailing dots or spaces, the NTFS short name or a stream (`.git:x`),
-// characters HFS+ ignores. NTFS also reads a backslash as a separator.
-// One pass over the whole path, so a path of thousands of parts costs what its length does.
+// characters HFS+ ignores. One pass over the whole path, so a path of thousands of parts costs what its length does.
 const IGNORED = "\\u200c-\\u200f\\u202a-\\u202e\\u206a-\\u206f\\ufeff";
 const I = `[${IGNORED}]*`;
-const GIT_PART = new RegExp(`(?:^|[/\\\\])${I}(?:\\.${I}g${I}i${I}t|g${I}i${I}t${I}~${I}1)[. ${IGNORED}]*(?::|[/\\\\]|$)`, "i");
+const GIT_PART = new RegExp(`(?:^|/)${I}(?:\\.${I}g${I}i${I}t|g${I}i${I}t${I}~${I}1)[. ${IGNORED}]*(?::|/|$)`, "i");
 /** An empty, `.` or `..` part. */
 const DOT_PART = /(?:^|\/)\.{0,2}(?:\/|$)/;
 
-/** A path inside the repository: relative, `/`-separated, with no `.`, `..` or `.git` part. */
-const RelativePath = capped(CAPS.path).refine(
-  (p) => !p.includes("\0") && !DOT_PART.test(p) && !GIT_PART.test(p),
-  "not a path inside the repository",
-);
+/**
+ * Why `path` cannot be in a plan, or undefined for a path inside the repository: relative, `/`-separated, with no
+ * `.`, `..` or `.git` part. Windows reads a backslash as a separator and `C:` as a drive, so neither is allowed.
+ */
+export function pathProblem(path: string): string | undefined {
+  if (/^[A-Za-z]:/.test(path)) return "starts with a drive letter";
+  if (path.includes("\\")) return "holds a backslash, which Windows reads as a folder separator";
+  if (path.includes("\0") || DOT_PART.test(path) || GIT_PART.test(path)) return "is not a path inside the repository";
+  return undefined;
+}
+
+const RelativePath = capped(CAPS.path).superRefine((path, ctx) => {
+  const problem = pathProblem(path);
+  if (problem) ctx.addIssue({ code: "custom", message: problem });
+});
 
 const OutcomeSchema = z.strictObject({
   command: capped(CAPS.command),
