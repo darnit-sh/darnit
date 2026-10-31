@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
+import { runTests } from "../src/tests.js";
 import { cpuTime } from "./helpers.js";
 
 // A short limit for the build and test runs, and a count of them, so a hung check costs a test half a second.
@@ -1071,6 +1072,22 @@ describe("fix --pr", () => {
     expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
   });
 
+  it("pushes nothing when the description would be over GitHub's length limit", async () => {
+    const { dir, bare, branch } = await repoWithOrigin();
+    const posts = stubGitHub(branch);
+    // A test command that passes, long enough to take the description past 65,536 characters.
+    const result = await fix(dir, { pr: true, repo: "o/r", test: `true # ${"x".repeat(70_000)}` });
+
+    expect(result.records[0]?.pr?.state).toBe("skipped");
+    expect(renderSummary(result)).toMatch(/skipped, its description would be 7\d{4} characters, over GitHub's limit of 65536; nothing pushed\n/);
+    expect(posts).toEqual([]);
+    expect((await git(bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe(branch);
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
+  });
+
   it("lists what a partial rewrite left behind in the pull request", async () => {
     const { dir, bare, branch } = await repoWithOrigin(await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL }));
     const posts = stubGitHub(branch);
@@ -1305,6 +1322,16 @@ describe("prBody", () => {
     const lines = prBody(record, ["bidi-\u202Egnp\u009b.ts", " a "], "t").split("\n");
     expect(lines).toContain("- `bidi-\\u202egnp\\u009b.ts`");
     expect(lines).toContain("- `  a  `");
+  });
+
+  it("stays under GitHub's 65,536-character limit when every character of the test output is written out", async () => {
+    const dir = await repoWith({ "a.txt": "a\n" });
+    // Kept output is cut to 16,384 characters, and U+200B takes six once written out.
+    const run = await runTests(dir, `node -e "for (let i = 0; i < 60; i++) console.log('\\u200b'.repeat(2000))"`);
+    const tests = { ...run, kind: "tests" as const };
+    for (const { record } of await loadRecords()) expect(prBody(record, ["app.py"], "t", { tests }).length).toBeLessThan(65_536);
+    expect(run.output.length).toBeLessThanOrEqual(16 * 1024);
+    expect(run.output).toMatch(/^(\\u200b)+$/m);
   });
 
   it("writes out zero-width characters in file names and keeps joined emoji whole", async () => {

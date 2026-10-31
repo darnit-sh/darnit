@@ -105,6 +105,9 @@ function heldReason(held: readonly Site[]): string {
 
 const NOT_COVERED = "the rewrite rules don't cover this call shape yet";
 
+/** The longest pull request description GitHub accepts, in characters. */
+const PR_BODY_LIMIT = 65_536;
+
 async function groupHits(root: string, only: string[] | undefined): Promise<{ groups: Group[]; coverage: Coverage; namesElsewhere: boolean }> {
   const packs = new Map((await loadRecords()).map((l) => [l.record.id, l.packDir]));
   for (const id of only ?? []) if (!packs.has(id)) throw new Refusal(`unknown change record: ${id}`);
@@ -392,10 +395,6 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         anyFailed = true;
         continue;
       }
-      await g.add(root, changed);
-      await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
-      committed = true;
-      await g.push(root, branch);
       const body = prBody(grp.record, changed, opts.version ?? "dev", {
         build,
         tests,
@@ -405,6 +404,16 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         buildNote: opts.noTest && changed.some((f) => COMPILED.test(f)) ? "skipped with --no-test" : base.buildNote,
         unconfirmed: result.unconfirmed,
       });
+      // GitHub refuses a longer description, and by then the branch would already be pushed.
+      if (body.length > PR_BODY_LIMIT) {
+        await restore(root, snap);
+        result.pr = { state: "skipped", reason: `its description would be ${body.length} characters, over GitHub's limit of ${PR_BODY_LIMIT}; nothing pushed` };
+        continue;
+      }
+      await g.add(root, changed);
+      await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
+      committed = true;
+      await g.push(root, branch);
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
       result.pr = { state: "opened", url, build, tests };
       opened = true;
