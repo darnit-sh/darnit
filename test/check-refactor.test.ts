@@ -12,6 +12,7 @@ afterEach(async () => {
 
 const baseFiles = [
   "src/a.ts",
+  "README.md",
   "test/a.test.ts",
   "test/helpers.ts",
   "test/golden/repo.txt",
@@ -339,6 +340,31 @@ describe("the rule picked by the title's type", () => {
     for (const type of ["test", "ci"]) {
       expect((await rule(`${type}: x`, [{ write: "test/e2e/s/.npmrc" }], reason)).status, type).toBe(0);
     }
+  });
+
+  it("matches every guarded name in any case, as a macOS runner's disk does", async () => {
+    for (const f of [
+      ".NPMRC",
+      "packs/.Npmrc",
+      ".YARNRC.YML",
+      "VITEST.CONFIG.TS",
+      ".GITHUB/WORKFLOWS/x.yml",
+      "Test/Helpers.js",
+      "Scripts/Fixtures.ts",
+      "PACKAGE.JSON",
+      "README.MD",
+      "PACKS/.NPMIGNORE",
+      "SRC/b.ts",
+      "packs/v/p/CHANGE.JSON",
+    ]) {
+      const r = await rule("docs: x", [{ write: f }]);
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f}`);
+    }
+    for (const f of ["TEST/A.TEST.TS", "packs/v/p/FIXTURES/basic/input.ts"]) {
+      expect((await rule("refactor: x", [{ write: f }])).status, f).toBe(1);
+    }
+    expect((await rule("fix: x", [{ write: ".Npmrc" }])).status).toBe(1);
   });
 
   it("passes a revert only when it is exactly the inverse of the one commit it names", async () => {

@@ -178,6 +178,10 @@ describe("the proof check", { timeout: 120_000 }, () => {
     const none = await proof("fix: add", { "src/add.ts": added, "test/add.test.ts": null });
     expect(none).toMatchObject({ status: 1, asked: false });
     expect(none.summary).toContain("**Failed:** no new or changed test.");
+    // On a macOS runner's disk SRC/ is src/.
+    const upper = await proof("fix: add", { "SRC/extra.ts": "export const x = 1;\n" });
+    expect(upper).toMatchObject({ status: 1, asked: false });
+    expect(upper.summary).toContain("**Failed:** no new or changed test.");
   });
 
   it("passes visibly with an opt-out reason, and says why other changes are not checked", async () => {

@@ -35,7 +35,7 @@ if [ "$mode" = check ]; then
     exit 0
     ;;
   esac
-  if [ -z "$(paths | grep -E "$CODE" || true)" ]; then
+  if [ -z "$(paths | grep -iE "$CODE" || true)" ]; then
     say "**Not checked:** this $type changes nothing under src/, packs/*/*/rules/ or change.json."
     exit 0
   fi

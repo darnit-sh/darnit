@@ -29,7 +29,8 @@ type=$(title_type)
 
 mb=$(git merge-base "$base" "$head")
 # npm and yarn config anywhere, which can send every npm run and npx in CI through a script of its own.
-config=$(paths | grep -E '(^|/)\.(npmrc|yarnrc[^/]*)"?$' || true)
+# Names match in any case, as they do on a macOS runner's disk.
+config=$(paths | grep -iE '(^|/)\.(npmrc|yarnrc[^/]*)"?$' || true)
 case $type in
 test | docs | chore | ci | build) ;;
 *)
@@ -41,19 +42,25 @@ test | docs | chore | ci | build) ;;
   ;;
 esac
 
+# Added files whose name differs from one on base only in case: on a macOS runner's disk one replaces the other.
+collisions() {
+  { git ls-tree -r --name-only "$mb" | sed 's/^/B /'; paths --diff-filter=A | sed 's/^/A /'; } |
+    awk '{ p = substr($0, 3); k = tolower(p) } $1 == "B" { b[k] = 1; next } k in b { print p }'
+}
 # What the suite and the pull request checks run besides the tests: the runners, the checks and the
 # modules tests import.
 guarded() {
-  grep -E '^"?(scripts/((fixtures|e2e|golden)\.ts|check-[^/]+|pr-common\.sh)|test/.*\.[cm]?[jt]s)"?$' |
-    grep -vE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
+  grep -iE '^"?(scripts/((fixtures|e2e|golden)\.ts|check-[^/]+|pr-common\.sh)|test/.*\.[cm]?[jt]s)"?$' |
+    grep -viE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
 }
 # Those this change edits or removes, or shadows with an added file of the same path minus its extension
 # (test/helpers.js beside test/helpers.ts), and any test runner config or workflow at all.
 suite_files() {
   paths --diff-filter=DMT | guarded
   { git ls-tree -r --name-only "$mb" | guarded | sed 's/^/G /'; paths --diff-filter=A | sed 's/^/A /'; } |
-    awk '{ p = substr($0, 3); s = p; sub(/^"/, "", s); sub(/\.[^.\/]*"?$/, "", s) } $1 == "G" { g[s] = 1; next } s in g { print p }'
-  paths | grep -E '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|\.github/(workflows|actions)/.*)"?$' || true
+    awk '{ p = substr($0, 3); s = p; sub(/^"/, "", s); sub(/\.[^.\/]*"?$/, "", s); s = tolower(s) } $1 == "G" { g[s] = 1; next } s in g { print p }'
+  paths | grep -iE '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|\.github/(workflows|actions)/.*)"?$' || true
+  collisions
 }
 # package.json's "files", or each script this change adds, alters or removes. A package.json this
 # change leaves unreadable, or not an object, counts as changed, as does a reader that fails.
@@ -78,8 +85,8 @@ package_json() {
 # inside "files" (a root one does not). Test scenarios do not ship.
 ships() {
   package_json files
-  paths | grep -E '(^|/)\.npmignore"?$' || true
-  paths | grep -E '/\.gitignore"?$' | grep -vE '^"?test/' || true
+  paths | grep -iE '(^|/)\.npmignore"?$' || true
+  paths | grep -iE '/\.gitignore"?$' | grep -viE '^"?test/' || true
 }
 
 case $type in
@@ -87,8 +94,9 @@ refactor | perf)
   say "**Rule for \`$type\`:** (a) no existing test, fixture, golden file or test script changes, and no record (change.json) at all; (b) base's tests and fixtures pass against this code."
   # CI runs this change's copy of the test scripts, and records are data the tests do not check.
   edited=$(
-    paths --diff-filter=DMT | grep -E '^"?(test/|packs/[^/]+/[^/]+/fixtures/|scripts/(e2e|golden)\.ts"?$)' || true
-    paths | grep -E '(^|/)change\.json"?$' || true
+    paths --diff-filter=DMT | grep -iE '^"?(test/|packs/[^/]+/[^/]+/fixtures/|scripts/(e2e|golden)\.ts"?$)' || true
+    paths | grep -iE '(^|/)change\.json"?$' || true
+    collisions
   )
   if [ -n "$edited" ]; then
     say "**(a) failed:** a $type keeps every existing test, test script and record as it is (new test files are fine). Touched:"
@@ -113,7 +121,7 @@ test | docs | chore | ci | build)
   esac
   [ "$type" = build ] && ships="may change" || ships="stay"
   say "**Rule for \`$type\`:** no change under src/, packs/*/*/rules/ or any change.json; $allowed; package.json \"files\", any .npmignore and any .gitignore below the root outside test/ $ships."
-  touched=$(paths | grep -E "$CODE" || true)
+  touched=$(paths | grep -iE "$CODE" || true)
   [ "$type" = build ] || touched=$(printf '%s\n' "$touched" "$(ships)" | grep . || true)
   changed=$(printf '%s\n' "$(suite_files)" "$(package_json scripts)" "$config" | grep . || true)
   if [ -n "$changed" ]; then
