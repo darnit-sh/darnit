@@ -14,6 +14,10 @@ jobs:
       actions: read
       contents: read
       pull-requests: read
+    env:
+      # npm runs scripts and npx with this shell whatever an .npmrc in the checkout says: npm reads
+      # npm_config_* variables after project config, so they win.
+      npm_config_script_shell: /bin/sh
     outputs:
       dist-tag: ${{ steps.release.outputs.dist-tag }}
       version: ${{ steps.release.outputs.version }}
@@ -62,6 +66,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      npm_config_script_shell: /bin/sh
     steps:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -82,6 +88,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      npm_config_script_shell: /bin/sh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
