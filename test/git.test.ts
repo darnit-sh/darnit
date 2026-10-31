@@ -87,7 +87,7 @@ describe("git treats the repo as untrusted", () => {
     const dir = await repoWith({ "a.ts": "a\n", "*.ts": "star\n" });
     await writeFile(join(dir, "a.ts"), "changed\n");
     expect(await g.uncommitted(dir, ["*.ts"])).toEqual([]);
-    expect(await g.diff(dir, ["*.ts"], false)).toBe("");
+    expect(await g.diff(dir, ["*.ts"])).toBe("");
   });
 
   it("lists changed files with unusual names exactly", async () => {
