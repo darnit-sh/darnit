@@ -307,6 +307,25 @@ describe("npm run accounting", () => {
     }
   });
 
+  it("never lets a record that finds only some values of a field cover the whole field", async () => {
+    const records = (await loadRecords()).map((l) => l.record);
+    const copy = structuredClone(spec);
+    schema(copy, "CreateEmbeddingRequest").properties!.model!.deprecated = true;
+    const removal: Removal = { observedAt: "2026-11-06", id: "request-property-removed", operation: "POST", path: "/embeddings", text: "removed the request property `model`" };
+    const result = account({ vendor: "openai", spec: copy, removals: [removal], records, notCovered: [] });
+    expect(result.unaccounted).toEqual(expect.arrayContaining(["schema CreateEmbeddingRequest property model", ...removalItems([removal]).map((i) => i.key)]));
+
+    // Candidate derivation shares the rule: model shutdown records no longer count a removed model field as recorded.
+    const entries = [{ id: removal.id, level: 3 as const, text: removal.text, operation: "POST", path: "/embeddings" }];
+    const derived = deriveCandidates({ vendor: "openai", config: { spec: "https://example.com/openapi.yaml" }, entries, spec: {}, existing: records, observedAt: "2026-11-06" });
+    expect(derived.candidates.map((c) => c.record.surface.fields)).toEqual([["model"]]);
+
+    const pinned = record("pinned", ["/v1/x"], ["x"], ['({ x: "only" })']);
+    for (const context of ["({ x: $V })", "({ x })", '({ "x": $V })', "f(x=$V)", '{"x": $V}'])
+      expect(account({ vendor: "openai", spec: {}, removals: [{ ...removal, path: "/x", text: "removed the request property `x`" }], records: [record("any", ["/v1/x"], ["x"], [context])], notCovered: [] }).unaccounted, context).toEqual([]);
+    expect(account({ vendor: "openai", spec: {}, removals: [{ ...removal, path: "/x", text: "removed the request property `x`" }], records: [pinned], notCovered: [] }).unaccounted).toHaveLength(1);
+  });
+
   it("credits no record with a field on an endpoint it does not name", async () => {
     const copy = structuredClone(spec);
     schema(copy, "CreateCompletionRequest").properties!.max_tokens!.deprecated = true;

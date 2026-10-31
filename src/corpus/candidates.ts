@@ -54,15 +54,24 @@ const endpointOf = (e: string) => {
   return { method: m?.[1], path: (m?.[2] ?? e).split("?")[0]!.replace(/^\/v1(?=\/|$)/, "") };
 };
 
+/** Whether a record finds `field` whatever its value: a pattern sets it to a metavariable or names it bare, not only to a literal. */
+function findsAnyValue(r: ChangeRecord, field: string): boolean {
+  const name = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const any = new RegExp(`(^|[^\\w$])["']?${name}["']?\\s*[:=]\\s*\\$|\\{\\s*${name}\\s*\\}`);
+  return Object.values(r.detection.astGrepPatterns).some((ps) => ps?.some((p) => any.test(p.context)));
+}
+
 /**
  * Whether a record covers `field` on `path` (the whole endpoint when there is no field), and on `method` when
- * both name one. With `symbol`, the operation's SDK call, a record that lists that call covers it too.
+ * both name one. With `symbol`, the operation's SDK call, a record that lists that call covers it too. A record
+ * that finds a field only set to particular values, as a model shutdown finds `model: "dall-e-2"`, covers those
+ * values, never the field.
  */
 export function covers(r: ChangeRecord, vendor: string, path: string, field: string | undefined, method?: string, symbol?: string): boolean {
   const want = endpointOf(path);
   return (
     r.vendor === vendor &&
-    (field ? !!r.surface.fields?.includes(field) : !r.surface.fields?.length) &&
+    (field ? !!r.surface.fields?.includes(field) && findsAnyValue(r, field) : !r.surface.fields?.length) &&
     (!!r.surface.endpoints?.some((e) => {
       const have = endpointOf(e);
       return have.path === want.path && (!have.method || !method || have.method === method);
