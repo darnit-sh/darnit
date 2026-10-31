@@ -1,6 +1,8 @@
 import { once } from "node:events";
 import { type AddressInfo, createServer, type Socket } from "node:net";
+import { inspect } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Refusal } from "../src/fix.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "../src/github.js";
 
 afterEach(() => {
@@ -19,6 +21,20 @@ describe("githubToken", () => {
       vi.stubEnv("GITHUB_TOKEN", github);
       vi.stubEnv("GH_TOKEN", gh);
       expect(await githubToken(), JSON.stringify([github, gh])).toBe("gho_fake_for_test");
+    }
+  });
+
+  it("refuses a token with any character outside printable ASCII inside, without quoting it", async () => {
+    vi.stubEnv("PATH", "");
+    const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
+    for (const inner of ["\n", "\r", " ", "\t", "\v", "\f", "\x01", "\x1f", "\x7f", "\x85", "\x9f", "\u00a0", "\u1680", "\u2003", "\u2028", "\u2029", "\u3000", "\ufeff", "\u200b", "\u180e", "\u202e", "\u00e9", "\u0100", "\u{1f511}"]) {
+      for (const [name, other] of [["GITHUB_TOKEN", "GH_TOKEN"], ["GH_TOKEN", "GITHUB_TOKEN"]] as const) {
+        vi.stubEnv(name, ` ${token}${inner}X `);
+        vi.stubEnv(other, "");
+        const err = await githubToken().catch((e: unknown) => e);
+        expect(err, JSON.stringify([name, inner])).toBeInstanceOf(Refusal);
+        expect((err as Error).message).toBe("the GitHub token holds a character other than printable ASCII (a space, control or zero-width character, or a letter outside ASCII); set it again without one");
+      }
     }
   });
 });
@@ -94,6 +110,21 @@ describe("GitHub API calls", () => {
     vi.stubGlobal("fetch", () => Promise.resolve(new Response("Bad credentials", { status: 401 })));
     await expect(defaultBranch("secret-token", { owner: "o", repo: "r" })).rejects.toThrow(/401 Bad credentials/);
     await expect(defaultBranch("secret-token", { owner: "o", repo: "r" })).rejects.not.toThrow(/secret-token/);
+  });
+
+  it("takes the token out of an error that quotes it, from fetch or from the response", async () => {
+    const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
+    const failed = async () => (await defaultBranch(token, { owner: "o", repo: "r" }).catch((e: unknown) => e)) as Error;
+    vi.stubGlobal("fetch", () => Promise.reject(new TypeError(`Headers.append: "Bearer ${token}" is an invalid header value`, { cause: new Error(`sent ${token}`) })));
+    let err = await failed();
+    expect(err.message).toBe('GitHub GET /repos/o/r failed: Headers.append: "Bearer ***" is an invalid header value (sent ***)');
+    expect(inspect(err)).not.toContain(token);
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(`echo: authorization: Bearer ${token}`, { status: 400 })));
+    err = await failed();
+    expect(err.message).toBe("GitHub GET /repos/o/r failed: 400 echo: authorization: Bearer ***");
+    // Hidden before the body is cut to 300 characters, so no piece of it is left at the end.
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(`${"x".repeat(290)}${token}`, { status: 400 })));
+    expect((await failed()).message).not.toContain(token.slice(0, 10));
   });
 
   // Sends `reply` once the request arrives, then goes quiet with the connection open.

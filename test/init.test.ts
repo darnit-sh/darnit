@@ -6,10 +6,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parse } from "yaml";
 import { detectApis, MAX_FILE_BYTES, readText } from "../src/detect.js";
 import { git } from "../src/git.js";
 import { init, pinned } from "../src/init.js";
-import { cpuTime } from "./helpers.js";
+import { cpuTime, matchersAtDarnit, SETUP_NODE_MATCHERS } from "./helpers.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs/promises")>();
@@ -138,7 +139,7 @@ describe("detectApis on a repository built to slow it down", () => {
     tempDirs.push(dir);
     await writeFile(join(dir, "x\n::error::\u202Ey.py"), "import openai\n");
     const [summary] = await init(dir);
-    expect(summary).toBe("Scanned repo: found openai (x?::error::?y.py: import openai)");
+    expect(summary).toBe("Scanned repo: found openai (x?::error::\\u202ey.py: import openai)");
   });
 
   it.skipIf(process.platform === "win32")("prints folder names without their control characters, and no check mark on Not checked", async () => {
@@ -211,6 +212,20 @@ describe("init", () => {
 
     const forced = await init(dir, { force: true });
     expect(forced.slice(1)).toEqual(["darnit.yml is up to date, left unchanged", ".github/workflows/darnit.yml is up to date, left unchanged"]);
+  });
+
+  it("writes a workflow that removes every problem matcher setup-node registers before darnit runs", async () => {
+    const dir = await scratchCopy("medium");
+    await init(dir);
+    const workflow = parse(await readFile(join(dir, ".github", "workflows", "darnit.yml"), "utf8")) as { jobs: Record<string, { steps: { uses?: string; run?: string }[] }> };
+    expect(Object.keys(workflow.jobs)).toEqual(["check"]);
+    const { steps } = workflow.jobs.check!;
+    expect(matchersAtDarnit(steps)).toEqual([]);
+    // What the runner reads from the step, which is what removes them.
+    const removal = steps.filter((s) => s.run?.includes("::remove-matcher"));
+    expect(removal).toHaveLength(1);
+    const printed = execFileSync("bash", ["-e", "-c", removal[0]!.run!], { encoding: "utf8" });
+    expect(printed).toBe(Object.keys(SETUP_NODE_MATCHERS).map((owner) => `::remove-matcher owner=${owner}::\n`).join(""));
   });
 
   it.skipIf(process.platform === "win32")("keeps a rewritten file's permissions", async () => {

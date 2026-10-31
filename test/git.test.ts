@@ -87,7 +87,7 @@ describe("git treats the repo as untrusted", () => {
     const dir = await repoWith({ "a.ts": "a\n", "*.ts": "star\n" });
     await writeFile(join(dir, "a.ts"), "changed\n");
     expect(await g.uncommitted(dir, ["*.ts"])).toEqual([]);
-    expect(await g.diff(dir, ["*.ts"], false)).toBe("");
+    expect(await g.diff(dir, ["*.ts"])).toBe("");
   });
 
   it("lists changed files with unusual names exactly", async () => {
@@ -415,6 +415,20 @@ describe("push", () => {
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
 
+  it("refuses a token with a space or control character inside before git runs", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir);
+    for (const [github, gh] of [[`${token}\nX`, ""], ["", `${token} X`], [`${token}\u2028X`, token]]) {
+      vi.stubEnv("GITHUB_TOKEN", github);
+      vi.stubEnv("GH_TOKEN", gh);
+      await expect(g.push(dir, branch, url), JSON.stringify([github, gh])).rejects.toThrow(/^the GitHub token holds a character other than printable ASCII \(a space, control or zero-width character, or a letter outside ASCII\); set it again without one$/);
+    }
+    expect(await g.git(remote, ["branch", "--list"])).toBe("");
+  }, 20_000);
+
   it("leaves the push to git's own credentials outside GitHub Actions, even with a token exported", async () => {
     vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
     vi.stubEnv("GITHUB_ACTIONS", "");
@@ -484,6 +498,38 @@ describe("uncommitted where git composes file names, as on macOS", () => {
     const dir = await repoWith({ "\u00e9.js": "a\n" });
     await writeFile(join(dir, "e\u0301.js"), "b\n");
     expect(await g.uncommitted(dir, ["\u00e9.js", "e\u0301.js"])).toEqual([{ file: "e\u0301.js" }]);
+  });
+});
+
+describe("patch", () => {
+  const lines = (...l: string[]) => `${l.join("\n")}\n`;
+  // Each pair gives a different diff under one of the settings below: the algorithm, the indent heuristic, a wider context.
+  const algo = [lines("y", "  w();", "y", "y", "  w();", "y", "  w();", "  z();"), lines("}", "y", "y", "y", "", "  w();", "y", "  w();", "  w();", "  z();")];
+  const heur = [lines("  w();", "  z();", "y", "x", "{", "}", "  z();", "", "x"), lines("  w();", "  z();", "y", "x", "  z();", "{", "}", "}", "  z();", "x")];
+  const far = Array.from({ length: 30 }, (_, i) => `line ${i}`);
+  const pairs: Record<string, string[]> = {
+    "algo.js": algo,
+    "heur.js": heur,
+    "far.js": [lines(...far), lines(...far.map((l, i) => (i === 2 || i === 20 ? `${l}!` : l)))],
+    "café.js": [lines("a", "", "b"), lines("A", "", "b")],
+    "up.js": [lines("a"), lines("b")],
+  };
+
+  it("gives the same bytes whatever diff settings the repository's own code wrote", async () => {
+    const dir = await repoWith({ ...Object.fromEntries(Object.entries(pairs).map(([f, [a]]) => [f, a!])), ".gitattributes": "up.js diff=up\n" });
+    for (const [f, [, b]] of Object.entries(pairs)) await writeFile(join(dir, f), b!);
+    const files = Object.keys(pairs);
+    const clean = await g.patch(dir, files);
+    await writeFile(join(dir, "order"), "up.js\nfar.js\n");
+    const hostile = {
+      "core.quotePath": "true", "diff.suppressBlankEmpty": "true", "diff.orderFile": join(dir, "order"), "diff.external": "false",
+      "diff.up.textconv": "tr a-z A-Z", "color.diff": "always", "color.ui": "always", "diff.context": "8", "diff.interHunkContext": "20",
+      "diff.algorithm": "histogram", "diff.indentHeuristic": "false", "diff.noprefix": "true", "diff.mnemonicPrefix": "true", "core.abbrev": "7",
+    };
+    for (const [key, value] of Object.entries(hostile)) await g.git(dir, ["config", key, value]);
+    expect(await g.patch(dir, files)).toBe(clean);
+    expect(clean).toMatch(/^diff --git a\/algo\.js b\/algo\.js\nindex [0-9a-f]{40}\.\./);
+    expect(clean).toContain("diff --git a/café.js b/café.js");
   });
 });
 

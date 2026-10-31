@@ -16,7 +16,7 @@ export function pinned(v: string): string {
   return major === "0" ? `0.${minor}` : (major ?? v);
 }
 
-const WORKFLOW = `name: darnit
+export const WORKFLOW = `name: darnit
 
 on:
   schedule:
@@ -35,6 +35,11 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
+      # setup-node's problem matchers would turn repository text darnit prints into annotations.
+      - run: |
+          echo "::remove-matcher owner=tsc::"
+          echo "::remove-matcher owner=eslint-stylish::"
+          echo "::remove-matcher owner=eslint-compact::"
       - run: cd "\${RUNNER_TEMP:?}" && npx darnit@${pinned(version)} check "\${GITHUB_WORKSPACE:?}"
 `;
 

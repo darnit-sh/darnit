@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, lstat, readdir } from "node:fs/promises";
 import { delimiter, join } from "node:path";
-import { readText } from "./detect.js";
+import { escapeHidden, readText } from "./detect.js";
 import { childEnv, CREDENTIALS } from "./git.js";
 
 export type TestRun = { command: string; passed: boolean; output: string; timedOut: boolean };
@@ -94,7 +94,7 @@ async function pythonOnPath(path: string): Promise<string | undefined> {
 const TAIL_LINES = 40;
 // Output can be any size; only the end is kept, small enough for a pull request body (65536 characters).
 // A credential cut in two by the limit can't be redacted, so the margin it could sit in is dropped after redaction.
-const TAIL_CHARS = 16 * 1024;
+export const TAIL_CHARS = 16 * 1024;
 const CUT_MARGIN = 1024;
 
 const base64 = (s: string) => Buffer.from(s).toString("base64").replace(/=+$/, "");
@@ -139,18 +139,20 @@ export async function runTests(root: string, command: string, timeoutMs = TIME_L
       child.stdout.destroy();
       child.stderr.destroy();
     }, timeoutMs);
-    const keep = (d: Buffer) => {
-      output += d.toString();
+    const keep = (d: string) => {
+      output += d;
       if (output.length > TAIL_CHARS + CUT_MARGIN) [output, cut] = [output.slice(-(TAIL_CHARS + CUT_MARGIN)), true];
     };
-    child.stdout.on("data", keep);
-    child.stderr.on("data", keep);
+    // One decoder per stream, so a character split across two reads of a pipe is decoded whole.
+    child.stdout.setEncoding("utf8").on("data", keep);
+    child.stderr.setEncoding("utf8").on("data", keep);
     child.on("close", (code) => {
       clearTimeout(timer);
       // Masked before and after the codes come out: removing one can cut a token or join one.
       const plain = redact(output).replace(ESCAPES, "");
       const text = cut ? redact(plain).slice(CUT_MARGIN) : redact(plain);
-      const tail = text.trimEnd().split("\n").slice(-TAIL_LINES).join("\n").slice(-TAIL_CHARS);
+      // Written out before the cut, so escaping can't make what is kept longer than TAIL_CHARS.
+      const tail = escapeHidden(text).trimEnd().split("\n").slice(-TAIL_LINES).join("\n").slice(-TAIL_CHARS);
       resolve({ command, passed: code === 0 && !timedOut, output: tail, timedOut });
     });
   });
