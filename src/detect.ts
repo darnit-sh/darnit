@@ -87,7 +87,9 @@ export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" :
 export const escapeHidden = (text: string) =>
   text.replace(/[\u007f-\u009f\u061c\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
-const PIECE = 65_536;
+// Escaped, a piece stays under 128 KB, small enough for V8 to free in a young-generation collection instead of
+// keeping it until a full one: with 65,536-character pieces, `fix --dry-run` on Node 24 peaked about 60 MB higher.
+const PIECE = 8_192;
 
 /**
  * `escapeHidden` over `text` a piece at a time, cut between surrogate pairs, for output written as it goes: escaping can

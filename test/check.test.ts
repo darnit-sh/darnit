@@ -492,20 +492,20 @@ describe.skipIf(process.platform === "win32")("check prints crafted file and fol
     const record = (await loadRecords())[0]!.record;
     const hit = { record, file: "app.ts", line: 1, column: 1, text: "\u202E".repeat(200_000) } as unknown as Hit;
     const chunks = [...checkJson({ version: "t" }, { hits: [hit], possiblyAffected: [], mentions: [] })];
-    expect(Math.max(...chunks.map((c) => c.length))).toBeLessThanOrEqual(6 * 65_536);
+    expect(Math.max(...chunks.map((c) => c.length))).toBeLessThanOrEqual(6 * 8_192);
     expect((JSON.parse(chunks.join("")) as { hits: { text: string }[] }).hits[0]!.text).toBe(hit.text);
   });
 });
 
 describe("escapedPieces", () => {
   it("escapes as escapeHidden does, in pieces that never cut a character in two", () => {
-    const text = `${"a".repeat(65_535)}🎉\u202E${"b".repeat(65_534)}👨\u200D👩${"\u2066".repeat(70_000)}`;
+    const text = `${"a".repeat(8_191)}🎉\u202E${"b".repeat(8_190)}👨\u200D👩${"\u2066".repeat(70_000)}`;
     const pieces = [...escapedPieces(text)];
     expect(pieces.length).toBeGreaterThan(2);
     expect(pieces.join("")).toBe(escapeHidden(text));
     // Each piece is written on its own, and a lone half of an emoji would be written as U+FFFD.
     for (const piece of pieces) expect(Buffer.from(piece).toString()).toBe(piece);
-    expect(Math.max(...pieces.map((p) => p.length))).toBeLessThanOrEqual(6 * 65_536);
+    expect(Math.max(...pieces.map((p) => p.length))).toBeLessThanOrEqual(6 * 8_192);
     expect([...escapedPieces("")]).toEqual([]);
   });
 });
