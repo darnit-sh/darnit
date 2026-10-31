@@ -90,9 +90,12 @@ describe("account", () => {
   it("covers a property only when every endpoint whose request reaches it has a record", () => {
     const one = account({ vendor: "openai", spec: small, removals: [], records: [record("old-a", ["/v1/a"], ["old"])], notCovered: [] });
     expect(one.unaccounted).toContain("schema Shared property old");
-    expect(one.covered.get("schema BetaOnly property old")).toEqual(["openai:2026-01-01:old-a"]);
+    // The spec's "/a?beta=true" is its own surface: a record for /a does not cover it.
+    expect(one.unaccounted).toContain("schema BetaOnly property old");
+    const beta = record("old-beta", ["/v1/a?beta=true"], ["old"]);
+    expect(account({ vendor: "openai", spec: small, removals: [], records: [beta], notCovered: [] }).covered.get("schema BetaOnly property old")).toEqual([beta.id]);
 
-    const both = account({ vendor: "openai", spec: small, removals: [], records: [record("old-a", ["/v1/a"], ["old"]), record("old-b", ["/v1/b"], ["old"])], notCovered: [] });
+    const both = account({ vendor: "openai", spec: small, removals: [], records: [record("old-a", ["/v1/a"], ["old"]), record("old-b", ["/v1/b"], ["old"]), beta], notCovered: [] });
     expect(both.covered.get("schema Shared property old")).toEqual(["openai:2026-01-01:old-a", "openai:2026-01-01:old-b"]);
     expect(both.unaccounted).toEqual(["schema Model enum gpt-4", "schema Model enum gpt-4o", "schema Response property status"]);
   });
@@ -124,6 +127,13 @@ describe("account", () => {
     expect(derived.candidates.map((c) => c.record.surface.endpoints)).toEqual([["/completions"]]);
   });
 
+  it("keeps a spec path's query, so a record for /images/edits is not taken for /images/edits?beta=true", async () => {
+    const records = (await loadRecords()).map((l) => l.record);
+    const entries = [{ id: "request-property-deprecated", level: 1 as const, text: "request property `user` deprecated", operation: "POST", path: "/images/edits?beta=true" }];
+    const derived = deriveCandidates({ vendor: "openai", config: { spec: "https://example.com/openapi.yaml" }, entries, spec: {}, existing: records, observedAt: "2026-01-01" });
+    expect(derived.candidates.map((c) => c.record.surface.endpoints)).toEqual([["/images/edits?beta=true"]]);
+  });
+
   it("covers a deprecated operation or request schema by a record for the endpoint or its SDK call", () => {
     const spec = {
       paths: { "/old": { post: { deprecated: true, ...body("OldRequest") }, get: { deprecated: true } } },
@@ -149,7 +159,7 @@ describe("account", () => {
       vendor: "openai",
       spec: small,
       removals: [],
-      records: [record("old-a", ["/v1/a"], ["old"])],
+      records: [record("old-a", ["/v1/a"], ["old"]), record("old-beta", ["/v1/a?beta=true"], ["old"])],
       notCovered: [
         { items: ["schema Response property status"], reason: "Response-only field." },
         { items: ["schema Shared property old"], "needs-record": "Report old on /b." },
@@ -161,7 +171,7 @@ describe("account", () => {
     expect(result.needsRecord).toEqual([{ key: "schema Shared property old", proposal: "Report old on /b.", date: undefined }]);
     expect(result.unaccounted).toEqual([]);
     expect(result.stale).toEqual(["schema Gone property x"]);
-    expect(result.redundant).toEqual([{ key: "schema BetaOnly property old", ids: ["openai:2026-01-01:old-a"] }]);
+    expect(result.redundant).toEqual([{ key: "schema BetaOnly property old", ids: ["openai:2026-01-01:old-beta"] }]);
   });
 
   it("joins a removed request field to the record for it, and needs an entry for every other removal", () => {

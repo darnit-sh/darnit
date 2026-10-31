@@ -234,7 +234,7 @@ export function account(input: {
   let reach: ReturnType<typeof requestSchemas> | undefined;
   let held: Map<string, Set<string>> | undefined;
   const coversOp = (r: ChangeRecord, method: string, path: string, field: string | undefined) =>
-    covers(r, vendor, path, field, method, input.symbols?.[`${method} ${path.split("?")[0]}`]);
+    covers(r, vendor, path, field, method, input.symbols?.[`${method} ${path}`]);
   const coveredBy = (item: Item): ChangeRecord[] => {
     if (item.value !== undefined) {
       held ??= holders(spec);

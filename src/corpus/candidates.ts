@@ -48,10 +48,11 @@ const firstSentence = (s: string) => sentences(s)[0]!.slice(0, 200);
 const quote = (s: string) => (sentences(s).find((x) => /deprecat|in favou?r of|replaced by/i.test(x)) ?? firstSentence(s)).slice(0, 200);
 
 // "POST /v1/chat/completions" or "/v1/chat/completions" as its method, if any, and its path without the
-// /v1 prefix or a query, so "/responses?beta=true" is "/responses" and "/completions" is not "/chat/completions".
+// /v1 prefix, so "/completions" is not "/chat/completions". A query stays: "/responses?beta=true" is the spec's
+// separate beta surface, which a record for "/responses" does not cover.
 const endpointOf = (e: string) => {
   const m = /^([A-Z]+) (.*)$/.exec(e);
-  return { method: m?.[1], path: (m?.[2] ?? e).split("?")[0]!.replace(/^\/v1(?=\/|$)/, "") };
+  return { method: m?.[1], path: (m?.[2] ?? e).replace(/^\/v1(?=\/|$)/, "") };
 };
 
 /** Whether a record finds `field` whatever its value: a pattern sets it to a metavariable or names it bare, not only to a literal. */
