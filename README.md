@@ -232,6 +232,7 @@ could not check the change) and `timedOut`. A check that timed out has
 | `--dry-run` | show the diff, write nothing (works outside git too) |
 | `--pr` | one branch, one build and test run, and one pull request per change |
 | `--prepare <dir>` | verify each change as `--pr` does, then write `<dir>/plan.json` instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md) |
+| `--publish <dir>` | open the pull requests a plan from `--prepare` holds, making each change again and checking it matches the plan; runs none of the repository's code (see SECURITY.md) |
 | `--only <id>` | just this change, by its id from `check --json` (repeatable) |
 | `--test <command>` | run this instead of the detected test command |
 | `--no-test` | skip tests and the build check |

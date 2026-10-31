@@ -71,6 +71,14 @@ URL with another scheme, any other environment variable, and config files hidden
 `GIT_CONFIG_NOSYSTEM` or `GIT_CONFIG_GLOBAL=/dev/null` that the repository's code can still read. A
 secret in any of them can reach the plan through test output.
 
+`fix --publish` holds the token and runs none of the repository's code: no install, build, tests or
+git hooks. It trusts darnit's own records and rewrite rules, the commit checked out, and the git
+config that checkout left, so run it on a fresh checkout in a job of its own, never where
+`--prepare` or the repository's code ran. It does not trust the plan: it applies nothing from it,
+makes each change again and compares it with the plan's patch byte for byte, and treats the build
+and test results and notes as text to report. A plan can still say tests passed when they did not;
+the pull request then holds darnit's own change only, and says the verify job reported the results.
+
 ## How we handle a report
 
 1. We confirm the problem with a test that shows it.
