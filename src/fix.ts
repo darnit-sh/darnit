@@ -10,6 +10,7 @@ import { applyRules, hasRules } from "./packs/apply.js";
 import { pathProblem, PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanOutcome } from "./plan.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
+import { Refusal } from "./refusal.js";
 import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, TIME_LIMIT_MINUTES, unreadSettings } from "./tests.js";
 import { atLeast, npmVersionFor, pypiVersions, type Found } from "./versions.js";
 
@@ -91,8 +92,7 @@ export type FixResult = {
   namesElsewhere: boolean;
 };
 
-/** Thrown when darnit declines to act; the message says what to change. */
-export class Refusal extends Error {}
+export { Refusal };
 
 /**
  * One record's call sites. `files` and `sites` are what the rules may rewrite; `held` are the
