@@ -110,7 +110,7 @@ $ npx darnit init
 
 | Flag | |
 |---|---|
-| `--force` | overwrite `darnit.yml` and the workflow if they already exist and are committed as they are |
+| `--force` | rewrite `darnit.yml` and the workflow if they exist and are committed as they are |
 
 Without `--force`, existing files are left untouched. `--force` refuses to
 overwrite a file git could not put back (edited, staged, untracked, ignored, or
