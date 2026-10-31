@@ -123,8 +123,9 @@ export function deprecatedItems(spec: unknown): Item[] {
 }
 
 /**
- * Each removal under its full identity: endpoint, oasdiff id, every name the entry quotes, and its media type, as in
- * "GET /files request-parameter-removed `query` `limit`" or "POST /images/edits request-property-enum-value-removed `auto` `background`".
+ * Each removal under its full identity: the day the corpus saw it, endpoint, oasdiff id, every name the entry quotes,
+ * and its media type, as in "2026-10-05 POST /images/edits request-property-enum-value-removed `auto` `background`".
+ * The day keeps an entry written for one snapshot from also accounting for a later removal with the same text.
  */
 export function removalItems(removals: Removal[]): Item[] {
   const items = new Map<string, Item>();
@@ -132,7 +133,7 @@ export function removalItems(removals: Removal[]): Item[] {
     const names = [...r.text.matchAll(/`([^`]*)`/g)].map((m) => m[1]!);
     const media = /\(media type: ([^)]*)\)/.exec(r.text)?.[1];
     const endpoint = r.operation && r.path ? `${r.operation} ${r.path}` : undefined;
-    const key = [endpoint, r.id, ...names.map((n) => `\`${n}\``), media && `(${media})`].filter(Boolean).join(" ");
+    const key = [r.observedAt, endpoint, r.id, ...names.map((n) => `\`${n}\``), media && `(${media})`].filter(Boolean).join(" ");
     const name = r.id === "request-property-removed" ? names[0] : r.id === "request-parameter-removed" ? names.at(-1) : undefined;
     const field = endpoint && name && /^[^/\s]+$/.test(name) ? name : undefined;
     const at = endpoint && (field || ENDPOINT_GONE.test(r.id)) ? { method: r.operation, path: r.path } : {};

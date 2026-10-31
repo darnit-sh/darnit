@@ -182,8 +182,8 @@ describe("account", () => {
       { observedAt: "2026-01-01", id: "api-removed-without-deprecation", operation: "POST", path: "/c", text: "api removed without deprecation" },
     ];
     const result = account({ vendor: "openai", spec: {}, removals, records: [record("gone", ["/b"], ["gone"]), record("c", ["POST /v1/c"], [])], notCovered: [] });
-    expect([...result.covered.keys()]).toEqual(["POST /b request-property-removed `gone`", "POST /c api-removed-without-deprecation"]);
-    expect(result.unaccounted).toEqual(["POST /b request-property-removed `a/b`", "api-schema-removed `Old`"]);
+    expect([...result.covered.keys()]).toEqual(["2026-01-01 POST /b request-property-removed `gone`", "2026-01-01 POST /c api-removed-without-deprecation"]);
+    expect(result.unaccounted).toEqual(["2026-01-01 POST /b request-property-removed `a/b`", "2026-01-01 api-schema-removed `Old`"]);
   });
 
   it("keys each removal on everything that names it, so one entry cannot stand for another", () => {
@@ -197,24 +197,33 @@ describe("account", () => {
       { ...at, operation: "POST", path: "/x", id: "request-property-removed", text: "removed the request property `a` (media type: application/json)" },
     ];
     expect(removalItems(removals).map((i) => i.key)).toEqual([
-      "GET /files request-parameter-removed `query` `limit`",
-      "GET /files request-parameter-removed `query` `purpose`",
-      "POST /images/edits request-property-enum-value-removed `auto` `background`",
-      "POST /images/edits request-property-enum-value-removed `auto` `quality`",
-      "POST /x request-property-removed `a` (multipart/form-data)",
-      "POST /x request-property-removed `a` (application/json)",
+      "2026-01-01 GET /files request-parameter-removed `query` `limit`",
+      "2026-01-01 GET /files request-parameter-removed `query` `purpose`",
+      "2026-01-01 POST /images/edits request-property-enum-value-removed `auto` `background`",
+      "2026-01-01 POST /images/edits request-property-enum-value-removed `auto` `quality`",
+      "2026-01-01 POST /x request-property-removed `a` (multipart/form-data)",
+      "2026-01-01 POST /x request-property-removed `a` (application/json)",
     ]);
     const result = account({
       vendor: "openai",
       spec: {},
       removals: removals.slice(0, 2),
       records: [record("purpose", ["/v1/files"], ["purpose"])],
-      notCovered: [{ items: ["GET /files request-parameter-removed `query` `limit`"], reason: "Meant for limit only." }],
+      notCovered: [{ items: ["2026-01-01 GET /files request-parameter-removed `query` `limit`"], reason: "Meant for limit only." }],
     });
-    expect(result.covered.get("GET /files request-parameter-removed `query` `purpose`")).toEqual(["openai:2026-01-01:purpose"]);
-    expect(account({ vendor: "openai", spec: {}, removals: removals.slice(0, 2), records: [], notCovered: [{ items: ["GET /files request-parameter-removed `query` `limit`"], reason: "Meant for limit only." }] }).unaccounted).toEqual([
-      "GET /files request-parameter-removed `query` `purpose`",
+    expect(result.covered.get("2026-01-01 GET /files request-parameter-removed `query` `purpose`")).toEqual(["openai:2026-01-01:purpose"]);
+    expect(account({ vendor: "openai", spec: {}, removals: removals.slice(0, 2), records: [], notCovered: [{ items: ["2026-01-01 GET /files request-parameter-removed `query` `limit`"], reason: "Meant for limit only." }] }).unaccounted).toEqual([
+      "2026-01-01 GET /files request-parameter-removed `query` `purpose`",
     ]);
+  });
+
+  it("needs a new entry for a removal seen again on a later day, even with the same text", async () => {
+    const log = RemovalSchema.array().parse(JSON.parse(await read("corpus/openai/removals.json")));
+    const again: Removal = { observedAt: "2026-11-06", id: "request-property-enum-value-removed", operation: "POST", path: "/images/generations", text: "removed the enum value `standard` of the request property `quality`" };
+    const notCovered = NotCoveredSchema.parse(parseYaml(await read("packs/openai/not-covered.yaml")));
+    const result = account({ vendor: "openai", spec: {}, removals: [...log, again], records: [], notCovered });
+    expect(result.reasons).toContain("2026-10-05 POST /images/generations request-property-enum-value-removed `standard` `quality`");
+    expect(result.unaccounted).toContain("2026-11-06 POST /images/generations request-property-enum-value-removed `standard` `quality`");
   });
 
   it("lists open items soonest first, undated last, and flags dates already past", () => {
@@ -369,7 +378,7 @@ describe("npm run accounting", () => {
     const extra = { observedAt: "2026-01-01", id: "request-property-removed", operation: "POST", path: "/responses", text: "removed the request property `fake_removed`" };
     const out = await run(() => {}, JSON.stringify([...(JSON.parse(removals) as unknown[]), extra]));
     expect(out.status).toBe(1);
-    expect(out.stdout).toContain('  "POST /responses request-property-removed `fake_removed`"\n');
+    expect(out.stdout).toContain('  "2026-01-01 POST /responses request-property-removed `fake_removed`"\n');
   });
 
   it("accounts for OpenAI's whole spec within its time budget", async () => {
@@ -417,7 +426,8 @@ describe("npm run corpus", () => {
     expect(out.run).toBe(0);
     const log = RemovalSchema.array().parse(JSON.parse(out.removals));
     expect(log[0]).toEqual(earlier);
-    expect(removalItems(log.slice(1)).map((i) => i.key)).toEqual(["POST /speak request-property-enum-value-removed `aube` `voice`", "api-schema-removed `Gone`"]);
+    const day = log[1]!.observedAt;
+    expect(removalItems(log.slice(1)).map((i) => i.key)).toEqual([`${day} POST /speak request-property-enum-value-removed \`aube\` \`voice\``, `${day} api-schema-removed \`Gone\``]);
     expect(out.spec).toBe(after);
   });
 
