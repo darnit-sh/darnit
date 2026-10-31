@@ -5,7 +5,8 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { checkJson, checkReport, exitCodeForCheck, render } from "./check.js";
-import { exitCodeFor, fix, forJson, forTerminal, renderSummary, toJson as fixToJson } from "./fix.js";
+import { escapedPieces } from "./detect.js";
+import { exitCodeFor, fix, forJson, forTerminal, forTerminalPieces, renderSummary, toJson as fixToJson } from "./fix.js";
 import { init } from "./init.js";
 import { updateNotice } from "./update.js";
 
@@ -19,6 +20,22 @@ async function folder(dir = process.cwd()): Promise<string> {
   const abs = resolve(dir);
   if (!dir.trim() || !(await stat(abs).catch(() => undefined))?.isDirectory()) throw new Error(`${dir.trim() ? dir : `"${dir}"`} is not a folder`);
   return abs;
+}
+
+/** Writes each piece to stdout as it comes, waiting while the pipe is full. A reader that stops early (`| head`) ends it quietly, as with console.log. */
+async function write(...parts: Iterable<string>[]): Promise<void> {
+  const out = process.stdout;
+  out.on("error", () => {});
+  for (const part of parts)
+    for (const piece of part) {
+      if (out.destroyed) return;
+      if (!out.write(piece)) await once(out, "drain").catch(() => {});
+    }
+}
+
+/** Each piece of JSON through `forJson`. */
+function* asJson(pieces: Iterable<string>): Generator<string> {
+  for (const piece of pieces) yield forJson(piece);
 }
 
 // Exit codes: 0 nothing to act on, 1 call sites of a reviewed or parser-verified change found, 2 darnit itself failed.
@@ -52,25 +69,16 @@ program
     const root = await folder(dir);
     const update = updateNotice(version, { env: process.env, json });
     const { hits, coverage, values, mentions } = await checkReport(root);
-    if (json) {
-      const out = process.stdout;
-      // A reader that stops early (`| head`) ends the report quietly, as with console.log.
-      out.on("error", () => {});
-      const report = checkJson({ version, scanned: coverage }, { hits, possiblyAffected: values, mentions });
-      for (const chunk of report) {
-        if (out.destroyed) break;
-        if (!out.write(forJson(chunk))) await once(out, "drain").catch(() => {});
-      }
-      out.write("\n");
-    } else {
+    if (json) await write(asJson(checkJson({ version, scanned: coverage }, { hits, possiblyAffected: values, mentions })), ["\n"]);
+    else {
       console.log(forTerminal(render(hits, coverage, values, mentions, all)));
       const notice = await update;
       if (notice) console.log(notice);
     }
-    process.exitCode = exitCodeForCheck(hits);
+    process.exitCode = exitCodeForCheck(hits, coverage);
   });
 
-type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean };
+type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean; prepare?: string };
 
 program
   .command("fix")
@@ -78,13 +86,17 @@ program
   .argument("[dir]", DIR)
   .option("--dry-run", "show what would change without writing anything")
   .option("--pr", "commit on a branch, push, and open one pull request per change")
-  .option("--allow-dirty", "let --pr run with uncommitted changes present")
+  .option("--prepare <dir>", "verify each change as --pr does, then write a plan to <dir> instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md)")
+  .option("--allow-dirty", "let --pr or --prepare run with uncommitted changes present")
   .option("--repo <owner/name>", "GitHub repository, when origin is not a GitHub URL")
   .option("--only <id>", "restrict to one change record (repeatable)", (id: string, all: string[] = []) => [...all, id])
   .option("--test <command>", "run this instead of the detected test command")
   .option("--no-test", "skip tests and the build check")
   .option("--json", "machine-readable output")
   .action(async (dir: string | undefined, flags: FixFlags) => {
+    const plan = flags.prepare;
+    if (plan !== undefined && (!plan.trim() || plan.startsWith("-"))) throw new Error("--prepare needs the folder to write the plan to");
+    if (plan !== undefined && flags.json) throw new Error("--prepare and --json can't be combined: the plan is the machine-readable output");
     const root = await folder(dir);
     const update = updateNotice(version, { env: process.env, json: flags.json });
     const result = await fix(root, {
@@ -95,12 +107,13 @@ program
       color: process.stdout.isTTY ?? false,
       version,
       ...(flags.repo ? { repo: flags.repo } : {}),
+      ...(plan !== undefined ? { prepare: resolve(plan) } : {}),
       ...(flags.only ? { only: flags.only } : {}),
       ...(typeof flags.test === "string" ? { test: flags.test } : {}),
     });
-    if (flags.json) console.log(forJson(JSON.stringify({ version, ...fixToJson(result) }, null, 2)));
+    if (flags.json) await write(asJson(escapedPieces(JSON.stringify({ version, ...fixToJson(result) }, null, 2))), ["\n"]);
     else {
-      if (result.diff) console.log(forTerminal(result.diff, true));
+      if (result.diff) await write(forTerminalPieces(result.diff, true), ["\n"]);
       console.log(forTerminal(renderSummary(result)));
       const notice = await update;
       if (notice) console.log(notice);

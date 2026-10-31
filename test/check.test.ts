@@ -1,11 +1,13 @@
+import { execFileSync, spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, SgNode } from "@ast-grep/napi";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, scan, snippet, toJson, type Hit } from "../src/check.js";
-import { MAX_FILE_BYTES } from "../src/detect.js";
+import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, scan, snippet, toJson, type Coverage, type Hit } from "../src/check.js";
+import { escapedPieces, escapeHidden, MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { compilePatterns, findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { SDK_CLASSES } from "../src/scan/clients.js";
@@ -471,13 +473,110 @@ describe.skipIf(process.platform === "win32")("check prints crafted file and fol
       expect(lines(text).filter((l) => l.startsWith("::"))).toEqual([]);
       expect(text).not.toMatch(/[\r\t\u202E]/);
       expect(text).toContain("a?::error::b.ts:2:");
-      expect(text).toContain("?gpj.ts:2:");
+      expect(text).toContain("\\u202egpj.ts:2:");
       expect(text).toContain("m?::warning::.md");
     }
     expect(render(hits, coverage, values, mentions)).toContain("v?::notice::.py:1:");
-    expect(render(hits, coverage, values, mentions)).toContain("(sent to localhost:1?abc;");
+    expect(render(hits, coverage, values, mentions)).toContain("(sent to localhost:1\\u202eabc;");
     const json = JSON.parse([...checkJson({ version: "t" }, { hits, possiblyAffected: values, mentions })].join("")) as { hits: { file: string }[] };
     expect(json.hits.map((h) => h.file)).toContain("a\n::error::b.ts");
+  });
+
+  it("escapes direction-changing and C1 characters in every part of the JSON report", () => {
+    const report = { version: "t", scanned: { files: 1, records: 1, tooLarge: ["\u202Ex\u2066\u009b.ts", "café 日本 🎉.ts"] } };
+    const text = [...checkJson(report, { hits: [], possiblyAffected: [], mentions: [] })].join("");
+    expect(text).not.toMatch(/[\u0080-\u009f\u202e\u2066]/);
+    expect(text).toContain(String.raw`"\u202ex\u2066\u009b.ts"`);
+    expect(JSON.parse(text)).toEqual({ ...report, hits: [], possiblyAffected: [], mentions: [] });
+  });
+
+  it("writes a long escaped line of the JSON report in pieces, never as one string", async () => {
+    const record = (await loadRecords())[0]!.record;
+    const hit = { record, file: "app.ts", line: 1, column: 1, text: "\u202E".repeat(200_000) } as unknown as Hit;
+    const chunks = [...checkJson({ version: "t" }, { hits: [hit], possiblyAffected: [], mentions: [] })];
+    expect(Math.max(...chunks.map((c) => c.length))).toBeLessThanOrEqual(6 * 8_192);
+    expect((JSON.parse(chunks.join("")) as { hits: { text: string }[] }).hits[0]!.text).toBe(hit.text);
+  });
+});
+
+describe("escapeHidden", () => {
+  const cp = (...points: number[]) => String.fromCodePoint(...points);
+  const units = (s: string) => s.split("").map((u) => `\\u${u.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+  const tags = (s: string) => cp(...[...s].map((c) => 0xe0000 + c.charCodeAt(0)));
+  const [ZWJ, VS16] = ["\u200D", "\uFE0F"];
+
+  it.each([
+    0x00ad, 0x034f, 0x061c, 0x115f, 0x1160, 0x17b4, 0x17b5, 0x180e, 0x200b, 0x200c, 0x200d, 0x200e, 0x200f, 0x202a, 0x202e,
+    0x2028, 0x2029, 0x2060, 0x2064, 0x2066, 0x2069, 0x206a, 0x206b, 0x206c, 0x206d, 0x206e, 0x206f, 0x3164, 0xfe00, 0xfe0e,
+    0xfe0f, 0xfeff, 0xffa0, 0x007f, 0x0085, 0x009b, 0xe0000, 0xe0001, 0xe0020, 0xe0041, 0xe007f, 0xe0100, 0x1d173,
+  ])("writes out U+%s, which can hide or reorder text", (point) => {
+    const text = `a${cp(point)}b`;
+    expect(escapeHidden(text)).toBe(`a${units(cp(point))}b`);
+    expect(JSON.parse(`"${escapeHidden(text)}"`)).toBe(text);
+  });
+
+  it("writes out tag characters that spell hidden text, and a joiner or U+FE0F anywhere but inside an emoji", () => {
+    expect(escapeHidden(`app${tags("delete prod db")}.ts`)).toBe(`app${units(tags("delete prod db"))}.ts`);
+    expect(escapeHidden(`a${ZWJ}b`)).toBe("a\\u200db");
+    expect(escapeHidden(`${cp(0x1f44d)}${ZWJ}X`)).toBe(`${cp(0x1f44d)}\\u200dX`);
+    expect(escapeHidden(`${cp(0x1f468)}${ZWJ}${ZWJ}${cp(0x1f469)}`)).toBe(`${cp(0x1f468)}\\u200d\\u200d${cp(0x1f469)}`);
+    expect(escapeHidden(`a${ZWJ.repeat(5)}b`)).toBe(`a${"\\u200d".repeat(5)}b`);
+    expect(escapeHidden(`a${VS16}`)).toBe("a\\ufe0f");
+    // Only England, Scotland and Wales have flags: any other tags in the shape of one could spell a word.
+    for (const code of ["evil", "usca", "gbeng1", "gbe", "g b", "GBENG", "deleteproddb"]) expect(escapeHidden(`${cp(0x1f3f4)}${tags(code)}${cp(0xe007f)}`)).toBe(`${cp(0x1f3f4)}${units(tags(code) + cp(0xe007f))}`);
+    // A tag right after a whole flag is not part of it.
+    expect(escapeHidden(`${cp(0x1f3f4)}${tags("gbsct")}${cp(0xe007f, 0xe0041)}`)).toBe(`${cp(0x1f3f4)}${tags("gbsct")}${cp(0xe007f)}${units(cp(0xe0041))}`);
+  });
+
+  it("keeps a joiner after a pictograph, a skin tone and U+FE0F, and before a pictograph, and only there", () => {
+    for (let tone = 0x1f3fb; tone <= 0x1f3ff; tone++) {
+      const coder = `${cp(0x1f469, tone)}${ZWJ}${cp(0x1f4bb)}`;
+      expect(escapeHidden(coder)).toBe(coder);
+      // U+FE0F after a skin tone is in no emoji, so it is written out; the joiner after both still stays.
+      expect(escapeHidden(`${cp(0x1f3cc, tone)}${VS16}${ZWJ}${cp(0x2640)}${VS16}`)).toBe(`${cp(0x1f3cc, tone)}\\ufe0f${ZWJ}${cp(0x2640)}${VS16}`);
+      expect(escapeHidden(`a${cp(tone)}${ZWJ}${cp(0x1f4bb)}`)).toBe(`a${cp(tone)}\\u200d${cp(0x1f4bb)}`);
+      expect(escapeHidden(`${cp(0x1f469, tone)}${ZWJ}a`)).toBe(`${cp(0x1f469, tone)}\\u200da`);
+    }
+    expect(escapeHidden(`${cp(0x1f3cc)}${VS16}${ZWJ}${cp(0x2640)}${VS16}`)).toBe(`${cp(0x1f3cc)}${VS16}${ZWJ}${cp(0x2640)}${VS16}`);
+  });
+
+  it("judges pictographs by a fixed list, the same on every Node version", () => {
+    // U+2605 and U+1F0A1 are pictographs in Unicode 16.0 and not in 17.0; Node ships one or the other depending on its version.
+    const symbols = `${cp(0x2605)}${ZWJ}${cp(0x1f0a1)}${VS16}`;
+    expect(escapeHidden(symbols)).toBe(symbols);
+  });
+
+  it.each([
+    ["family", `${cp(0x1f468)}${ZWJ}${cp(0x1f469)}${ZWJ}${cp(0x1f467)}${ZWJ}${cp(0x1f466)}`],
+    ["skin tone", cp(0x1f44d, 0x1f3fd)],
+    ["skin tone and joiner", `${cp(0x1f469, 0x1f3fd)}${ZWJ}${cp(0x1f4bb)}`],
+    ["emoji presentation", `${cp(0x2764)}${VS16}`],
+    ["flag and joiner", `${cp(0x1f3f3)}${VS16}${ZWJ}${cp(0x1f308)}`],
+    ["joiner then U+FE0F", `${cp(0x1f3f4)}${ZWJ}${cp(0x2620)}${VS16}`],
+    ["kiss", `${cp(0x1f469)}${ZWJ}${cp(0x2764)}${VS16}${ZWJ}${cp(0x1f48b)}${ZWJ}${cp(0x1f468)}`],
+    ["gender", `${cp(0x1f3c3)}${ZWJ}${cp(0x2640)}${VS16}`],
+    ["hair", `${cp(0x1f468)}${ZWJ}${cp(0x1f9b0)}`],
+    ["England flag", `${cp(0x1f3f4)}${tags("gbeng")}${cp(0xe007f)}`],
+    ["Scotland flag", `${cp(0x1f3f4)}${tags("gbsct")}${cp(0xe007f)}`],
+    ["Wales flag", `${cp(0x1f3f4)}${tags("gbwls")}${cp(0xe007f)}`],
+    ["keycap", `1${VS16}\u20E3`],
+    ["country flag", cp(0x1f1fa, 0x1f1f8)],
+  ])("keeps the %s emoji whole", (_name, emoji) => {
+    expect(escapeHidden(`a ${emoji} b`)).toBe(`a ${emoji} b`);
+    expect([...escapedPieces(`${"x".repeat(8_190)}${emoji}`)].join("")).toBe(`${"x".repeat(8_190)}${emoji}`);
+  });
+});
+
+describe("escapedPieces", () => {
+  it("escapes as escapeHidden does, in pieces that never cut a character in two", () => {
+    const text = `${"a".repeat(8_191)}🎉\u202E${"b".repeat(8_190)}👨\u200D👩${"\u2066".repeat(70_000)}`;
+    const pieces = [...escapedPieces(text)];
+    expect(pieces.length).toBeGreaterThan(2);
+    expect(pieces.join("")).toBe(escapeHidden(text));
+    // Each piece is written on its own, and a lone half of an emoji would be written as U+FFFD.
+    for (const piece of pieces) expect(Buffer.from(piece).toString()).toBe(piece);
+    expect(Math.max(...pieces.map((p) => p.length))).toBeLessThanOrEqual(6 * 8_192);
+    expect([...escapedPieces("")]).toEqual([]);
   });
 });
 
@@ -1499,5 +1598,155 @@ describe("check on a repository built to slow it down", () => {
     expect(maxTokens(hits)).toEqual(["small.js:2"]);
     expect(coverage).toMatchObject({ files: 1, tooLarge: ["big.js"] });
     expect(render(hits, coverage)).toContain("\nNot checked: 1 file over 10 MB: big.js.\n");
+  });
+});
+
+/** Peak memory in MB of a fresh process checking `dir`, and its hits: a process carries its parent's peak in maxRSS, so this reads Linux's own. */
+function peakOf(dir: string): { hits: number; peak: number } {
+  const script = [
+    "const { checkReport } = await import(process.argv[1]);",
+    "const { hits } = await checkReport(process.argv[2]);",
+    'const { readFileSync } = await import("node:fs");',
+    'console.log(JSON.stringify({ hits: hits.length, peak: Number(/VmHWM:\\s+(\\d+)/.exec(readFileSync("/proc/self/status", "utf8"))[1]) / 1024 }));',
+  ].join(" ");
+  return JSON.parse(execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, fileURLToPath(new URL("../src/check.ts", import.meta.url)), dir], { encoding: "utf8" })) as { hits: number; peak: number };
+}
+
+describe("check on a file built to overflow the stack", () => {
+  const maxTokens = (hits: Hit[]) => hits.filter((h) => h.record.id.includes("max-tokens")).map((h) => `${h.file}:${h.line}:${h.column}`);
+  const url = (n: number) => `"https://api.openai.com/v1/chat/completions"${' + "x"'.repeat(n)}`;
+  const deep = (n: number) => ({
+    "app.js": `export const r = fetch(${url(n)}, { method: "POST", body: JSON.stringify({ max_tokens: 5 }) });\n`,
+    "app.py": `import requests\n\nr = requests.post(${url(n)}, json=dict(max_tokens=5))\n`,
+  });
+  const at = (files: Record<string, string>) =>
+    Object.entries(files).map(([name, text]) => {
+      const lines = text.split("\n");
+      const line = lines.findIndex((l) => l.includes("max_tokens"));
+      return `${name}:${line + 1}:${lines[line]!.indexOf("max_tokens") + 1}`;
+    });
+
+  it.each([3000, 100_000])("finds the call site in a URL built from %i concatenations within a CPU budget", { timeout: 60_000 }, async (n) => {
+    const files = deep(n);
+    const dir = await scratch(files);
+    let hits: Hit[] = [];
+    // About 1.2 seconds at 100,000; over 6 when each piece of the URL was read in JavaScript, and a stack overflow at 3,000 when that read recursed.
+    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 3000)).toBeLessThan(3000);
+    expect(maxTokens(hits).sort()).toEqual(at(files));
+  });
+
+  it.runIf(process.platform === "linux")("scans a URL built from 100,000 concatenations within a memory budget", { timeout: 60_000 }, async () => {
+    // About 160 MB; over 500 when each piece of the URL was read in JavaScript.
+    const { hits, peak } = peakOf(await scratch({ "app.js": deep(100_000)["app.js"] }));
+    expect(hits).toBe(1);
+    expect(peak).toBeLessThan(300);
+  });
+
+  const U = '"https://api.openai.com/v1/chat/completions"';
+  const helper = 'g("/v1/chat/completions") + ';
+  // Each costs about what a flat file of its size does: 0.5 to 1.2 seconds and 120 to 200 MB. Calls nested in a URL took
+  // 40 seconds and 5.6 GB at 3,000 when each URL and each call around a match searched every call inside it, and a request
+  // nested in each request's URL took 9 seconds and 1.5 GB at 6,000 when each URL was copied whole.
+  it.each([
+    ["calls nested in a URL", "app.js", `export const r = ${`fetch(${helper}`.repeat(3000)}fetch("b", { body: JSON.stringify({ max_tokens: 5 }) })${")".repeat(3000)};\n`, 0],
+    ["calls nested in a Python URL", "app.py", `import requests\nr = ${`requests.post(${helper}`.repeat(3000)}requests.post("b", json=dict(max_tokens=5))${")".repeat(3000)}\n`, 0],
+    ["requests nested in a URL with no endpoint", "app.js", `export const r = ${'fetch("a" + '.repeat(10_000)}fetch("b", { body: JSON.stringify({ max_tokens: 5 }) })${")".repeat(10_000)};\n`, 0],
+    ["a request nested in each request's URL", "app.js", `export const r = ${`fetch(${U} + `.repeat(6000)}"x"${", { max_tokens: 5 })".repeat(6000)};\n`, 6000],
+  ])("checks %s within a CPU and memory budget", { timeout: 120_000 }, async (_, name, text, count) => {
+    const dir = await scratch({ [name]: text, "small.js": "export const x = 1;\n" });
+    let hits: Hit[] = [];
+    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 3000)).toBeLessThan(3000);
+    expect(maxTokens(hits)).toHaveLength(count);
+    if (process.platform === "linux") expect(peakOf(dir).peak).toBeLessThan(400);
+  });
+
+  it("reads the address of a URL longer than 2,048 characters from its start", async () => {
+    const call = (host: string) => `export const r = fetch("${host}/v1/chat/completions?k=" + "${"x".repeat(2100)}", { body: JSON.stringify({ max_tokens: 5 }) });\n`;
+    // The first 2,048 characters, quote included, end inside the host, on a known look-alike's name.
+    const cut = `"https://${"a".repeat(2048 - '"https://.api.groq.com'.length)}.api.groq.com`;
+    const dir = await scratch({ "groq.js": call("https://api.groq.com/openai"), "local.js": call("http://localhost:11434"), "cut.js": call(`${cut.slice(1)}b`) });
+    const { hits, foreign, coverage } = await checkReport(dir);
+    expect(locations(foreign)).toEqual(["groq.js:1"]);
+    expect(hits.filter((h) => h.record.id.includes("max-tokens")).map((h) => [h.file, h.local])).toEqual([
+      ["cut.js", undefined],
+      ["local.js", ["localhost:11434"]],
+    ]);
+    expect(render(hits, coverage)).toContain("(sent to localhost:11434; ignore if that server isn't OpenAI)");
+  });
+});
+
+describe("check on a file the scanner fails on", () => {
+  const call = "import OpenAI from 'openai';\nawait new OpenAI().chat.completions.create({ model: 'm', max_tokens: 5 });\n";
+  const failing = async <T>(run: () => Promise<T>): Promise<T> => {
+    const real = vi.mocked(parse).getMockImplementation()!;
+    vi.mocked(parse).mockImplementation((lang, source) => {
+      if (source.includes("FAILS")) throw new Error("crafted");
+      return real(lang, source);
+    });
+    try {
+      return await run();
+    } finally {
+      vi.mocked(parse).mockImplementation(real);
+    }
+  };
+
+  it("names it under Not checked, keeps every other file's findings, and exits 2", async () => {
+    const dir = await scratch({ "a.ts": call, "b.ts": `${call}// FAILS\n`, "c.py": 'from openai import OpenAI\nOpenAI().chat.completions.create(model="m", max_tokens=5)\n' });
+    const { hits, coverage, values, mentions } = await failing(() => checkReport(dir));
+    expect(locations(hits.filter((h) => h.record.id.includes("max-tokens")))).toEqual(["a.ts:2", "c.py:2"]);
+    expect(coverage).toMatchObject({ files: 2, skipped: [{ path: "b.ts", reason: "could not be scanned" }] });
+    expect(exitCodeForCheck(hits, coverage)).toBe(2);
+    expect(render(hits, coverage)).toContain("\nNot checked: 1 file darnit failed to scan: b.ts.\n");
+    const json = JSON.parse([...checkJson({ version: "t", scanned: coverage }, { hits, possiblyAffected: values, mentions })].join("")) as { scanned: Coverage };
+    expect(json.scanned.skipped).toEqual([{ path: "b.ts", reason: "could not be scanned" }]);
+  });
+
+  it("says the check fails, not that unreviewed changes do not fail it", async () => {
+    const dir = await scratch({ "a.ts": call, "b.ts": `${call}// FAILS\n` });
+    const { hits, coverage } = await failing(() => checkReport(dir));
+    const unreviewed = hits.map((h) => ({ ...h, record: { ...h.record, status: "candidate" as const } }));
+    expect(exitCodeForCheck(unreviewed, coverage)).toBe(2);
+    const text = render(unreviewed, coverage);
+    expect(text).not.toContain("do not fail the check");
+    expect(text).toContain("\nThe check fails because darnit failed to scan a file.\n");
+    expect(render(unreviewed, { ...coverage, skipped: [] })).toContain("Unreviewed changes are reported but do not fail the check.");
+  });
+
+  it("does not call the repository clean when that file is the only one", async () => {
+    const { hits, coverage } = await failing(async () => checkReport(await scratch({ "b.ts": `${call}// FAILS\n` })));
+    expect(render(hits, coverage).split("\n")[0]).toBe("No call sites of known vendor changes found.");
+    expect(exitCodeForCheck(hits, coverage)).toBe(2);
+  });
+
+  it("reports none of that file's call sites or values, found before the failure or not, but keeps its mentions", async () => {
+    const model = "gpt-3.5-turbo-0613";
+    const text = `${call}export const m = { model: "${model}" };\n// FAILS later\n`;
+    const node = SgNode.prototype as unknown as { findAll: (this: SgNode, matcher: unknown) => SgNode[] };
+    const findAll = node.findAll;
+    // Fails reading model values, after the file's call sites were found.
+    const spy = vi.spyOn(node, "findAll").mockImplementation(function (this: SgNode, matcher) {
+      if (JSON.stringify(matcher).includes('"template_string"') && this.text().includes("FAILS later")) throw new Error("crafted");
+      return findAll.call(this, matcher);
+    });
+    try {
+      const { hits, values, mentions, coverage } = await checkReport(await scratch({ "b.ts": text, "a.ts": call }));
+      expect(locations(hits)).toEqual(["a.ts:2"]);
+      expect(values).toEqual([]);
+      expect(mentions.map((m) => `${m.file}:${m.line} ${m.model}`)).toContain(`b.ts:3 ${model}`);
+      expect(coverage.skipped).toEqual([{ path: "b.ts", reason: "could not be scanned" }]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("makes darnit check exit 2 after printing the report", { timeout: 60_000 }, async () => {
+    const dir = await scratch({ "b.ts": `${call}// FAILS\n` });
+    const preload = join(await scratch({}), "fails.cjs");
+    const napi = createRequire(import.meta.url).resolve("@ast-grep/napi");
+    await writeFile(preload, `const napi = require(${JSON.stringify(napi)});\nconst parse = napi.parse;\nnapi.parse = (lang, source) => { if (source.includes("FAILS")) throw new Error("crafted"); return parse(lang, source); };\n`);
+    const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    const run = spawnSync(process.execPath, ["--require", preload, "--import", "tsx", cli, "check", dir], { encoding: "utf8", env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "" } });
+    expect(run.status).toBe(2);
+    expect(run.stdout).toContain("\nNot checked: 1 file darnit failed to scan: b.ts.\n");
   });
 });
