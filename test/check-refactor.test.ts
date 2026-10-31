@@ -20,6 +20,7 @@ const baseFiles = [
   "packs/v/p/rules/r.yml",
   "packs/v/p/change.json",
   "scripts/e2e.ts",
+  "scripts/e2e-env.ts",
   "scripts/golden.ts",
   "scripts/fixtures.ts",
   "scripts/check-pr.sh",
@@ -97,6 +98,7 @@ const suiteEdits: Edit[] = [
   { write: "scripts/fixtures.js" },
   { write: "scripts/fixtures.ts" },
   { write: "scripts/e2e.ts" },
+  { write: "scripts/e2e-env.ts" },
   { write: "scripts/golden.ts" },
   { write: "test/helpers.ts" },
   { link: "test/helpers.ts" },
@@ -160,6 +162,7 @@ describe("the rule picked by the title's type", () => {
       { write: "packs/v/new/change.json" },
       { write: "scripts/e2e.ts" },
       { write: "scripts/golden.ts" },
+      { write: "scripts/e2e-env.ts" },
     ]) {
       const r = await rule("refactor: x", [{ write: "src/a.ts" }, edit]);
       expect(r.status, JSON.stringify(edit)).toBe(1);

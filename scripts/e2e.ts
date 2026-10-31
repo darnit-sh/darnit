@@ -6,14 +6,12 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, syml
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { notUser, userEnv } from "./e2e-env.js";
 
 // No run may reach the npm registry.
 process.env.DARNIT_NO_UPDATE_CHECK = "1";
-// CI sets npm's script-shell so that a change's .npmrc cannot replace its own npm runs. A user's shell does
-// not, and npm would let it override a scenario's .npmrc, so scenarios run without it, in any spelling npm reads.
-const scriptShell = (key: string) => /^npm_config_script[-_]shell$/i.test(key);
-const USER_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !scriptShell(k)));
-const notUser = (env: NodeJS.ProcessEnv) => Object.keys(env).filter(scriptShell);
+// Scenarios run with the environment a user's shell has, not CI's npm settings (scripts/e2e-env.ts).
+const USER_ENV = userEnv(process.env);
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCENARIOS = join(ROOT, "test", "e2e");

@@ -50,7 +50,7 @@ collisions() {
 # What the suite and the pull request checks run besides the tests: the runners, the checks and the
 # modules tests import.
 guarded() {
-  grep -iE '^"?(scripts/((fixtures|e2e|golden)\.ts|check-[^/]+|pr-common\.sh)|test/.*\.[cm]?[jt]s)"?$' |
+  grep -iE '^"?(scripts/((fixtures|e2e|e2e-env|golden)\.ts|check-[^/]+|pr-common\.sh)|test/.*\.[cm]?[jt]s)"?$' |
     grep -viE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
 }
 # Those this change edits or removes, or shadows with an added file of the same path minus its extension
@@ -96,7 +96,7 @@ refactor | perf)
   say "**Rule for \`$type\`:** (a) no existing test, fixture, golden file or test script changes, and no record (change.json) at all; (b) base's tests and fixtures pass against this code."
   # CI runs this change's copy of the test scripts, and records are data the tests do not check.
   edited=$(
-    paths --diff-filter=DMT | grep -iE '^"?(test/|packs/[^/]+/[^/]+/fixtures/|scripts/(e2e|golden)\.ts"?$)' || true
+    paths --diff-filter=DMT | grep -iE '^"?(test/|packs/[^/]+/[^/]+/fixtures/|scripts/(e2e|e2e-env|golden)\.ts"?$)' || true
     paths | grep -iE '(^|/)change\.json"?$' || true
     collisions
   )
