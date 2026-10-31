@@ -10,6 +10,7 @@ import { applyRules, hasRules } from "./packs/apply.js";
 import { pathProblem, PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanOutcome } from "./plan.js";
 import { loadRecords } from "./records/load.js";
 import type { ChangeRecord } from "./records/schema.js";
+import { Refusal } from "./refusal.js";
 import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, TIME_LIMIT_MINUTES, unreadSettings } from "./tests.js";
 import { atLeast, npmVersionFor, pypiVersions, type Found } from "./versions.js";
 
@@ -22,7 +23,6 @@ export type FixOptions = {
   only?: string[];
   test?: string;
   noTest?: boolean;
-  color?: boolean;
   version?: string;
   /** Verify each change and write the plan to this folder, instead of committing it. */
   prepare?: string;
@@ -48,7 +48,11 @@ export type PrResult =
   | { state: "build-failed"; build: TestOutcome }
   | { state: "prepared"; build?: TestOutcome | undefined; tests?: TestOutcome | undefined };
 
-export type Site = { file: string; line: number; note?: string };
+/** A call site; one listed by file only, with no line, counts as the `sites` call sites in it. */
+export type Site = { file: string; line?: number; note?: string; sites?: number };
+
+/** How many call sites `remaining` stands for. */
+const count = (remaining: readonly Site[]) => remaining.reduce((n, s) => n + (s.sites ?? 1), 0);
 
 export type RecordResult = {
   record: ChangeRecord;
@@ -87,15 +91,14 @@ export type FixResult = {
   namesElsewhere: boolean;
 };
 
-/** Thrown when darnit declines to act; the message says what to change. */
-export class Refusal extends Error {}
+export { Refusal };
 
 /**
  * One record's call sites. `files` and `sites` are what the rules may rewrite; `held` are the
  * record's sites in files that also call another provider through the same methods. The rules
  * would rewrite those foreign calls too, so such files are left alone and their sites go to a human.
  */
-export type Group = { record: ChangeRecord; packDir: string; files: string[]; sites: number; held?: Site[] };
+export type Group = { record: ChangeRecord; packDir: string; files: string[]; sites: number; sitesIn: Record<string, number>; held?: Site[] };
 
 const MIXED = "this file also calls another provider through the same methods";
 const LOCAL = "this file also sends calls to a private address";
@@ -111,6 +114,7 @@ function heldReason(held: readonly Site[]): string {
 }
 
 const NOT_COVERED = "the rewrite rules don't cover this call shape yet";
+const PUT_BACK = "darnit failed to scan it after the rewrite, so it was put back";
 
 /** The longest pull request description GitHub accepts, in characters. */
 const PR_BODY_LIMIT = 65_536;
@@ -126,13 +130,14 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
   const byId = new Map<string, Group>();
   for (const hit of hits) {
     if (only && !only.includes(hit.record.id)) continue;
-    const group = byId.get(hit.record.id) ?? { record: hit.record, packDir: packs.get(hit.record.id)!, files: [], sites: 0 };
+    const group = byId.get(hit.record.id) ?? { record: hit.record, packDir: packs.get(hit.record.id)!, files: [], sites: 0, sitesIn: {} };
     if (mixed.has(key(hit)) || local.has(key(hit))) {
       const note = hit.local ? `sent to ${hit.local.join(" or ")}, which may not be OpenAI` : mixed.has(key(hit)) ? MIXED : LOCAL;
       (group.held ??= []).push({ file: hit.file, line: hit.line, note });
     } else {
       if (!group.files.includes(hit.file)) group.files.push(hit.file);
       group.sites++;
+      group.sitesIn[hit.file] = (group.sitesIn[hit.file] ?? 0) + 1;
     }
     byId.set(hit.record.id, group);
   }
@@ -160,10 +165,15 @@ type Outcome = { changed: string[]; remaining: Site[] };
 export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> {
   const before = await snapshotOf(dir, grp.files);
   await applyRules(grp.packDir, grp.files.map((f) => join(dir, f)));
+  const { hits, failed } = await scan(dir, grp.files, [grp.record]);
+  // A rewritten file darnit then fails to scan is not confirmed, so it goes back on its own; the rest are verified as usual.
+  const putBack = failed.map((file) => ({ file, note: PUT_BACK, sites: grp.sitesIn[file] ?? 0 }));
+  await restore(dir, new Map(failed.map((f) => [f, before.get(f)!])));
+  for (const f of failed) before.delete(f);
   const changed: string[] = [];
   for (const [f, bytes] of before) if (!(await readFile(join(dir, f))).equals(bytes)) changed.push(f);
-  const remaining = (await scan(dir, grp.files, [grp.record])).hits.map((h) => ({ file: h.file, line: h.line }));
-  if (changed.length > 0 && remaining.length >= grp.sites) {
+  const remaining = [...hits.map((h) => ({ file: h.file, line: h.line })), ...putBack];
+  if (changed.length > 0 && count(remaining) >= grp.sites) {
     await restore(dir, before);
     return { changed: [], remaining };
   }
@@ -206,9 +216,11 @@ async function versionGate(root: string, grp: Group): Promise<{ blocked?: string
 /** Records the verified outcome on the record's result. Returns the files actually rewritten. */
 function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = []): string[] {
   if (outcome.changed.length === 0) {
+    // Files put back unscanned stay listed; when they were all there was, they are the reason.
+    const back = outcome.remaining.filter((s) => s.note === PUT_BACK);
     result.applied = false;
-    result.reason = NOT_COVERED;
-    if (held.length > 0) result.remaining = [...held];
+    result.reason = back.length > 0 && back.length === outcome.remaining.length ? PUT_BACK : NOT_COVERED;
+    if (back.length + held.length > 0) result.remaining = [...back, ...held];
   } else if (outcome.remaining.length + held.length > 0) {
     result.remaining = [...outcome.remaining, ...held];
   }
@@ -279,7 +291,6 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     // `git config` still reads this file in place of the others, so it is refused rather than searched.
     if (process.env.GIT_CONFIG?.trim()) throw new Refusal("GIT_CONFIG is set; the repository's code can read darnit's environment and the git config it names, so unset it for --prepare");
   }
-  const color = opts.color ?? false;
   const dryRun = opts.dryRun ?? false;
   if (!dryRun && !(await g.isRepo(root))) {
     throw new Refusal("not a checked-out git repository; darnit only edits files it can undo. Use --dry-run to preview.");
@@ -345,7 +356,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
         await cp(join(root, f), join(tmp, "after", f));
       }
       for (const grp of applicable) settle(resultOf(grp), await applyAndVerify(join(tmp, "after"), grp), grp.held);
-      const out = (await g.diffDirs(tmp, "before", "after", color)).replaceAll("a/before/", "a/").replaceAll("b/after/", "b/");
+      const out = (await g.diffDirs(tmp, "before", "after")).replaceAll("a/before/", "a/").replaceAll("b/after/", "b/");
       return { ...base, diff: out };
     } finally {
       await rm(tmp, { recursive: true, force: true });
@@ -382,7 +393,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     if (touched.length === 0) return base;
     const { build, tests } = await runChecks(root, commands, snap);
     const reverted = failed(build) || failed(tests);
-    return { ...base, build, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
+    return { ...base, build, tests, diff: reverted ? "" : await g.diff(root, touched), reverted };
   } catch (err) {
     await restore(root, snap);
     throw err;
@@ -566,19 +577,45 @@ function code(text: string): string {
   return `${fence}${pad}${t}${pad}${fence}`;
 }
 
-const withoutControls = (text: string, color: boolean) =>
+const withoutControls = (text: string) =>
   // eslint-disable-next-line no-control-regex
-  text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f]/g : /[\u0000-\u0008\u000b-\u001f]/g, (m) => (m.length > 1 ? m : ""));
+  text.replace(/[\u0000-\u0008\u000b-\u001f]/g, "");
+
+const RESET = "\u001b[m";
+const paint = (code: string, text: string) => (text ? `\u001b[${code}m${text}${RESET}` : "");
 
 /**
- * Text from the repository on its way to a terminal, a piece at a time: control characters go, and color codes too
- * unless `color`; `escapeHidden` writes out the rest. In GitHub Actions it is fenced by a one-time token so no line
- * of it runs as a workflow command, while darnit's own annotations printed outside it still work.
+ * A plain diff in git's default colors: file headers bold, hunk ranges cyan, removed lines red, added lines green
+ * with trailing spaces and tabs on red. Only these codes are added, so none from the diff's text needs to be kept.
+ */
+function colored(diff: string): string {
+  let header = false;
+  return diff.replace(/[^\n]+/g, (line) => {
+    if (line.startsWith("diff ")) header = true;
+    else if (line.startsWith("@@")) header = false;
+    if (header) return paint("1", line);
+    if (line.startsWith("@@")) {
+      const end = line.indexOf(" @@", 2) + 3;
+      return end > 2 ? paint("36", line.slice(0, end)) + line.slice(end) : paint("36", line);
+    }
+    if (line.startsWith("-")) return paint("31", line);
+    if (!line.startsWith("+")) return line;
+    let end = line.length;
+    while (end > 1 && (line[end - 1] === " " || line[end - 1] === "\t")) end--;
+    return paint("32", line.slice(0, end)) + paint("41", line.slice(end));
+  });
+}
+
+/**
+ * Text from the repository on its way to a terminal, a piece at a time: control characters go, color codes with them,
+ * and `escapeHidden` writes out the rest. With `color`, the text is a diff and gets darnit's colors. In GitHub Actions
+ * it is fenced by a one-time token so no line of it runs as a workflow command, while darnit's own annotations printed
+ * outside it still work.
  */
 export function* forTerminalPieces(text: string, color = false, env = process.env): Generator<string> {
   const token = env.GITHUB_ACTIONS === "true" ? randomUUID() : undefined;
   if (token) yield `::stop-commands::${token}\n`;
-  yield* escapedPieces(withoutControls(text, color));
+  yield* escapedPieces(color ? colored(withoutControls(text)) : withoutControls(text));
   if (token) yield `\n::${token}::`;
 }
 
@@ -668,7 +705,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     ...(tests?.output ? ["", "<details><summary>test output</summary>", "", fence(tests.output), tests.output, fence(tests.output), "", "</details>"] : []),
     "",
     ...(remaining.length > 0
-      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- ${code(`${r.file}:${r.line}`)}${r.note ? `: ${prose(shown(r.note))}` : ""}`), ""]
+      ? ["## Needs a human", "These call sites were found but not rewritten:", ...remaining.map((r) => `- ${code(r.line ? `${r.file}:${r.line}` : r.file)}${r.note ? `: ${prose(shown(r.note))}` : ""}`), ""]
       : []),
     "## Not verified",
     ...unconfirmed.map((u) => `- This change needs ${u}; darnit could not find the version this repository uses.`),
@@ -718,7 +755,7 @@ export function renderSummary(result: FixResult): string {
     const where = `${r.files.length} file${r.files.length === 1 ? "" : "s"}`;
     if (!r.applied) lines.push(`- ${r.title}: found in ${where}, not rewritten: ${shown(r.reason ?? "")}`);
     else if (!r.pr && result.reverted) lines.push(`✗ ${r.title}: rewritten, then put back`);
-    else if (!r.pr) lines.push(`✓ ${r.title}: ${r.remaining ? `${r.sites - r.remaining.length} of ${r.sites} call sites rewritten` : where}`);
+    else if (!r.pr) lines.push(`✓ ${r.title}: ${r.remaining ? `${r.sites - count(r.remaining)} of ${r.sites} call sites rewritten` : where}`);
     else if (r.pr.state === "opened") {
       lines.push(`✓ ${r.title}: pull request opened ${r.pr.url}`);
       for (const c of [r.pr.build, r.pr.tests]) if (c) lines.push(`  ${testLine(c)}`);
@@ -733,7 +770,7 @@ export function renderSummary(result: FixResult): string {
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;
-    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}:${s.line}${s.note ? ` (${shown(s.note)})` : ""}`);
+    if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}${s.line ? `:${s.line}` : ""}${s.note ? ` (${shown(s.note)})` : ""}`);
     if (r.applied) for (const u of r.unconfirmed ?? []) lines.push(`  could not confirm ${u}`);
   }
   const notChecked = notCheckedNotes(result.coverage);

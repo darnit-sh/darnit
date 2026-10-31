@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -83,11 +83,40 @@ describe("git treats the repo as untrusted", () => {
     expect(await readFile(log, "utf8").catch(() => "")).toBe("");
   });
 
+  it("runs no clean, smudge or process filter the repo's config names, on any of its commands", async () => {
+    const dir = await repoWith({ "a.ts": "a\n", ".gitattributes": "*.ts filter=p\n" });
+    const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+    tempDirs.push(mark);
+    const cmd = `touch '${mark}'; cat`;
+    for (const [k, v] of [["filter.p.process", cmd], ["filter.p.clean", cmd], ["filter.p.smudge", cmd], ["filter.p.required", "true"]]) {
+      await g.git(dir, ["config", k!, v!]);
+    }
+    await writeFile(join(dir, "a.ts"), "b\n");
+    await g.isClean(dir); // status
+    await g.add(dir, ["a.ts"]);
+    await g.commit(dir, "c", "b"); // re-stages through clean
+    await g.diff(dir, ["a.ts"]);
+    await writeFile(join(dir, "a.ts"), "c\n");
+    await g.discard(dir, ["a.ts"]); // checkout writes through smudge
+    expect(await access(mark).then(() => true, () => false)).toBe(false);
+  });
+
+  it("turns off a filter driver whose name holds an equals sign, which a -c pin would split", async () => {
+    const dir = await repoWith({ "a.ts": "a\n", ".gitattributes": "*.ts filter=a=b\n" });
+    const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+    tempDirs.push(mark);
+    await g.git(dir, ["config", "filter.a=b.clean", `touch '${mark}'; cat`]);
+    await g.git(dir, ["config", "filter.a=b.required", "true"]);
+    await writeFile(join(dir, "a.ts"), "b\n");
+    await g.add(dir, ["a.ts"]);
+    expect(await access(mark).then(() => true, () => false)).toBe(false);
+  });
+
   it("takes file names literally, never as patterns", async () => {
     const dir = await repoWith({ "a.ts": "a\n", "*.ts": "star\n" });
     await writeFile(join(dir, "a.ts"), "changed\n");
     expect(await g.uncommitted(dir, ["*.ts"])).toEqual([]);
-    expect(await g.diff(dir, ["*.ts"], false)).toBe("");
+    expect(await g.diff(dir, ["*.ts"])).toBe("");
   });
 
   it("lists changed files with unusual names exactly", async () => {
@@ -413,6 +442,20 @@ describe("push", () => {
     }
     await g.push(dir, branch, url);
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
+  }, 20_000);
+
+  it("refuses a token with a space or control character inside before git runs", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir);
+    for (const [github, gh] of [[`${token}\nX`, ""], ["", `${token} X`], [`${token}\u2028X`, token]]) {
+      vi.stubEnv("GITHUB_TOKEN", github);
+      vi.stubEnv("GH_TOKEN", gh);
+      await expect(g.push(dir, branch, url), JSON.stringify([github, gh])).rejects.toThrow(/^the GitHub token holds a character other than printable ASCII \(a space, control or zero-width character, or a letter outside ASCII\); set it again without one$/);
+    }
+    expect(await g.git(remote, ["branch", "--list"])).toBe("");
   }, 20_000);
 
   it("leaves the push to git's own credentials outside GitHub Actions, even with a token exported", async () => {

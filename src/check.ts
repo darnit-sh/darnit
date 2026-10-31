@@ -3,8 +3,8 @@ import { parse, type SgNode } from "@ast-grep/napi";
 import { parse as parseYaml } from "yaml";
 import { byPath, escapedPieces, firstFive, listFiles, plural, readText, shown, skippedNote, tooLargeNote, vendorClients, type Skipped } from "./detect.js";
 import { loadRecords } from "./records/load.js";
-import type { ChangeRecord } from "./records/schema.js";
-import { findMatches, grammarFor, modelNames, type Match, type Span } from "./scan/astgrep.js";
+import type { ChangeRecord, Lang } from "./records/schema.js";
+import { findMatches, grammarFor, modelNames, type Grammar, type Match, type Span } from "./scan/astgrep.js";
 import { findMentions, isBinary } from "./scan/mentions.js";
 import { findModelValues, inside, isTestPath, joined } from "./scan/values.js";
 
@@ -37,14 +37,14 @@ export type Coverage = { files: number; records: number; otherFiles?: number; fo
 /**
  * Hits for `records` in `files` (relative to `root`), with `modelValues` the model names set as values
  * outside test code, and with `mentions` every other mention of those names in any text file.
- * Files darnit cannot parse are skipped for hits and values.
+ * Files darnit cannot parse are skipped for hits and values; files it fails on go to `failed`, with none of their hits or values.
  */
 export async function scan(
   root: string,
   files: readonly string[],
   records: readonly ChangeRecord[],
   { modelValues = false, mentions: withMentions = false } = {},
-): Promise<{ hits: Hit[]; scanned: number; otherFiles: number; foreign: Hit[]; tooLarge: string[]; unreadable: string[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
+): Promise<{ hits: Hit[]; scanned: number; otherFiles: number; foreign: Hit[]; tooLarge: string[]; unreadable: string[]; failed: string[]; values: ModelValueHit[]; mentions: MentionHit[] }> {
   const hits: Hit[] = [];
   const values: ModelValueHit[] = [];
   const mentions: MentionHit[] = [];
@@ -57,29 +57,9 @@ export async function scan(
   const foreign: Hit[] = [];
   const tooLarge: string[] = [];
   const unreadable: string[] = [];
-  let scanned = 0;
-  let otherFiles = 0;
-  for (const file of files) {
-    const grammar = grammarFor(file);
-    if (!grammar && !withMentions) continue;
-    let large = false;
-    const text = await readText(join(root, file), (start) => {
-      large = true;
-      // A binary file is never searched, so it is not listed as left out.
-      if (grammar || !isBinary(start)) tooLarge.push(file);
-    });
-    if (text === undefined) {
-      if (!large) unreadable.push(file);
-      continue;
-    }
-    if (withMentions && !isBinary(text)) {
-      if (!grammar) otherFiles++;
-      // Known limit: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
-      // (300 MB of crafted names) exhaust the heap. Store them compactly, or cap each file and keep its count, if that matters.
-      for (const m of findMentions(text, names, file)) for (const record of byName.get(m.model)!) mentions.push({ ...m, file, record });
-    }
-    if (!grammar) continue;
-    scanned++;
+  const failed: string[] = [];
+  /** Call sites and model values in one parsed file. */
+  const scanCode = async (file: string, grammar: { lang: Lang; grammar: Grammar }, text: string) => {
     // Parsed at most once, when a record needs it; every record shares the tree and the client index built on it.
     let tree: SgNode | undefined;
     const parsed = () => (tree ??= parse(grammar.grammar, text).root());
@@ -99,12 +79,46 @@ export async function scan(
       // Small files skip it: yielding after every record costs more time than their nodes cost memory.
       if (tree && text.length > 100_000) await new Promise((r) => setImmediate(r));
     }
-    if (names.size === 0 || isTestPath(file)) continue;
+    if (names.size === 0 || isTestPath(file)) return;
     // A value inside a call site reported for a record naming that model is already listed there.
     const covered = new Map([...reported].map(([id, spans]) => [id, joined(spans)]));
     for (const v of findModelValues(file, text, grammar.grammar, names, parsed)) {
       const named = byName.get(v.model)!;
       if (!named.some((r) => inside(covered.get(r.id) ?? [], v.span.start, v.span.end))) for (const record of named) values.push({ ...v, record, file });
+    }
+  };
+  let scanned = 0;
+  let otherFiles = 0;
+  for (const file of files) {
+    const grammar = grammarFor(file);
+    if (!grammar && !withMentions) continue;
+    let large = false;
+    const text = await readText(join(root, file), (start) => {
+      large = true;
+      // A binary file is never searched, so it is not listed as left out.
+      if (grammar || !isBinary(start)) tooLarge.push(file);
+    });
+    if (text === undefined) {
+      if (!large) unreadable.push(file);
+      continue;
+    }
+    const kept = [hits.length, foreign.length, values.length] as const;
+    try {
+      if (withMentions && !isBinary(text)) {
+        // Known limit: every mention stays in memory until printed, about 40 bytes each, so around 100M mentions
+        // (300 MB of crafted names) exhaust the heap. Store them compactly, or cap each file and keep its count, if that matters.
+        const found = findMentions(text, names, file);
+        if (!grammar) otherFiles++;
+        for (const m of found) for (const record of byName.get(m.model)!) mentions.push({ ...m, file, record });
+      }
+      if (!grammar) continue;
+      await scanCode(file, grammar, text);
+      scanned++;
+    } catch {
+      // A file the scanner fails on never stops the check: it is named as not checked, none of its call sites or values are
+      // reported, as some may be missing, and every other file's findings stay. Its mentions, read first, stay too.
+      [hits.length, foreign.length, values.length] = kept;
+      failed.push(file);
     }
   }
   // A name already reported on that line, as a call site or a value, is not mentioned again.
@@ -113,7 +127,7 @@ export async function scan(
     ...values.map((v) => key(v.file, v.line, v.model)),
     ...hits.flatMap((h) => findMentions(h.text, namesOf.get(h.record)!, h.file).map((m) => key(h.file, h.line + m.line - 1, m.model))),
   ]);
-  return { hits, scanned, otherFiles, foreign, tooLarge, unreadable, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
+  return { hits, scanned, otherFiles, foreign, tooLarge, unreadable, failed, values, mentions: mentions.filter((m) => !listed.has(key(m.file, m.line, m.model))) };
 }
 
 /** Every call site in `root` affected by a known vendor change, and what was covered. */
@@ -121,11 +135,11 @@ export async function checkReport(root: string): Promise<{ hits: Hit[]; coverage
   const only = await configuredVendors(root);
   const records = (await loadRecords()).map((l) => l.record).filter((r) => !only || only.has(r.vendor));
   const skipped: Skipped[] = [];
-  const { hits, scanned, otherFiles, foreign, tooLarge, unreadable, values, mentions } = await scan(root, await listFiles(root, skipped), records, {
+  const { hits, scanned, otherFiles, foreign, tooLarge, unreadable, failed, values, mentions } = await scan(root, await listFiles(root, skipped), records, {
     modelValues: true,
     mentions: true,
   });
-  skipped.push(...unreadable.map((path) => ({ path, reason: "could not be read" as const })));
+  skipped.push(...unreadable.map((path) => ({ path, reason: "could not be read" as const })), ...failed.map((path) => ({ path, reason: "could not be scanned" as const })));
   skipped.sort(byPath);
   const leftOut = foreign.length > 0 ? { foreign: foreign.length, foreignAt: foreign.map((h) => `${h.file}:${h.line}`) } : {};
   return { hits, foreign, values, mentions, coverage: { files: scanned, records: records.length, otherFiles, ...leftOut, ...(tooLarge.length > 0 ? { tooLarge } : {}), ...(skipped.length > 0 ? { skipped } : {}) } };
@@ -214,8 +228,12 @@ export function snippet(text: string, width = 60): string {
 
 const NOT_CHECKED = "Not checked: request options built elsewhere and passed in as a variable.";
 
-/** 1 for call sites of any change but a candidate: a machine-written candidate nobody has checked should not fail anyone's build. */
-export const exitCodeForCheck = (hits: readonly Hit[]): 0 | 1 => (hits.some((h) => h.record.status !== "candidate") ? 1 : 0);
+/**
+ * 1 for call sites of any change but a candidate: a machine-written candidate nobody has checked should not fail anyone's build.
+ * 2 when `coverage` lists a file darnit failed to scan, since its call sites are unknown and the failure is darnit's.
+ */
+export const exitCodeForCheck = (hits: readonly Hit[], coverage?: Coverage): 0 | 1 | 2 =>
+  coverage?.skipped?.some((s) => s.reason === "could not be scanned") ? 2 : hits.some((h) => h.record.status !== "candidate") ? 1 : 0;
 
 /** One block per vendor change: heading, locations, count, sources. */
 function grouped(hits: readonly Hit[], noun: string): string[] {
@@ -281,6 +299,7 @@ export const notCheckedNotes = (coverage?: Coverage) => [...tooLargeNote(coverag
 
 /** Terminal report, grouped by vendor change, then the model values and other mentions. Always ends by saying what was and was not covered. */
 export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelValueHit[] = [], mentions: readonly MentionHit[] = [], allMentions = false): string {
+  const exit = exitCodeForCheck(hits, coverage);
   const footer = [
     ...(coverage
       ? [`Scanned ${plural(coverage.files, "JavaScript, TypeScript or Python file")} against ${plural(coverage.records, "change record")}.`]
@@ -292,6 +311,7 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
         ]
       : []),
     ...notCheckedNotes(coverage),
+    ...(exit === 2 ? ["The check fails because darnit failed to scan a file."] : []),
     NOT_CHECKED,
   ];
   const section = [...(values.length > 0 ? [...VALUES_INTRO, "", ...grouped(values, "value")] : []), ...(mentions.length > 0 ? mentionSection(mentions, allMentions) : [])];
@@ -302,7 +322,7 @@ export function render(hits: Hit[], coverage?: Coverage, values: readonly ModelV
     return [clean, "", ...section, ...footer].join("\n");
   }
   const out = [...grouped(hits, "call site"), ...section];
-  if (exitCodeForCheck(hits) === 0) out.push("Unreviewed changes are reported but do not fail the check.");
+  if (exit === 0) out.push("Unreviewed changes are reported but do not fail the check.");
   out.push(...footer);
   return out.join("\n");
 }

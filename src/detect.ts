@@ -168,7 +168,7 @@ export const tooLargeNote = (files: readonly string[] = []) =>
 /** A folder or file the scan did not read, and why. "." is the repository folder. */
 export type Skipped = {
   path: string;
-  reason: "dependency or build folder" | "bundled SDK copy" | "symbolic link outside the repository" | "could not be read";
+  reason: "dependency or build folder" | "bundled SDK copy" | "symbolic link outside the repository" | "could not be read" | "could not be scanned";
 };
 
 const SKIPPED_LINE: Record<Skipped["reason"], (paths: string[]) => string> = {
@@ -176,6 +176,7 @@ const SKIPPED_LINE: Record<Skipped["reason"], (paths: string[]) => string> = {
   "bundled SDK copy": (p) => `${plural(p.length, "folder")} with a bundled copy of an SDK: ${firstFive(p)}`,
   "symbolic link outside the repository": (p) => `${plural(p.length, "symbolic link")} to outside the repository: ${firstFive(p)}`,
   "could not be read": (p) => `could not read ${firstFive(p.map((path) => (path === "." ? "the repository folder" : path)))}`,
+  "could not be scanned": (p) => `${plural(p.length, "file")} darnit failed to scan: ${firstFive(p)}`,
 };
 
 /** One report line per reason for what the scan did not read. */
@@ -210,7 +211,7 @@ export async function readText(path: string, tooLarge?: (start: string) => void)
   }
 }
 
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** A generated Python SDK (OpenAI's and its siblings) keeps all of these at its package root. */
 const isBundledSdk = (names: Set<string>) => ["_base_client.py", "_client.py", "_exceptions.py"].every((n) => names.has(n));

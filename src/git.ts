@@ -1,38 +1,66 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { firstFive } from "./detect.js";
+import { envToken } from "./github.js";
 
 const exec = promisify(execFile);
 
 // darnit's GitHub credentials open the pull request; the repository's own commands never get them.
 export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
 
-// The repository's config can name programs git would run inside darnit's own calls. These pins turn
-// off the ones keyed by no name: no hooks (on commit or checkout), no fsmonitor, no gpg signing of a
-// commit or tag. Clean/smudge/process filters are keyed by driver name, so `filterPins` empties each
-// one git would use; an external diff and textconv are turned off per diff in `git`. A pager never
-// starts because darnit captures git's output rather than writing to a terminal. git also never sees
-// darnit's credentials and takes file names literally, never as patterns. SECURITY.md lists the keys
-// that still apply (an ssh command or credential helper on a call to origin, a remote helper program).
-const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false"];
+// The repository's config can name programs git would run inside darnit's own calls, even with
+// `--no-test`. These pins, on every call, turn off the ones keyed by a fixed name: no hooks (on
+// commit or checkout), no fsmonitor, no gpg signing of a commit or on push. Clean/smudge/process
+// filters are keyed by driver name, so `filterConfig` empties each one git would use; an external
+// diff and textconv are turned off per diff, and a submodule's own status (which runs its filters)
+// is skipped, both in `git`. A pager never starts because darnit captures git's output rather than
+// writing to a terminal. git also never sees darnit's credentials and takes file names literally,
+// never as patterns. SECURITY.md lists the keys that still apply (an ssh command, credential helper
+// or proxy on a call to origin, a remote helper program).
+const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", "-c", "push.gpgSign=false"];
 
-// git commands that apply a clean, smudge or process filter to worktree or index content.
-const FILTERED = new Set(["add", "status", "commit", "checkout", "switch", "restore", "reset", "stash", "diff", "apply", "mv", "rm", "read-tree", "merge"]);
+// The git commands darnit runs that apply a clean, smudge or process filter to content: `add` and
+// `commit` and `status` and `diff` on the index side, `checkout` (discard) and `switch` on the worktree side.
+const FILTERED = new Set(["add", "status", "commit", "diff", "checkout", "switch"]);
+// More filter drivers than darnit will turn off one by one; past this it refuses rather than run them.
+const FILTER_CAP = 256;
 const FILTER_DRIVER = /^filter\.(.*)\.(?:clean|smudge|process)$/s;
 
 /**
- * The `-c` pins that empty every clean/smudge/process filter git would apply in `root`, from any
- * scope: their programs are a key darnit cannot pin off without the driver's name, so it reads the
- * names and empties each, marking it optional so a required filter does not abort the command.
+ * The git config entries that turn off every clean/smudge/process filter git would apply in `root`,
+ * from any scope. Setting a driver's `process` to empty is enough: git runs a configured process
+ * filter in place of that driver's clean and smudge, and an empty one marked optional passes content
+ * through unchanged, so one pin per driver covers all three directions. A driver's name can hold any
+ * byte, including the `=` that `-c name=value` splits on, so these go in the child's environment (see
+ * `configEnv`), where key and value stay apart. Fails closed: a listing that errors, overflows its
+ * buffer, or names more than `FILTER_CAP` drivers throws rather than leave a filter unpinned.
  */
-async function filterPins(root: string, env: NodeJS.ProcessEnv): Promise<string[]> {
-  const { stdout } = await exec("git", [...UNTRUSTED_REPO, "config", "-z", "--name-only", "--get-regexp", String.raw`^filter\..*\.(clean|smudge|process)$`], { cwd: root, env }).catch(() => ({ stdout: "" }));
+async function filterConfig(root: string, env: NodeJS.ProcessEnv): Promise<[string, string][]> {
   const names = new Set<string>();
-  for (const key of stdout.split("\0")) {
-    const m = FILTER_DRIVER.exec(key);
-    if (m) names.add(m[1]!);
+  try {
+    const { stdout } = await exec("git", [...UNTRUSTED_REPO, "config", "-z", "--name-only", "--get-regexp", String.raw`^filter\..*\.(clean|smudge|process)$`], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
+    for (const key of stdout.split("\0")) {
+      const m = FILTER_DRIVER.exec(key);
+      if (m) names.add(m[1]!);
+    }
+  } catch (err) {
+    // git config exits 1 with no output when nothing matches: no filters to turn off. Any other
+    // failure (a read error, or output past the buffer) must not pass for "none", or a filter runs.
+    const e = err as { code?: number | string; stdout?: string };
+    if (e.code !== 1 || (e.stdout ?? "") !== "") throw new Error(`could not read the repository's filter config (git config exited ${String(e.code)})`, { cause: err });
   }
-  return [...names].flatMap((n) => ["-c", `filter.${n}.clean=`, "-c", `filter.${n}.smudge=`, "-c", `filter.${n}.process=`, "-c", `filter.${n}.required=false`]);
+  if (names.size > FILTER_CAP) throw new Error(`the repository configures ${names.size} git filter drivers, over darnit's limit of ${FILTER_CAP}; refusing to run git against it`);
+  return [...names].flatMap((n): [string, string][] => [[`filter.${n}.process`, ""], [`filter.${n}.required`, "false"]]);
+}
+
+/** git config entries as the variables git reads them from, so a key holding `=` is never split. */
+function configEnv(entries: readonly (readonly [string, string])[]): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { GIT_CONFIG_COUNT: String(entries.length) };
+  entries.forEach(([key, value], n) => {
+    env[`GIT_CONFIG_KEY_${n}`] = key;
+    env[`GIT_CONFIG_VALUE_${n}`] = value;
+  });
+  return env;
 }
 
 const GITHUB = "https://github.com/";
@@ -91,18 +119,24 @@ export async function git(root: string, args: string[], stall?: number, site = G
   const { name, remote, at } = command(args);
   if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
   const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1" };
+  const config: [string, string][] = [];
   let timeout = 0;
   if (stall) {
-    Object.assign(env, originAuth(site), { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
+    Object.assign(env, { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
+    config.push(...originAuth(site));
     // A process timeout would cut a slow but healthy HTTPS push and leave its helper pushing.
     const urls = (await git(root, ["remote", "get-url", "--all", ...(name === "push" ? ["--push"] : []), "origin"])).split("\n").filter(Boolean);
     if (!urls.every((u) => /^https?:\/\//i.test(u))) timeout = stall * 4 * 1000;
   }
-  // No external diff or textconv runs the diff; no filter runs the commands that transform content.
-  const scoped = name === "diff" ? [...args.slice(0, at + 1), "--no-ext-diff", "--no-textconv", ...args.slice(at + 1)] : args;
-  const filters = FILTERED.has(name) ? await filterPins(root, env) : [];
+  // Read the repository's filters before adding config of our own to the environment.
+  if (FILTERED.has(name)) config.push(...(await filterConfig(root, env)));
+  if (config.length > 0) Object.assign(env, configEnv(config));
+  // No external diff or textconv runs a diff, and neither a diff nor a status descends into a
+  // submodule, where it would run a status (and the submodule's own filters) there.
+  const inject = name === "diff" ? ["--no-ext-diff", "--no-textconv", "--ignore-submodules=all"] : name === "status" ? ["--ignore-submodules=all"] : [];
+  const scoped = inject.length > 0 ? [...args.slice(0, at + 1), ...inject, ...args.slice(at + 1)] : args;
   try {
-    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...filters, ...scoped], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
+    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...scoped], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
     return stdout;
   } catch (err) {
     const { killed, stderr } = err as { killed?: boolean; stderr?: string };
@@ -239,24 +273,18 @@ export async function commit(root: string, subject: string, body: string): Promi
  * can send the header to another server (http.curloptResolve with http.sslVerify false, http.proxy)
  * or hand it to another program (core.sshCommand, credential.helper, core.askPass).
  */
-function originAuth(site: string): NodeJS.ProcessEnv {
-  const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
-  if (!token || process.env.GITHUB_ACTIONS !== "true") return {};
+function originAuth(site: string): [string, string][] {
+  if (process.env.GITHUB_ACTIONS !== "true") return [];
+  const token = envToken();
+  if (!token) return [];
   const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
-  // git() drops any GIT_CONFIG_COUNT it inherits, so these are the only entries.
-  return {
-    GIT_CONFIG_COUNT: "2",
-    GIT_CONFIG_KEY_0: `http.${site}.extraheader`,
-    GIT_CONFIG_VALUE_0: "",
-    GIT_CONFIG_KEY_1: `http.${site}.extraheader`,
-    GIT_CONFIG_VALUE_1: header,
-  };
+  // The empty value first drops any header the checkout saved, since two would reach the server.
+  return [[`http.${site}.extraheader`, ""], [`http.${site}.extraheader`, header]];
 }
 
 export const push = (root: string, branch: string, site = GITHUB) => git(root, ["push", "-q", "-u", "origin", branch], 60, site);
 
-export const diff = (root: string, files: readonly string[], color: boolean) =>
-  git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
+export const diff = (root: string, files: readonly string[]) => git(root, ["--no-pager", "diff", "--color=never", "--", ...files]);
 
 const EXTRAHEADER = /^http\.(?:.+\.)?extraheader$/i;
 // A user name or password in an http or https URL, where a token can sit.
@@ -301,9 +329,9 @@ export const patch = (root: string, files: readonly string[]) =>
   ]);
 
 /** Diff between two dirs under cwd, no repo needed. git exits 1 when they differ, which is not an error here. */
-export async function diffDirs(cwd: string, before: string, after: string, color: boolean): Promise<string> {
+export async function diffDirs(cwd: string, before: string, after: string): Promise<string> {
   try {
-    return await git(cwd, ["--no-pager", "diff", "--no-index", color ? "--color=always" : "--color=never", before, after]);
+    return await git(cwd, ["--no-pager", "diff", "--no-index", "--color=never", before, after]);
   } catch (err) {
     const { code, stdout } = err as { code?: number; stdout?: string };
     if (code === 1 && stdout !== undefined) return stdout;

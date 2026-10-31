@@ -60,16 +60,21 @@ for example `http.curloptResolve` pointing github.com at another address with
 `check` only.
 
 A repository's own config (`.git/config` and the files it includes) can name programs git would
-otherwise run inside darnit's own git calls, even under `--no-test` and in `check`. In its own calls
-darnit turns these off: no hooks (`core.hooksPath`), no `core.fsmonitor`, no gpg signing of a commit
-or tag (`commit.gpgSign`, `tag.gpgSign`, so `gpg.program` and `gpg.ssh.program` never run), no
-external diff or textconv (`diff.external`, a `diff.<driver>.command` or `.textconv`), and no
-clean/smudge/process filter (`filter.<driver>.*`, which are keyed by name, so darnit reads the names
-git would use and empties each). A pager (`core.pager`, `pager.*`) never starts because darnit
-captures git's output rather than writing to a terminal. darnit's own commit therefore does not run
-the repository's commit hooks; they are repository code, and `fix --pr` runs the repository's tests
-separately. This does not cover config that only matters on a call that reaches origin, which darnit
-makes only to push or query its own remote: `core.sshCommand`, a credential helper or `core.askPass`,
+otherwise run inside darnit's own git calls, even under `--no-test`. In its own calls darnit turns
+these off: no hooks (`core.hooksPath`), no `core.fsmonitor`, no gpg signing of a commit or on push
+(`commit.gpgSign`, `push.gpgSign`, so `gpg.program` and `gpg.ssh.program` never run), no external
+diff or textconv (`diff.external`, a `diff.<driver>.command` or `.textconv`), and no clean/smudge/
+process filter (`filter.<driver>.*`). Filters are keyed by driver name, so darnit reads the names git
+would use and turns each off in the child's environment, where a name holding `=` (which a
+command-line `-c filter.<name>.clean=` would split) stays intact; a repository that configures more
+filter drivers than darnit will handle, or whose config cannot be read, is refused rather than run.
+A status or diff does not descend into a submodule (`--ignore-submodules=all`), so a submodule's own
+filters never run either; darnit passes no `--recurse-submodules` and checks out no submodule path. A
+pager (`core.pager`, `pager.*`) never starts because darnit captures git's output rather than writing
+to a terminal. darnit's own commit therefore does not run the repository's commit hooks; they are
+repository code, and `fix --pr` runs the repository's tests separately. This does not cover config
+that only matters on a call that reaches origin, which darnit makes only to push or query its own
+remote: `core.sshCommand`, a credential helper or `core.askPass`, `core.gitProxy`,
 `remote.<name>.uploadpack`/`receivepack`/`vcs`, `protocol.ext.allow`, and an http header or URL that
 carries a credential. Those are the token-handling surface above; on code you do not trust, run
 `check` only.
