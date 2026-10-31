@@ -1222,6 +1222,19 @@ console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[3
     expect(await readFile(join(dir, "b.js"))).toEqual(latin1);
   });
 
+  it("writes the same patch when the repository's code has set its own diff settings", async () => {
+    const dir = await repoFrom(BEFORE);
+    const patchOf = async () => {
+      const plan = join(await planHome(), "plan");
+      await fix(dir, { prepare: plan, noTest: true });
+      return (await readPlan(plan)).groups[0]!.patch;
+    };
+    const clean = await patchOf();
+    await git(dir, ["config", "diff.noprefix", "true"]);
+    await git(dir, ["config", "diff.external", "false"]);
+    expect(await patchOf()).toBe(clean);
+  });
+
   it("takes the patch before the tests run, so it holds darnit's change only", async () => {
     const dir = await repoFrom(BEFORE);
     const plan = join(await planHome(), "plan");
