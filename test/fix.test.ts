@@ -1303,6 +1303,21 @@ describe("fix --prepare", () => {
     await expect(access(plan)).rejects.toThrow();
   });
 
+  it.each(["core.sshCommand", "core.sshCommand from the environment", "GIT_SSH_COMMAND", "GIT_SSH"])("refuses to start with a deploy key reachable through %s", async (where) => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    const key = join(await planHome(), "key");
+    await writeFile(key, "-----BEGIN OPENSSH PRIVATE KEY-----\nfake\n");
+    // What actions/checkout writes with ssh-key set and persist-credentials left on.
+    const command = `"ssh" -i "${key}"`;
+    if (where === "core.sshCommand") await git(dir, ["config", "core.sshCommand", command]);
+    else if (where.includes("environment")) for (const [k, v] of Object.entries({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.sshCommand", GIT_CONFIG_VALUE_0: command })) vi.stubEnv(k, v);
+    else vi.stubEnv(where, where === "GIT_SSH" ? "/usr/bin/ssh" : command);
+    await expect(fix(dir, { prepare: plan, test: `cat ${key}` })).rejects.toThrow("check out with persist-credentials: false");
+    expect(runs.count).toBe(0);
+    await expect(access(plan)).rejects.toThrow();
+  });
+
   it("runs with remote URLs that hold no user or password", async () => {
     const dir = await repoFrom(BEFORE);
     await git(dir, ["config", "remote.origin.url", "https://github.com/o/r"]);

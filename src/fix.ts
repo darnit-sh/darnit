@@ -266,6 +266,8 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     // The system keeps darnit's starting environment readable by everything it starts, so no unsetting helps.
     const held = g.CREDENTIALS.find((k) => process.env[k]?.trim());
     if (held) throw new Refusal(`${held} is set; --prepare runs the repository's code, so its job must not hold a token. Run it in a job without one and publish from another`);
+    const ssh = ["GIT_SSH_COMMAND", "GIT_SSH"].find((k) => process.env[k]?.trim());
+    if (ssh) throw new Refusal(`${ssh} is set; it can point ssh at a deploy key, and the repository's code can read darnit's environment. Unset it for --prepare, and check out with persist-credentials: false`);
     // `git config` still reads this file in place of the others, so it is refused rather than searched.
     if (process.env.GIT_CONFIG?.trim()) throw new Refusal("GIT_CONFIG is set; the repository's code can read darnit's environment and the git config it names, so unset it for --prepare");
   }
@@ -281,7 +283,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     const saved = await g.savedCredential(root);
     if (saved) {
       throw new Refusal(
-        `git config holds ${HOLDS[saved]}, in this repository or passed in darnit's environment; --prepare runs the repository's code, so ${saved === "header" ? "check out with persist-credentials: false" : "remove it"}`,
+        `git config holds ${HOLDS[saved]}, in this repository or passed in darnit's environment; --prepare runs the repository's code, so ${saved === "url" ? "remove it" : "check out with persist-credentials: false"}`,
       );
     }
     await startPlan(root, opts.prepare);
@@ -389,6 +391,7 @@ async function checkGroup(root: string, commands: Commands, snap: Map<string, Bu
 
 const HOLDS: Record<g.Credential, string> = {
   header: "an http extraheader, where actions/checkout saves its token",
+  ssh: "core.sshCommand, where actions/checkout points ssh at the deploy key it saves",
   url: "a URL with a user name or password, where a token can sit",
 };
 

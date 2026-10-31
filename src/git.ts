@@ -235,11 +235,12 @@ const EXTRAHEADER = /^http\.(?:.+\.)?extraheader$/i;
 // A user name or password in an http or https URL, where a token can sit.
 const URL_USER = /\bhttps?:\/\/[^\s/?#@]*@/i;
 
-/** How git config can hand the repository's code a token: an http extra header, or a URL with a user or password. */
-export type Credential = "header" | "url";
+/** How git config can hand the repository's code a token: an http extra header, an ssh command, or a URL with a user or password. */
+export type Credential = "header" | "ssh" | "url";
 
+const has = (entries: readonly (readonly [string, string])[], key: RegExp) => entries.some(([k]) => key.test(k.trim()));
 const credentialIn = (entries: readonly (readonly [string, string])[]): Credential | undefined =>
-  entries.some(([key]) => EXTRAHEADER.test(key.trim())) ? "header" : entries.some((e) => e.some((t) => URL_USER.test(t))) ? "url" : undefined;
+  has(entries, EXTRAHEADER) ? "header" : has(entries, /^core\.sshcommand$/i) ? "ssh" : entries.some((e) => e.some((t) => URL_USER.test(t))) ? "url" : undefined;
 
 // Config git takes from the environment. git() drops it; the search for a token keeps it, since everything darnit
 // starts can read darnit's environment.
