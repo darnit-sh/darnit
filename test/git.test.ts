@@ -415,6 +415,20 @@ describe("push", () => {
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
 
+  it("refuses a token with a space or control character inside before git runs", async () => {
+    vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    const { url, remote } = await guardedOrigin(dir);
+    for (const [github, gh] of [[`${token}\nX`, ""], ["", `${token} X`], [`${token}\u2028X`, token]]) {
+      vi.stubEnv("GITHUB_TOKEN", github);
+      vi.stubEnv("GH_TOKEN", gh);
+      await expect(g.push(dir, branch, url), JSON.stringify([github, gh])).rejects.toThrow(/^the GitHub token holds a space or control character; set it again without one$/);
+    }
+    expect(await g.git(remote, ["branch", "--list"])).toBe("");
+  }, 20_000);
+
   it("leaves the push to git's own credentials outside GitHub Actions, even with a token exported", async () => {
     vi.stubEnv("GIT_TERMINAL_PROMPT", "0");
     vi.stubEnv("GITHUB_ACTIONS", "");

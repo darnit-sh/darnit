@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import { type AddressInfo, createServer, type Socket } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Refusal } from "../src/fix.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "../src/github.js";
 
 afterEach(() => {
@@ -19,6 +20,20 @@ describe("githubToken", () => {
       vi.stubEnv("GITHUB_TOKEN", github);
       vi.stubEnv("GH_TOKEN", gh);
       expect(await githubToken(), JSON.stringify([github, gh])).toBe("gho_fake_for_test");
+    }
+  });
+
+  it("refuses a token with a space or control character inside, without quoting it", async () => {
+    vi.stubEnv("PATH", "");
+    const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
+    for (const inner of ["\n", "\r", " ", "\t", "\v", "\f", "\x01", "\x1f", "\x7f", "\x85", "\x9f", "\u00a0", "\u1680", "\u2003", "\u2028", "\u2029", "\u3000", "\ufeff"]) {
+      for (const [name, other] of [["GITHUB_TOKEN", "GH_TOKEN"], ["GH_TOKEN", "GITHUB_TOKEN"]] as const) {
+        vi.stubEnv(name, ` ${token}${inner}X `);
+        vi.stubEnv(other, "");
+        const err = await githubToken().catch((e: unknown) => e);
+        expect(err, JSON.stringify([name, inner])).toBeInstanceOf(Refusal);
+        expect((err as Error).message).toBe("the GitHub token holds a space or control character; set it again without one");
+      }
     }
   });
 });

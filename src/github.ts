@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { Refusal } from "./refusal.js";
 
 const exec = promisify(execFile);
 const API = "https://api.github.com";
@@ -8,14 +9,25 @@ const TIMEOUT_MS = 30_000;
 
 export type Repo = { owner: string; repo: string };
 
+// fetch quotes a header value it rejects in its error, so a token with a line break inside would be printed.
+const checked = (token: string) => {
+  if (/[\s\p{Cc}]/u.test(token)) throw new Refusal("the GitHub token holds a space or control character; set it again without one");
+  return token || undefined;
+};
+
+/** GITHUB_TOKEN, else GH_TOKEN, trimmed. */
+export const envToken = () => checked(process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "");
+
 export async function githubToken(): Promise<string | undefined> {
-  const env = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
+  const env = envToken();
   if (env) return env;
+  let out: string;
   try {
-    return (await exec("gh", ["auth", "token"])).stdout.trim() || undefined;
+    out = (await exec("gh", ["auth", "token"])).stdout;
   } catch {
     return undefined;
   }
+  return checked(out.trim());
 }
 
 // Only characters GitHub allows in names, so a name can never change the API path.
