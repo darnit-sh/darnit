@@ -225,7 +225,7 @@ could not check the change) and `timedOut`. A check that timed out has
 |---|---|
 | `--dry-run` | show the diff, write nothing (works outside git too) |
 | `--pr` | one branch, one build and test run, and one pull request per change |
-| `--prepare <dir>` | verify each change as `--pr` does, then write `<dir>/plan.json` instead of committing; reads no token |
+| `--prepare <dir>` | verify each change as `--pr` does, then write `<dir>/plan.json` instead of committing; refuses to run with `GITHUB_TOKEN` or `GH_TOKEN` set |
 | `--only <id>` | just this change, by its id from `check --json` (repeatable) |
 | `--test <command>` | run this instead of the detected test command |
 | `--no-test` | skip tests and the build check |

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { CAPS, type Plan } from "../src/plan.js";
@@ -81,7 +81,7 @@ async function repoWith(files: Record<string, string>): Promise<string> {
 
 async function darnit(cwd: string, ...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-  const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" };
+  const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_TOKEN: "", GH_TOKEN: "" };
   return new Promise((resolve) =>
     execFile(process.execPath, ["--import", import.meta.resolve("tsx"), cli, ...args], { cwd, env }, (err, stdout, stderr) =>
       resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }),
@@ -849,6 +849,8 @@ describe("fix --pr", () => {
   it("--prepare writes the patch --pr commits, byte for byte, and leaves the tree as it found it", async () => {
     const { dir, bare, branch } = await repoWithOrigin();
     const plan = join(await planHome(), "plan");
+    vi.stubEnv("GITHUB_TOKEN", "");
+    vi.stubEnv("GH_TOKEN", "");
     const result = await fix(dir, { prepare: plan, noTest: true, version: "t" });
     expect(result.records[0]?.pr).toEqual({ state: "prepared", build: undefined, tests: undefined });
     expect(renderSummary(result)).toContain("Rename max_tokens to max_completion_tokens on chat completions: verified, in the plan");
@@ -1105,46 +1107,58 @@ describe("fix --prepare", () => {
   const forms = [TOKEN, Buffer.from(TOKEN).toString("base64").replace(/=+$/, ""), Buffer.from(`x-access-token:${TOKEN}`).toString("base64").replace(/=+$/, "")];
   const readPlan = async (dir: string) => JSON.parse(await readFile(join(dir, "plan.json"), "utf8")) as Plan;
 
+  // Each run starts with no token, whatever the machine running these tests holds.
+  beforeEach(() => {
+    vi.stubEnv("GITHUB_TOKEN", "");
+    vi.stubEnv("GH_TOKEN", "");
+  });
   afterEach(() => vi.unstubAllEnvs());
 
-  it("never reads GITHUB_TOKEN or GH_TOKEN", async () => {
-    const dir = await repoFrom(BEFORE);
-    vi.stubEnv("GITHUB_TOKEN", TOKEN);
-    vi.stubEnv("GH_TOKEN", TOKEN);
-    const real = process.env;
-    const reads: string[] = [];
-    process.env = new Proxy(real, {
-      get: (env, key) => {
-        if ((key === "GITHUB_TOKEN" || key === "GH_TOKEN") && Reflect.has(env, key)) reads.push(key);
-        return Reflect.get(env, key) as unknown;
-      },
-    });
-    try {
-      const result = await fix(dir, { prepare: join(await planHome(), "plan"), test: "node -e 1" });
-      expect(result.records[0]?.pr?.state).toBe("prepared");
-    } finally {
-      process.env = real;
-    }
-    expect(reads).toEqual([]);
-  });
-
-  it("leaves no token in the plan, its output or any file the run writes", async () => {
+  it.each(["GITHUB_TOKEN", "GH_TOKEN"])("refuses to start when %s is set, since its job runs the repository's code", async (name) => {
     const dir = await repoFrom(BEFORE);
     const plan = join(await planHome(), "plan");
-    // The repository's tests print and save every environment variable they get.
-    const probe = "node -e \"const e = JSON.stringify(process.env); console.log(e); require('fs').writeFileSync('seen.txt', e)\"";
-    const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_TOKEN: TOKEN, GH_TOKEN: TOKEN, GITHUB_ACTIONS: "true" };
-    const run = await new Promise<{ code: number; out: string }>((resolve) =>
-      execFile(process.execPath, ["--import", import.meta.resolve("tsx"), fileURLToPath(new URL("../src/cli.ts", import.meta.url)), "fix", "--prepare", plan, "--test", probe], { cwd: dir, env }, (err, stdout, stderr) =>
-        resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, out: stdout + stderr }),
+    vi.stubEnv(name, ` ${TOKEN} `);
+    await expect(fix(dir, { prepare: plan, test: "node -e 1" })).rejects.toThrow(`${name} is set`);
+    expect(runs.count).toBe(0);
+    await expect(access(plan)).rejects.toThrow();
+    expect(await tree(dir)).toEqual(await tree(BEFORE));
+  });
+
+  // The repository's tests look for a token in their own environment and in darnit's, which the system
+  // keeps readable from the start of the run (/proc/<pid>/environ on Linux, ps -E on macOS).
+  const PROBE = "{ env; tr '\\0' '\\n' < /proc/$PPID/environ; ps -wwE -o command= -p $PPID | tr ' ' '\\n'; } 2>/dev/null | grep -E 'TOKEN|DARNIT_NO_UPDATE' | tee seen.txt; true";
+  const cli = (dir: string, plan: string, tokens: Record<string, string>) =>
+    new Promise<{ code: number; out: string }>((resolve) =>
+      execFile(
+        process.execPath,
+        ["--import", import.meta.resolve("tsx"), fileURLToPath(new URL("../src/cli.ts", import.meta.url)), "fix", "--prepare", plan, "--test", PROBE],
+        { cwd: dir, env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "true", GITHUB_TOKEN: "", GH_TOKEN: "", ...tokens } },
+        (err, stdout, stderr) => resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, out: stdout + stderr }),
       ),
     );
+  const everything = async (...roots: string[]) => {
+    const files = roots.map(async (root) => (await readdir(root, { recursive: true })).map((f) => readFile(join(root, f)).catch(() => Buffer.alloc(0))));
+    return (await Promise.all((await Promise.all(files)).flat())).map((b) => b.toString("latin1"));
+  };
+
+  it("leaves no token in the plan, its output or any file the run writes", async () => {
+    const home = await planHome();
+    for (const tokens of [{ GITHUB_TOKEN: TOKEN }, { GH_TOKEN: TOKEN }, { GITHUB_TOKEN: TOKEN, GH_TOKEN: TOKEN }]) {
+      const dir = await repoFrom(BEFORE);
+      const plan = join(home, String(Object.keys(tokens).length), Object.keys(tokens)[0]!);
+      const run = await cli(dir, plan, tokens);
+      expect(run.code).toBe(2);
+      expect(run.out).toContain("must not hold a token");
+      await expect(access(plan)).rejects.toThrow();
+      await expect(access(join(dir, "seen.txt"))).rejects.toThrow();
+      for (const text of [run.out, ...(await everything(dir, home))]) for (const f of forms) expect(text).not.toContain(f);
+    }
+    // With blank values the run goes ahead, and the probe does find darnit's own environment.
+    const dir = await repoFrom(BEFORE);
+    const plan = join(home, "blank");
+    const run = await cli(dir, plan, { GITHUB_TOKEN: "", GH_TOKEN: " " });
     expect(run.code).toBe(0);
-    expect((await readPlan(plan)).groups[0]?.tests?.output).toContain("DARNIT_NO_UPDATE_CHECK");
-    expect(await readFile(join(dir, "seen.txt"), "utf8")).toContain("DARNIT_NO_UPDATE_CHECK");
-    const files = [plan, dir].map(async (root) => (await readdir(root, { recursive: true })).map((f) => readFile(join(root, f)).catch(() => Buffer.alloc(0))));
-    const written = (await Promise.all((await Promise.all(files)).flat())).map((b) => b.toString("latin1"));
-    for (const text of [run.out, ...written]) for (const f of forms) expect(text).not.toContain(f);
+    if (process.platform === "linux" || process.platform === "darwin") expect((await readPlan(plan)).groups[0]?.tests?.output).toMatch(/DARNIT_NO_UPDATE_CHECK=1\n(?:.*\n)*DARNIT_NO_UPDATE_CHECK=1/);
   });
 
   it("keeps a test's output redacted, escaped and capped in the plan", async () => {

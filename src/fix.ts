@@ -260,8 +260,9 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   if (opts.prepare !== undefined) {
     if (opts.pr) throw new Refusal("--prepare and --pr can't be combined: --prepare runs the repository's code, so it never pushes");
     if (opts.dryRun) throw new Refusal("--prepare and --dry-run can't be combined: --prepare writes a plan");
-    // The job that runs the repository's code holds no write token: this run never reads one, and nothing it starts can.
-    for (const k of g.CREDENTIALS) delete process.env[k];
+    // The system keeps darnit's starting environment readable by everything it starts, so no unsetting helps.
+    const held = g.CREDENTIALS.find((k) => process.env[k]?.trim());
+    if (held) throw new Refusal(`${held} is set; --prepare runs the repository's code, so its job must not hold a token. Run it in a job without one and publish from another`);
     await planFolder(opts.prepare);
   }
   const color = opts.color ?? false;
