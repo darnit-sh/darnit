@@ -48,9 +48,10 @@
     - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-audio-preview-2024-12-17
   date: "2026-05-07"
   needs-record: >-
-    Add these snapshots to openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down, which has
-    the shutdown date the spec gives and names only the gpt-4o-audio-preview aliases, if OpenAI's
-    deprecations page lists them.
+    Add these snapshots to openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down. OpenAI's
+    deprecations page lists only the aliases gpt-4o-audio-preview and gpt-4o-mini-audio-preview for
+    2026-05-07, which that record already names; the spec gives the same date for these snapshots,
+    so the record cites the spec for them.
 
 - items:
     - schema CreateImageRequest property size anyOf 1 enum 256x256
@@ -78,6 +79,20 @@
   needs-record: >-
     Breaking, report-only model record: finds these names as the model of any OpenAI call. The
     spec gives this shutdown date.
+
+- items:
+    - GET /assistants
+    - POST /assistants
+    - GET /assistants/{assistant_id}
+    - POST /assistants/{assistant_id}
+    - DELETE /assistants/{assistant_id}
+  date: "2026-08-26"
+  needs-record: >-
+    Breaking, report-only endpoint record. OpenAI's deprecations page gives 2026-08-26 as the
+    shutdown date of the Assistants API, with the Responses API and Conversations API as the
+    replacements. Finds beta.assistants create, retrieve, update, delete and list calls in
+    JavaScript and Python, and raw HTTP calls to /v1/assistants. Moving to the Responses API is a
+    redesign, so there is nothing to rewrite.
 
 - items:
     - POST /videos
@@ -113,9 +128,10 @@
     - schema BetaModelIdsResponses anyOf 1 enum gpt-5-pro
   date: "2026-12-11"
   needs-record: >-
-    The spec gives the date of openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down, but
-    that record names only the dated snapshots, so code naming these aliases is not reported. Add
-    them to it if OpenAI's deprecations page lists them, or give them their own model record.
+    Add these aliases to openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down. OpenAI's
+    deprecations page lists gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3 and o3-pro for 2026-12-11,
+    the record's date, but the record names only the dated snapshots, so code naming these aliases
+    is not reported.
 
 - items:
     - schema AssistantSupportedModels enum gpt-4.1
@@ -153,17 +169,6 @@
   needs-record: >-
     Add to openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down, which has
     the shutdown date the spec gives and names gpt-audio-mini but not this snapshot.
-
-- items:
-    - GET /assistants
-    - POST /assistants
-    - GET /assistants/{assistant_id}
-    - POST /assistants/{assistant_id}
-    - DELETE /assistants/{assistant_id}
-  needs-record: >-
-    Deprecation, report-only endpoint record. Finds beta.assistants create, retrieve, update,
-    delete and list calls in JavaScript and Python, and raw HTTP calls to /v1/assistants. Moving to
-    the Responses API is a redesign, so there is nothing to rewrite. The spec gives no date.
 
 - items:
     - POST /images/variations
@@ -265,8 +270,8 @@
     - schema ModelIdsShared anyOf 1 enum gpt-5.1-mini
     - schema BetaModelIdsShared anyOf 1 enum gpt-5.1-mini
   reason: >-
-    The spec says this was never a supported model ID and is kept only for SDK compatibility,
-    so there is no working call to migrate.
+    The spec's note on it reads "Not a supported model ID. Retained for SDK compatibility.", so it
+    is not a model a working call uses.
 
 - items:
     - schema ChatCompletionFunctions

@@ -345,6 +345,15 @@ describe("npm run accounting", () => {
     expect(account({ vendor: "openai", spec: {}, removals: [{ ...removal, path: "/x", text: "removed the request property `x`" }], records: [pinned], notCovered: [] }).unaccounted).toHaveLength(1);
   });
 
+  it("quotes the spec exactly where a reason quotes it, and leaves no proposal waiting on an if", async () => {
+    const notCovered = NotCoveredSchema.parse(parseYaml(await read("packs/openai/not-covered.yaml")));
+    const text = JSON.stringify(spec);
+    const quotes = notCovered.flatMap((e) => (e.reason?.includes("spec") ? [...e.reason.matchAll(/"([^"]+)"/g)].map((m) => m[1]!) : []));
+    expect(quotes).toContain("Not a supported model ID. Retained for SDK compatibility.");
+    for (const q of quotes) expect(text, q).toContain(q);
+    expect(notCovered.filter((e) => /\bif OpenAI's\b/.test(e["needs-record"] ?? "")).flatMap((e) => e.items)).toEqual([]);
+  });
+
   it("credits no record with a field on an endpoint it does not name", async () => {
     const copy = structuredClone(spec);
     schema(copy, "CreateCompletionRequest").properties!.max_tokens!.deprecated = true;
@@ -364,6 +373,7 @@ describe("npm run accounting", () => {
     expect(out.stdout).not.toContain("\u202e");
     expect(out.stdout).toMatch(/\n {2}- 2026-07-23, already past: .*\n {6}"schema ModelIdsShared anyOf 1 enum gpt-4o-search-preview"/);
     expect(out.stdout.indexOf("- 2026-07-23")).toBeLessThan(out.stdout.indexOf("- 2027-01-14"));
+    expect(out.stdout).toMatch(/\n {2}- 2026-08-26, already past: Breaking, .*\n {6}"GET \/assistants"/);
     expect(out.stdout.indexOf("- 2027-01-14")).toBeLessThan(out.stdout.indexOf("- no date"));
   });
 
