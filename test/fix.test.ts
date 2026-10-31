@@ -782,25 +782,27 @@ const notDarnits = (output: string) => {
 };
 
 describe("fix in GitHub Actions", () => {
-  const LINES = ["::error::pwned", "  ::warning::indented", "\t::add-mask::tabbed", "ok ##[add-mask]x", "::stop-commands::x", "::error::after"];
+  const LINES = ["::error::pwned", "  ::warning::indented", "\t::add-mask::tabbed", "ok #1 ##[add-mask]x", "::stop-commands::x", "::error::after"];
   const NOTICE = "::notice::darnit 9.0.0 is out";
 
   it("prints no line of the repository's test output as a workflow command, and leaves darnit's own working", async () => {
     const dir = await repoWith({ "sdk.js": SDK_CALL, "noise.js": `console.log(${JSON.stringify(LINES.join("\n"))}); process.exit(1);\n` });
     const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "fix", "--test", "node noise.js");
     expect(run.code).not.toBe(2);
-    expect(run.stdout).toContain("::error::pwned\n  ::warning::indented\n\t::add-mask::tabbed\nok ##[add-mask]x\n::stop-commands::x");
+    expect(run.stdout).toContain("::error::pwned\n  ::warning::indented\n\t::add-mask::tabbed\nok #1 ##[add-mask]x\n::stop-commands::x");
     expect(notDarnits(run.stdout + run.stderr)).toEqual({ ran: [], stopped: false });
     expect(notDarnits(`${run.stdout}${NOTICE}\n`).ran).toEqual([NOTICE]);
     const json = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "fix", "--test", "node noise.js", "--json");
     expect((JSON.parse(json.stdout) as { tests: { output: string } }).tests.output).toContain(LINES.join("\n"));
+    expect(json.stdout).not.toContain("#");
     expect(notDarnits(json.stdout)).toEqual({ ran: [], stopped: false });
   });
 
   it("prints no file name from check --json as a workflow command, and keeps it exact", async () => {
-    const dir = await repoWith({ "pkg##[error]pwned.js": SDK_CALL });
+    const dir = await repoWith({ "pkg#1##[error]pwned.js": SDK_CALL });
     const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "check", "--json");
-    expect((JSON.parse(run.stdout) as { hits: { file: string }[] }).hits.map((h) => h.file)).toEqual(["pkg##[error]pwned.js"]);
+    expect((JSON.parse(run.stdout) as { hits: { file: string }[] }).hits.map((h) => h.file)).toEqual(["pkg#1##[error]pwned.js"]);
+    expect(run.stdout).not.toContain("#");
     expect(notDarnits(run.stdout)).toEqual({ ran: [], stopped: false });
   });
 
