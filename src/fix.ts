@@ -266,10 +266,8 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     // The system keeps darnit's starting environment readable by everything it starts, so no unsetting helps.
     const held = g.CREDENTIALS.find((k) => process.env[k]?.trim());
     if (held) throw new Refusal(`${held} is set; --prepare runs the repository's code, so its job must not hold a token. Run it in a job without one and publish from another`);
-    const passed = g.envCredential();
-    if (passed) {
-      throw new Refusal(`git config in darnit's environment holds ${HOLDS[passed]} (from GIT_CONFIG_COUNT or GIT_CONFIG_PARAMETERS), which the repository's code can read there; --prepare runs that code, so unset it`);
-    }
+    // `git config` still reads this file in place of the others, so it is refused rather than searched.
+    if (process.env.GIT_CONFIG?.trim()) throw new Refusal("GIT_CONFIG is set; the repository's code can read darnit's environment and the git config it names, so unset it for --prepare");
   }
   const color = opts.color ?? false;
   const dryRun = opts.dryRun ?? false;
@@ -282,7 +280,9 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   if (opts.prepare !== undefined) {
     const saved = await g.savedCredential(root);
     if (saved) {
-      throw new Refusal(`git config in this repository holds ${HOLDS[saved]}; --prepare runs the repository's code, so ${saved === "header" ? "check out with persist-credentials: false" : "remove it"}`);
+      throw new Refusal(
+        `git config holds ${HOLDS[saved]}, in this repository or passed in darnit's environment; --prepare runs the repository's code, so ${saved === "header" ? "check out with persist-credentials: false" : "remove it"}`,
+      );
     }
     await startPlan(root, opts.prepare);
   }

@@ -1263,7 +1263,7 @@ describe("fix --prepare", () => {
     const dir = await repoFrom(BEFORE);
     const plan = join(await planHome(), "plan");
     for (const [k, v] of Object.entries(vars)) vi.stubEnv(k, v);
-    await expect(fix(dir, { prepare: plan, test: "node -e 1" })).rejects.toThrow("git config in darnit's environment holds");
+    await expect(fix(dir, { prepare: plan, test: "node -e 1" })).rejects.toThrow(/git config holds an http extraheader.*passed in darnit's environment/);
     expect(runs.count).toBe(0);
     await expect(access(plan)).rejects.toThrow();
   });
@@ -1283,6 +1283,22 @@ describe("fix --prepare", () => {
     else await git(dir, ["config", key, value]);
     // What the repository's tests would print into the plan.
     await expect(fix(dir, { prepare: plan, test: "git config --list" })).rejects.toThrow("a URL with a user name or password");
+    expect(runs.count).toBe(0);
+    await expect(access(plan)).rejects.toThrow();
+  });
+
+  it.each(["GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG"])("refuses to start when %s brings in a file of git config holding a token", async (name) => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    const file = join(await planHome(), "token.cfg");
+    await writeFile(file, '[remote "x"]\n\turl = https://x-access-token:ghs_fake_write_token_0123456789@github.com/o/r\n');
+    const vars: Record<string, Record<string, string>> = {
+      GIT_CONFIG_COUNT: { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "include.path", GIT_CONFIG_VALUE_0: file },
+      GIT_CONFIG_PARAMETERS: { GIT_CONFIG_PARAMETERS: `'include.path'='${file}'` },
+      GIT_CONFIG: { GIT_CONFIG: file },
+    };
+    for (const [k, v] of Object.entries(vars[name]!)) vi.stubEnv(k, v);
+    await expect(fix(dir, { prepare: plan, test: "git config --list" })).rejects.toThrow(name === "GIT_CONFIG" ? "GIT_CONFIG is set" : "a URL with a user name or password");
     expect(runs.count).toBe(0);
     await expect(access(plan)).rejects.toThrow();
   });

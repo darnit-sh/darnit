@@ -241,24 +241,19 @@ export type Credential = "header" | "url";
 const credentialIn = (entries: readonly (readonly [string, string])[]): Credential | undefined =>
   entries.some(([key]) => EXTRAHEADER.test(key.trim())) ? "header" : entries.some((e) => e.some((t) => URL_USER.test(t))) ? "url" : undefined;
 
-/** The token git config holds, as read in `root`: every scope and every file it includes, as actions/checkout v7 uses. */
+// Config git takes from the environment. git() drops it; the search for a token keeps it, since everything darnit
+// starts can read darnit's environment.
+const ENV_CONFIG = /^GIT_CONFIG_(?:COUNT|PARAMETERS|KEY_\d+|VALUE_\d+)$/;
+
+/** The token git config holds, as git reads it in `root`: every scope, the config in darnit's environment, and every file they include. */
 export async function savedCredential(root: string): Promise<Credential | undefined> {
-  const entries = (await git(root, ["config", "--list", "-z"])).split("\0").filter(Boolean).map((e) => {
+  const env = { ...(await childEnv()), ...Object.fromEntries(Object.entries(process.env).filter(([k]) => ENV_CONFIG.test(k))) };
+  const { stdout } = await exec("git", [...UNTRUSTED_REPO, "config", "--list", "-z"], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
+  const entries = stdout.split("\0").filter(Boolean).map((e) => {
     const i = e.indexOf("\n");
     return i < 0 ? ([e, ""] as const) : ([e.slice(0, i), e.slice(i + 1)] as const);
   });
   return credentialIn(entries);
-}
-
-/**
- * The same for the git config git takes from darnit's own environment. darnit's git calls drop it, but everything
- * darnit starts can read darnit's environment.
- */
-export function envCredential(env: NodeJS.ProcessEnv = process.env): Credential | undefined {
-  const count = Math.min(Number(env.GIT_CONFIG_COUNT) || 0, 1000);
-  const entries = Array.from({ length: count }, (_, i) => [env[`GIT_CONFIG_KEY_${i}`] ?? "", env[`GIT_CONFIG_VALUE_${i}`] ?? ""] as const);
-  const params = env.GIT_CONFIG_PARAMETERS ?? "";
-  return credentialIn(entries) ?? (/extraheader/i.test(params) ? "header" : URL_USER.test(params) ? "url" : undefined);
 }
 
 export const topLevel = async (root: string) => (await git(root, ["rev-parse", "--show-toplevel"])).trim();
