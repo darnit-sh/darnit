@@ -220,6 +220,8 @@ export const push = (root: string, branch: string, site = GITHUB) => git(root, [
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
 
+export const topLevel = async (root: string) => (await git(root, ["rev-parse", "--show-toplevel"])).trim();
+
 export const head = async (root: string) => (await git(root, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
 
 // Settings the repository can set that change a diff's bytes; pinned so two checkouts produce the same patch.

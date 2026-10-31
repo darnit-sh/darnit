@@ -1288,11 +1288,48 @@ console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[3
     expect(runs.count).toBe(0);
   });
 
+  it("removes an earlier plan when it starts, so a run that stops leaves none behind", async () => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    await mkdir(plan);
+    await writeFile(join(plan, "plan.json"), "earlier");
+    await writeFile(join(dir, "notes.txt"), "wip\n");
+    await expect(fix(dir, { prepare: plan, noTest: true })).rejects.toThrow(/uncommitted changes/);
+    expect(await readdir(plan)).toEqual([]);
+  });
+
+  it("refuses a plan folder inside the repository, however it is named", async () => {
+    const dir = await repoWith({ "sub/sdk.js": SDK_CALL });
+    const home = await planHome();
+    await symlink(dir, join(home, "link"));
+    for (const [root, plan] of [[dir, dir], [dir, join(dir, "plan")], [dir, join(dir, "new", "plan")], [dir, join(dir, "..plan")], [dir, join(home, "link", "plan")], [join(dir, "sub"), join(dir, "plan")]]) {
+      await expect(fix(root!, { prepare: plan!, noTest: true })).rejects.toThrow("is inside the repository");
+    }
+    expect((await git(dir, ["status", "--porcelain", "--untracked-files=all"])).trim()).toBe("");
+    // The folder holding the repository is outside it, though never empty.
+    await expect(fix(dir, { prepare: dirname(dir), noTest: true })).rejects.toThrow("holds no earlier plan");
+    await fix(dir, { prepare: join(home, "plan"), noTest: true });
+    expect((await readPlan(join(home, "plan"))).groups).toHaveLength(1);
+  });
+
+  it.each([
+    ["put a plan.json link in the folder", (plan: string, target: string) => `mkdir -p ${plan} ${target} && ln -s ${target}/stolen ${plan}/plan.json`, "appeared during the run"],
+    ["put a link where the folder goes", (plan: string, target: string) => `mkdir -p ${target} && ln -s ${target} ${plan}`, "became a link during the run"],
+  ])("writes no plan when the repository's tests %s", async (_, sabotage, message) => {
+    const dir = await repoFrom(BEFORE);
+    const home = await planHome();
+    const [plan, target] = [join(home, "plan"), join(home, "elsewhere")];
+    await expect(fix(dir, { prepare: plan, test: sabotage(plan, target) })).rejects.toThrow(message);
+    expect(await readdir(home)).toEqual(expect.arrayContaining(["elsewhere"]));
+    expect(await readdir(target).catch(() => [])).toEqual([]);
+  });
+
   it("refuses --pr and --dry-run alongside it, and a dirty tree as --pr does", async () => {
     const dir = await repoFrom(BEFORE);
     const plan = join(await planHome(), "plan");
     await expect(fix(dir, { prepare: plan, pr: true })).rejects.toThrow("--prepare and --pr can't be combined");
     await expect(fix(dir, { prepare: plan, dryRun: true })).rejects.toThrow("--prepare and --dry-run can't be combined");
+    await expect(fix(dir, { prepare: plan, repo: "o/r" })).rejects.toThrow("--prepare and --repo can't be combined");
     await writeFile(join(dir, "notes.txt"), "wip\n");
     await expect(fix(dir, { prepare: plan, noTest: true })).rejects.toThrow(/uncommitted changes in the working tree/);
     await expect(access(plan)).rejects.toThrow();
@@ -1302,6 +1339,7 @@ console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[3
     [["--prepare", "PLAN", "--pr"], "--prepare and --pr can't be combined"],
     [["--prepare", "PLAN", "--json"], "--prepare and --json can't be combined"],
     [["--prepare", "PLAN", "--dry-run"], "--prepare and --dry-run can't be combined"],
+    [["--prepare", "PLAN", "--repo", "o/r"], "--prepare and --repo can't be combined"],
     [["--prepare", ""], "--prepare needs the folder to write the plan to"],
     [["--prepare", "--json"], "--prepare needs the folder to write the plan to"],
     [["--prepare"], "argument missing"],

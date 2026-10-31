@@ -1,6 +1,6 @@
-import { cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
 import { firstFive, shown, vendorName } from "./detect.js";
@@ -261,10 +261,10 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   if (opts.prepare !== undefined) {
     if (opts.pr) throw new Refusal("--prepare and --pr can't be combined: --prepare runs the repository's code, so it never pushes");
     if (opts.dryRun) throw new Refusal("--prepare and --dry-run can't be combined: --prepare writes a plan");
+    if (opts.repo) throw new Refusal("--prepare and --repo can't be combined: --prepare opens no pull request");
     // The system keeps darnit's starting environment readable by everything it starts, so no unsetting helps.
     const held = g.CREDENTIALS.find((k) => process.env[k]?.trim());
     if (held) throw new Refusal(`${held} is set; --prepare runs the repository's code, so its job must not hold a token. Run it in a job without one and publish from another`);
-    await planFolder(opts.prepare);
   }
   const color = opts.color ?? false;
   const dryRun = opts.dryRun ?? false;
@@ -274,6 +274,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
   if (!dryRun && !(await g.hasCommit(root))) {
     throw new Refusal("the current branch has no commits yet; commit your files first. Use --dry-run to preview.");
   }
+  if (opts.prepare !== undefined) await startPlan(root, opts.prepare);
 
   const { groups, coverage, namesElsewhere } = await groupHits(root, opts.only);
   const records: RecordResult[] = [];
@@ -381,6 +382,21 @@ async function checkGroup(root: string, commands: Commands, snap: Map<string, Bu
   return { build, tests, passed: !failed(build) && !failed(tests) };
 }
 
+/** `path` with every link resolved, as far as it exists. */
+async function resolved(path: string): Promise<string> {
+  return (await realpath(path).catch(() => undefined)) ?? join(await resolved(dirname(path)), basename(path));
+}
+
+/** Refuses a plan folder inside the repository, then any other planFolder refuses, and removes an earlier plan. */
+async function startPlan(root: string, dir: string): Promise<void> {
+  const inside = relative(await realpath(await g.topLevel(root)), await resolved(dir));
+  if (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)) {
+    throw new Refusal(`${dir} is inside the repository, where its code can change the plan and git sees it as a change; give --prepare a folder outside it`);
+  }
+  await planFolder(dir);
+  await rm(join(dir, PLAN_FILE), { force: true });
+}
+
 /** Refuses a plan folder that is a link, not a folder, or holds anything but an earlier plan. */
 async function planFolder(dir: string): Promise<void> {
   const info = await lstat(dir).catch(() => undefined);
@@ -415,11 +431,12 @@ async function prepare(root: string, groups: Group[], base: FixResult, commands:
     }
   }
   const text = serializePlan(plan, new Set((await loadRecords()).map((l) => l.record.id)));
+  // The repository's code ran since the folder was checked: a link in its place, or a plan.json, file or link, is never written through.
   await mkdir(dir, { recursive: true });
-  await planFolder(dir);
-  await rm(join(dir, PLAN_FILE), { force: true });
-  // wx: never written through a link put there since the check.
-  await writeFile(join(dir, PLAN_FILE), text, { flag: "wx" });
+  if (!(await lstat(dir)).isDirectory()) throw new Refusal(`${dir} became a link during the run; no plan written`);
+  await writeFile(join(dir, PLAN_FILE), text, { flag: "wx" }).catch((err: NodeJS.ErrnoException) => {
+    throw err.code === "EEXIST" ? new Refusal(`${join(dir, PLAN_FILE)} appeared during the run; no plan written`) : err;
+  });
   return { ...base, reverted: anyFailed, plan: join(dir, PLAN_FILE) };
 }
 
