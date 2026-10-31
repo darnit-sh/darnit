@@ -1268,6 +1268,33 @@ describe("fix --prepare", () => {
     await expect(access(plan)).rejects.toThrow();
   });
 
+  it.each([
+    ["remote.origin.url", "https://x-access-token:ghs_fake_write_token_0123456789@github.com/o/r"],
+    ["remote.origin.pushurl", "https://ghs_fake_write_token_0123456789@github.com/o/r"],
+    ["url.https://x-access-token:ghs_fake_write_token_0123456789@github.com/.insteadOf", "https://github.com/"],
+    ["environment", "https://x-access-token:ghs_fake_write_token_0123456789@github.com/"],
+    ["parameters", "https://x-access-token:ghs_fake_write_token_0123456789@github.com/"],
+  ])("refuses to start with a user or password in a URL in git config: %s", async (key, value) => {
+    const dir = await repoFrom(BEFORE);
+    const plan = join(await planHome(), "plan");
+    if (key === "environment") {
+      for (const [k, v] of Object.entries({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "url.https://github.com/.insteadOf", GIT_CONFIG_VALUE_0: value })) vi.stubEnv(k, v);
+    } else if (key === "parameters") vi.stubEnv("GIT_CONFIG_PARAMETERS", `'url.https://github.com/.insteadOf'='${value}'`);
+    else await git(dir, ["config", key, value]);
+    // What the repository's tests would print into the plan.
+    await expect(fix(dir, { prepare: plan, test: "git config --list" })).rejects.toThrow("a URL with a user name or password");
+    expect(runs.count).toBe(0);
+    await expect(access(plan)).rejects.toThrow();
+  });
+
+  it("runs with remote URLs that hold no user or password", async () => {
+    const dir = await repoFrom(BEFORE);
+    await git(dir, ["config", "remote.origin.url", "https://github.com/o/r"]);
+    await git(dir, ["config", "remote.origin.pushurl", "git@github.com:o/r"]);
+    await git(dir, ["config", "remote.mirror.url", "https://github.com/o/r@main"]);
+    expect((await fix(dir, { prepare: join(await planHome(), "plan"), noTest: true })).records[0]?.pr?.state).toBe("prepared");
+  });
+
   it("runs with other git config in its environment", async () => {
     const dir = await repoFrom(BEFORE);
     for (const [k, v] of Object.entries({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "url.https://github.com/.insteadOf", GIT_CONFIG_VALUE_0: "git@github.com:" })) vi.stubEnv(k, v);

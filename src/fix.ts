@@ -266,8 +266,9 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     // The system keeps darnit's starting environment readable by everything it starts, so no unsetting helps.
     const held = g.CREDENTIALS.find((k) => process.env[k]?.trim());
     if (held) throw new Refusal(`${held} is set; --prepare runs the repository's code, so its job must not hold a token. Run it in a job without one and publish from another`);
-    if (g.envHeader()) {
-      throw new Refusal("git config in darnit's environment holds an http extraheader (GIT_CONFIG_COUNT or GIT_CONFIG_PARAMETERS), which the repository's code can read; --prepare runs that code, so unset it");
+    const passed = g.envCredential();
+    if (passed) {
+      throw new Refusal(`git config in darnit's environment holds ${HOLDS[passed]} (from GIT_CONFIG_COUNT or GIT_CONFIG_PARAMETERS), which the repository's code can read there; --prepare runs that code, so unset it`);
     }
   }
   const color = opts.color ?? false;
@@ -279,8 +280,9 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     throw new Refusal("the current branch has no commits yet; commit your files first. Use --dry-run to preview.");
   }
   if (opts.prepare !== undefined) {
-    if (await g.savedHeader(root)) {
-      throw new Refusal("git config in this repository holds an http extraheader, where actions/checkout saves its token; --prepare runs the repository's code, so check out with persist-credentials: false");
+    const saved = await g.savedCredential(root);
+    if (saved) {
+      throw new Refusal(`git config in this repository holds ${HOLDS[saved]}; --prepare runs the repository's code, so ${saved === "header" ? "check out with persist-credentials: false" : "remove it"}`);
     }
     await startPlan(root, opts.prepare);
   }
@@ -384,6 +386,11 @@ async function checkGroup(root: string, commands: Commands, snap: Map<string, Bu
   else if (failed(tests)) result.pr = { state: "tests-failed", tests: tests! };
   return { build, tests, passed: !failed(build) && !failed(tests) };
 }
+
+const HOLDS: Record<g.Credential, string> = {
+  header: "an http extraheader, where actions/checkout saves its token",
+  url: "a URL with a user name or password, where a token can sit",
+};
 
 /** `path` with every link resolved, as far as it exists. */
 async function resolved(path: string): Promise<string> {

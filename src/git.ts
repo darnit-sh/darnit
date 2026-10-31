@@ -231,26 +231,34 @@ export const push = (root: string, branch: string, site = GITHUB) => git(root, [
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
 
-/**
- * Whether git config, as read in `root` with its includes, holds an http extra header: where actions/checkout
- * saves its token unless told not to. A config git cannot read counts as one.
- */
-export const savedHeader = (root: string) =>
-  git(root, ["config", "--get-regexp", "^http\\.(.+\\.)?extraheader$"]).then(
-    (out) => out.trim() !== "",
-    (err: { code?: number }) => err.code !== 1,
-  );
-
 const EXTRAHEADER = /^http\.(?:.+\.)?extraheader$/i;
+// A user name or password in an http or https URL, where a token can sit.
+const URL_USER = /\bhttps?:\/\/[^\s/?#@]*@/i;
+
+/** How git config can hand the repository's code a token: an http extra header, or a URL with a user or password. */
+export type Credential = "header" | "url";
+
+const credentialIn = (entries: readonly (readonly [string, string])[]): Credential | undefined =>
+  entries.some(([key]) => EXTRAHEADER.test(key.trim())) ? "header" : entries.some((e) => e.some((t) => URL_USER.test(t))) ? "url" : undefined;
+
+/** The token git config holds, as read in `root`: every scope and every file it includes, as actions/checkout v7 uses. */
+export async function savedCredential(root: string): Promise<Credential | undefined> {
+  const entries = (await git(root, ["config", "--list", "-z"])).split("\0").filter(Boolean).map((e) => {
+    const i = e.indexOf("\n");
+    return i < 0 ? ([e, ""] as const) : ([e.slice(0, i), e.slice(i + 1)] as const);
+  });
+  return credentialIn(entries);
+}
 
 /**
- * Whether the git config git takes from darnit's own environment holds an http extra header. darnit's git calls
- * drop it, but everything darnit starts can read darnit's environment.
+ * The same for the git config git takes from darnit's own environment. darnit's git calls drop it, but everything
+ * darnit starts can read darnit's environment.
  */
-export function envHeader(env: NodeJS.ProcessEnv = process.env): boolean {
+export function envCredential(env: NodeJS.ProcessEnv = process.env): Credential | undefined {
   const count = Math.min(Number(env.GIT_CONFIG_COUNT) || 0, 1000);
-  const keys = Array.from({ length: count }, (_, i) => env[`GIT_CONFIG_KEY_${i}`] ?? "");
-  return keys.some((k) => EXTRAHEADER.test(k.trim())) || /extraheader/i.test(env.GIT_CONFIG_PARAMETERS ?? "");
+  const entries = Array.from({ length: count }, (_, i) => [env[`GIT_CONFIG_KEY_${i}`] ?? "", env[`GIT_CONFIG_VALUE_${i}`] ?? ""] as const);
+  const params = env.GIT_CONFIG_PARAMETERS ?? "";
+  return credentialIn(entries) ?? (/extraheader/i.test(params) ? "header" : URL_USER.test(params) ? "url" : undefined);
 }
 
 export const topLevel = async (root: string) => (await git(root, ["rev-parse", "--show-toplevel"])).trim();
