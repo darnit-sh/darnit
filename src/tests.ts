@@ -139,12 +139,13 @@ export async function runTests(root: string, command: string, timeoutMs = TIME_L
       child.stdout.destroy();
       child.stderr.destroy();
     }, timeoutMs);
-    const keep = (d: Buffer) => {
-      output += d.toString();
+    const keep = (d: string) => {
+      output += d;
       if (output.length > TAIL_CHARS + CUT_MARGIN) [output, cut] = [output.slice(-(TAIL_CHARS + CUT_MARGIN)), true];
     };
-    child.stdout.on("data", keep);
-    child.stderr.on("data", keep);
+    // One decoder per stream, so a character split across two reads of a pipe is decoded whole.
+    child.stdout.setEncoding("utf8").on("data", keep);
+    child.stderr.setEncoding("utf8").on("data", keep);
     child.on("close", (code) => {
       clearTimeout(timer);
       // Masked before and after the codes come out: removing one can cut a token or join one.
