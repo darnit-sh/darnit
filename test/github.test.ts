@@ -33,7 +33,7 @@ describe("githubToken", () => {
         vi.stubEnv(other, "");
         const err = await githubToken().catch((e: unknown) => e);
         expect(err, JSON.stringify([name, inner])).toBeInstanceOf(Refusal);
-        expect((err as Error).message).toBe("the GitHub token holds a space or control character; set it again without one");
+        expect((err as Error).message).toBe("the GitHub token holds a character other than printable ASCII (a space, control or zero-width character, or a letter outside ASCII); set it again without one");
       }
     }
   });

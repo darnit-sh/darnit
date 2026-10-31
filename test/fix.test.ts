@@ -1333,7 +1333,7 @@ console.log(config);`,
       }
       return out;
     };
-    const refused = { code: 2, stdout: "", stderr: "darnit: the GitHub token holds a space or control character; set it again without one\n" };
+    const refused = { code: 2, stdout: "", stderr: "darnit: the GitHub token holds a character other than printable ASCII (a space, control or zero-width character, or a letter outside ASCII); set it again without one\n" };
     try {
       for (const inner of ["\n", "\r", " ", "\t", "\u200b", "\u00e9"]) {
         const bad = `${token}${inner}X`;

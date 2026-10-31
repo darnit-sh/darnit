@@ -424,7 +424,7 @@ describe("push", () => {
     for (const [github, gh] of [[`${token}\nX`, ""], ["", `${token} X`], [`${token}\u2028X`, token]]) {
       vi.stubEnv("GITHUB_TOKEN", github);
       vi.stubEnv("GH_TOKEN", gh);
-      await expect(g.push(dir, branch, url), JSON.stringify([github, gh])).rejects.toThrow(/^the GitHub token holds a space or control character; set it again without one$/);
+      await expect(g.push(dir, branch, url), JSON.stringify([github, gh])).rejects.toThrow(/^the GitHub token holds a character other than printable ASCII \(a space, control or zero-width character, or a letter outside ASCII\); set it again without one$/);
     }
     expect(await g.git(remote, ["branch", "--list"])).toBe("");
   }, 20_000);

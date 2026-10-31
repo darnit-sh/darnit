@@ -12,7 +12,7 @@ export type Repo = { owner: string; repo: string };
 // GitHub tokens are printable ASCII. fetch quotes a header value it rejects in its error, so a token
 // with a line break inside would be printed.
 const checked = (token: string) => {
-  if (/[^\x21-\x7e]/.test(token)) throw new Refusal("the GitHub token holds a space or control character; set it again without one");
+  if (/[^\x21-\x7e]/.test(token)) throw new Refusal("the GitHub token holds a character other than printable ASCII (a space, control or zero-width character, or a letter outside ASCII); set it again without one");
   return token || undefined;
 };
 
