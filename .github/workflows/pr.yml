@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   # The title becomes the commit subject on main, and the commits stay on the pull request page.
+  # Base's copy of the script decides when base has one, so a change cannot loosen the check it is judged by.
   title:
     runs-on: ubuntu-latest
     steps:
@@ -26,7 +27,16 @@ jobs:
           AUTHOR: ${{ github.event.pull_request.user.login }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
-        run: sh scripts/check-pr.sh "$BASE" "$HEAD"
+        run: |
+          if git cat-file -e "$BASE:scripts/check-pr.sh" 2>/dev/null; then
+            git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
+            copy="base's scripts/check-pr.sh"
+          else
+            cp -R scripts "$RUNNER_TEMP/"
+            copy="this change's scripts/check-pr.sh, since base has none"
+          fi
+          printf 'Check from %s\n\n' "$copy" | tee -a "$GITHUB_STEP_SUMMARY"
+          sh "$RUNNER_TEMP/scripts/check-pr.sh" "$BASE" "$HEAD"
 
   # One rule per title type (scripts/check-refactor.sh). Runs again when the title or body is edited.
   # Base's copy of the scripts decides, so a change cannot loosen the rule it is checked by.
@@ -36,6 +46,9 @@ jobs:
     env:
       BASE: ${{ github.event.pull_request.base.sha }}
       HEAD: ${{ github.event.pull_request.head.sha }}
+      # npm runs scripts and npx with this shell whatever an .npmrc in the change says: npm reads
+      # npm_config_* variables after project config, so they win.
+      npm_config_script_shell: /bin/sh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,6 +86,7 @@ jobs:
       BASE: ${{ github.event.pull_request.base.sha }}
       HEAD: ${{ github.event.pull_request.head.sha }}
       TITLE: ${{ github.event.pull_request.title }}
+      npm_config_script_shell: /bin/sh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
