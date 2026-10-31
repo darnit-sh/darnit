@@ -3,6 +3,9 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { beforeAll, describe, expect, it } from "vitest";
+import { parse } from "yaml";
+import { WORKFLOW } from "../src/init.js";
+import { matchersAtDarnit } from "./helpers.js";
 
 const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 const help = async (...args: string[]) =>
@@ -53,6 +56,18 @@ describe("docs match the CLI", () => {
     const said = /^ {2}--force +([^]*?)\n {2}-/m.exec(await help("init"))?.[1]?.replace(/\s+/g, " ").trim();
     expect(said).toMatch(/committed/);
     expect(row).toBe(said);
+  });
+
+  it("the README shows the workflow init writes, and its fix --pr job also removes setup-node's problem matchers before darnit runs", async () => {
+    const [check, pr] = [...(await read("README.md")).matchAll(/^```yaml\n([^]*?)^```$/gm)].map((m) => m[1]!);
+    expect(check).toBe(WORKFLOW.replace(/npx darnit@\S+/, "npx darnit"));
+    type Step = { uses?: string; run?: string };
+    const steps = (parse(check!) as { jobs: { check: { steps: Step[] } } }).jobs.check.steps;
+    expect(matchersAtDarnit(steps)).toEqual([]);
+    const [, last] = pr!.split(/^# \.\.\.and the last step replaced with:\n/m);
+    const prSteps = [...steps.slice(0, -1), ...(parse(last!) as Step[])];
+    expect(prSteps.at(-1)?.run).toMatch(/npx darnit fix --pr/);
+    expect(matchersAtDarnit(prSteps)).toEqual([]);
   });
 
   it("each command's README section lists exactly the flags the command has", async () => {
