@@ -501,6 +501,38 @@ describe("uncommitted where git composes file names, as on macOS", () => {
   });
 });
 
+describe("patch", () => {
+  const lines = (...l: string[]) => `${l.join("\n")}\n`;
+  // Each pair gives a different diff under one of the settings below: the algorithm, the indent heuristic, a wider context.
+  const algo = [lines("y", "  w();", "y", "y", "  w();", "y", "  w();", "  z();"), lines("}", "y", "y", "y", "", "  w();", "y", "  w();", "  w();", "  z();")];
+  const heur = [lines("  w();", "  z();", "y", "x", "{", "}", "  z();", "", "x"), lines("  w();", "  z();", "y", "x", "  z();", "{", "}", "}", "  z();", "x")];
+  const far = Array.from({ length: 30 }, (_, i) => `line ${i}`);
+  const pairs: Record<string, string[]> = {
+    "algo.js": algo,
+    "heur.js": heur,
+    "far.js": [lines(...far), lines(...far.map((l, i) => (i === 2 || i === 20 ? `${l}!` : l)))],
+    "café.js": [lines("a", "", "b"), lines("A", "", "b")],
+    "up.js": [lines("a"), lines("b")],
+  };
+
+  it("gives the same bytes whatever diff settings the repository's own code wrote", async () => {
+    const dir = await repoWith({ ...Object.fromEntries(Object.entries(pairs).map(([f, [a]]) => [f, a!])), ".gitattributes": "up.js diff=up\n" });
+    for (const [f, [, b]] of Object.entries(pairs)) await writeFile(join(dir, f), b!);
+    const files = Object.keys(pairs);
+    const clean = await g.patch(dir, files);
+    await writeFile(join(dir, "order"), "up.js\nfar.js\n");
+    const hostile = {
+      "core.quotePath": "true", "diff.suppressBlankEmpty": "true", "diff.orderFile": join(dir, "order"), "diff.external": "false",
+      "diff.up.textconv": "tr a-z A-Z", "color.diff": "always", "color.ui": "always", "diff.context": "8", "diff.interHunkContext": "20",
+      "diff.algorithm": "histogram", "diff.indentHeuristic": "false", "diff.noprefix": "true", "diff.mnemonicPrefix": "true", "core.abbrev": "7",
+    };
+    for (const [key, value] of Object.entries(hostile)) await g.git(dir, ["config", key, value]);
+    expect(await g.patch(dir, files)).toBe(clean);
+    expect(clean).toMatch(/^diff --git a\/algo\.js b\/algo\.js\nindex [0-9a-f]{40}\.\./);
+    expect(clean).toContain("diff --git a/café.js b/café.js");
+  });
+});
+
 describe("uncommittedReasons", () => {
   it("names changed files and case-only names in one clause each, with the command's own words", () => {
     const files = ["a.js", "b.js", "c.js", "d.js", "e.js", "f.js"].map((file) => ({ file }));

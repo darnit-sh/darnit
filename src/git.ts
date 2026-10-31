@@ -233,6 +233,48 @@ export const push = (root: string, branch: string, site = GITHUB) => git(root, [
 export const diff = (root: string, files: readonly string[], color: boolean) =>
   git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
 
+const EXTRAHEADER = /^http\.(?:.+\.)?extraheader$/i;
+// A user name or password in an http or https URL, where a token can sit.
+const URL_USER = /\bhttps?:\/\/[^\s/?#@]*@/i;
+
+/** How git config can hand the repository's code a token: an http extra header, an ssh command, or a URL with a user or password. */
+export type Credential = "header" | "ssh" | "url";
+
+const has = (entries: readonly (readonly [string, string])[], key: RegExp) => entries.some(([k]) => key.test(k.trim()));
+const credentialIn = (entries: readonly (readonly [string, string])[]): Credential | undefined =>
+  has(entries, EXTRAHEADER) ? "header" : has(entries, /^core\.sshcommand$/i) ? "ssh" : entries.some((e) => e.some((t) => URL_USER.test(t))) ? "url" : undefined;
+
+// Config git takes from the environment. git() drops it; the search for a token keeps it, since everything darnit
+// starts can read darnit's environment.
+const ENV_CONFIG = /^GIT_CONFIG_(?:COUNT|PARAMETERS|KEY_\d+|VALUE_\d+)$/;
+
+/** The token git config holds, as git reads it in `root`: every scope, the config in darnit's environment, and every file they include. */
+export async function savedCredential(root: string): Promise<Credential | undefined> {
+  const env = { ...(await childEnv()), ...Object.fromEntries(Object.entries(process.env).filter(([k]) => ENV_CONFIG.test(k))) };
+  const { stdout } = await exec("git", [...UNTRUSTED_REPO, "config", "--list", "-z"], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
+  const entries = stdout.split("\0").filter(Boolean).map((e) => {
+    const i = e.indexOf("\n");
+    return i < 0 ? ([e, ""] as const) : ([e.slice(0, i), e.slice(i + 1)] as const);
+  });
+  return credentialIn(entries);
+}
+
+export const topLevel = async (root: string) => (await git(root, ["rev-parse", "--show-toplevel"])).trim();
+
+export const head = async (root: string) => (await git(root, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
+
+// Settings the repository can set that change a diff's bytes; pinned so two checkouts produce the same patch.
+const PINNED_DIFF = ["core.quotePath=false", "diff.suppressBlankEmpty=false", "diff.orderFile=/dev/null"];
+
+/** `files` (relative to `root`) against HEAD as `git diff --binary` prints them, with paths relative to `root`. */
+export const patch = (root: string, files: readonly string[]) =>
+  git(root, [
+    ...PINNED_DIFF.flatMap((c) => ["-c", c]),
+    "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--relative",
+    "--src-prefix=a/", "--dst-prefix=b/", "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers", "--indent-heuristic",
+    "HEAD", "--", ...files,
+  ]);
+
 /** Diff between two dirs under cwd, no repo needed. git exits 1 when they differ, which is not an error here. */
 export async function diffDirs(cwd: string, before: string, after: string, color: boolean): Promise<string> {
   try {
