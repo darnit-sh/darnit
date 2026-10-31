@@ -150,43 +150,40 @@ const LABELS: Record<ChangeRecord["status"], string> = {
 
 const modelSets = new WeakMap<object, Set<string>>();
 
-/** The record's replacement for each retiring model a finding names. */
-export function replacements(h: Hit | ModelValueHit): [string, Replacement][] {
+/** The record's replacement for the retiring model a finding names: a call site or value names one. */
+export function replacement(h: Hit | ModelValueHit): Replacement | undefined {
   const models = h.record.fix?.models;
-  if (!models) return [];
+  if (!models) return undefined;
   if (!modelSets.has(models)) modelSets.set(models, new Set(Object.keys(models)));
-  const named = "model" in h ? [h.model] : findMentions(h.text, modelSets.get(models)!, h.file).map((m) => m.model);
-  return [...new Set(named)].flatMap((m) => (Object.hasOwn(models, m) ? [[m, models[m]!] as [string, Replacement]] : []));
+  const model = "model" in h ? h.model : findMentions(h.text, modelSets.get(models)!, h.file)[0]?.model;
+  return model !== undefined && Object.hasOwn(models, model) ? models[model] : undefined;
 }
 
 const advice = (r: Replacement, vendor: string) => ("model" in r ? `use ${shown(r.model)} instead (${vendorName(vendor)}'s recommendation)` : shown(r.human));
 
 const heading = (r: ChangeRecord) => `${r.vendor} ${r.announcedAt}: ${title(r)}${LABELS[r.status]}`;
 
-// A call site or value names one model, so it has at most one replacement.
-const replacement = (h: Hit | ModelValueHit) => {
-  const swap = replacements(h)[0];
-  return swap ? { replacement: swap[1] } : {};
-};
-
 /** Machine-readable form of the hits. */
 export function toJson(hits: readonly (Hit | ModelValueHit)[]): object[] {
-  return hits.map((h) => ({
-    id: h.record.id,
-    title: title(h.record),
-    status: h.record.status,
-    vendor: h.record.vendor,
-    announcedAt: h.record.announcedAt,
-    kind: h.record.kind,
-    file: h.file,
-    line: h.line,
-    column: h.column,
-    text: h.text,
-    sources: h.record.sources.map((s) => s.url),
-    ...(h.local ? { localAddresses: h.local } : {}),
-    ...("model" in h ? { model: h.model } : {}),
-    ...replacement(h),
-  }));
+  return hits.map((h) => {
+    const swap = replacement(h);
+    return {
+      id: h.record.id,
+      title: title(h.record),
+      status: h.record.status,
+      vendor: h.record.vendor,
+      announcedAt: h.record.announcedAt,
+      kind: h.record.kind,
+      file: h.file,
+      line: h.line,
+      column: h.column,
+      text: h.text,
+      sources: h.record.sources.map((s) => s.url),
+      ...(h.local ? { localAddresses: h.local } : {}),
+      ...("model" in h ? { model: h.model } : {}),
+      ...(swap ? { replacement: swap } : {}),
+    };
+  });
 }
 
 /** Machine-readable form of the mentions. */
@@ -251,8 +248,8 @@ function grouped(hits: readonly Hit[], noun: string): string[] {
     out.push(heading(record));
     group.forEach((h, i) => {
       out.push(`  ${locations[i]!.padEnd(width)}${snippet(h.text)}${h.local ? `  (sent to ${h.local.map(shown).join(" or ")}; ignore if that server isn't OpenAI)` : ""}`);
-      const swaps = replacements(h);
-      for (const [model, r] of swaps) out.push(`    ${swaps.length > 1 ? `${shown(model)}: ` : ""}${advice(r, record.vendor)}`);
+      const swap = replacement(h);
+      if (swap) out.push(`    ${advice(swap, record.vendor)}`);
     });
     out.push(`  ${plural(group.length, noun)} in ${plural(new Set(group.map((h) => h.file)).size, "file")}`);
     for (const source of record.sources) out.push(`  ${source.url}`);

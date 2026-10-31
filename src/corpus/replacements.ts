@@ -42,7 +42,7 @@ export function cellModels(text: string): string[] | undefined {
   return ids && [name, ...ids];
 }
 
-const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', nbsp: " ", mdash: "\u2014" };
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", nbsp: " ", mdash: "\u2014" };
 // Tags the page wraps cell text in. Any other tag, such as img or script, refuses the cell.
 const INLINE = new Set(["a", "b", "br", "code", "em", "i", "p", "span", "strong", "sub", "sup"]);
 const MAX_CELL = 10_000;
@@ -63,7 +63,7 @@ export function cellText(html: string): string | undefined {
   }
   text += html.slice(at);
   const decoded = text
-    .replace(/&(amp|lt|gt|quot|nbsp|mdash|#\d{1,6});/g, (_, e: string) => ENTITIES[e] ?? String.fromCodePoint(Number(e.slice(1))))
+    .replace(/&(amp|lt|gt|nbsp|mdash|#\d{1,6});/g, (_, e: string) => ENTITIES[e] ?? String.fromCodePoint(Number(e.slice(1))))
     .replace(/\s+/g, " ")
     .replace(/\( | (?=[),])/g, (m) => m.trim())
     .replace(/[\u2010\u2011]/g, "-")
@@ -81,15 +81,15 @@ const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
 
 /**
  * What the page's tables say: each model's replacement cells in page order, newest first, every table or row not
- * read, and the markup of each row refused or cut short, so a detected model it names fails the run.
+ * read, and the text of each model row not read, so a detected model it names fails the run.
  */
-export type Page = { replacements: Map<string, string[]>; skipped: string[]; refused: string[] };
+export type Page = { replacements: Map<string, string[]>; skipped: string[]; unread: { text: string; row: string }[] };
 
 /** The page's deprecation tables: shutdown date first, then the model, any price columns, and the replacement column. */
 export function readPage(html: string): Page {
   const replacements = new Map<string, string[]>();
   const skipped: string[] = [];
-  const refused: string[] = [];
+  const unread: Page["unread"] = [];
   for (const table of html.split(/<table[\s>]/i).slice(1)) {
     const raw = table.split(/<\/table>/i)[0]!.split(/<tr[\s>]/i).slice(1);
     const [head = [], ...rows] = raw.map(cells);
@@ -101,41 +101,51 @@ export function readPage(html: string): Page {
     for (const [i, row] of rows.entries()) {
       const bad = row.some((c) => c === undefined) || row.length !== head.length;
       const models = bad ? undefined : cellModels(row[1]!);
-      if (bad) refused.push(raw[i + 1]!);
-      const why = row.length !== head.length ? `it has ${row.length} cells, the table ${head.length}` : `a cell holds markup, control characters or over ${MAX_CELL} characters`;
-      if (!models) skipped.push(bad ? `row refused: ${why}` : `row ${row.join(" | ")}`);
       for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), row[to]!]);
+      if (models) continue;
+      const why = row.length !== head.length ? `it has ${row.length} cells, the table ${head.length}` : `a cell holds markup, control characters or over ${MAX_CELL} characters`;
+      const label = bad ? `row ${i + 1} of the table headed ${head.join(" | ")}, refused: ${why}` : `row ${row.join(" | ")}`;
+      skipped.push(label);
+      // A row retiring fine-tuning on a model, not calls to it, names the model and is rightly not read.
+      if (bad || !/fine-tuning/i.test(row[1]!)) unread.push({ text: bad ? raw[i + 1]! : row[1]!, row: label });
     }
   }
-  return { replacements, skipped, refused };
+  return { replacements, skipped, unread };
 }
 
 // One model id and one setting such as "(reasoning.mode: pro)"; any other words get the fixed reason.
 const SETTING = /^(\S+) \(([a-z_.]{1,40}: [a-z0-9_.-]{1,40})\)$/;
 const isListed = (s: string) => isModel(s) || (s.endsWith("*") && isModel(s.slice(0, -1)));
-const either = (ids: string[]) => (ids.length === 2 ? ids.join(" or ") : `${ids.slice(0, -1).join(", ")}, or ${ids.at(-1)}`);
+const either = (ids: string[]) => (ids.length < 3 ? ids.join(" or ") : `${ids.slice(0, -1).join(", ")}, or ${ids.at(-1)}`);
+/** The model ids a replacement cell offers as a choice, "a or b" or "a, b, or c", or undefined for any other cell. */
+const choice = (text: string) => {
+  const ids = text.split(/,? or |, /);
+  return ids.length > 1 && ids.every(isListed) ? ids : undefined;
+};
 
 /**
  * A replacement cell as fix.models holds it: one model id is a rename. Model ids joined by commas or "or", or one
- * model id with a setting, become a reason built from those parts. Any other cell gets a fixed reason, never its text.
+ * model id with a setting, become a reason built from those parts, each model followed by `retiring` first. Any
+ * other cell gets a fixed reason, never its text.
  */
-function entry(record: ChangeRecord, text: string): Replacement {
+function entry(record: ChangeRecord, text: string, retiring: (id: string) => string[]): Replacement {
   const vendor = vendorName(record.vendor);
   const source = record.sources[0]!.url;
   if (isModel(text)) return { model: text, source };
-  if (text === "" || text === "\u2014" || text === "-") return { human: `${vendor} names no replacement`, source };
-  const setting = text.length <= 200 ? SETTING.exec(text) : null;
-  if (setting && isModel(setting[1]!)) return { human: `not a plain swap: ${vendor} recommends ${setting[1]} with ${setting[2]}`, source };
-  const ids = text.length <= 200 ? text.split(/,? or |, /) : [];
-  if (ids.length > 1 && ids.every(isListed)) return { human: `not a plain swap: ${vendor} recommends ${either(ids)}`, source };
+  if (text === "\u2014") return { human: `${vendor} names no replacement`, source };
+  const setting = SETTING.exec(text);
+  if (setting && isModel(setting[1]!)) return { human: `not a plain swap: ${vendor} recommends ${retiring(setting[1]!).join(" or ")} with ${setting[2]}`, source };
+  const ids = choice(text);
+  if (ids) return { human: `not a plain swap: ${vendor} recommends ${either([...new Set(ids.flatMap((id) => retiring(id)))])}`, source };
   return { human: `${vendor} names no single replacement model`, source };
 }
 
-const ID_CHAR = /[a-z0-9._:-]/i;
-/** Whether `text` holds `id` as a whole name, not inside a longer one. */
+const ID_CHAR = /[a-z0-9._:-]/;
+/** Whether `text` holds `id` as a whole name, in any case and with invisible characters such as soft hyphens left out. */
 function names(text: string, id: string): boolean {
-  for (let at = text.indexOf(id); at !== -1; at = text.indexOf(id, at + 1))
-    if (!ID_CHAR.test(text[at - 1] ?? " ") && !ID_CHAR.test(text[at + id.length] ?? " ")) return true;
+  const plain = text.replace(/\p{Default_Ignorable_Code_Point}/gu, "").toLowerCase();
+  for (let at = plain.indexOf(id); at !== -1; at = plain.indexOf(id, at + 1))
+    if (!ID_CHAR.test(plain[at - 1] ?? " ") && !ID_CHAR.test(plain[at + id.length] ?? " ")) return true;
   return false;
 }
 
@@ -152,8 +162,9 @@ function listed(r: Replacement, known: ReadonlySet<string>, vendor: string): Rep
 /**
  * fix.models for every record that detects models, keyed by record id, from the newest row naming each model.
  * A replacement the page retires too is followed to one it does not; one that ends with no plain swap, or loops,
- * becomes `human`, and so does one the API spec does not list. A detected model the page has no row for, or that
- * a refused row names, is a problem: an older row must not stand in for a newer one darnit could not read.
+ * becomes `human`, and so does one the API spec does not list. A model a reason offers is followed the same way, or
+ * said to retire too. A detected model the page has no row for, or that a row darnit could not read names, is a
+ * problem: an older row must not stand in for a newer one darnit could not read.
  */
 export function replacementsFor(
   records: readonly ChangeRecord[],
@@ -161,6 +172,15 @@ export function replacementsFor(
   known: ReadonlySet<string>,
 ): { models: Map<string, Record<string, Replacement>>; problems: string[] } {
   const newest = (m: string) => page.replacements.get(m)?.[0];
+  // Where the page sends a model a reason offers: itself if it is not retiring, else the models its newest row offers.
+  const retiring = (id: string, seen: readonly string[] = []): string[] => {
+    const base = id.replace(/\*$/, "");
+    const text = newest(base);
+    if (text === undefined) return [id];
+    const next = isModel(text) ? [text] : choice(text);
+    if (!next || base !== id || seen.includes(base)) return [`${id} (retiring too)`];
+    return next.flatMap((n) => retiring(n, [...seen, base]));
+  };
   const follow = (record: ChangeRecord, start: Replacement): Replacement => {
     let at = start;
     const seen = new Set<string>();
@@ -169,7 +189,7 @@ export function replacementsFor(
       if (text === undefined) return at;
       if (seen.has(at.model)) return { human: `the recommended replacements loop back to ${at.model}`, source: at.source };
       seen.add(at.model);
-      const after = entry(record, text);
+      const after = entry(record, text, retiring);
       if ("human" in after) return { human: `${vendorName(record.vendor)} recommends ${at.model}, which also shuts down; ${after.human}`, source: after.source };
       at = after;
     }
@@ -180,12 +200,12 @@ export function replacementsFor(
   for (const r of records) {
     const ids = recordModels(r);
     const missing = ids.filter((m) => newest(m) === undefined);
-    const unread = ids.filter((m) => page.refused.some((row) => names(row, m)));
+    const unread = page.unread.flatMap((u) => ids.filter((m) => names(u.text, m)).map((m) => `${r.id}: ${m} is named in a row darnit could not read, ${u.row.slice(0, 200)}`));
     if (missing.length > 0) problems.push(`${r.id}: the page has no row for ${missing.join(", ")}`);
-    if (unread.length > 0) problems.push(`${r.id}: a row darnit refused names ${unread.join(", ")}`);
+    problems.push(...unread);
     if (missing.length === 0 && unread.length === 0 && ids.length > 0) {
       const vendor = vendorName(r.vendor);
-      models.set(r.id, Object.fromEntries(ids.map((m) => [m, ReplacementSchema.parse(listed(follow(r, entry(r, newest(m)!)), known, vendor))])));
+      models.set(r.id, Object.fromEntries(ids.map((m) => [m, ReplacementSchema.parse(listed(follow(r, entry(r, newest(m)!, retiring)), known, vendor))])));
     }
   }
   return { models, problems };

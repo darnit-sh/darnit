@@ -61,12 +61,12 @@ export function requestProperty(spec: Spec, method: string, path: string, field:
   return resolve(spec, own) ?? own;
 }
 
-/** The ids in a schema's own enum and in the enums of its anyOf, oneOf and allOf parts, not in its properties. */
+/** The ids in a schema's own enum and in the enums of its anyOf parts, not in its properties. */
 function enumIds(schema: unknown, out: Set<string>): void {
   if (!schema || typeof schema !== "object") return;
-  const s = schema as { enum?: unknown; anyOf?: unknown; oneOf?: unknown; allOf?: unknown };
+  const s = schema as { enum?: unknown; anyOf?: unknown };
   if (Array.isArray(s.enum)) for (const v of s.enum as unknown[]) if (typeof v === "string") out.add(v);
-  for (const parts of [s.anyOf, s.oneOf, s.allOf]) if (Array.isArray(parts)) for (const p of parts as unknown[]) enumIds(p, out);
+  if (Array.isArray(s.anyOf)) for (const p of s.anyOf as unknown[]) enumIds(p, out);
 }
 
 /** Every model id the spec lists: the enums of each `model` property and of the schemas of model ids, such as ModelIdsShared. */

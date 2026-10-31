@@ -101,7 +101,11 @@ describe("the deprecations page", () => {
       ].join(""),
     );
     expect(replacements).toEqual(new Map([["a-3", ["b-1"]]]));
-    expect(skipped).toEqual(["row 2026 | a-1 | a&#x2D;2 | b&1", "table headed Date | Model | Recommended replacement", "row refused: it has 4 cells, the table 3"]);
+    expect(skipped).toEqual([
+      "row 2026 | a-1 | a&#x2D;2 | b&1",
+      "table headed Date | Model | Recommended replacement",
+      "row 1 of the table headed Shutdown date | Model / system | Recommended replacement, refused: it has 4 cells, the table 3",
+    ]);
   });
 
   it("refuses a cell holding markup, a control or bidi character, or a megabyte, and never cleans it up", () => {
@@ -120,8 +124,10 @@ describe("the deprecations page", () => {
       expect(cellText(cell)).toBeUndefined();
       const page = readPage(table([`a-1 || ${cell}`, `${cell} || b-1`]));
       expect(page.replacements).toEqual(new Map());
-      expect(page.skipped).toEqual(Array(2).fill("row refused: a cell holds markup, control characters or over 10000 characters"));
-      expect(page.refused).toHaveLength(2);
+      expect(page.skipped).toEqual(
+        [1, 2].map((n) => `row ${n} of the table headed Shutdown date | Model / system | Recommended replacement, refused: a cell holds markup, control characters or over 10000 characters`),
+      );
+      expect(page.unread).toHaveLength(2);
     }
     // Decoded once: the entities stay text, and the cell gets darnit's fixed words, never its own.
     expect(cellText("&amp;lt;script&amp;gt;")).toBe("&lt;script&gt;");
@@ -221,10 +227,60 @@ describe("fix.models from the page", () => {
     for (const newest of ["<code>a-1</code> <abbr>new</abbr> || c-1 or d-1", "a-1 || c-1 || d-1"]) {
       const page = readPage(table([newest, "a-1 || b-1"]));
       expect(page.replacements.get("a-1")).toEqual(["b-1"]);
-      expect(replacementsFor([r], page, KNOWN)).toEqual({ models: new Map(), problems: ["openai:2026-01-01:one: a row darnit refused names a-1"] });
+      expect(replacementsFor([r], page, KNOWN).problems).toEqual([`openai:2026-01-01:one: a-1 is named in a row darnit could not read, ${page.skipped[0]}`]);
     }
     // A longer name holding the id is not the id.
     expect(replacementsFor([r], readPage(table(["a-1-x <abbr>new</abbr> || c-1", "a-1 || b-1"])), KNOWN).problems).toEqual([]);
+  });
+
+  it("fails when a newer model row it cannot read names a detected model, in any case or with invisible characters", async () => {
+    const records = (await loadRecords()).map((l) => l.record);
+    const known = modelIds(parseSpec(await SPEC));
+    const fixture = await FIXTURE;
+    const at = fixture.indexOf("<tr> <td>July 23, 2026</td> <td><code>gpt-5.2-codex</code>");
+    expect(at).toBeGreaterThan(0);
+    const shapes = ["o1-mini (all snapshots)", "o1-mini*", "o1-mini<sup>2</sup>", "O1-mini", "o1-mini and o1-mini-2024-09-12", "o1&#8203;-mini", "o1-&#173;mini"];
+    for (const cell of shapes) {
+      const page = readPage(`${fixture.slice(0, at)}<tr><td>July 23, 2026</td><td>${cell}</td><td>gpt-5.6-sol</td></tr>\n${fixture.slice(at)}`);
+      expect(page.replacements.get("o1-mini")).toEqual(["o4-mini"]);
+      const { problems } = replacementsFor(records, page, known);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toMatch(/^openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27: o1-mini is named in a row darnit could not read, row July 23, 2026 \| /);
+    }
+    // The fixture's rows retiring fine-tuning on babbage-002 and davinci-002 name detected models and are rightly not read.
+    expect(readPage(fixture).skipped).toContain("row 2024-10-28 | New fine-tuning training on davinci-002 | gpt-4o-mini");
+    expect(replacementsFor(records, readPage(fixture), known).problems).toEqual([]);
+  });
+
+  it("follows each model a reason offers, or says it retires too", () => {
+    const r = shutdown("one", ["a-1", "a-2", "a-3", "a-4", "a-5", "a-6"]);
+    const page = readPage(
+      table([
+        "a-1 || x-1 or y-1",
+        "x-1 || x-2",
+        "y-1 || z-1 or x-2",
+        "a-2 || p-1, q-1, or s-1",
+        "p-1 || r-1",
+        "q-1 || r-1",
+        "s-1 || \u2014",
+        "a-3 || x-1 or f-1*",
+        "f-1 || f-9",
+        "a-4 || c-1 or k-1",
+        "c-1 || c-2 or k-1",
+        "c-2 || c-1",
+        "a-5 || <code>x-1</code> (<code>reasoning.mode: pro</code>)",
+        "a-6 || m-1 or n-1",
+      ]),
+    );
+    const reason = (said: string) => ({ human: `not a plain swap: OpenAI recommends ${said}`, source: PAGE });
+    expect(replacementsFor([r], page, KNOWN).models.get(r.id)).toEqual({
+      "a-1": reason("x-2 or z-1"),
+      "a-2": reason("r-1 or s-1 (retiring too)"),
+      "a-3": reason("x-2 or f-1* (retiring too)"),
+      "a-4": reason("c-1 (retiring too) or k-1"),
+      "a-5": reason("x-2 with reasoning.mode: pro"),
+      "a-6": reason("m-1 or n-1"),
+    });
   });
 
   it("gives every shipped model record what the page gives, agreeing with its notes, and never a retiring replacement", async () => {
@@ -241,15 +297,18 @@ describe("fix.models from the page", () => {
     const retiring = new Set([...records.flatMap(recordModels), ...page.replacements.keys()]);
     expect([...swaps.values()].flatMap((s) => ("model" in s && retiring.has(s.model) ? [s.model] : []))).toEqual([]);
     expect([...swaps.values()].flatMap((s) => ("model" in s && !known.has(s.model) ? [s.model] : []))).toEqual([]);
+    // A reason offers a retiring model only when it says so.
+    const offered = (h: string) => [...h.replace(/\S+ \(retiring too\)|^OpenAI recommends \S+, which also shuts down; /g, "").matchAll(/[a-z0-9][a-z0-9._:-]*/g)].map((m) => m[0]);
+    expect([...swaps.values()].flatMap((s) => ("human" in s ? offered(s.human).filter((id) => retiring.has(id)) : []))).toEqual([]);
     // Every reason is darnit's own words around model ids and one plain setting.
     const ID = "[a-z0-9][a-z0-9._:-]*";
-    const ANY = `${ID}\\*?`;
+    const ANY = `${ID}(\\*?|\\*? \\(retiring too\\))`;
     const built = new RegExp(
       `^(OpenAI recommends ${ID}, which also shuts down; )?(OpenAI names no replacement|OpenAI names no single replacement model|` +
-        `not a plain swap: OpenAI recommends (${ANY} or ${ANY}|${ANY}(, ${ANY})+, or ${ANY}|${ID} with [a-z_.]+: [a-z0-9_.-]+|${ID}, which its API spec does not list))$`,
+        `not a plain swap: OpenAI recommends (${ANY} or ${ANY}|${ANY}(, ${ANY})+, or ${ANY}|${ANY} with [a-z_.]+: [a-z0-9_.-]+|${ID}, which its API spec does not list))$`,
     );
     expect([...swaps.values()].flatMap((s) => ("human" in s && !built.test(s.human) ? [s.human] : []))).toEqual([]);
-    const picked = ["gpt-4", "gpt-3.5-turbo", "o1", "o3-mini", "o4-mini", "gpt-4.5-preview", "o1-mini", "o1-pro", "text-moderation-007", "gpt-4-0314", "codex-mini-latest"];
+    const picked = ["gpt-4", "gpt-3.5-turbo", "o1", "o3-mini", "o4-mini", "gpt-4.5-preview", "o1-mini", "o1-pro", "text-moderation-007", "gpt-4-0314", "dall-e-3", "codex-mini-latest"];
     expect(Object.fromEntries(picked.map((m) => [m, swaps.get(m)]))).toEqual({
       "gpt-4": { model: "gpt-5.6-sol", source: PAGE },
       "gpt-3.5-turbo": { model: "gpt-5.6-terra", source: PAGE },
@@ -260,7 +319,10 @@ describe("fix.models from the page", () => {
       "o1-mini": { model: "gpt-5.6-terra", source: PAGE }, // o4-mini, itself retiring
       "o1-pro": { human: "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro", source: PAGE },
       "text-moderation-007": { model: "omni-moderation-latest", source: PAGE }, // the page names the family, omni-moderation
-      "gpt-4-0314": { human: "not a plain swap: OpenAI recommends gpt-5 or gpt-4.1*", source: PAGE },
+      // gpt-5 and the gpt-4.1 family retire too: gpt-5 goes to gpt-5.6-sol, and a family has no one row to follow.
+      "gpt-4-0314": { human: "not a plain swap: OpenAI recommends gpt-5.6-sol or gpt-4.1* (retiring too)", source: PAGE },
+      // gpt-image-1 and gpt-image-1-mini retire too, both to gpt-image-2.5-sunburst or gpt-image-2.5-flare.
+      "dall-e-3": { human: "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare", source: PAGE },
       "codex-mini-latest": { human: "not a plain swap: OpenAI recommends gpt-5-codex-mini, which its API spec does not list", source: PAGE },
     });
   });
