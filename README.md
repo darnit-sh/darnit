@@ -280,6 +280,11 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
+      # setup-node's problem matchers would turn repository text darnit prints into annotations.
+      - run: |
+          echo "::remove-matcher owner=tsc::"
+          echo "::remove-matcher owner=eslint-stylish::"
+          echo "::remove-matcher owner=eslint-compact::"
       - run: cd "${RUNNER_TEMP:?}" && npx darnit check "${GITHUB_WORKSPACE:?}"
 ```
 
@@ -287,6 +292,12 @@ Once a day it runs `check`. npx starts outside your checkout, so nothing in the
 repository can change which darnit runs. The day a reviewed or parser-verified change hits your code, the run fails and
 GitHub tells you, like any failed workflow. Scheduled workflows only run from
 the default branch, so commit this file there.
+
+The step before darnit removes the problem matchers `actions/setup-node` adds.
+They read every line of the log, so a line from your repository that darnit
+prints, such as `src/x.ts(1,1): error TS2322: ...` in your test output, would
+otherwise become an annotation on the run. A matcher that another action or a
+step of your own adds still reads darnit's output.
 
 When a newer release line is out, `check` and `fix` end with one line naming
 the version to change in this file, shown in a workflow run as a notice on the
