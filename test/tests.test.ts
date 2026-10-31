@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { detectBuildCommand, detectTestCommand, runTests, unreadSettings } from "../src/tests.js";
 
 const tempDirs: string[] = [];
@@ -150,6 +150,21 @@ describe("runTests", () => {
       if (saved === undefined) delete process.env.GITHUB_TOKEN;
       else process.env.GITHUB_TOKEN = saved;
     }
+  });
+
+  it("runs the commands on the repository it was given when the environment points git at another one", async () => {
+    const [mine, other] = [await dirWith({}), await dirWith({})];
+    for (const d of [mine, other]) execFileSync("git", ["init", "-q"], { cwd: d });
+    vi.stubEnv("GIT_DIR", join(other, ".git"));
+    try {
+      // What a husky `prepare` script runs.
+      expect(await runTests(mine, "git config core.hooksPath .husky")).toMatchObject({ passed: true });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    const hooksPath = (d: string) => execFileSync("git", ["config", "--default", "", "core.hooksPath"], { cwd: d, encoding: "utf8" }).trim();
+    expect(hooksPath(other)).toBe("");
+    expect(hooksPath(mine)).toBe(".husky");
   });
 
   it("never hands darnit's GitHub token to the repository's commands, and never shows it", async () => {

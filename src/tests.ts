@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { access, lstat, readdir } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { readText } from "./detect.js";
+import { childEnv, CREDENTIALS } from "./git.js";
 
 export type TestRun = { command: string; passed: boolean; output: string; timedOut: boolean };
 
@@ -96,9 +97,6 @@ const TAIL_LINES = 40;
 const TAIL_CHARS = 16 * 1024;
 const CUT_MARGIN = 1024;
 
-// darnit's GitHub credentials open the pull request; the repository's own commands never get them.
-export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
-
 const base64 = (s: string) => Buffer.from(s).toString("base64").replace(/=+$/, "");
 
 /**
@@ -120,12 +118,11 @@ const ESCAPES = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b\n]*(?:\u0007|\u00
 /** How long a build or test run may take before it is stopped. */
 export const TIME_LIMIT_MINUTES = 10;
 
-export function runTests(root: string, command: string, timeoutMs = TIME_LIMIT_MINUTES * 60 * 1000): Promise<TestRun> {
+export async function runTests(root: string, command: string, timeoutMs = TIME_LIMIT_MINUTES * 60 * 1000): Promise<TestRun> {
+  const env: NodeJS.ProcessEnv = { ...(await childEnv()), CI: "1" };
   return new Promise((resolve) => {
     // Detached = its own process group, so a timeout kills the command and not just the shell around it.
     const detached = process.platform !== "win32";
-    const env: NodeJS.ProcessEnv = { ...process.env, CI: "1" };
-    for (const k of CREDENTIALS) delete env[k];
     const child = spawn(command, { cwd: root, shell: true, detached, env, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     let cut = false;

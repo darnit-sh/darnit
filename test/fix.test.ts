@@ -1,8 +1,9 @@
 import { execFile, spawn } from "node:child_process";
-import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyAndVerify, exitCodeFor, fix, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
@@ -532,6 +533,44 @@ describe("fix", () => {
     expect((await fix(dir, { dryRun: true })).diff).toContain("max_completion_tokens");
   });
 
+  const NOT_CHECKED_OUT = "not a checked-out git repository; darnit only edits files it can undo. Use --dry-run to preview.";
+
+  it("refuses a bare repository, a .git folder and a plain folder before touching a file, unless --dry-run", async () => {
+    const work = await repoWith({ "sdk.js": SDK_CALL });
+    const parent = await mkdtemp(join(tmpdir(), "darnit-bare-"));
+    tempDirs.push(parent);
+    for (const name of ["bare.git", "empty.git"]) await promisify(execFile)("git", ["clone", "-q", "--bare", work, name], { cwd: parent });
+    await mkdir(join(parent, "plain"));
+    // Each has a fixable file, except empty.git, where there is nothing to fix but darnit still cannot undo.
+    const places = [join(parent, "bare.git"), join(work, ".git"), join(work, ".git", "refs"), join(parent, "plain")];
+    for (const p of places) await writeFile(join(p, "sdk.js"), SDK_CALL);
+    for (const p of [...places, join(parent, "empty.git")]) {
+      for (const opts of [{}, { noTest: true }, { pr: true }, { pr: true, allowDirty: true }]) {
+        const err = await fix(p, opts).catch((e: unknown) => e);
+        expect(err, p).toBeInstanceOf(Refusal);
+        expect((err as Error).message, p).toBe(NOT_CHECKED_OUT);
+      }
+      expect(await darnit(parent, "fix", p)).toEqual({ code: 2, stdout: "", stderr: `darnit: ${NOT_CHECKED_OUT}\n` });
+      expect(await darnit(parent, "fix", "--pr", "--allow-dirty", p)).toEqual({ code: 2, stdout: "", stderr: `darnit: ${NOT_CHECKED_OUT}\n` });
+      if (p.endsWith("empty.git")) continue;
+      expect(await readFile(join(p, "sdk.js"), "utf8"), p).toBe(SDK_CALL);
+      expect((await fix(p, { dryRun: true })).diff, p).toContain("max_completion_tokens");
+    }
+  });
+
+  it("works on a subdirectory or a linked worktree of a repository as on the folder itself", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "sub/sdk.js": SDK_CALL });
+    const wt = join(await mkdtemp(join(tmpdir(), "darnit-wt-")), "wt");
+    tempDirs.push(dirname(wt));
+    await git(dir, ["worktree", "add", "-q", "--detach", wt]);
+    // Only files under the subdirectory are rewritten.
+    expect((await fix(join(dir, "sub"), { noTest: true })).diff).toContain("max_completion_tokens");
+    expect(await git(dir, ["status", "--porcelain"])).toBe(" M sub/sdk.js\n");
+    expect((await fix(wt, { noTest: true })).diff).toContain("max_completion_tokens");
+    expect(await git(wt, ["status", "--porcelain"])).toBe(" M sdk.js\n M sub/sdk.js\n");
+    expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
+
   const NO_COMMITS = "the current branch has no commits yet; commit your files first. Use --dry-run to preview.";
 
   it("refuses a repository with no commits before touching a file, unless --dry-run", async () => {
@@ -551,6 +590,139 @@ describe("fix", () => {
 
     expect(await darnit(dir, "fix", "--json")).toEqual({ code: 2, stdout: "", stderr: `darnit: ${NO_COMMITS}\n` });
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+  });
+
+  const UNSAFE = /^uncommitted changes in files darnit needs to edit: sdk\.js; commit or stash them first so git can undo the rewrite, or preview with --dry-run$/;
+
+  it("refuses to rewrite a file git does not track, and leaves it byte for byte", async () => {
+    const dir = await repoWith({ "README.md": "hi\n" });
+    await writeFile(join(dir, "sdk.js"), SDK_CALL);
+    const before = await readFile(join(dir, "sdk.js"));
+    for (const opts of [{}, { noTest: true }]) await expect(fix(dir, opts)).rejects.toThrow(UNSAFE);
+    const cli = await darnit(dir, "fix", "--no-test");
+    expect(cli).toMatchObject({ code: 2, stdout: "" });
+    expect(cli.stderr.trimEnd()).toMatch(new RegExp(`^darnit: ${UNSAFE.source.slice(1)}`));
+    expect((await readFile(join(dir, "sdk.js"))).equals(before)).toBe(true);
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("?? sdk.js");
+    expect((await fix(dir, { dryRun: true })).diff).toContain("max_completion_tokens");
+  });
+
+  const commitAll = async (dir: string) => {
+    await git(dir, ["add", "-A"]);
+    await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"]);
+  };
+  // Each leaves a file with a fixable call that git could not put back as it is; returns its name.
+  const unsafe: [string, (dir: string) => Promise<string>][] = [
+    ["ignored", async (dir) => {
+      await writeFile(join(dir, ".git", "info", "exclude"), "new.js\n");
+      await writeFile(join(dir, "new.js"), SDK_CALL);
+      return "new.js";
+    }],
+    ["edited", async (dir) => {
+      await appendFile(join(dir, "sdk.js"), "// mine\n");
+      return "sdk.js";
+    }],
+    ["converted to CRLF where .gitattributes stores LF", async (dir) => {
+      await writeFile(join(dir, ".gitattributes"), "*.js text eol=lf\n");
+      await commitAll(dir);
+      await writeFile(join(dir, "sdk.js"), SDK_CALL.replaceAll("\n", "\r\n"));
+      return "sdk.js";
+    }],
+    ["edited and staged", async (dir) => {
+      await appendFile(join(dir, "sdk.js"), "// mine\n");
+      await git(dir, ["add", "sdk.js"]);
+      return "sdk.js";
+    }],
+    ["new and staged", async (dir) => {
+      await writeFile(join(dir, "new.js"), SDK_CALL);
+      await git(dir, ["add", "new.js"]);
+      return "new.js";
+    }],
+    ["marked assume-unchanged", async (dir) => {
+      await git(dir, ["update-index", "--assume-unchanged", "sdk.js"]);
+      await appendFile(join(dir, "sdk.js"), "// mine\n");
+      return "sdk.js";
+    }],
+    ["marked skip-worktree", async (dir) => {
+      await git(dir, ["update-index", "--skip-worktree", "sdk.js"]);
+      await appendFile(join(dir, "sdk.js"), "// mine\n");
+      return "sdk.js";
+    }],
+    ["inside a submodule", async (dir) => {
+      const lib = await repoWith({ "new.js": SDK_CALL });
+      await promisify(execFile)("git", ["-c", "protocol.file.allow=always", "submodule", "add", "-q", lib, "lib"], { cwd: dir });
+      await commitAll(dir);
+      return "lib/new.js";
+    }],
+    ["inside a nested repository", async (dir) => {
+      await mkdir(join(dir, "nested"));
+      await writeFile(join(dir, "nested", "new.js"), SDK_CALL);
+      await git(join(dir, "nested"), ["init", "-q"]);
+      await commitAll(join(dir, "nested"));
+      return "nested/new.js";
+    }],
+  ];
+
+  it.each(unsafe)("refuses a file that is %s, with or without --pr", async (_, setup) => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    const file = await setup(dir);
+    const before = await readFile(join(dir, file));
+    for (const opts of [{}, { pr: true, allowDirty: true, noTest: true, repo: "o/r" }]) {
+      await expect(fix(dir, opts)).rejects.toThrow(`files darnit needs to edit: ${file};`);
+      expect((await readFile(join(dir, file))).equals(before)).toBe(true);
+    }
+    expect((await git(dir, ["branch", "--list", "darnit/*"])).trim()).toBe("");
+  });
+
+  it("checks files by their path from a subfolder of the repository", async () => {
+    const dir = await repoWith({ "app/sdk.js": SDK_CALL, "app/b.js": SDK_CALL });
+    await appendFile(join(dir, "app", "b.js"), "// mine\n");
+    await expect(fix(join(dir, "app"), { noTest: true })).rejects.toThrow("files darnit needs to edit: b.js;");
+    await git(dir, ["checkout", "--", "app/b.js"]);
+    expect((await fix(join(dir, "app"), { noTest: true })).records[0]).toMatchObject({ applied: true });
+    await writeFile(join(dir, "app", "new.js"), SDK_CALL);
+    await expect(fix(join(dir, "app"), { noTest: true })).rejects.toThrow("files darnit needs to edit: new.js;");
+  });
+
+  it("reads a staged rename's source path as a path, not as a status line", async () => {
+    // Read as a status line, "ab/sdk.js" would lose its first three characters and name sdk.js.
+    const dir = await repoWith({ "sdk.js": SDK_CALL, "ab/sdk.js": "notes\n" });
+    await git(dir, ["mv", "ab/sdk.js", "moved.md"]);
+    expect((await fix(dir, { noTest: true })).records[0]).toMatchObject({ applied: true });
+  });
+
+  it("says when a file's name differs from git's only in case", async () => {
+    const dir = await repoWith({ "SDK.js": SDK_CALL, "b.js": SDK_CALL });
+    // Git sets core.ignorecase on a disk that ignores case, as on macOS and Windows, where this rename leaves git status clean.
+    await git(dir, ["config", "core.ignorecase", "true"]);
+    await rename(join(dir, "SDK.js"), join(dir, "sdk.js"));
+    const before = await readFile(join(dir, "sdk.js"));
+    await expect(fix(dir, { noTest: true })).rejects.toThrow(
+      /^files darnit needs to edit differ only in case from the names git has: sdk\.js \(git has SDK\.js\); rename them back or commit the rename first, or preview with --dry-run$/,
+    );
+    await appendFile(join(dir, "b.js"), "// mine\n");
+    await expect(fix(dir, { noTest: true })).rejects.toThrow(
+      "uncommitted changes in files darnit needs to edit: b.js; commit or stash them first so git can undo the rewrite; files darnit needs to edit differ only in case from the names git has: sdk.js (git has SDK.js);",
+    );
+    await git(dir, ["config", "core.ignorecase", "false"]);
+    await expect(fix(dir, { noTest: true })).rejects.toThrow("uncommitted changes in files darnit needs to edit: b.js, sdk.js;");
+    expect((await readFile(join(dir, "sdk.js"))).equals(before)).toBe(true);
+  });
+
+  it("names the first five files it refused and counts the rest", async () => {
+    const dir = await repoWith({ "README.md": "hi\n" });
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) await writeFile(join(dir, `sdk${n}.js`), SDK_CALL);
+    await expect(fix(dir)).rejects.toThrow("files darnit needs to edit: sdk1.js, sdk2.js, sdk3.js, sdk4.js, sdk5.js and 2 more;");
+  });
+
+  it("still fixes a clean tracked file when other files are untracked or edited", async () => {
+    const dir = await repoWith({ 'é "q".js': SDK_CALL, "notes.md": "committed" });
+    await writeFile(join(dir, "notes.md"), "mine");
+    await writeFile(join(dir, "todo.txt"), "mine");
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true });
+    expect(await readFile(join(dir, 'é "q".js'), "utf8")).toContain("max_completion_tokens: 5");
+    expect(await readFile(join(dir, "notes.md"), "utf8")).toBe("mine");
   });
 
   it("puts the files back when git fails after the rewrite", async () => {
@@ -746,6 +918,27 @@ describe("fix --pr", () => {
     expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
     expect(await tree(dir)).toEqual(await tree(BEFORE));
     expect(renderSummary(result)).toContain("pull request opened https://github.com/o/r/pull/1");
+  });
+
+  it("commits and pushes in the folder it was given when the environment points git at another repository", async () => {
+    const { dir, bare, branch } = await repoWithOrigin();
+    // Same files, so git sees nothing amiss when it reads this one instead.
+    const other = await repoWithOrigin();
+    const otherHead = (await git(other.dir, ["rev-parse", "HEAD"])).trim();
+    const posts = stubGitHub(branch);
+    vi.stubEnv("GIT_DIR", join(other.dir, ".git"));
+    const result = await fix(dir, { pr: true, noTest: true, repo: "o/r" });
+    vi.unstubAllEnvs();
+
+    expect((await git(other.bare, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(other.dir, ["branch", "--list", BRANCH])).trim()).toBe("");
+    expect((await git(other.dir, ["rev-parse", "HEAD"])).trim()).toBe(otherHead);
+    expect((await git(other.dir, ["status", "--porcelain"])).trim()).toBe("");
+    expect(result.records[0]?.pr?.state).toBe("opened");
+    expect(posts).toHaveLength(1);
+    expect((await git(bare, ["show", `${BRANCH}:app.py`])).toString()).toContain("max_completion_tokens=256");
+    expect((await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe(branch);
+    expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
   });
 
   it("opens no pull request when the rules changed nothing", async () => {
