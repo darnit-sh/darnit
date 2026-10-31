@@ -2,7 +2,8 @@
 # change record covers, with the reason it has none. `npm run accounting` checks this file against
 # corpus/openai: an item missing from it fails, and so does an entry for an item that is gone or
 # that a record now covers. An entry with needs-record instead of reason stays open and is listed
-# on every run, with the record it should get.
+# on every run, soonest date first, with the record it should get; date is the day OpenAI gives
+# for the change, when it gives one.
 #
 # Keys are what `npm run accounting` prints, quoted the same way. Records cover items on their own
 # when they can: an operation by a record for its endpoint or SDK call; a request schema or one of
@@ -17,6 +18,7 @@
 - items:
     - schema ModelIdsShared anyOf 1 enum gpt-3.5-turbo-16k
     - schema BetaModelIdsShared anyOf 1 enum gpt-3.5-turbo-16k
+  date: "2024-09-13"
   needs-record: >-
     Add to openai:2023-06-13:updated-chat-models-shut-down-2024-09-13, which has the shutdown date
     the spec gives and names only gpt-3.5-turbo-0301.
@@ -24,6 +26,7 @@
 - items:
     - schema ModelIdsShared anyOf 1 enum o1-preview-2024-09-12
     - schema BetaModelIdsShared anyOf 1 enum o1-preview-2024-09-12
+  date: "2025-07-28"
   needs-record: >-
     Add to openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28, which has the shutdown
     date the spec gives and names only o1-preview.
@@ -31,6 +34,7 @@
 - items:
     - schema ModelIdsShared anyOf 1 enum o1-mini-2024-09-12
     - schema BetaModelIdsShared anyOf 1 enum o1-mini-2024-09-12
+  date: "2025-10-27"
   needs-record: >-
     Add to openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27, which has the shutdown
     date the spec gives and names only o1-mini.
@@ -42,6 +46,7 @@
     - schema BetaModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2024-12-17
     - schema BetaModelIdsShared anyOf 1 enum gpt-4o-audio-preview-2025-06-03
     - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-audio-preview-2024-12-17
+  date: "2026-05-07"
   needs-record: >-
     Add these snapshots to openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down, which has
     the shutdown date the spec gives and names only the gpt-4o-audio-preview aliases, if OpenAI's
@@ -57,6 +62,7 @@
     - schema CreateImageRequest property quality anyOf 0 enum standard
     - schema CreateImageRequest property quality anyOf 0 enum hd
     - schema CreateImageEditRequest property quality anyOf 0 enum standard
+  date: "2026-05-12"
   needs-record: >-
     Report-only. Finds these sizes and qualities in images.generate and images.edit calls and raw
     HTTP calls to /v1/images. They were DALL·E values, retired with DALL·E on the date the spec's
@@ -68,6 +74,7 @@
     - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-search-preview
     - schema BetaModelIdsShared anyOf 1 enum gpt-4o-search-preview
     - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-search-preview
+  date: "2026-07-23"
   needs-record: >-
     Breaking, report-only model record: finds these names as the model of any OpenAI call. The
     spec gives this shutdown date.
@@ -83,6 +90,7 @@
     - DELETE /videos/{video_id}
     - GET /videos/{video_id}/content
     - POST /videos/{video_id}/remix
+  date: "2026-09-24"
   needs-record: >-
     Breaking, report-only endpoint record: finds every videos call in the SDKs and raw HTTP calls
     to /v1/videos. The date is the removal date OpenAI's deprecations page gives for the Videos API,
@@ -103,6 +111,7 @@
     - schema BetaModelIdsShared anyOf 1 enum o3
     - schema BetaModelIdsResponses anyOf 1 enum o3-pro
     - schema BetaModelIdsResponses anyOf 1 enum gpt-5-pro
+  date: "2026-12-11"
   needs-record: >-
     The spec gives the date of openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down, but
     that record names only the dated snapshots, so code naming these aliases is not reported. Add
@@ -131,6 +140,7 @@
     - schema BetaModelIdsShared anyOf 1 enum gpt-4o-2024-11-20
     - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini
     - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-2024-07-18
+  date: "2027-01-14"
   needs-record: >-
     Deprecation, report-only model record in the same form as the others: finds these names as
     the model of any OpenAI call. The spec gives this shutdown date; the record should cite
@@ -139,6 +149,7 @@
 - items:
     - schema ModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
     - schema BetaModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
+  date: "2027-01-20"
   needs-record: >-
     Add to openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down, which has
     the shutdown date the spec gives and names gpt-audio-mini but not this snapshot.
@@ -299,6 +310,7 @@
     - "POST /images/generations request-property-default-value-removed `model` `dall-e-2`"
     - "POST /images/generations request-property-default-value-removed `response_format` `url`"
     - "POST /images/generations request-property-default-value-removed `style` `vivid`"
+  date: "2026-05-12"
   needs-record: >-
     Behavioral, report-only. Finds images.generate and images.edit calls that set no model, or no
     response_format, and raw HTTP calls to /v1/images/generations and /v1/images/edits that leave

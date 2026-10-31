@@ -38,13 +38,17 @@ export async function appendRemovals(file: string, removed: Removal[], read?: (f
   await writeFile(file, `${JSON.stringify([...log, ...removed], null, 2)}\n`);
 }
 
-/** One entry of packs/<vendor>/not-covered.yaml: items with no record, and why, or the record they still need. */
+/**
+ * One entry of packs/<vendor>/not-covered.yaml: items with no record, and why, or the record they still need
+ * and, when OpenAI gives one, the date it matters by.
+ */
 export const NotCoveredSchema = z
   .array(
     z
-      .object({ items: z.array(z.string().min(1)).min(1), reason: z.string().min(1).optional(), "needs-record": z.string().min(1).optional() })
+      .object({ items: z.array(z.string().min(1)).min(1), reason: z.string().min(1).optional(), "needs-record": z.string().min(1).optional(), date: z.iso.date().optional() })
       .strict()
-      .refine((e) => !e.reason !== !e["needs-record"], "each entry gives either a reason or needs-record"),
+      .refine((e) => !e.reason !== !e["needs-record"], "each entry gives either a reason or needs-record")
+      .refine((e) => !e.date || e["needs-record"], "only a needs-record entry takes a date"),
   )
   .superRefine((entries, ctx) => {
     const seen = new Set<string>();
@@ -192,7 +196,7 @@ function holders(spec: unknown): Map<string, Set<string>> {
   return out;
 }
 
-export type Open = { key: string; proposal: string };
+export type Open = { key: string; proposal: string; date?: string | undefined };
 
 export type Accounting = {
   deprecated: number;
@@ -266,9 +270,22 @@ export function account(input: {
       result.covered.set(item.key, ids);
       if (entry) result.redundant.push({ key: item.key, ids });
     } else if (entry?.reason) result.reasons.push(item.key);
-    else if (entry?.["needs-record"]) result.needsRecord.push({ key: item.key, proposal: entry["needs-record"] });
+    else if (entry?.["needs-record"]) result.needsRecord.push({ key: item.key, proposal: entry["needs-record"], date: entry.date });
     else result.unaccounted.push(item.key);
   }
   result.stale = [...entries.keys()].filter((k) => !known.has(k));
   return result;
+}
+
+/** Open items grouped by proposal, soonest date first and undated last; `past` when the date is before `today`. */
+export function openItems(open: Open[], today: string): { proposal: string; date?: string | undefined; past: boolean; keys: string[] }[] {
+  const groups = new Map<string, { proposal: string; date?: string | undefined; past: boolean; keys: string[] }>();
+  for (const o of open) {
+    const id = `${o.date ?? ""}\n${o.proposal}`;
+    const group = groups.get(id) ?? { proposal: o.proposal, date: o.date, past: o.date !== undefined && o.date < today, keys: [] };
+    group.keys.push(o.key);
+    groups.set(id, group);
+  }
+  const order = (g: { date?: string | undefined }) => g.date ?? "￿";
+  return [...groups.values()].sort((a, b) => (order(a) < order(b) ? -1 : order(a) > order(b) ? 1 : 0));
 }

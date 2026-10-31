@@ -13,6 +13,7 @@ import {
   appendRemovals,
   deprecatedItems,
   NotCoveredSchema,
+  openItems,
   RemovalSchema,
   removalItems,
   removalsFrom,
@@ -157,7 +158,7 @@ describe("account", () => {
       ],
     });
     expect(result.reasons).toEqual(["schema Model enum gpt-4", "schema Model enum gpt-4o", "schema Response property status"]);
-    expect(result.needsRecord).toEqual([{ key: "schema Shared property old", proposal: "Report old on /b." }]);
+    expect(result.needsRecord).toEqual([{ key: "schema Shared property old", proposal: "Report old on /b.", date: undefined }]);
     expect(result.unaccounted).toEqual([]);
     expect(result.stale).toEqual(["schema Gone property x"]);
     expect(result.redundant).toEqual([{ key: "schema BetaOnly property old", ids: ["openai:2026-01-01:old-a"] }]);
@@ -204,6 +205,22 @@ describe("account", () => {
     expect(account({ vendor: "openai", spec: {}, removals: removals.slice(0, 2), records: [], notCovered: [{ items: ["GET /files request-parameter-removed `query` `limit`"], reason: "Meant for limit only." }] }).unaccounted).toEqual([
       "GET /files request-parameter-removed `query` `purpose`",
     ]);
+  });
+
+  it("lists open items soonest first, undated last, and flags dates already past", () => {
+    const open = [
+      { key: "c", proposal: "No date." },
+      { key: "b", proposal: "Later.", date: "2027-01-14" },
+      { key: "a", proposal: "Passed.", date: "2026-07-23" },
+      { key: "a2", proposal: "Passed.", date: "2026-07-23" },
+    ];
+    expect(openItems(open, "2026-10-31")).toEqual([
+      { proposal: "Passed.", date: "2026-07-23", past: true, keys: ["a", "a2"] },
+      { proposal: "Later.", date: "2027-01-14", past: false, keys: ["b"] },
+      { proposal: "No date.", date: undefined, past: false, keys: ["c"] },
+    ]);
+    expect(NotCoveredSchema.safeParse([{ items: ["x"], reason: "r", date: "2026-01-01" }]).success).toBe(false);
+    expect(NotCoveredSchema.safeParse([{ items: ["x"], "needs-record": "n", date: "soon" }]).success).toBe(false);
   });
 
   it("logs every removal in a corpus diff, and nothing else", async () => {
@@ -261,7 +278,7 @@ describe("npm run accounting", () => {
     await mkdir(join(dir, "openai"));
     await writeFile(join(dir, "openai", "openapi.yaml"), JSON.stringify(copy));
     await writeFile(join(dir, "openai", "removals.json"), removalsText);
-    return spawnSync(join(ROOT, "node_modules", ".bin", "tsx"), ["scripts/accounting.ts", "--corpus", dir], { cwd: ROOT, encoding: "utf8" });
+    return spawnSync(join(ROOT, "node_modules", ".bin", "tsx"), ["scripts/accounting.ts", "--corpus", dir, "--today", "2026-10-31"], { cwd: ROOT, encoding: "utf8" });
   }
   const schema = (s: Spec, name: string) => s.components!.schemas![name]!;
 
@@ -307,6 +324,9 @@ describe("npm run accounting", () => {
     expect(out.stdout).toContain('  "schema CreateImageRequest property evil\\u001b[2J\\u202e\\nforged"\n');
     expect(out.stdout).not.toContain("\u001b");
     expect(out.stdout).not.toContain("\u202e");
+    expect(out.stdout).toMatch(/\n {2}- 2026-07-23, already past: .*\n {6}"schema ModelIdsShared anyOf 1 enum gpt-4o-search-preview"/);
+    expect(out.stdout.indexOf("- 2026-07-23")).toBeLessThan(out.stdout.indexOf("- 2027-01-14"));
+    expect(out.stdout.indexOf("- 2027-01-14")).toBeLessThan(out.stdout.indexOf("- no date"));
   });
 
   it("fails on a reason entry for an item no longer in the spec", async () => {
