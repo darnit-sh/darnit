@@ -6,20 +6,24 @@ language: javascript
 # messages.create, legacy completions.create), and on calls nested inside the
 # options. Call sites that pass a config object built elsewhere are not
 # matched; see change.json edgeCases. check notes this limit in every report.
+# Only the key is replaced, so comments between it and the value stay as written.
 rule:
-  pattern:
-    context: '({ max_tokens: $N })'
-    selector: pair
+  kind: property_identifier
   inside:
-    kind: object
-    nthChild:
-      position: 1
-      ofRule: { not: { kind: comment } }
+    field: key
+    pattern:
+      context: '({ max_tokens: $N })'
+      selector: pair
     inside:
-      kind: arguments
+      kind: object
+      nthChild:
+        position: 1
+        ofRule: { not: { kind: comment } }
       inside:
-        kind: call_expression
-        has:
-          field: function
-          regex: 'chat\s*\??\.\s*completions\s*\??\.\s*(create|parse|stream|runTools|runFunctions)$'
-fix: 'max_completion_tokens: $N'
+        kind: arguments
+        inside:
+          kind: call_expression
+          has:
+            field: function
+            regex: 'chat\s*\??\.\s*completions\s*\??\.\s*(create|parse|stream|runTools|runFunctions)$'
+fix: max_completion_tokens

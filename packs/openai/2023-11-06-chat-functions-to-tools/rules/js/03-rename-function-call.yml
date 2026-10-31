@@ -4,20 +4,24 @@ language: javascript
 # chat.completions.create options object. The object form
 # `function_call: { name }` needs `{ type: "function", function: { name } }`
 # and is deliberately not matched here; see change.json edgeCases.
+# Only the key is replaced, so comments between it and the value stay as written.
 rule:
-  pattern:
-    context: '({ function_call: $CHOICE })'
-    selector: pair
-  has:
-    field: value
-    kind: string
+  kind: property_identifier
   inside:
-    kind: object
+    field: key
+    pattern:
+      context: '({ function_call: $CHOICE })'
+      selector: pair
+    has:
+      field: value
+      kind: string
     inside:
-      kind: arguments
+      kind: object
       inside:
-        kind: call_expression
-        has:
-          field: function
-          regex: 'chat\.completions\.create$'
-fix: 'tool_choice: $CHOICE'
+        kind: arguments
+        inside:
+          kind: call_expression
+          has:
+            field: function
+            regex: 'chat\.completions\.create$'
+fix: tool_choice

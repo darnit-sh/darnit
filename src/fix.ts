@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse } from "@ast-grep/napi";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
 import { shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { loadRecords } from "./records/load.js";
+import { grammarFor } from "./scan/astgrep.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, TIME_LIMIT_MINUTES, unreadSettings } from "./tests.js";
 import { atLeast, npmVersionFor, pypiVersions, type Found } from "./versions.js";
@@ -146,12 +148,35 @@ async function restore(root: string, snap: Map<string, string>): Promise<void> {
  */
 type Outcome = { changed: string[]; remaining: Site[] };
 
+const COMMENT = "the rewrite would drop or change a comment in this file";
+
+/** True when every comment in `before` is still in `after`, byte for byte. A file it cannot parse is not. */
+export function keepsComments(file: string, before: string, after: string): boolean {
+  const grammar = grammarFor(file)?.grammar;
+  if (!grammar) return false;
+  const comments = (text: string) => parse(grammar, text).root().findAll({ rule: { kind: "comment" } }).map((n) => n.text());
+  const left = new Map<string, number>();
+  for (const c of comments(before)) left.set(c, (left.get(c) ?? 0) + 1);
+  for (const c of comments(after)) left.set(c, (left.get(c) ?? 0) - 1);
+  return [...left.values()].every((n) => n <= 0);
+}
+
 export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> {
   const before = await snapshotOf(dir, grp.files);
   await applyRules(grp.packDir, grp.files.map((f) => join(dir, f)));
   const changed: string[] = [];
-  for (const [f, text] of before) if ((await readFile(join(dir, f), "utf8")) !== text) changed.push(f);
-  const remaining = (await scan(dir, grp.files, [grp.record])).hits.map((h) => ({ file: h.file, line: h.line }));
+  // A file whose comments did not all survive goes back as it was, and its call sites to a human.
+  const kept = new Set<string>();
+  for (const [f, text] of before) {
+    const after = await readFile(join(dir, f), "utf8");
+    if (after === text) continue;
+    if (keepsComments(f, text, after)) changed.push(f);
+    else {
+      await writeFile(join(dir, f), text);
+      kept.add(f);
+    }
+  }
+  const remaining = (await scan(dir, grp.files, [grp.record])).hits.map((h) => ({ file: h.file, line: h.line, ...(kept.has(h.file) ? { note: COMMENT } : {}) }));
   if (changed.length > 0 && remaining.length >= grp.sites) {
     await restore(dir, before);
     return { changed: [], remaining };
@@ -195,9 +220,10 @@ async function versionGate(root: string, grp: Group): Promise<{ blocked?: string
 /** Records the verified outcome on the record's result. Returns the files actually rewritten. */
 function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = []): string[] {
   if (outcome.changed.length === 0) {
+    const kept = outcome.remaining.filter((s) => s.note === COMMENT);
     result.applied = false;
-    result.reason = NOT_COVERED;
-    if (held.length > 0) result.remaining = [...held];
+    result.reason = kept.length > 0 ? COMMENT : NOT_COVERED;
+    if (kept.length + held.length > 0) result.remaining = [...kept, ...held];
   } else if (outcome.remaining.length + held.length > 0) {
     result.remaining = [...outcome.remaining, ...held];
   }
