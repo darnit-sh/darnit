@@ -17,6 +17,7 @@ import {
   RemovalSchema,
   removalItems,
   removalsFrom,
+  readRemovals,
   requestSchemas,
   type Removal,
 } from "../src/corpus/accounting.js";
@@ -264,6 +265,10 @@ describe("account", () => {
       const denied = () => Promise.reject(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }));
       await expect(appendRemovals(file, [one], denied)).rejects.toThrow("EACCES");
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual([one, two]);
+      // An empty file is a log that lost its contents, not an empty log.
+      await writeFile(file, "");
+      await expect(appendRemovals(file, [one])).rejects.toThrow();
+      expect(await readFile(file, "utf8")).toBe("");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -398,13 +403,14 @@ describe("npm run accounting", () => {
   });
 });
 
+const tsx = join(ROOT, "node_modules", ".bin", "tsx");
+// A spec whose removals make no candidate record: a schema, and an enum value of a request property.
+const tinySpec = (values: string, extra: string) =>
+  `openapi: 3.1.0\ninfo: { title: t, version: "1" }\npaths:\n  /speak:\n    post:\n      requestBody:\n        content:\n          application/json:\n            schema:\n              type: object\n              properties:\n                voice: { type: string, enum: [${values}] }\n      responses:\n        "200": { description: ok }\ncomponents:\n  schemas:\n    Kept: { type: string }\n${extra}`;
+
 describe("npm run corpus", () => {
-  const tsx = join(ROOT, "node_modules", ".bin", "tsx");
-  // Removals that make no candidate record: a schema, and an enum value of a request property.
-  const spec = (values: string, extra: string) =>
-    `openapi: 3.1.0\ninfo: { title: t, version: "1" }\npaths:\n  /speak:\n    post:\n      requestBody:\n        content:\n          application/json:\n            schema:\n              type: object\n              properties:\n                voice: { type: string, enum: [${values}] }\n      responses:\n        "200": { description: ok }\ncomponents:\n  schemas:\n    Kept: { type: string }\n${extra}`;
-  const before = spec("alloy, aube", "    Gone: { type: string }\n");
-  const after = spec("alloy", "");
+  const before = tinySpec("alloy, aube", "    Gone: { type: string }\n");
+  const after = tinySpec("alloy", "");
 
   // Serves `after` as the vendor's spec to a corpus run whose last snapshot is `before`.
   async function refresh(seed: (dir: string) => Promise<void>) {
@@ -446,5 +452,51 @@ describe("npm run corpus", () => {
     expect(out.run).not.toBe(0);
     expect(out.removals).toBe("not json");
     expect(out.spec).toBe(before);
+  });
+});
+
+describe("npm run corpus:backfill", () => {
+  const git = (cwd: string, ...args: string[]) =>
+    promisify(execFile)("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "core.hooksPath=/dev/null", ...args], { cwd });
+  const backfill = (root: string) =>
+    promisify(execFile)(tsx, ["scripts/backfill-removals.ts", "--root", root], { cwd: ROOT }).then(
+      (r) => ({ code: 0, stderr: r.stderr }),
+      (err: { code?: number; stderr?: string }) => ({ code: err.code ?? 1, stderr: err.stderr ?? "" }),
+    );
+
+  it("replays every pair of snapshots in history, dated by the newer one, and refuses a shallow clone", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-backfill-"));
+    try {
+      const repo = join(dir, "repo");
+      await mkdir(join(repo, "corpus", "openai"), { recursive: true });
+      await git(repo, "init", "-q");
+      await writeFile(join(repo, "vendors.yml"), "openai:\n  spec: https://example.com/openapi.yaml\n");
+      const snapshots: [string, string][] = [
+        ["2026-01-01", tinySpec("alloy, aube", "    Gone: { type: string }\n")],
+        ["2026-01-08", tinySpec("alloy", "    Gone: { type: string }\n")],
+        ["2026-01-15", tinySpec("alloy", "")],
+      ];
+      for (const [fetchedAt, text] of snapshots) {
+        await writeFile(join(repo, "corpus", "openai", "openapi.yaml"), text);
+        await writeFile(join(repo, "corpus", "openai", "snapshot.json"), JSON.stringify({ fetchedAt }));
+        await git(repo, "add", ".");
+        await git(repo, "commit", "-q", "-m", fetchedAt);
+      }
+      expect((await backfill(repo)).code).toBe(0);
+      const log = await readRemovals(join(repo, "corpus", "openai", "removals.json"));
+      expect(removalItems(log).map((i) => i.key)).toEqual([
+        "2026-01-08 POST /speak request-property-enum-value-removed `aube` `voice`",
+        "2026-01-15 api-schema-removed `Gone`",
+      ]);
+
+      const shallow = join(dir, "shallow");
+      await git(dir, "clone", "-q", "--depth", "1", `file://${repo}`, shallow);
+      const out = await backfill(shallow);
+      expect(out.code).toBe(1);
+      expect(out.stderr).toContain("shallow");
+      await expect(readFile(join(shallow, "corpus", "openai", "removals.json"))).rejects.toThrow("ENOENT");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

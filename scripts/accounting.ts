@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { account, NotCoveredSchema, openItems, readOptional, RemovalSchema } from "../src/corpus/accounting.js";
+import { account, NotCoveredSchema, openItems, readOptional, readRemovals } from "../src/corpus/accounting.js";
 import type { VendorConfig } from "../src/corpus/candidates.js";
 import { parseSpec } from "../src/corpus/spec.js";
 import { forTerminal } from "../src/fix.js";
@@ -33,9 +33,9 @@ for (const [vendor, config] of Object.entries(vendors)) {
   const result = account({
     vendor,
     spec: parseSpec(await readFile(join(corpus, vendor, "openapi.yaml"), "utf8")),
-    removals: RemovalSchema.array().parse(JSON.parse((await readOptional(join(corpus, vendor, "removals.json"))) || "[]")),
+    removals: await readRemovals(join(corpus, vendor, "removals.json")),
     records,
-    notCovered: NotCoveredSchema.parse(parseYaml(await readOptional(join(PACKS_DIR, vendor, "not-covered.yaml"))) ?? []),
+    notCovered: NotCoveredSchema.parse(parseYaml((await readOptional(join(PACKS_DIR, vendor, "not-covered.yaml"))) ?? "") ?? []),
     symbols: config.symbols,
   });
   out.push(`${vendor}: ${result.deprecated} deprecated in the spec, ${result.removals} removals in the corpus history`);

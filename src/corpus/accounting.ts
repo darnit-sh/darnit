@@ -28,13 +28,17 @@ export const removalsFrom = (entries: ChangeEntry[], observedAt: string): Remova
     .filter((e) => e.id.includes("removed"))
     .map((e) => ({ observedAt, id: e.id, ...(e.operation ? { operation: e.operation } : {}), ...(e.path ? { path: e.path } : {}), text: e.text }));
 
-/** A file's text, or "" when it does not exist; any other failure throws. */
-export const readOptional = (file: string, read = (f: string) => readFile(f, "utf8")) =>
-  read(file).catch((err: NodeJS.ErrnoException) => (err.code === "ENOENT" ? "" : Promise.reject(err)));
+/** A file's text, or undefined when it does not exist; any other failure throws. */
+export const readOptional = (file: string, read = (f: string) => readFile(f, "utf8")): Promise<string | undefined> =>
+  read(file).catch((err: NodeJS.ErrnoException) => (err.code === "ENOENT" ? undefined : Promise.reject(err)));
+
+/** A removals log; none yet is empty, but an empty or broken file is an error, never an empty log. */
+export const readRemovals = async (file: string, read?: (f: string) => Promise<string>): Promise<Removal[]> =>
+  RemovalSchema.array().parse(JSON.parse((await readOptional(file, read)) ?? "[]"));
 
 /** Appends to a corpus removals log, starting one when there is none. A log that cannot be read is never replaced. */
 export async function appendRemovals(file: string, removed: Removal[], read?: (f: string) => Promise<string>): Promise<void> {
-  const log = RemovalSchema.array().parse(JSON.parse((await readOptional(file, read)) || "[]"));
+  const log = await readRemovals(file, read);
   await writeFile(file, `${JSON.stringify([...log, ...removed], null, 2)}\n`);
 }
 
