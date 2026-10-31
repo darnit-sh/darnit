@@ -303,7 +303,7 @@ describe("account", () => {
       await appendRemovals(file, [two]);
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual([one, two]);
       const denied = () => Promise.reject(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }));
-      await expect(appendRemovals(file, [one], denied)).rejects.toThrow("EACCES");
+      await expect(readRemovals(file, denied)).rejects.toThrow("EACCES");
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual([one, two]);
       // An empty file is a log that lost its contents, not an empty log.
       await writeFile(file, "");

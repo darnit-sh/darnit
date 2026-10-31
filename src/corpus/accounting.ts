@@ -9,7 +9,7 @@ import type { ChangeEntry } from "./oasdiff.js";
  * what a record must cover to cover it: an operation, a request field (of a schema or on an endpoint), a whole
  * request schema, or an enum value of a field.
  */
-export type Item = {
+type Item = {
   key: string;
   method?: string | undefined;
   path?: string | undefined;
@@ -39,8 +39,8 @@ export const readRemovals = async (file: string, read?: (f: string) => Promise<s
   RemovalSchema.array().parse(JSON.parse((await readOptional(file, read)) ?? "[]"));
 
 /** Appends to a corpus removals log, starting one when there is none. A log that cannot be read is never replaced. */
-export async function appendRemovals(file: string, removed: Removal[], read?: (f: string) => Promise<string>): Promise<void> {
-  const log = await readRemovals(file, read);
+export async function appendRemovals(file: string, removed: Removal[]): Promise<void> {
+  const log = await readRemovals(file);
   await writeFile(file, `${JSON.stringify([...log, ...removed], null, 2)}\n`);
 }
 
@@ -71,6 +71,19 @@ const METHODS = new Set(["get", "put", "post", "delete", "options", "head", "pat
 const GROUPS = new Set(["properties", "allOf", "anyOf", "oneOf", "parameters"]);
 const COMPONENT = /^#\/components\/([^/]+)\/([^/]+)$/;
 const refName = (n: unknown) => (isNode(n) && typeof n.$ref === "string" ? COMPONENT.exec(n.$ref)?.[2] : undefined);
+
+/** Calls `visit` once on every object inside `root`, however often aliases reach it. */
+function eachNode(root: unknown, visit: (n: Node) => void): void {
+  const seen = new WeakSet<object>();
+  const stack = [root];
+  while (stack.length > 0) {
+    const n = stack.pop();
+    if (!isNode(n) || seen.has(n)) continue;
+    seen.add(n);
+    visit(n);
+    for (const child of Object.values(n)) stack.push(child);
+  }
+}
 
 /** What a record has to cover for the item a key names, read from the key's own words. */
 function target(label: string[], value?: string): Omit<Item, "key"> {
@@ -162,16 +175,10 @@ function requestSchemas(spec: unknown): Map<string, { method: string; path: stri
   // The components a node names by $ref anywhere inside it, as "schemas/Name", without following them.
   const refsIn = (root: unknown): string[] => {
     const found = new Set<string>();
-    const seen = new WeakSet<object>();
-    const stack = [root];
-    while (stack.length > 0) {
-      const n = stack.pop();
-      if (!isNode(n) || seen.has(n)) continue;
-      seen.add(n);
+    eachNode(root, (n) => {
       const ref = typeof n.$ref === "string" ? COMPONENT.exec(n.$ref) : null;
       if (ref && component(`${ref[1]}/${ref[2]}`) !== undefined) found.add(`${ref[1]}/${ref[2]}`);
-      for (const child of Object.values(n)) stack.push(child);
-    }
+    });
     return [...found];
   };
   const direct = new Map<string, string[]>();
@@ -213,22 +220,16 @@ function holders(spec: unknown): Map<string, Set<string>> {
     for (const k of ["anyOf", "oneOf", "allOf"]) if (Array.isArray(node[k])) for (const part of node[k] as unknown[]) valueOf(part, found);
     return found;
   };
-  const seen = new WeakSet<object>();
-  const stack: unknown[] = [spec];
-  while (stack.length > 0) {
-    const n = stack.pop();
-    if (!isNode(n) || seen.has(n)) continue;
-    seen.add(n);
+  eachNode(spec, (n) => {
     if (isNode(n.properties))
       for (const [field, value] of Object.entries(n.properties)) for (const s of valueOf(value, new Set())) out.set(s, (out.get(s) ?? new Set()).add(field));
-    for (const child of Object.values(n)) stack.push(child);
-  }
+  });
   return out;
 }
 
-export type Open = { key: string; proposal: string; date?: string | undefined };
+type Open = { key: string; proposal: string; date?: string | undefined };
 
-export type Accounting = {
+type Accounting = {
   deprecated: number;
   removals: number;
   /** Item key to the ids of the records that cover it. */
@@ -263,13 +264,12 @@ export function account(input: {
   const { vendor, spec, records } = input;
   const deprecated = deprecatedItems(spec);
   const removals = removalItems(input.removals);
-  let reach: ReturnType<typeof requestSchemas> | undefined;
-  let held: Map<string, Set<string>> | undefined;
+  const reach = requestSchemas(spec);
+  const held = holders(spec);
   const coversOp = (r: ChangeRecord, method: string, path: string, field: string | undefined) =>
     covers(r, vendor, path, field, method, input.symbols?.[`${method} ${path}`]);
   const coveredBy = (item: Item): ChangeRecord[] => {
     if (item.value !== undefined) {
-      held ??= holders(spec);
       const fields = item.field !== undefined ? [item.field] : [...(held.get(item.schema ?? "") ?? [])];
       const sets = (f: string) => [`${f}: "${item.value}"`, `${f}: '${item.value}'`, `${f}="${item.value}"`, `${f}='${item.value}'`];
       return records.filter(
@@ -280,7 +280,6 @@ export function account(input: {
     }
     if (item.method !== undefined && item.path !== undefined) return records.filter((r) => coversOp(r, item.method!, item.path!, item.field));
     if (item.schema === undefined) return [];
-    reach ??= requestSchemas(spec);
     const found = new Set<ChangeRecord>();
     for (const op of reach.get(item.schema) ?? []) {
       const these = records.filter((r) => coversOp(r, op.method, op.path, item.field));
@@ -297,7 +296,6 @@ export function account(input: {
     if (reason.startsWith("Response-only")) {
       if (item.change !== undefined) return item.change.startsWith("response-");
       const schema = item.key.startsWith("schema ") ? item.key.split(" ")[1] : undefined;
-      reach ??= requestSchemas(spec);
       return schema !== undefined && !reach.has(schema);
     }
     return !/\bspec\b/.test(reason) || [...reason.matchAll(/"([^"]+)"/g)].every((m) => (specText ??= JSON.stringify(spec)).includes(m[1]!));

@@ -99,8 +99,6 @@ export function deriveCandidates(input: {
   type Draft = { slug: string; kind: ChangeRecord["kind"]; field?: string | undefined; rename?: string | undefined; description: string; text: string; endpoints: string[]; paths: string[]; symbols: string[] };
   const drafts = new Map<string, Draft>();
 
-  const covered = (path: string, field: string | undefined) => existing.some((r) => covers(r, vendor, path, field));
-
   for (const e of entries) {
     const kind = KIND[e.id] ?? (ENDPOINT_GONE.test(e.id) ? "breaking" : undefined);
     const endpoint = e.operation && e.path ? `${e.operation} ${e.path}` : undefined;
@@ -135,7 +133,7 @@ export function deriveCandidates(input: {
     const key = `${endpoint} ${field ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (covered(e.path, field)) {
+    if (existing.some((r) => covers(r, vendor, e.path!, field))) {
       skip(`${e.id} (already recorded)`);
       continue;
     }

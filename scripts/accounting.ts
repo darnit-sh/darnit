@@ -16,7 +16,6 @@ import { loadRecords } from "../src/records/load.js";
 
 const at = process.argv.indexOf("--root");
 const ROOT = at > 0 ? resolve(process.argv[at + 1] ?? "") : fileURLToPath(new URL("../", import.meta.url));
-const today = new Date().toISOString().slice(0, 10);
 
 // Keys are spec text: quoted, and anything outside printable ASCII written as an escape, so a name cannot hide or forge a line.
 const show = (key: string) => JSON.stringify(key).replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
@@ -44,7 +43,7 @@ try {
     };
     section(
       "Open, needs a record (soonest first):",
-      openItems(result.needsRecord, today).flatMap((o) => [
+      openItems(result.needsRecord, new Date().toISOString().slice(0, 10)).flatMap((o) => [
         `- ${o.date ? `${o.date}${o.past ? ", already past" : ""}` : "no date"}: ${o.proposal.replace(/\s+/g, " ").trim()}`,
         ...o.keys.map((k) => `    ${show(k)}`),
       ]),
