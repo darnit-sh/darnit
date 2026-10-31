@@ -86,7 +86,7 @@ const darnit = (cwd: string, ...args: string[]) => darnitWith({}, cwd, ...args);
 
 async function darnitWith(extra: NodeJS.ProcessEnv, cwd: string, ...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-  const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "", GITHUB_TOKEN: "", GH_TOKEN: "", ...extra };
+  const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "", GITHUB_TOKEN: "", GH_TOKEN: "", SSH_AUTH_SOCK: "", ...extra };
   return new Promise((resolve) =>
     execFile(process.execPath, ["--import", import.meta.resolve("tsx"), cli, ...args], { cwd, env }, (err, stdout, stderr) =>
       resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }),
@@ -969,6 +969,7 @@ describe("fix --pr", () => {
     const plan = join(await planHome(), "plan");
     vi.stubEnv("GITHUB_TOKEN", "");
     vi.stubEnv("GH_TOKEN", "");
+    vi.stubEnv("SSH_AUTH_SOCK", "");
     const result = await fix(dir, { prepare: plan, noTest: true, version: "t" });
     expect(result.records[0]?.pr).toEqual({ state: "prepared", build: undefined, tests: undefined });
     expect(renderSummary(result)).toContain("Rename max_tokens to max_completion_tokens on chat completions: in the plan, not verified\n  tests: skipped");
@@ -1234,6 +1235,7 @@ describe("fix --prepare", () => {
   beforeEach(() => {
     vi.stubEnv("GITHUB_TOKEN", "");
     vi.stubEnv("GH_TOKEN", "");
+    vi.stubEnv("SSH_AUTH_SOCK", "");
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -1317,7 +1319,7 @@ describe("fix --prepare", () => {
     await expect(access(plan)).rejects.toThrow();
   });
 
-  it.each(["core.sshCommand", "core.sshCommand from the environment", "GIT_SSH_COMMAND", "GIT_SSH"])("refuses to start with a deploy key reachable through %s", async (where) => {
+  it.each(["core.sshCommand", "core.sshCommand from the environment", "GIT_SSH_COMMAND", "GIT_SSH", "SSH_AUTH_SOCK"])("refuses to start with a deploy key reachable through %s", async (where) => {
     const dir = await repoFrom(BEFORE);
     const plan = join(await planHome(), "plan");
     const key = join(await planHome(), "key");
@@ -1326,7 +1328,7 @@ describe("fix --prepare", () => {
     const command = `"ssh" -i "${key}"`;
     if (where === "core.sshCommand") await git(dir, ["config", "core.sshCommand", command]);
     else if (where.includes("environment")) for (const [k, v] of Object.entries({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.sshCommand", GIT_CONFIG_VALUE_0: command })) vi.stubEnv(k, v);
-    else vi.stubEnv(where, where === "GIT_SSH" ? "/usr/bin/ssh" : command);
+    else vi.stubEnv(where, { GIT_SSH: "/usr/bin/ssh", SSH_AUTH_SOCK: "/tmp/ssh-agent.sock" }[where] ?? command);
     await expect(fix(dir, { prepare: plan, test: `cat ${key}` })).rejects.toThrow("check out with persist-credentials: false");
     expect(runs.count).toBe(0);
     await expect(access(plan)).rejects.toThrow();
@@ -1355,7 +1357,7 @@ describe("fix --prepare", () => {
       execFile(
         process.execPath,
         ["--import", import.meta.resolve("tsx"), fileURLToPath(new URL("../src/cli.ts", import.meta.url)), "fix", "--prepare", plan, "--test", PROBE],
-        { cwd: dir, env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "true", GITHUB_TOKEN: "", GH_TOKEN: "", ...tokens } },
+        { cwd: dir, env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "true", GITHUB_TOKEN: "", GH_TOKEN: "", SSH_AUTH_SOCK: "", ...tokens } },
         (err, stdout, stderr) => resolve({ code: err ? ((err as { code?: number }).code ?? 1) : 0, out: stdout + stderr }),
       ),
     );

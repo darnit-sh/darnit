@@ -62,12 +62,14 @@ for example `http.curloptResolve` pointing github.com at another address with
 `fix --prepare` runs the repository's code, and its plan is uploaded for another job to read, so its
 job must hold no secrets at all: no token or other secret in its environment or git config, and no
 `id-token: write`. darnit refuses to start when it finds one in these places only: `GITHUB_TOKEN` or
-`GH_TOKEN`; `GIT_SSH_COMMAND`, `GIT_SSH` or the legacy `GIT_CONFIG`; and, in git config as git reads
-it in the repository (every scope, config passed in darnit's environment and every file they
-include), an http extra header, `core.sshCommand`, or an http or https URL with a user name or
-password. Other places are not checked, such as an inline `credential.helper`,
-`credential.<url>.username`, a URL with another scheme, or any other environment variable. A secret
-in any of them can reach the plan through test output.
+`GH_TOKEN`; `GIT_SSH_COMMAND`, `GIT_SSH`, `SSH_AUTH_SOCK` or the legacy `GIT_CONFIG`; and, in git
+config as git reads it in the repository (every scope, config passed in darnit's environment and
+every file they include), an http extra header, `core.sshCommand`, or an http or https URL with a
+user name or password. Other places are not checked, such as an inline `credential.helper`,
+`credential.helper=store` and its credentials file, `core.askPass`, `credential.<url>.username`, a
+URL with another scheme, any other environment variable, and config files hidden from git by
+`GIT_CONFIG_NOSYSTEM` or `GIT_CONFIG_GLOBAL=/dev/null` that the repository's code can still read. A
+secret in any of them can reach the plan through test output.
 
 ## How we handle a report
 
