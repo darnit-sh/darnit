@@ -54,6 +54,8 @@ const repoPath = ({ owner, repo }: Repo) => `/repos/${encodeURIComponent(owner)}
 
 async function api<T>(token: string, method: string, path: string, body?: object): Promise<T> {
   const signal = AbortSignal.timeout(TIMEOUT_MS);
+  // Should fetch or a server quote the token anyway, it never reaches darnit's message.
+  const hide = (text: string) => (token ? text.replaceAll(token, "***") : text);
   let res: Response;
   let text: string;
   try {
@@ -72,9 +74,11 @@ async function api<T>(token: string, method: string, path: string, body?: object
   } catch (err) {
     if (signal.aborted) throw new Error(`GitHub ${method} ${path} timed out after ${TIMEOUT_MS / 1000} seconds`, { cause: err });
     const { message, cause } = err as Error;
-    throw new Error(`GitHub ${method} ${path} failed: ${message}${cause instanceof Error ? ` (${cause.message})` : ""}`, { cause: err });
+    // No cause: fetch's error can hold the token, and printing an error prints its cause.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(hide(`GitHub ${method} ${path} failed: ${message}${cause instanceof Error ? ` (${cause.message})` : ""}`));
   }
-  if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${text.slice(0, 300)}`);
+  if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${hide(text).slice(0, 300)}`);
   return JSON.parse(text) as T;
 }
 

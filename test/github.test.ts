@@ -1,5 +1,6 @@
 import { once } from "node:events";
 import { type AddressInfo, createServer, type Socket } from "node:net";
+import { inspect } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Refusal } from "../src/fix.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "../src/github.js";
@@ -109,6 +110,21 @@ describe("GitHub API calls", () => {
     vi.stubGlobal("fetch", () => Promise.resolve(new Response("Bad credentials", { status: 401 })));
     await expect(defaultBranch("secret-token", { owner: "o", repo: "r" })).rejects.toThrow(/401 Bad credentials/);
     await expect(defaultBranch("secret-token", { owner: "o", repo: "r" })).rejects.not.toThrow(/secret-token/);
+  });
+
+  it("takes the token out of an error that quotes it, from fetch or from the response", async () => {
+    const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
+    const failed = async () => (await defaultBranch(token, { owner: "o", repo: "r" }).catch((e: unknown) => e)) as Error;
+    vi.stubGlobal("fetch", () => Promise.reject(new TypeError(`Headers.append: "Bearer ${token}" is an invalid header value`, { cause: new Error(`sent ${token}`) })));
+    let err = await failed();
+    expect(err.message).toBe('GitHub GET /repos/o/r failed: Headers.append: "Bearer ***" is an invalid header value (sent ***)');
+    expect(inspect(err)).not.toContain(token);
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(`echo: authorization: Bearer ${token}`, { status: 400 })));
+    err = await failed();
+    expect(err.message).toBe("GitHub GET /repos/o/r failed: 400 echo: authorization: Bearer ***");
+    // Hidden before the body is cut to 300 characters, so no piece of it is left at the end.
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(`${"x".repeat(290)}${token}`, { status: 400 })));
+    expect((await failed()).message).not.toContain(token.slice(0, 10));
   });
 
   // Sends `reply` once the request arrives, then goes quiet with the connection open.
