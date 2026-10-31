@@ -520,8 +520,10 @@ describe("escapeHidden", () => {
     expect(escapeHidden(`${cp(0x1f468)}${ZWJ}${ZWJ}${cp(0x1f469)}`)).toBe(`${cp(0x1f468)}\\u200d\\u200d${cp(0x1f469)}`);
     expect(escapeHidden(`a${ZWJ.repeat(5)}b`)).toBe(`a${"\\u200d".repeat(5)}b`);
     expect(escapeHidden(`a${VS16}`)).toBe("a\\ufe0f");
-    // A flag holds only a short subdivision code: no spaces, no capitals, nothing long enough to spell a message.
-    for (const code of ["g b", "GBENG", "deleteproddb"]) expect(escapeHidden(`${cp(0x1f3f4)}${tags(code)}${cp(0xe007f)}`)).toBe(`${cp(0x1f3f4)}${units(tags(code) + cp(0xe007f))}`);
+    // Only England, Scotland and Wales have flags: any other tags in the shape of one could spell a word.
+    for (const code of ["evil", "usca", "gbeng1", "gbe", "g b", "GBENG", "deleteproddb"]) expect(escapeHidden(`${cp(0x1f3f4)}${tags(code)}${cp(0xe007f)}`)).toBe(`${cp(0x1f3f4)}${units(tags(code) + cp(0xe007f))}`);
+    // A tag right after a whole flag is not part of it.
+    expect(escapeHidden(`${cp(0x1f3f4)}${tags("gbsct")}${cp(0xe007f, 0xe0041)}`)).toBe(`${cp(0x1f3f4)}${tags("gbsct")}${cp(0xe007f)}${units(cp(0xe0041))}`);
   });
 
   it("keeps a joiner after a pictograph, a skin tone and U+FE0F, and before a pictograph, and only there", () => {
@@ -537,7 +539,7 @@ describe("escapeHidden", () => {
   });
 
   it("judges pictographs by a fixed list, the same on every Node version", () => {
-    // U+2605 and U+1F0A1 are pictographs in Unicode 16.0, which Node 22 has, and not in 17.0, which Node 24 and 26 have.
+    // U+2605 and U+1F0A1 are pictographs in Unicode 16.0 and not in 17.0; Node ships one or the other depending on its version.
     const symbols = `${cp(0x2605)}${ZWJ}${cp(0x1f0a1)}${VS16}`;
     expect(escapeHidden(symbols)).toBe(symbols);
   });
@@ -552,7 +554,9 @@ describe("escapeHidden", () => {
     ["kiss", `${cp(0x1f469)}${ZWJ}${cp(0x2764)}${VS16}${ZWJ}${cp(0x1f48b)}${ZWJ}${cp(0x1f468)}`],
     ["gender", `${cp(0x1f3c3)}${ZWJ}${cp(0x2640)}${VS16}`],
     ["hair", `${cp(0x1f468)}${ZWJ}${cp(0x1f9b0)}`],
-    ["subdivision flag", `${cp(0x1f3f4)}${tags("gbeng")}${cp(0xe007f)}`],
+    ["England flag", `${cp(0x1f3f4)}${tags("gbeng")}${cp(0xe007f)}`],
+    ["Scotland flag", `${cp(0x1f3f4)}${tags("gbsct")}${cp(0xe007f)}`],
+    ["Wales flag", `${cp(0x1f3f4)}${tags("gbwls")}${cp(0xe007f)}`],
     ["keycap", `1${VS16}\u20E3`],
     ["country flag", cp(0x1f1fa, 0x1f1f8)],
   ])("keeps the %s emoji whole", (_name, emoji) => {
