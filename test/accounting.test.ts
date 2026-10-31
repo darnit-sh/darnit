@@ -331,7 +331,7 @@ describe("npm run accounting", () => {
   });
 
   // A copy of the fixture corpus, its spec (written as JSON, which YAML reads too) or removals log changed.
-  async function run(change: { spec?: (s: Spec) => void; removals?: (log: Removal[]) => void } = {}) {
+  async function run(change: { spec?: (s: Spec) => void; specText?: string; removals?: (log: Removal[]) => void } = {}, env: Record<string, string> = {}) {
     const dir = await mkdtemp(join(tmpdir(), "darnit-accounting-"));
     tempDirs.push(dir);
     await cp(FIXTURE, dir, { recursive: true });
@@ -342,12 +342,13 @@ describe("npm run accounting", () => {
       change.spec(s);
       await writeFile(specFile, JSON.stringify(s));
     }
+    if (change.specText !== undefined) await writeFile(specFile, change.specText);
     if (change.removals) {
       const log = await readRemovals(logFile);
       change.removals(log);
       await writeFile(logFile, JSON.stringify(log));
     }
-    return spawnSync(tsx, ["scripts/accounting.ts", "--root", dir], { cwd: ROOT, encoding: "utf8" });
+    return spawnSync(tsx, ["scripts/accounting.ts", "--root", dir], { cwd: ROOT, encoding: "utf8", env: { ...process.env, ...env } });
   }
   const schema = (s: Spec, name: string) => s.components!.schemas![name]!;
 
@@ -399,6 +400,27 @@ describe("npm run accounting", () => {
     });
     expect(out.status).toBe(1);
     expect(out.stdout).toMatch(/contradicts \(correct them\):\n {2}"schema CreateImageRequest property model enum gpt-5.1-mini"\n {2}"schema ImagesResponse property status"\n/);
+  });
+
+  it("fences all it prints in GitHub Actions, including a spec that does not parse, so no spec text runs as a workflow command", async () => {
+    const fenced = (out: { stdout: string; stderr: string }) => {
+      const lines = out.stdout.trimEnd().split("\n");
+      const token = /^::stop-commands::([0-9a-f-]{36})$/.exec(lines[0]!)?.[1];
+      expect(token, lines[0]).toBeDefined();
+      expect(lines.at(-1)).toBe(`::${token}::`);
+      expect(lines.slice(1, -1).filter((l) => l.startsWith("::"))).toEqual([]);
+      expect(out.stderr).toBe("");
+    };
+    const broken = await run({ specText: "openapi: 3.1.0\n::error title=pwned::forged: a: b\n" }, { GITHUB_ACTIONS: "true" });
+    expect(broken.status).toBe(1);
+    fenced(broken);
+    expect(broken.stdout).toContain('accounting stopped: "Nested mappings are not allowed');
+    expect(broken.stdout).toContain("\\n::error title=pwned::forged: a: b\\n");
+
+    const named = await run({ spec: (s) => void (schema(s, "CreateImageRequest").properties!["::error title=pwned::x"] = { deprecated: true }) }, { GITHUB_ACTIONS: "true" });
+    expect(named.status).toBe(1);
+    fenced(named);
+    expect(named.stdout).toContain('  "schema CreateImageRequest property ::error title=pwned::x"\n');
   });
 
   it("is the only check that reads the committed corpus: no test file does", async () => {
