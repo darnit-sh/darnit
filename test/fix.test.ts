@@ -757,13 +757,14 @@ describe("fix when a check runs out of time", () => {
 /**
  * The workflow commands GitHub's runner would act on in `output`: a line that starts with `::` once leading
  * whitespace is dropped, or the legacy `##[name]` anywhere in a line, except between `::stop-commands::<token>`
- * and `::<token>::`. Also whether it ends stopped.
+ * and `::<token>::`. Also whether it ends stopped. Whitespace is what .NET's TrimStart drops (U+0085 among it)
+ * and what JavaScript's does (U+FEFF too), so this can report more than the runner, never less.
  */
 function workflowCommands(output: string): { ran: string[]; stopped: boolean } {
   const ran: string[] = [];
   let token: string | undefined;
   for (const line of output.split(/\r\n|\r|\n/)) {
-    const [command, name, data] = /^::([^\s:]+)[^:]*::(.*)$/.exec(line.trimStart()) ?? /##\[([^\s\]]+)[^\]]*\](.*)$/.exec(line) ?? [];
+    const [command, name, data] = /^[\s\u0085]*::([^\s:]+)[^:]*::(.*)$/.exec(line) ?? /##\[([^\s\]]+)[^\]]*\](.*)$/.exec(line) ?? [];
     if (command === undefined || name === undefined) continue;
     if (token !== undefined) {
       if (name.toLowerCase() === token.toLowerCase()) token = undefined;
@@ -780,6 +781,13 @@ const notDarnits = (output: string) => {
   const { ran, stopped } = workflowCommands(output);
   return { ran: ran.filter((c) => !/^::stop-commands::[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(c)), stopped };
 };
+
+describe("workflowCommands", () => {
+  it("drops the leading whitespace the runner drops, and finds ##[ anywhere", () => {
+    const lines = ["\u0085::error::a", "\u3000\t::warning::b", "\ufeff::debug::c", "x ##[error]d", "::e"];
+    expect(workflowCommands(lines.join("\n")).ran).toEqual(["\u0085::error::a", "\u3000\t::warning::b", "\ufeff::debug::c", "##[error]d"]);
+  });
+});
 
 describe("fix in GitHub Actions", () => {
   const LINES = ["::error::pwned", "  ::warning::indented", "\t::add-mask::tabbed", "ok #1 ##[add-mask]x", "::stop-commands::x", "::error::after"];
