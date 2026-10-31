@@ -134,12 +134,20 @@ describe("text from the repository in output", () => {
     expect(body).toContain("?[2jabc");
   });
 
-  /** Peak resident memory of darnit running `args` in `cwd`, with its output thrown away. */
-  const peakRss = (cwd: string, args: string[]) =>
-    new Promise<number>((resolve, reject) => {
+  /**
+   * Peak live heap of darnit running `args` in `cwd`, collected at its first write to stdout and then at least every
+   * million characters, and the characters it wrote. Live heap, unlike resident memory, does not depend on when V8
+   * gets round to collecting, so two runs doing the same work measure the same.
+   */
+  const liveWhileWriting = (cwd: string, args: string[]) =>
+    new Promise<{ live: number; chars: number }>((resolve, reject) => {
       const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-      const hook = 'data:text/javascript,process.on("exit",()=>process.stderr.write("maxrss "+process.resourceUsage().maxRSS+"\\n"))';
-      const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"), "--import", hook, cli, ...args], {
+      // No "%" in it: a data URL reads that as an escape.
+      const hook =
+        "data:text/javascript,let last=-1,live=0,chars=0;const write=process.stdout.write.bind(process.stdout);" +
+        "process.stdout.write=(c,...r)=>{chars+=c.length;if(last<0||chars-last>=1048576){last=chars;gc();live=Math.max(live,process.memoryUsage().heapUsed)}return write(c,...r)};" +
+        "process.on('exit',()=>process.stderr.write('live '+live+' chars '+chars+'\\n'))";
+      const child = spawn(process.execPath, ["--expose-gc", "--import", import.meta.resolve("tsx"), "--import", hook, cli, ...args], {
         cwd,
         env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" },
         stdio: ["ignore", "ignore", "pipe"],
@@ -147,18 +155,24 @@ describe("text from the repository in output", () => {
       let stderr = "";
       child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
       child.on("error", reject);
-      child.on("close", () => resolve(Number(/maxrss (\d+)/.exec(stderr)?.[1] ?? NaN)));
+      child.on("close", () => {
+        const [, live = NaN, chars = NaN] = (/live (\d+) chars (\d+)/.exec(stderr) ?? []).map(Number);
+        resolve({ live, chars });
+      });
     });
 
-  it("keeps peak memory within 1.5 times that of the same file with nothing to write out", async () => {
+  it("holds no escaped copy of the output while writing it", async () => {
     const file = (chars: string) =>
       `import OpenAI from "openai";\nconst c = new OpenAI();\nexport const r = c.chat.completions.create({ max_tokens: cap("${chars.repeat(1_162_000)}") });\n`;
     // 9.3 MB each, with as many characters: U+202E, U+2066 and U+009B take 3, 3 and 2 bytes in UTF-8, as do 日, 本 and é.
     const crafted = await repoWith({ "app.ts": file("\u202E\u2066\u009b") });
     const plain = await repoWith({ "app.ts": file("日本é") });
     for (const args of [["check", "--json"], ["fix", "--dry-run", "--no-test"], ["fix", "--dry-run", "--no-test", "--json"]]) {
-      const [hidden, ordinary] = await Promise.all([peakRss(crafted, args), peakRss(plain, args)]);
-      expect(hidden, args.join(" ")).toBeLessThan(1.5 * ordinary);
+      const [hidden, ordinary] = await Promise.all([liveWhileWriting(crafted, args), liveWhileWriting(plain, args)]);
+      // Both runs do the same work but for escaping, which makes the crafted output six times longer: holding even
+      // one escaped copy of it would add at least its length in bytes.
+      expect(hidden.chars, args.join(" ")).toBeGreaterThan(5 * ordinary.chars);
+      expect(hidden.live - ordinary.live, args.join(" ")).toBeLessThan(hidden.chars / 4);
     }
   }, 180_000);
 });
