@@ -231,10 +231,11 @@ could not check the change) and `timedOut`. A check that timed out has
 |---|---|
 | `--dry-run` | show the diff, write nothing (works outside git too) |
 | `--pr` | one branch, one build and test run, and one pull request per change |
+| `--prepare <dir>` | verify each change as `--pr` does, then write `<dir>/plan.json` instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md) |
 | `--only <id>` | just this change, by its id from `check --json` (repeatable) |
 | `--test <command>` | run this instead of the detected test command |
 | `--no-test` | skip tests and the build check |
-| `--allow-dirty` | let `--pr` run with uncommitted changes elsewhere in the tree |
+| `--allow-dirty` | let `--pr` or `--prepare` run with uncommitted changes elsewhere in the tree |
 | `--repo <owner/name>` | the GitHub repository, when `origin` is not a GitHub URL |
 | `--json` | machine-readable output |
 
