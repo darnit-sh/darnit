@@ -9,9 +9,10 @@ const TIMEOUT_MS = 30_000;
 
 export type Repo = { owner: string; repo: string };
 
-// fetch quotes a header value it rejects in its error, so a token with a line break inside would be printed.
+// GitHub tokens are printable ASCII. fetch quotes a header value it rejects in its error, so a token
+// with a line break inside would be printed.
 const checked = (token: string) => {
-  if (/[\s\p{Cc}]/u.test(token)) throw new Refusal("the GitHub token holds a space or control character; set it again without one");
+  if (/[^\x21-\x7e]/.test(token)) throw new Refusal("the GitHub token holds a space or control character; set it again without one");
   return token || undefined;
 };
 

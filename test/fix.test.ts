@@ -1303,7 +1303,7 @@ console.log(config);`,
     expect(await run(!/persist-credentials: false/.test(workflow))).toBe("");
   });
 
-  it("refuses a token with a space or control character inside before any request, and never prints it", async () => {
+  it("refuses a token with a character outside printable ASCII inside before any request, and never prints it", async () => {
     const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
     const { dir } = await repoWithOrigin();
     const tools = await mkdtemp(join(tmpdir(), "darnit-tools-"));
@@ -1335,12 +1335,12 @@ console.log(config);`,
     };
     const refused = { code: 2, stdout: "", stderr: "darnit: the GitHub token holds a space or control character; set it again without one\n" };
     try {
-      for (const inner of ["\n", "\r", " ", "\t"]) {
+      for (const inner of ["\n", "\r", " ", "\t", "\u200b", "\u00e9"]) {
         const bad = `${token}${inner}X`;
         expect(await run({ GITHUB_TOKEN: bad }), JSON.stringify(inner)).toEqual(refused);
         expect(await run({ GH_TOKEN: ` ${bad}\n` }), JSON.stringify(inner)).toEqual(refused);
       }
-      for (const inner of ["\n", "\r", "\0", " "]) expect(await run({}, `${token}${inner}X\n`), JSON.stringify(inner)).toEqual(refused);
+      for (const inner of ["\n", "\r", "\0", " ", "\u200b"]) expect(await run({}, `${token}${inner}X\n`), JSON.stringify(inner)).toEqual(refused);
       expect(asked).toEqual([]);
       expect((await git(dir, ["branch", "--list", "darnit/*"])).trim()).toBe("");
       expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");

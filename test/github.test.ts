@@ -23,10 +23,10 @@ describe("githubToken", () => {
     }
   });
 
-  it("refuses a token with a space or control character inside, without quoting it", async () => {
+  it("refuses a token with any character outside printable ASCII inside, without quoting it", async () => {
     vi.stubEnv("PATH", "");
     const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
-    for (const inner of ["\n", "\r", " ", "\t", "\v", "\f", "\x01", "\x1f", "\x7f", "\x85", "\x9f", "\u00a0", "\u1680", "\u2003", "\u2028", "\u2029", "\u3000", "\ufeff"]) {
+    for (const inner of ["\n", "\r", " ", "\t", "\v", "\f", "\x01", "\x1f", "\x7f", "\x85", "\x9f", "\u00a0", "\u1680", "\u2003", "\u2028", "\u2029", "\u3000", "\ufeff", "\u200b", "\u180e", "\u202e", "\u00e9", "\u0100", "\u{1f511}"]) {
       for (const [name, other] of [["GITHUB_TOKEN", "GH_TOKEN"], ["GH_TOKEN", "GITHUB_TOKEN"]] as const) {
         vi.stubEnv(name, ` ${token}${inner}X `);
         vi.stubEnv(other, "");
