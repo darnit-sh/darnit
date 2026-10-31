@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from "node:child_process";
 import type { Stats } from "node:fs";
-import { appendFile, chmod, cp, type FileHandle, link, lstat, mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { appendFile, chmod, cp, type FileHandle, link, lstat, mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -493,11 +493,13 @@ describe("init --force rewrites only what git could put back", () => {
     ]);
   });
 
-  it("does not read a huge darnit.yml to compare it", async () => {
+  it("compares a darnit.yml too large to read whole without reading it", async () => {
     const dir = await committed("small", { "darnit.yml": "version: 1\n" });
-    await writeFile(join(dir, "darnit.yml"), Buffer.alloc(MAX_FILE_BYTES * 2));
+    // Sparse, so it takes no disk space; reading it whole with readFile throws past 2 GiB.
+    const size = 3 * 2 ** 30;
+    await truncate(join(dir, "darnit.yml"), size);
     const time = await cpuTime(async () => await expect(init(dir, { force: true })).rejects.toThrow(REFUSED), 1, 2000);
     expect(time).toBeLessThan(2000);
-    expect((await stat(join(dir, "darnit.yml"))).size).toBe(MAX_FILE_BYTES * 2);
+    expect((await stat(join(dir, "darnit.yml"))).size).toBe(size);
   });
 });
