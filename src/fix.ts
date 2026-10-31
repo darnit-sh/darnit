@@ -21,7 +21,6 @@ export type FixOptions = {
   only?: string[];
   test?: string;
   noTest?: boolean;
-  color?: boolean;
   version?: string;
 };
 
@@ -254,7 +253,6 @@ async function runChecks(root: string, commands: Commands, snap: Map<string, str
 }
 
 export async function fix(root: string, opts: FixOptions = {}): Promise<FixResult> {
-  const color = opts.color ?? false;
   const dryRun = opts.dryRun ?? false;
   if (!dryRun && !(await g.isRepo(root))) {
     throw new Refusal("not a checked-out git repository; darnit only edits files it can undo. Use --dry-run to preview.");
@@ -310,7 +308,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
         await cp(join(root, f), join(tmp, "after", f));
       }
       for (const grp of applicable) settle(resultOf(grp), await applyAndVerify(join(tmp, "after"), grp), grp.held);
-      const out = (await g.diffDirs(tmp, "before", "after", color)).replaceAll("a/before/", "a/").replaceAll("b/after/", "b/");
+      const out = (await g.diffDirs(tmp, "before", "after")).replaceAll("a/before/", "a/").replaceAll("b/after/", "b/");
       return { ...base, diff: out };
     } finally {
       await rm(tmp, { recursive: true, force: true });
@@ -346,7 +344,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     if (touched.length === 0) return base;
     const { build, tests } = await runChecks(root, commands, snap);
     const reverted = failed(build) || failed(tests);
-    return { ...base, build, tests, diff: reverted ? "" : await g.diff(root, touched, color), reverted };
+    return { ...base, build, tests, diff: reverted ? "" : await g.diff(root, touched), reverted };
   } catch (err) {
     await restore(root, snap);
     throw err;
@@ -444,19 +442,45 @@ function code(text: string): string {
   return `${fence}${pad}${t}${pad}${fence}`;
 }
 
-const withoutControls = (text: string, color: boolean) =>
+const withoutControls = (text: string) =>
   // eslint-disable-next-line no-control-regex
-  text.replace(color ? /\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f]/g : /[\u0000-\u0008\u000b-\u001f]/g, (m) => (m.length > 1 ? m : ""));
+  text.replace(/[\u0000-\u0008\u000b-\u001f]/g, "");
+
+const RESET = "\u001b[m";
+const paint = (code: string, text: string) => (text ? `\u001b[${code}m${text}${RESET}` : "");
 
 /**
- * Text from the repository on its way to a terminal, a piece at a time: control characters go, and color codes too
- * unless `color`; `escapeHidden` writes out the rest. In GitHub Actions it is fenced by a one-time token so no line
- * of it runs as a workflow command, while darnit's own annotations printed outside it still work.
+ * A plain diff in git's default colors: file headers bold, hunk ranges cyan, removed lines red, added lines green
+ * with trailing spaces and tabs on red. Only these codes are added, so none from the diff's text needs to be kept.
+ */
+function colored(diff: string): string {
+  let header = false;
+  return diff.replace(/[^\n]+/g, (line) => {
+    if (line.startsWith("diff ")) header = true;
+    else if (line.startsWith("@@")) header = false;
+    if (header) return paint("1", line);
+    if (line.startsWith("@@")) {
+      const end = line.indexOf(" @@", 2) + 3;
+      return end > 2 ? paint("36", line.slice(0, end)) + line.slice(end) : paint("36", line);
+    }
+    if (line.startsWith("-")) return paint("31", line);
+    if (!line.startsWith("+")) return line;
+    let end = line.length;
+    while (end > 1 && (line[end - 1] === " " || line[end - 1] === "\t")) end--;
+    return paint("32", line.slice(0, end)) + paint("41", line.slice(end));
+  });
+}
+
+/**
+ * Text from the repository on its way to a terminal, a piece at a time: control characters go, color codes with them,
+ * and `escapeHidden` writes out the rest. With `color`, the text is a diff and gets darnit's colors. In GitHub Actions
+ * it is fenced by a one-time token so no line of it runs as a workflow command, while darnit's own annotations printed
+ * outside it still work.
  */
 export function* forTerminalPieces(text: string, color = false, env = process.env): Generator<string> {
   const token = env.GITHUB_ACTIONS === "true" ? randomUUID() : undefined;
   if (token) yield `::stop-commands::${token}\n`;
-  yield* escapedPieces(withoutControls(text, color));
+  yield* escapedPieces(color ? colored(withoutControls(text)) : withoutControls(text));
   if (token) yield `\n::${token}::`;
 }
 

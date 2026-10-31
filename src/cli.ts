@@ -100,7 +100,6 @@ program
       pr: flags.pr ?? false,
       allowDirty: flags.allowDirty ?? false,
       noTest: flags.test === false,
-      color: process.stdout.isTTY ?? false,
       version,
       ...(flags.repo ? { repo: flags.repo } : {}),
       ...(flags.only ? { only: flags.only } : {}),
@@ -108,7 +107,7 @@ program
     });
     if (flags.json) await write(asJson(escapedPieces(JSON.stringify({ version, ...fixToJson(result) }, null, 2))), ["\n"]);
     else {
-      if (result.diff) await write(forTerminalPieces(result.diff, true), ["\n"]);
+      if (result.diff) await write(forTerminalPieces(result.diff, process.stdout.isTTY ?? false), ["\n"]);
       console.log(forTerminal(renderSummary(result)));
       const notice = await update;
       if (notice) console.log(notice);

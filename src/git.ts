@@ -228,13 +228,12 @@ function originAuth(site: string): NodeJS.ProcessEnv {
 
 export const push = (root: string, branch: string, site = GITHUB) => git(root, ["push", "-q", "-u", "origin", branch], 60, site);
 
-export const diff = (root: string, files: readonly string[], color: boolean) =>
-  git(root, ["--no-pager", "diff", color ? "--color=always" : "--color=never", "--", ...files]);
+export const diff = (root: string, files: readonly string[]) => git(root, ["--no-pager", "diff", "--color=never", "--", ...files]);
 
 /** Diff between two dirs under cwd, no repo needed. git exits 1 when they differ, which is not an error here. */
-export async function diffDirs(cwd: string, before: string, after: string, color: boolean): Promise<string> {
+export async function diffDirs(cwd: string, before: string, after: string): Promise<string> {
   try {
-    return await git(cwd, ["--no-pager", "diff", "--no-index", color ? "--color=always" : "--color=never", before, after]);
+    return await git(cwd, ["--no-pager", "diff", "--no-index", "--color=never", before, after]);
   } catch (err) {
     const { code, stdout } = err as { code?: number; stdout?: string };
     if (code === 1 && stdout !== undefined) return stdout;
