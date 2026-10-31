@@ -32,6 +32,17 @@ const baseFiles = [
 const pkg = (files = ["dist"], test = "vitest run") =>
   `${JSON.stringify({ files, scripts: { test, check: "npm test" }, dependencies: { zod: "4.6.6" } })}\n`;
 
+const entry = (name: string, version = "4.6.6", more: object = {}) => ({
+  version,
+  resolved: `https://registry.npmjs.org/${name}/-/${name}-${version}.tgz`,
+  integrity: "sha512-fake",
+  ...more,
+});
+const lock = (packages: Record<string, object> = {}) =>
+  `${JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/zod": entry("zod"), ...packages } })}\n`;
+/** package.json with `deps` merged over base's dependency fields. */
+const withDeps = (deps: object) => `${JSON.stringify({ ...JSON.parse(pkg()), ...deps })}\n`;
+
 type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean };
 
 /**
@@ -71,6 +82,7 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
   git("init", "-q");
   for (const f of baseFiles) await write(f, `${f}\n`);
   await write("package.json", pkg());
+  await write("package-lock.json", lock());
   git("add", ".");
   git("commit", "-q", "-m", "base");
   if (landed.length) {
@@ -229,7 +241,7 @@ describe("the rule picked by the title's type", () => {
     const bump = { write: "package.json", text: pkg().replace("4.6.6", "4.6.7") };
     for (const [title, edit] of [
       ["chore(deps): bump zod from 4.6.6 to 4.6.7 in the runtime group", bump],
-      ["chore(deps-dev): bump the tooling group with 2 updates", { write: "package-lock.json" }],
+      ["chore(deps-dev): bump the tooling group with 2 updates", { write: "package-lock.json", text: lock({ "node_modules/zod": entry("zod", "4.6.7") }) }],
       ["build(deps): bump yaml", bump],
       ["build: ship the docs", { write: "package.json", text: pkg(["dist", "docs"]) }],
       ["test: cover x", { write: "test/a.test.ts" }],
@@ -241,6 +253,145 @@ describe("the rule picked by the title's type", () => {
       expect(r.out).toContain("**Passed:**");
     }
   });
+
+  it("fails any type that adds or changes a dependency npm would fetch from outside the registry", async () => {
+    const fake = withDeps({ devDependencies: { vitest: "file:./fake-vitest" } });
+    for (const type of ["docs", "test", "chore", "ci", "build", "fix", "feat", "refactor", "perf", "revert"]) {
+      const r = await rule(`${type}: x`, [{ write: "package.json", text: fake }], "Proof: none, swaps the test runner\n");
+      expect(r.status, type).toBe(1);
+      expect(r.summary, type).toContain('- package.json devDependencies.vitest "file:./fake-vitest"');
+    }
+    const hostile = [
+      "file:../x",
+      "link:../x",
+      "portal:../x",
+      "git+https://example.test/v.git",
+      "git://example.test/v.git",
+      "github:evil/vitest",
+      "gitlab:evil/vitest",
+      "http://registry.npmjs.org/vitest/-/vitest-5.0.6.tgz",
+      "https://example.test/v.tgz",
+      "evil/vitest",
+      "evil/vitest#main",
+      "./fake",
+      "../fake",
+      ".",
+      "~/fake",
+      "/tmp/fake",
+      "fake.tgz",
+      " file:../x",
+      "npm:vitest@file:../x",
+      "npm:@evil/v@github:evil/vitest",
+    ];
+    const fields = ["dependencies", "optionalDependencies", "peerDependencies"];
+    const deps = Object.fromEntries(fields.map((f, n) => [f, Object.fromEntries(hostile.flatMap((spec, i) => (i % 3 === n ? [[`p${i}`, spec]] : [])))]));
+    const odd = { 1: "1", null: "null", list: '["^5.0.6"]' };
+    const r = await rule("fix: x", [{ write: "package.json", text: withDeps({ ...deps, devDependencies: { 1: 1, null: null, list: ["^5.0.6"] } }) }]);
+    expect(r.status).toBe(1);
+    hostile.forEach((spec, i) => expect(r.summary).toContain(`- package.json ${fields[i % 3]}.p${i} ${JSON.stringify(spec)}\n`));
+    for (const [k, v] of Object.entries(odd)) expect(r.summary).toContain(`- package.json devDependencies.${k} ${v}\n`);
+    const override = await rule("fix: x", [{ write: "package.json", text: withDeps({ overrides: { vitest: "git+https://example.test/v.git" } }) }]);
+    expect(override.status).toBe(1);
+    expect(override.summary).toContain('- package.json overrides.vitest "git+https://example.test/v.git"');
+    const nested = await rule("fix: x", [{ write: "package.json", text: withDeps({ overrides: { eslint: { ".": "^10.0.0", vitest: "evil/vitest" } } }) }]);
+    expect(nested.status).toBe(1);
+    expect(nested.summary).toContain('- package.json overrides.eslint.vitest "evil/vitest"');
+    expect(nested.summary).not.toContain("^10.0.0");
+  });
+
+  it("fails a lock entry this change adds or alters that is not a registry tarball with an integrity", async () => {
+    const bad = [
+      [entry("vitest", "5.0.6", { resolved: "https://example.test/vitest-5.0.6.tgz" }), 'resolved "https://example.test/vitest-5.0.6.tgz"'],
+      [entry("vitest", "5.0.6", { resolved: "https://registry.npmjs.org.example.test/vitest.tgz" }), "resolved"],
+      [entry("vitest", "5.0.6", { resolved: "http://registry.npmjs.org/vitest/-/vitest-5.0.6.tgz" }), "resolved"],
+      [entry("vitest", "5.0.6", { resolved: "file:../fake-vitest" }), 'resolved "file:../fake-vitest"'],
+      [{ resolved: "fake-vitest", link: true }, 'resolved "fake-vitest"'],
+      [{ version: "5.0.6" }, "resolved (none)"],
+      [entry("vitest", "5.0.6", { integrity: undefined }), "integrity (none)"],
+      [entry("vitest", "5.0.6", { integrity: "" }), "integrity (none)"],
+    ] as const;
+    const r = await rule("chore(deps): bump", [{ write: "package-lock.json", text: lock(Object.fromEntries(bad.map(([e], i) => [`node_modules/p${i}`, e]))) }]);
+    expect(r.status).toBe(1);
+    bad.forEach(([, why], i) => expect(r.summary).toContain(`- package-lock.json node_modules/p${i} ${why}`));
+    const altered = await rule("fix: x", [{ write: "package-lock.json", text: lock({ "node_modules/zod": entry("zod", "4.6.6", { integrity: undefined }) }) }]);
+    expect(altered.summary).toContain("- package-lock.json node_modules/zod integrity (none)");
+    const v1 = JSON.stringify({ lockfileVersion: 1, dependencies: { a: { ...entry("a"), dependencies: { vitest: entry("vitest", "5.0.6", { resolved: "https://example.test/v.tgz" }) } } } });
+    const old = await rule("fix: x", [{ write: "npm-shrinkwrap.json", text: v1 }]);
+    expect(old.status).toBe(1);
+    expect(old.summary).toContain('- npm-shrinkwrap.json a > vitest resolved "https://example.test/v.tgz"');
+    for (const text of ["changed\n", "[]\n"]) {
+      const r = await rule("chore(deps): x", [{ write: "package-lock.json", text }]);
+      expect(r.status, text).toBe(1);
+      expect(r.summary).toContain("- package-lock.json (unreadable)");
+    }
+    const broken = await rule("chore(deps): x", [{ write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest") }) }], "", { NODE_OPTIONS: "--require=/nonexistent" });
+    expect(broken.status).toBe(1);
+    expect(broken.summary).toContain("- dependency sources (unreadable)");
+  });
+
+  it("judges only what this change adds or alters, and keeps registry versions free for chore and build", async () => {
+    const landed = [
+      { write: "package.json", text: withDeps({ devDependencies: { vitest: "file:./old" } }) },
+      { write: "package-lock.json", text: lock({ "node_modules/old": { resolved: "old", link: true } }) },
+    ];
+    expect((await rule("fix: x", [{ write: "README.md" }], "", {}, landed)).status).toBe(0);
+    const bumped = [
+      { write: "package.json", text: withDeps({ dependencies: { zod: "4.6.7" }, devDependencies: { vitest: "file:./old" } }) },
+      { write: "package-lock.json", text: lock({ "node_modules/old": { resolved: "old", link: true }, "node_modules/zod": entry("zod", "4.6.7") }) },
+    ];
+    expect((await rule("fix: x", bumped, "", {}, landed)).status).toBe(0);
+    for (const [title, deps] of [
+      ["chore(deps-dev): bump vitest from 5.0.5 to 5.0.6", { devDependencies: { vitest: "^5.0.6" } }],
+      ["build(deps): add a typescript alias", { devDependencies: { ts: "npm:@typescript/typescript6@^6.0.2", t: "latest", r: ">=1 <2" } }],
+      ["chore(deps): pin a transitive", { overrides: { vitest: { vite: "7.0.0" }, zod: "$zod" } }],
+    ] as const) {
+      const lockText = lock({ "node_modules/vitest": entry("vitest", "5.0.6"), "node_modules/@x/y": entry("@x/y", "1.0.0") });
+      const r = await rule(title, [{ write: "package.json", text: withDeps(deps) }, { write: "package-lock.json", text: lockText }]);
+      expect(r, title).toMatchObject({ status: 0, baseTests: false });
+      expect(r.out).toContain("**Passed:**");
+    }
+  });
+
+  it("counts any dependency or lock change as a suite change for docs, test and ci", async () => {
+    const reason = "Proof: none, moves the test runner to its next patch\n";
+    const edits: Edit[] = [
+      { write: "package.json", text: withDeps({ devDependencies: { vitest: "^5.0.6" } }) },
+      { write: "package.json", text: withDeps({ dependencies: {} }) },
+      { write: "package.json", text: withDeps({ optionalDependencies: { a: "1.0.0" } }) },
+      { write: "package.json", text: withDeps({ peerDependencies: { a: "1.0.0" } }) },
+      { write: "package.json", text: withDeps({ overrides: { a: "1.0.0" } }) },
+      { write: "package.json", text: withDeps({ workspaces: ["fake"] }) },
+      { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) },
+      { remove: "package-lock.json" },
+      { write: "npm-shrinkwrap.json", text: lock() },
+    ];
+    for (const type of ["docs", "test", "ci"]) {
+      for (const edit of edits) {
+        const r = await rule(`${type}: x`, [edit]);
+        expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
+        expect(r.out).toMatch(/- (package\.json "\w+"|package-lock\.json|npm-shrinkwrap\.json)\n/);
+      }
+    }
+    for (const type of ["test", "ci"]) {
+      const r = await rule(`${type}: x`, [edits[0]!, edits[6]!], reason);
+      expect(r.status, type).toBe(0);
+      expect(r.summary).toContain('- package.json "devDependencies"\n- package-lock.json');
+    }
+    expect((await rule("docs: x", [edits[0]!], reason)).status).toBe(1);
+    const unchanged = withDeps({}).replace('"zod":"4.6.6"', '"zod": "4.6.6"');
+    expect((await rule("docs: x", [{ write: "package.json", text: unchanged }])).status).toBe(0);
+  });
+
+  it("reads a large lock file in budget and still names the one bad entry", async () => {
+    const many = Object.fromEntries(Array.from({ length: 50_000 }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")]));
+    many["node_modules/p49999"] = entry("p49999", "1.0.0", { integrity: undefined });
+    const start = Date.now();
+    const r = await rule("chore(deps): x", [{ write: "package-lock.json", text: lock(many) }]);
+    expect(Date.now() - start).toBeLessThan(10_000);
+    expect(r.status).toBe(1);
+    expect(r.summary).toContain("- package-lock.json node_modules/p49999 integrity (none)");
+    expect(r.summary).not.toContain("node_modules/p49998");
+  }, 30_000);
 
   it("fails a test change that changes what the suite proves", async () => {
     for (const edit of suiteEdits) {
@@ -308,7 +459,7 @@ describe("the rule picked by the title's type", () => {
     const bump = { write: "package.json", text: pkg().replace("4.6.6", "4.6.7") };
     const broken = await rule("docs: x", [bump], "", { NODE_OPTIONS: "--require=/nonexistent" });
     expect(broken.status).toBe(1);
-    expect(broken.out).toContain("- package.json (unreadable)");
+    expect(broken.out).toContain("- dependency sources (unreadable)");
   });
 
   it("lets only build add or change an ignore file that drops shipped files", async () => {

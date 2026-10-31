@@ -42,6 +42,55 @@ test | docs | chore | ci | build) ;;
   ;;
 esac
 
+deps="dependencies devDependencies optionalDependencies peerDependencies overrides"
+# Each dependency spec in package.json and each lock entry this change adds or alters that npm would fetch
+# from somewhere other than the registry, so that npm test could run code of the change's own in place of a
+# package the suite runs. A file this change leaves unreadable counts, as does a reader that fails.
+sources() {
+  git diff --quiet "$base...$head" -- package.json package-lock.json npm-shrinkwrap.json && return 0
+  node -e '
+    const { execFileSync } = require("node:child_process");
+    const [mb, head, fields] = process.argv.slice(1);
+    const read = (rev, f) => {
+      if (!execFileSync("git", ["ls-tree", "--name-only", rev, "--", f], { encoding: "utf8" })) return null;
+      try { const j = JSON.parse(execFileSync("git", ["show", `${rev}:${f}`], { encoding: "utf8", stdio: "pipe", maxBuffer: 2 ** 28 })); return j?.constructor === Object ? j : undefined; }
+      catch { return undefined; }
+    };
+    const obj = (v) => (v?.constructor === Object ? v : {});
+    // Leaves keyed by their path, so only what this change adds or alters is judged.
+    const walk = (v, at, out, next) => { for (const [k, x] of Object.entries(obj(v))) next(x, [...at, k], out); return out; };
+    const specs = (j) => { const out = new Map(); const leaf = (v, at) => (v?.constructor === Object ? walk(v, at, out, leaf) : out.set(JSON.stringify(at), [at, v])); for (const f of fields.split(" ")) if (f in j) leaf(j[f], [f]); return out; };
+    const entries = (j) => {
+      const out = walk(j.packages, [], new Map(), (v, at, out) => at[0] && out.set(JSON.stringify(["p", ...at]), [at, v]));
+      const old = (v, at, out) => { out.set(JSON.stringify(at), [at, v]); walk(obj(v).dependencies, at, out, old); };
+      return walk(j.dependencies, [], out, old);
+    };
+    // A version, range or tag, or an npm: alias to one; anything with a path, a protocol or a host is not.
+    const registry = (s) => typeof s === "string" && !/[:/\\]|^\.|\.(tgz|tar|tar\.gz)$/i.test(s.trim().replace(/^npm:(@[^/@]+\/)?[^/@]+(@|$)/, ""));
+    const changed = (f, list) => {
+      const b = read(head, f);
+      if (b === undefined) return console.log(`${f} (unreadable)`);
+      if (b === null) return;
+      const a = list(read(mb, f) ?? {});
+      for (const [k, [at, v]] of list(b)) if (JSON.stringify(a.get(k)?.[1]) !== JSON.stringify(v)) judge(f, at, v);
+    };
+    let judge = (f, at, v) => registry(v) || console.log(`${f} ${at.join(".")} ${JSON.stringify(v) ?? "(none)"}`);
+    changed("package.json", specs);
+    judge = (f, at, e) => {
+      const { resolved, integrity } = obj(e);
+      if (typeof resolved !== "string" || !resolved.startsWith("https://registry.npmjs.org/")) console.log(`${f} ${at.join(" > ")} resolved ${JSON.stringify(resolved) ?? "(none)"}`);
+      else if (typeof integrity !== "string" || !integrity) console.log(`${f} ${at.join(" > ")} integrity (none)`);
+    };
+    for (const f of ["package-lock.json", "npm-shrinkwrap.json"]) changed(f, entries);
+  ' "$mb" "$head" "$deps" || echo "dependency sources (unreadable)"
+}
+fetched=$(sources)
+if [ -n "$fetched" ]; then
+  say "**Failed:** npm installs every dependency from https://registry.npmjs.org/ with an integrity, so that the suite runs the packages it names; this change adds or alters one it would fetch from elsewhere:"
+  list "$fetched"
+  exit 1
+fi
+
 # Added files whose name differs from one on base only in case: on a macOS runner's disk one replaces the other.
 collisions() {
   { git ls-tree -r --name-only "$mb" | sed 's/^/B /'; paths --diff-filter=A | sed 's/^/A /'; } |
@@ -64,8 +113,8 @@ suite_files() {
   paths | grep -iE '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' | grep -viE '^"?test/(e2e|fixtures|samples|golden)/' || true
   collisions
 }
-# package.json's "files", or each script this change adds, alters or removes. A package.json this
-# change leaves unreadable, or not an object, counts as changed, as does a reader that fails.
+# package.json's "files", each script this change adds, alters or removes, or each of the fields named. A
+# package.json this change leaves unreadable, or not an object, counts as changed, as does a reader that fails.
 package_json() {
   git diff --quiet "$base...$head" -- package.json && return 0
   node -e '
@@ -75,6 +124,7 @@ package_json() {
     const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
     if (b === undefined) console.log("package.json (removed or unreadable)");
     else if (process.argv[3] === "files") { if (!same(a?.files, b.files)) console.log("package.json \"files\""); }
+    else if (process.argv[3] !== "scripts") { for (const f of process.argv[3].split(" ")) if (!same(a?.[f], b[f])) console.log(`package.json "${f}"`); }
     else {
       const [x, y] = [a?.scripts ?? {}, b.scripts ?? {}];
       const keys = [...new Set([...Object.keys(x), ...Object.keys(y)])].filter((k) => !same(x[k], y[k]));
@@ -116,7 +166,11 @@ refactor | perf)
   fi
   ;;
 test | docs | chore | ci | build)
-  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, TypeScript and ESLint config, pull request checks, workflows or npm and yarn config"
+  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, TypeScript and ESLint config, pull request checks, workflows"
+  case $type in
+  chore | build) suite="$suite or npm and yarn config" ;;
+  *) suite="$suite, npm and yarn config, package.json dependencies or the lock file" ;;
+  esac
   case $type in
   test | ci) allowed="$suite only with a \`Proof: none, <reason>\` line" ;;
   *) allowed="nothing in $suite" ;;
@@ -126,6 +180,13 @@ test | docs | chore | ci | build)
   touched=$(paths | grep -iE "$CODE" || true)
   [ "$type" = build ] || touched=$(printf '%s\n' "$touched" "$(ships)" | grep . || true)
   changed=$(printf '%s\n' "$(suite_files)" "$(package_json scripts)" "$config" | grep . || true)
+  # Dependabot bumps registry versions under chore and build, which the source check above still judges.
+  case $type in
+  test | docs | ci)
+    locks=$(paths | grep -ixE '"?(package-lock|npm-shrinkwrap)\.json"?' || true)
+    changed=$(printf '%s\n' "$changed" "$(package_json "$deps workspaces")" "$locks" | grep . || true)
+    ;;
+  esac
   if [ -n "$changed" ]; then
     reason=
     case $type in test | ci) opt_out ;; esac
