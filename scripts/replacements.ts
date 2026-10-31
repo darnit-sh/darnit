@@ -9,7 +9,8 @@ import { parseChangeRecord, recordModels } from "../src/records/schema.js";
 
 // Writes fix.models into every record that detects models, from a saved copy of OpenAI's deprecations page, renaming
 // only to models OpenAI's API spec in corpus/openai lists. Fails where a record's notes disagree with the page, or the
-// page has no row it could read for a detected model.
+// page has no row it could read for a detected model, or a row it could not read may name one and is not in
+// corpus/openai/non-model-rows.txt.
 // Usage: npm run replacements -- --page <saved page> [--check]
 // --check writes nothing and also fails when a record's fix.models is not what the page gives.
 
@@ -22,7 +23,8 @@ const page = readPage(await readFile(values.page, "utf8"));
 const loaded = await loadRecords();
 const records = loaded.map((l) => l.record);
 const known = modelIds(parseSpec(await readFile(join(PACKS_DIR, "../corpus/openai/openapi.yaml"), "utf8")));
-const { models: wanted, problems } = replacementsFor(records, page, known);
+const notModels = (await readFile(join(PACKS_DIR, "../corpus/openai/non-model-rows.txt"), "utf8")).split("\n").filter((l) => l !== "" && !l.startsWith("#"));
+const { models: wanted, problems } = replacementsFor(records, page, known, new Set(notModels));
 problems.push(...pageMismatches(records, page));
 
 for (const { record, packDir, file } of loaded) {

@@ -72,20 +72,43 @@ export function cellText(html: string): string | undefined {
     .trim();
   return UNSAFE.test(decoded) ? undefined : decoded;
 }
-const cells = (row: string) =>
+/** Each cell's markup in a row. */
+const rawCells = (row: string) =>
   row
     .split(/<\/tr>/i)[0]!
     .split(/(?=<t[dh][\s>])/i)
     .filter((c) => /^<t[dh]/i.test(c))
-    .map((c) => cellText(c.slice(c.indexOf(">") + 1).split(/<\/t[dh]\s*>/i)[0]!));
+    .map((c) => c.slice(c.indexOf(">") + 1).split(/<\/t[dh]\s*>/i)[0]!);
+
+/**
+ * Markup kept to the letters and digits a person reads in it: tags and entities darnit does not decode left out,
+ * NFKC, lower case. A model is checked against it the same way, so no spelling hides one: dall&#x2011;e-3,
+ * o1-<wbr>mini, a soft hyphen or a fullwidth letter all fold to the model's name.
+ */
+export function fold(html: string): string {
+  let text = "";
+  let at = 0;
+  for (let open = html.indexOf("<"); open !== -1; open = html.indexOf("<", at)) {
+    const close = html.indexOf(">", open);
+    if (close === -1) break;
+    text += html.slice(at, open);
+    at = close + 1;
+  }
+  return decode(text + html.slice(at))
+    .replace(/&[a-z0-9#]+;/gi, "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
 
 const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
 
 /**
  * What the page's tables say: each model's replacement cells in page order, newest first, every table or row not
- * read, and the text of each model row not read, so a detected model it names fails the run.
+ * read, and each model row not read, folded, so a detected model it names fails the run. `exempt` is the model a
+ * row retiring fine-tuning on it names.
  */
-export type Page = { replacements: Map<string, string[]>; skipped: string[]; unread: { text: string; row: string }[] };
+export type Page = { replacements: Map<string, string[]>; skipped: string[]; unread: { folded: string; row: string; exempt?: string }[] };
 
 /** The page's deprecation tables: shutdown date first, then the model, any price columns, and the replacement column. */
 export function readPage(html: string): Page {
@@ -94,7 +117,7 @@ export function readPage(html: string): Page {
   const unread: Page["unread"] = [];
   for (const table of html.split(/<table[\s>]/i).slice(1)) {
     const raw = table.split(/<\/table>/i)[0]!.split(/<tr[\s>]/i).slice(1);
-    const [head = [], ...rows] = raw.map(cells);
+    const [head = [], ...rows] = raw.map((r) => rawCells(r).map(cellText));
     const to = head.findIndex((h) => h !== undefined && REPLACEMENT.has(h.toLowerCase()));
     if (head[0]?.toLowerCase() !== "shutdown date" || to < 2) {
       skipped.push(`table headed ${head.map((h) => h ?? "(refused)").join(" | ")}`);
@@ -108,8 +131,9 @@ export function readPage(html: string): Page {
       const why = row.length !== head.length ? `it has ${row.length} cells, the table ${head.length}` : `a cell holds markup, control characters or over ${MAX_CELL} characters`;
       const label = bad ? `row ${i + 1} of the table headed ${head.join(" | ")}, refused: ${why}` : `row ${row.join(" | ")}`;
       skipped.push(label);
-      // A row retiring fine-tuning on a model, not calls to it, names the model and is rightly not read.
-      if (bad || !/^New fine-tuning training on [a-z0-9._:-]+$/.test(row[1]!)) unread.push({ text: bad ? decode(raw[i + 1]!) : row[1]!, row: label });
+      // A row retiring fine-tuning on a model, not calls to it, names the model and is rightly not read when that is a real model.
+      const exempt = bad ? undefined : /^New fine-tuning training on ([a-z0-9._:-]+)$/.exec(row[1]!)?.[1];
+      unread.push({ folded: fold(bad ? raw[i + 1]! : rawCells(raw[i + 1]!)[1]!), row: label, ...(exempt ? { exempt } : {}) });
     }
   }
   return { replacements, skipped, unread };
@@ -142,15 +166,6 @@ function entry(record: ChangeRecord, text: string, retiring: (id: string) => str
   return { human: `${vendor} names no single replacement model`, source };
 }
 
-const ID_CHAR = /[a-z0-9._:-]/;
-/** Whether `text` holds `id` as a whole name, in any case and with invisible characters such as soft hyphens left out. */
-function names(text: string, id: string): boolean {
-  const plain = text.replace(/\p{Default_Ignorable_Code_Point}/gu, "").toLowerCase();
-  for (let at = plain.indexOf(id); at !== -1; at = plain.indexOf(id, at + 1))
-    if (!ID_CHAR.test(plain[at - 1] ?? " ") && !ID_CHAR.test(plain[at + id.length] ?? " ")) return true;
-  return false;
-}
-
 /**
  * A rename only to a model the API lists in `known`, read from the vendor's API spec. A family name the spec lists
  * only as its "-latest" alias, such as omni-moderation, becomes that alias; any other model is for a person.
@@ -165,27 +180,35 @@ function listed(r: Replacement, known: ReadonlySet<string>, vendor: string): Rep
  * fix.models for every record that detects models, keyed by record id, from the newest row naming each model.
  * A replacement the page retires too is followed to one it does not; one that ends with no plain swap, or loops,
  * becomes `human`, and so does one the API spec does not list. A model a reason offers is followed the same way, or
- * said to retire too. A detected model the page has no row for, or that a row darnit could not read names, is a
- * problem: an older row must not stand in for a newer one darnit could not read.
+ * said to retire too. A detected model the page has no row for is a problem, and so is one whose letters and digits
+ * appear in a row darnit could not read: an older row must not stand in for a newer one. That check over-reports on
+ * purpose; a row a person has confirmed names no model goes in `notModels`, by its folded text.
  */
 export function replacementsFor(
   records: readonly ChangeRecord[],
   page: Page,
   known: ReadonlySet<string>,
+  notModels: ReadonlySet<string> = new Set(),
 ): { models: Map<string, Record<string, Replacement>>; problems: string[] } {
   const newest = (m: string) => page.replacements.get(m)?.[0];
-  // Where the page sends a model a reason offers: itself if it is not retiring, else the models its newest row offers.
-  // Each id is worked out once; one met again while its own answer is pending loops, and retires too.
-  const sent = new Map<string, string[]>();
+  // Where the page sends a model a reason offers: every model it reaches through the newest rows of retiring ones, in
+  // the order met. A retiring model whose row offers no models, or a family such as gpt-4.1*, is marked as retiring
+  // too, and so is one whose rows only loop. Each answer depends on the model alone, never on which is worked out first.
   const retiring = (id: string): string[] => {
-    const base = id.replace(/\*$/, "");
-    const text = newest(base);
-    if (text === undefined) return [id];
-    if (sent.has(id)) return sent.get(id)!;
-    sent.set(id, [`${id} (retiring too)`]);
-    const next = isModel(text) ? [text] : choice(text);
-    if (next && base === id) sent.set(id, [...new Set(next.flatMap((n) => retiring(n)))]);
-    return sent.get(id)!;
+    const out = new Set<string>();
+    const seen = new Set<string>();
+    const todo = [id];
+    for (let at = todo.pop(); at !== undefined; at = todo.pop()) {
+      const base = at.replace(/\*$/, "");
+      const text = newest(base);
+      if (text === undefined) out.add(at);
+      if (text === undefined || seen.has(at)) continue;
+      seen.add(at);
+      const next = base === at ? (isModel(text) ? [text] : choice(text)) : undefined;
+      if (next) todo.push(...[...next].reverse());
+      else out.add(`${at} (retiring too)`);
+    }
+    return out.size > 0 ? [...out] : [`${id} (retiring too)`];
   };
   const follow = (record: ChangeRecord, start: Replacement): Replacement => {
     let at = start;
@@ -202,11 +225,16 @@ export function replacementsFor(
     return at;
   };
   const models = new Map<string, Record<string, Replacement>>();
-  const problems: string[] = [];
+  const real = new Set([...records.flatMap(recordModels), ...known]);
+  const unreadRows = page.unread.filter((u) => !(u.exempt !== undefined && real.has(u.exempt)) && !notModels.has(u.folded));
+  const onPage = new Set(page.unread.map((u) => u.folded));
+  const problems = [...notModels].filter((n) => !onPage.has(n)).map((n) => `the known non-model row ${n} is no longer on the page; take it off the list`);
   for (const r of records) {
     const ids = recordModels(r);
     const missing = ids.filter((m) => newest(m) === undefined);
-    const unread = page.unread.flatMap((u) => ids.filter((m) => names(u.text, m)).map((m) => `${r.id}: ${m} is named in a row darnit could not read, ${u.row.slice(0, 200)}`));
+    const unread = unreadRows.flatMap((u) =>
+      ids.filter((m) => u.folded.includes(m.replace(/[^a-z0-9]/g, ""))).map((m) => `${r.id}: ${m} may be named in a row darnit could not read, ${u.row.slice(0, 200)} (folded: ${u.folded.slice(0, 200)})`),
+    );
     if (missing.length > 0) problems.push(`${r.id}: the page has no row for ${missing.join(", ")}`);
     problems.push(...unread);
     if (missing.length > 0 || unread.length > 0 || ids.length === 0) continue;

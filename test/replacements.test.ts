@@ -1,10 +1,12 @@
+import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { cellModels, cellText, pageMismatches, readPage, recommended, replacementsFor } from "../src/corpus/replacements.js";
 import { modelIds, parseSpec } from "../src/corpus/spec.js";
 import { loadRecords } from "../src/records/load.js";
 import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/records/schema.js";
-import { cpuTime } from "./helpers.js";
+
 
 const PAGE = "https://developers.openai.com/api/docs/deprecations";
 const notes = (pairs: string) => `OpenAI removes these models. Recommended replacements: ${pairs}. A newer model can answer differently, so test the switch.`;
@@ -228,10 +230,22 @@ describe("fix.models from the page", () => {
     for (const newest of ["<code>a-1</code> <abbr>new</abbr> || c-1 or d-1", "a-1 || c-1 || d-1"]) {
       const page = readPage(table([newest, "a-1 || b-1"]));
       expect(page.replacements.get("a-1")).toEqual(["b-1"]);
-      expect(replacementsFor([r], page, KNOWN).problems).toEqual([`openai:2026-01-01:one: a-1 is named in a row darnit could not read, ${page.skipped[0]}`]);
+      expect(replacementsFor([r], page, KNOWN).problems).toEqual([expect.stringMatching(/^openai:2026-01-01:one: a-1 may be named in a row darnit could not read, row 1 /)]);
     }
-    // A longer name holding the id is not the id.
-    expect(replacementsFor([r], readPage(table(["a-1-x <abbr>new</abbr> || c-1", "a-1 || b-1"])), KNOWN).problems).toEqual([]);
+  });
+
+  it("fails closed: an unread row holding a model's letters and digits fails the run, unless a person listed it as no model", () => {
+    const r = shutdown("one", ["ada", "a-1"]);
+    const page = readPage(table(["Nevada region || x-1", "a-1-x <abbr>new</abbr> || c-1", "ada || b-1", "a-1 || b-1"]));
+    expect(page.unread.map((u) => u.folded)).toEqual(["nevadaregion", expect.stringContaining("a1xnew")]);
+    expect(replacementsFor([r], page, KNOWN).problems).toEqual([
+      expect.stringMatching(/^openai:2026-01-01:one: ada may be named in a row darnit could not read, row 2026 \| Nevada region \| x-1 \(folded: nevadaregion\)$/),
+      expect.stringMatching(/^openai:2026-01-01:one: a-1 may be named in a row darnit could not read, row 2 /),
+    ]);
+    const confirmed = new Set(["nevadaregion", page.unread[1]!.folded]);
+    expect(replacementsFor([r], page, KNOWN, confirmed).problems).toEqual([]);
+    // A listed row the page no longer has fails the run until it is taken off.
+    expect(replacementsFor([r], page, KNOWN, new Set([...confirmed, "oldrow"])).problems).toEqual(["the known non-model row oldrow is no longer on the page; take it off the list"]);
   });
 
   it("fails when a newer model row it cannot read names a detected model, in any case or with invisible characters", async () => {
@@ -250,11 +264,16 @@ describe("fix.models from the page", () => {
       ["<code>dall-e-3</code>, see fine-tuning notes", DALLE, "dall-e-3"],
       // A refused row is matched after the same single decode readable cells get.
       ["<code>dall&#8209;e&#8209;3</code> <abbr>new</abbr>", DALLE, "dall-e-3"],
+      // However a browser would show the name: entities darnit does not decode, tags inside it, NFKC look-alikes.
+      ...["<code>dall&#x2011;e&#x2011;3</code>", "<code>dall&hyphen;e&hyphen;3</code>", "<code>dall-e-&shy;3</code>", "<code>dall</code><code>-e-3</code>"].map((c) => [c, DALLE, "dall-e-3"]),
+      ...["<code>o1-&ZeroWidthSpace;mini</code>", "<code>o1-&#xAD;mini</code>", "<code>o1-<wbr>mini</code>", "o1-<b></b>mini", "\uff4f1-mini"].map((c) => [c, O1, "o1-mini"]),
+      // The fine-tuning row is exempt only when it names a real model.
+      ...["New fine-tuning training on o1-&shy;mini", "New fine-tuning training on o1-mini.inference", "New fine-tuning training on o1-mini:"].map((c) => [c, O1, "o1-mini"]),
     ];
     for (const [cell, record, model] of shapes) {
       const page = readPage(`${fixture.slice(0, at)}<tr><td>July 23, 2026</td><td>${cell}</td><td>gpt-5.6-sol</td></tr>\n${fixture.slice(at)}`);
       expect(page.replacements.get(model!)).toEqual(older.get(model!));
-      expect(replacementsFor(records, page, known).problems).toEqual([expect.stringMatching(new RegExp(`^${record}: ${model} is named in a row darnit could not read, row `))]);
+      expect(replacementsFor(records, page, known).problems).toContainEqual(expect.stringMatching(new RegExp(`^${record}: ${model} may be named in a row darnit could not read, row `)));
     }
     // The fixture's rows retiring fine-tuning on babbage-002 and davinci-002 name detected models and are rightly not read.
     expect(readPage(fixture).skipped).toContain("row 2024-10-28 | New fine-tuning training on davinci-002 | gpt-4o-mini");
@@ -286,21 +305,54 @@ describe("fix.models from the page", () => {
       "a-1": reason("x-2 or z-1"),
       "a-2": reason("r-1 or s-1 (retiring too)"),
       "a-3": reason("x-2 or f-1* (retiring too)"),
-      "a-4": reason("c-1 (retiring too) or k-1"),
+      "a-4": reason("k-1"), // c-1 only loops back through c-2 to itself and k-1
       "a-5": reason("x-2 with reasoning.mode: pro"),
       "a-6": reason("m-1 or n-1"),
     });
   });
 
-  it("works out each offered model once, so models that offer each other cannot make it slow", async () => {
-    const r = shutdown("one", ["m-0"]);
-    const ids = Array.from({ length: 12 }, (_, i) => `a-${i}`);
-    const offer = `${ids.slice(0, -1).join(", ")}, or ${ids.at(-1)}`;
-    const page = readPage(table([`m-0 || ${offer}`, ...ids.map((id) => `${id} || ${offer}`)]));
-    let result: ReturnType<typeof replacementsFor> | undefined;
-    // A millisecond on a laptop; following every path takes hours.
-    expect(await cpuTime(() => (result = replacementsFor([r], page, KNOWN)))).toBeLessThan(1000);
-    expect(result!.problems).toEqual(["openai:2026-01-01:one: the reason for m-0 is not one line of plain words under 200 characters"]);
+  it("gives each offered model the same answer whichever is worked out first, and never offers a model as its own replacement", () => {
+    const shapes = [
+      ["a-1 || b-1 or x-1", "b-1 || c-1 or y-1", "c-1 || a-1 or d-1"],
+      ["a-1 || b-1 or x-1", "b-1 || a-1 or y-1"],
+      ["a-1 || b-1 or c-1", "b-1 || c-1 or a-1", "c-1 || a-1 or b-1"],
+    ];
+    // Unmemoized reference: every model reached from `id` through retiring ones, worked out afresh for each id.
+    const reached = (rows: string[], id: string) => {
+      const offers = new Map(rows.map((r) => r.split(" || ") as [string, string]).map(([m, o]) => [m, o.split(" or ")]));
+      const out = new Set<string>();
+      const walk = (at: string, seen: Set<string>): void => {
+        if (!offers.has(at)) out.add(at);
+        else if (!seen.has(at)) for (const n of offers.get(at)!) walk(n, new Set([...seen, at]));
+      };
+      walk(id, new Set());
+      return [...out];
+    };
+    for (const rows of shapes) {
+      const detected = rows.map((r) => r.split(" || ")[0]!);
+      const page = readPage(table(rows));
+      const forward = replacementsFor([shutdown("one", detected)], page, KNOWN).models.get("openai:2026-01-01:one")!;
+      const backward = replacementsFor([shutdown("one", [...detected].reverse())], page, KNOWN).models.get("openai:2026-01-01:one")!;
+      for (const m of detected) {
+        expect(forward[m]).toEqual(backward[m]);
+        const offered = rows.find((r) => r.startsWith(`${m} ||`))!.split(" || ")[1]!.split(" or ");
+        // A model whose rows only loop, with no way out, retires too.
+        const want = [...new Set(offered.flatMap((o) => (reached(rows, o).length > 0 ? reached(rows, o) : [`${o} (retiring too)`])))];
+        const said = want.length < 3 ? want.join(" or ") : `${want.slice(0, -1).join(", ")}, or ${want.at(-1)}`;
+        expect(forward[m]).toEqual({ human: `not a plain swap: OpenAI recommends ${said}`, source: PAGE });
+        expect("human" in forward[m]! && forward[m].human).not.toMatch(new RegExp(`\\b${m} \\(retiring too\\)`));
+      }
+    }
+  });
+
+  it("works out models that offer each other in linear time, so a crafted page cannot hang the run", { timeout: 60_000 }, async () => {
+    const run = promisify(execFile);
+    const script = new URL("./offer-graph.ts", import.meta.url).pathname;
+    // Each model is a few milliseconds even at 30; following every path takes hours at 12, and the child is killed.
+    for (const n of [12, 30]) {
+      const { stdout } = await run(process.execPath, ["--import", import.meta.resolve("tsx"), script, String(n)], { timeout: 20_000 });
+      expect(JSON.parse(stdout)).toEqual(["openai:2026-01-01:one: the reason for m-0 is not one line of plain words under 200 characters"]);
+    }
   });
 
   it("names the model whose reason is too long instead of crashing", () => {
