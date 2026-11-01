@@ -326,6 +326,8 @@ describe("the rule picked by the title's type", () => {
       expect(r.summary, type).toContain('- package.json devDependencies.vitest "file:./fake-vitest"');
     }
     const hostile = [
+      "file:fake",
+      "file:fake.tgz",
       "file:../x",
       "link:../x",
       "portal:../x",
@@ -366,6 +368,42 @@ describe("the rule picked by the title's type", () => {
     const tarball = await rule("chore(deps): bump vitest", [{ write: "package.json", text: withDeps({ devDependencies: { vitest: "vitest.tar_gz" }, overrides: { a: "x.tar_gz", b: { c: "x.TGZ" } } }) }]);
     expect(tarball.status).toBe(1);
     for (const line of ['devDependencies.vitest "vitest.tar_gz"', 'overrides.a "x.tar_gz"', 'overrides.b.c "x.TGZ"']) expect(tarball.summary).toContain(`- package.json ${line}\n`);
+    // npm reads an override key as name@spec, and uses that spec when the key has no "." value.
+    const typescript = { devDependencies: { typescript: "npm:@typescript/typescript6@^6.0.2" } };
+    const keys = await rule(
+      "chore(deps): bump vite",
+      [
+        {
+          write: "package.json",
+          text: withDeps({
+            ...typescript,
+            overrides: {
+              "vitest@file:./evil.tgz": {},
+              "zod@x.tar_gz": { vite: "7.0.0" },
+              esbuild: "$typescript",
+              "a@npm:evil@1": {},
+              m: "$missing",
+              zod: "$zod",
+              "@scope/b@^1": "1.0.0",
+            },
+          }),
+        },
+      ],
+      "",
+      {},
+      [{ write: "package.json", text: withDeps(typescript) }],
+    );
+    expect(keys.status).toBe(1);
+    for (const line of [
+      'overrides.vitest@file:./evil.tgz "file:./evil.tgz"',
+      'overrides.zod@x.tar_gz "x.tar_gz"',
+      'overrides.esbuild "$typescript" (an alias to @typescript/typescript6)',
+      'overrides.a@npm:evil@1 "npm:evil@1" (an alias to evil)',
+      'overrides.m "$missing"',
+    ]) {
+      expect(keys.summary, line).toContain(`- package.json ${line}\n`);
+    }
+    for (const held of ["overrides.zod ", "@scope/b", "x.tar_gz.vite"]) expect(keys.summary, held).not.toContain(held);
     const nested = await rule("fix: x", [{ write: "package.json", text: withDeps({ overrides: { eslint: { ".": "^10.0.0", vitest: "evil/vitest" } } }) }]);
     expect(nested.status).toBe(1);
     expect(nested.summary).toContain('- package.json overrides.eslint.vitest "evil/vitest"');

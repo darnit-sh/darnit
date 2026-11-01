@@ -63,7 +63,18 @@ sources() {
     };
     // Leaves keyed by their path, so only what this change adds or alters is judged.
     const walk = (v, at, out, next) => { for (const [k, x] of Object.entries(obj(v))) next(x, [...at, k], out); return out; };
-    const specs = (j) => { const out = new Map(); const leaf = (v, at) => (isObj(v) ? walk(v, at, out, leaf) : out.set(JSON.stringify(at), [at, v])); for (const f of fields.split(" ")) if (Object.hasOwn(j, f)) leaf(j[f], [f]); return out; };
+    // npm reads an override key as name@spec, split at its first @ after the start, and the spec counts too.
+    const specs = (j) => {
+      const out = new Map();
+      const leaf = (v, at) => {
+        const key = at.length > 1 && at[0] === "overrides" ? at.at(-1) : "";
+        if (key.indexOf("@", 1) > 0) out.set(`${JSON.stringify(at)}@`, [at, key.slice(key.indexOf("@", 1) + 1)]);
+        if (isObj(v)) walk(v, at, out, leaf);
+        else out.set(JSON.stringify(at), [at, v]);
+      };
+      for (const f of fields.split(" ")) if (Object.hasOwn(j, f)) leaf(j[f], [f]);
+      return out;
+    };
     // npm reads a lock old style, from "dependencies", only when it has no "packages".
     const entries = (j) =>
       isObj(j.packages) || !Object.hasOwn(j, "dependencies")
@@ -76,22 +87,24 @@ sources() {
       if (b === null) return;
       const a = list(read(mb, f) ?? {});
       const say = (at, why) => console.log(`${f} ${show(at, f === "package.json" ? "." : " > ")} ${why}`);
-      for (const [k, [at, v]] of list(b)) if (JSON.stringify(a.get(k)?.[1]) !== JSON.stringify(v)) judge((why) => say(at, why), at, v, a, a.get(k)?.[1]);
+      for (const [k, [at, v]] of list(b)) if (JSON.stringify(a.get(k)?.[1]) !== JSON.stringify(v)) judge((why) => say(at, why), at, v, a, a.get(k)?.[1], b);
     };
     // A version, range or tag, or an npm: alias to one: only the characters those use, no leading dot, and no
-    // tarball ending as npm 10 reads one, with any character for its inner dot. An override may also name a
-    // root dependency with $. An alias may only keep the package base already names under that name.
+    // tarball ending as npm 10 reads one, with any character for its inner dot. An alias may only keep the
+    // package base already names under that name. A $name override is judged as the root spec it names,
+    // looked up as npm does.
     const target = (s) => (typeof s === "string" ? /^npm:((?:@[^/@]+\/)?[^/@]+)(?:@|$)/.exec(s.trim())?.[1] : undefined);
-    const registry = (s, at) => {
+    const registry = (s) => {
       if (typeof s !== "string") return false;
       const spec = s.trim().replace(/^npm:(@[^/@]+\/)?[^/@]+(@|$)/, "");
-      if (at[0] === "overrides" && /^\$(@[\w.~-]+\/)?[\w.~-]+$/.test(spec)) return true;
       return /^[\w.*^~<>=|+ -]*$/.test(spec) && !spec.startsWith(".") && !/[.](?:tgz|tar.gz|tar)$/i.test(spec);
     };
+    const root = (j, ref) => ["devDependencies", "optionalDependencies", "dependencies", "peerDependencies"].map((f) => Object.hasOwn(obj(j[f]), ref) && j[f][ref]).find(Boolean);
     const named = (at) => String(at.at(-1) === "." ? at.at(-2) : at.at(-1)).replace(/(.)@.*$/, "$1");
-    changed("package.json", specs, (say, at, v, a) => {
-      if (!registry(v, at)) return say(JSON.stringify(v) ?? "(none)");
-      const t = target(v);
+    changed("package.json", specs, (say, at, v, a, was, b) => {
+      const spec = at[0] === "overrides" && typeof v === "string" && v.startsWith("$") ? root(b, v.slice(1)) : v;
+      if (!registry(spec)) return say(JSON.stringify(v) ?? "(none)");
+      const t = target(spec);
       if (t === undefined || t === named(at) || [...a.values()].some(([was, w]) => named(was) === named(at) && target(w) === t)) return;
       say(`${JSON.stringify(v)} (an alias to ${show([t])})`);
     });
