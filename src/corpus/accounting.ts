@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import type { ChangeRecord } from "../records/schema.js";
-import { covers, ENDPOINT_GONE } from "./candidates.js";
+import { covers, ENDPOINT_GONE, namesOperation, settingsOf } from "./candidates.js";
 import type { ChangeEntry } from "./oasdiff.js";
 
 /**
@@ -89,7 +89,7 @@ function eachNode(root: unknown, visit: (n: Node) => void): void {
 function target(label: string[], value?: string): Omit<Item, "key"> {
   const [first, second, third, fourth] = label;
   const prop = label.lastIndexOf("property");
-  if (value !== undefined) return { value, ...(prop > 0 ? { field: label[prop + 1] } : first === "schema" ? { schema: second } : {}) };
+  if (value !== undefined) return { value, ...(first === "schema" ? { schema: second } : {}), ...(prop > 0 ? { field: label[prop + 1] } : {}) };
   if (first === "schema" && label.length === 2) return { schema: second };
   if (first === "schema" && third === "property" && label.length === 4) return { schema: second, field: fourth };
   if (label.length === 2 && METHODS.has(first!.toLowerCase())) return { method: first, path: second };
@@ -249,8 +249,8 @@ type Accounting = {
  * Joins each item to the records that cover it or to its not-covered entry. An operation is covered by a record for
  * its endpoint (or its SDK call, from `symbols`) with no fields. A request schema, or one of its properties, is
  * covered only when every operation whose request reaches the schema has such a record, for that field when there
- * is one. A deprecated enum value is covered when a record has a pattern setting a field that can hold it to that
- * exact value.
+ * is one. A deprecated enum value is covered when every operation whose request reaches its schema has a record whose
+ * surface names that operation and a field that holds the value, and whose patterns set that field to that exact value.
  */
 export function account(input: {
   vendor: string;
@@ -268,15 +268,27 @@ export function account(input: {
   const held = holders(spec);
   const coversOp = (r: ChangeRecord, method: string, path: string, field: string | undefined) =>
     covers(r, vendor, path, field, method, input.symbols?.[`${method} ${path}`]);
+  // Whether a record names an operation, worked out once per record and operation, not once per enum value.
+  const named = new Map<ChangeRecord, Map<string, boolean>>();
+  const namesOp = (r: ChangeRecord, op: { method: string; path: string }) => {
+    const key = `${op.method} ${op.path}`;
+    const known = named.get(r) ?? new Map<string, boolean>();
+    named.set(r, known);
+    if (!known.has(key)) known.set(key, namesOperation(r, op.path, op.method, input.symbols?.[key]));
+    return known.get(key)!;
+  };
   const coveredBy = (item: Item): ChangeRecord[] => {
     if (item.value !== undefined) {
       const fields = item.field !== undefined ? [item.field] : [...(held.get(item.schema ?? "") ?? [])];
-      const sets = (f: string) => [`${f}: "${item.value}"`, `${f}: '${item.value}'`, `${f}="${item.value}"`, `${f}='${item.value}'`];
-      return records.filter(
-        (r) =>
-          r.vendor === vendor &&
-          fields.some((f) => Object.values(r.detection.astGrepPatterns).some((ps) => ps?.some((p) => sets(f).some((s) => p.context.includes(s))))),
-      );
+      const candidates = records.filter((r) => r.vendor === vendor && fields.some((f) => r.surface.fields?.includes(f) && settingsOf(r).some((s) => s.key === f && s.value === item.value)));
+      // As for a property: every operation whose request reaches the schema needs a record that names it.
+      const found = new Set<ChangeRecord>();
+      for (const op of reach.get(item.schema ?? "") ?? []) {
+        const these = candidates.filter((r) => namesOp(r, op));
+        if (these.length === 0) return [];
+        for (const r of these) found.add(r);
+      }
+      return [...found];
     }
     if (item.method !== undefined && item.path !== undefined) return records.filter((r) => coversOp(r, item.method!, item.path!, item.field));
     if (item.schema === undefined) return [];
