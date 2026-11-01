@@ -616,7 +616,10 @@ async function publish(opts: FixOptions): Promise<FixResult> {
   if (server && server.toLowerCase() !== "https://github.com") {
     throw new Refusal(`GITHUB_SERVER_URL is ${process.env.GITHUB_SERVER_URL!.trim()}, not https://github.com; --publish sends its token only to github.com, so it does not run on another GitHub host`);
   }
-  if (process.env.GITHUB_ACTIONS === "true") {
+  // The plan's commit must be the one this job is meant to publish, not any commit the remote happens to serve by id
+  // (github.com serves every commit in a fork network). In Actions that is GITHUB_SHA; otherwise the default branch's tip.
+  const actions = process.env.GITHUB_ACTIONS === "true";
+  if (actions) {
     const sha = process.env.GITHUB_SHA?.trim();
     if (!sha) throw new Refusal("GITHUB_SHA is not set; in GitHub Actions --publish checks the plan's commit against it");
     if (sha !== plan.base) throw new Refusal(`the plan was made on commit ${plan.base}, but GITHUB_SHA is ${sha}; nothing published. Run --publish on the commit the plan was made on`);
@@ -652,19 +655,32 @@ async function publish(opts: FixOptions): Promise<FixResult> {
   if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
   const target = await defaultBranch(token, repo);
   const url = originUrl(repo);
-  return g.withCleanClone(url, plan.base, token, async (run, dir) => {
-    const { records, applicable, coverage, namesElsewhere } = await classified(dir, plan.groups.map((p) => p.id));
-    const byId = new Map(applicable.map((grp) => [grp.record.id, grp]));
-    for (const group of plan.groups) {
-      const r = result(group, records);
-      const grp = byId.get(group.id);
-      const decided = fromPlan(group);
-      if (decided) r.pr = decided;
-      else if (!grp) r.pr = { state: "mismatch", reason: MISMATCH };
-      else await openOne(run, dir, url, token, repo, target, plan.base, group, grp, r, version);
-    }
-    return done(records, coverage, namesElsewhere);
-  });
+  // Outside Actions, before anything is fetched: the plan's commit must be the remote default branch's tip.
+  const verifyTip = actions
+    ? undefined
+    : async (run: g.CloneGit) => {
+        const head = (await run(["ls-remote", url, "HEAD"], true)).split(/\s/)[0] ?? "";
+        if (head !== plan.base) throw new Refusal(`outside GitHub Actions --publish only publishes the default branch's tip; the remote's is ${head || "unknown"}, but the plan was made on ${plan.base}; nothing published`);
+      };
+  return g.withCleanClone(
+    url,
+    plan.base,
+    token,
+    async (run, dir) => {
+      const { records, applicable, coverage, namesElsewhere } = await classified(dir, plan.groups.map((p) => p.id));
+      const byId = new Map(applicable.map((grp) => [grp.record.id, grp]));
+      for (const group of plan.groups) {
+        const r = result(group, records);
+        const grp = byId.get(group.id);
+        const decided = fromPlan(group);
+        if (decided) r.pr = decided;
+        else if (!grp) r.pr = { state: "mismatch", reason: MISMATCH };
+        else await openOne(run, dir, url, token, repo, target, plan.base, group, grp, r, version);
+      }
+      return done(records, coverage, namesElsewhere);
+    },
+    verifyTip,
+  );
 }
 
 // One branch, one pull request. The clone is thrown away after, so no file is restored and no branch switched back.

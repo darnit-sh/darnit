@@ -3,8 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { firstFive } from "./detect.js";
+import { firstFive, onPath } from "./detect.js";
 import { envToken } from "./github.js";
+import { Refusal } from "./refusal.js";
 
 const exec = promisify(execFile);
 
@@ -297,7 +298,10 @@ export type CloneGit = (args: string[], network?: boolean) => Promise<string>;
  * XDG_CONFIG_HOME in an empty folder, GIT_NO_REPLACE_OBJECTS, and every other GIT_* variable dropped. The token reaches git
  * only as an http header scoped to github.com. The folder is removed afterwards.
  */
-export async function withCleanClone<T>(url: string, sha: string, token: string, body: (run: CloneGit, dir: string) => Promise<T>): Promise<T> {
+export async function withCleanClone<T>(url: string, sha: string, token: string, body: (run: CloneGit, dir: string) => Promise<T>, beforeFetch?: (run: CloneGit) => Promise<void>): Promise<T> {
+  // Resolve git once, from an absolute PATH entry, so a `git` the checked-out commit ships is never run; the token is in this job.
+  const gitBin = await onPath("git");
+  if (!gitBin) throw new Refusal("git was not found in an absolute PATH entry; --publish runs git by its absolute path");
   const tmp = await mkdtemp(join(tmpdir(), "darnit-publish-"));
   const [home, dir, global] = [join(tmp, "home"), join(tmp, "repo"), join(tmp, "global.config")];
   await mkdir(home);
@@ -311,10 +315,11 @@ export async function withCleanClone<T>(url: string, sha: string, token: string,
     GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: `http.${GITHUB}.extraheader`, GIT_CONFIG_VALUE_0: authHeader(token),
   });
   const stall = 60;
+  // cwd is the temp parent, never the work tree, and the repo is named with -C: nothing the commit ships is on the lookup path.
   const run: CloneGit = async (args, network = false) => {
     const netEnv = network ? { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) } : {};
     try {
-      const { stdout } = await exec("git", [...CLONE_PINS, ...args], { cwd: dir, env: { ...env, ...netEnv }, maxBuffer: 64 * 1024 * 1024, timeout: network ? stall * 4 * 1000 : 0 });
+      const { stdout } = await exec(gitBin, ["-C", dir, ...CLONE_PINS, ...args], { cwd: tmp, env: { ...env, ...netEnv }, maxBuffer: 64 * 1024 * 1024, timeout: network ? stall * 4 * 1000 : 0 });
       return stdout;
     } catch (err) {
       const { killed, stderr } = err as { killed?: boolean; stderr?: string };
@@ -324,6 +329,7 @@ export async function withCleanClone<T>(url: string, sha: string, token: string,
   };
   try {
     await run(["init", "-q"]);
+    if (beforeFetch) await beforeFetch(run);
     await run(["fetch", "-q", "--depth=1", "--no-tags", url, sha], true);
     await run(["checkout", "-q", "--detach", "FETCH_HEAD"]);
     return await body(run, dir);

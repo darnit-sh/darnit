@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { access, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, chmod, cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -289,6 +289,102 @@ describe("fix --publish", () => {
       await expect(run(["config", "--get-urlmatch", "http.extraheader", "https://evil.example/"])).rejects.toBeDefined();
       expect((await run(["config", "--get", "user.name"]).catch(() => "none")).trim()).toBe("none");
     });
+  });
+
+  it.each([
+    ["an empty PATH entry and a git the commit ships at the repo root", "./git", ":"],
+    ["a relative node_modules/.bin entry and a git the commit ships there", "node_modules/.bin/git", "node_modules/.bin:"],
+  ])("runs git by its absolute path, not %s", async (_, shipped, prefix) => {
+    const { dir, bare, branch } = await origin();
+    const marker = join(await temp("darnit-lab-"), "MARKER");
+    await mkdir(join(dir, shipped, ".."), { recursive: true });
+    // A git the commit ships that would dump the token header a bare-name lookup hands it.
+    await writeFile(join(dir, shipped), `#!/bin/sh\nenv | grep GIT_CONFIG_VALUE >> '${marker}'\nexec /usr/bin/git "$@"\n`);
+    await chmod(join(dir, shipped), 0o755);
+    await git(dir, ["add", "-f", "."]);
+    await commit(dir, "ship git");
+    await git(dir, ["push", "-q", "origin", branch], 60);
+    const plan = await prepare(dir, { noTest: true });
+    stubGitHub(branch);
+    vi.stubEnv("PATH", `${prefix}${process.env.PATH}`);
+    const result = await publish(await fresh(bare), plan);
+    expect(result.records.map((r) => r.pr?.state)).toEqual(["opened", "opened"]);
+    await expect(access(marker)).rejects.toThrow();
+  });
+
+  it("drops every GIT_* variable, so ambient git config, a redirect or a trace cannot reach the clone", async () => {
+    const { dir, bare, branch, base } = await origin();
+    const plan = await prepare(dir, { noTest: true });
+    const evil = await temp("darnit-attacker-");
+    await git(evil, ["init", "-q", "--bare"]);
+    const lab = await temp("darnit-lab-");
+    stubGitHub(branch);
+    const job2 = await fresh(bare);
+    // A redirect through env config and a GIT_DIR override: darnit's own git calls drop these, and so must the clone's.
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", `url.${evil}.insteadOf`);
+    vi.stubEnv("GIT_CONFIG_VALUE_0", bare);
+    vi.stubEnv("GIT_CONFIG_PARAMETERS", `'url.${evil}.pushInsteadOf'='${bare}'`);
+    vi.stubEnv("GIT_SSH_COMMAND", `touch ${join(lab, "ssh")}`);
+    vi.stubEnv("GIT_ASKPASS", join(lab, "askpass"));
+    const result = await publish(job2, plan);
+    expect(result.records.map((r) => r.pr?.state)).toEqual(["opened", "opened"]);
+    const value = await readPlan(plan);
+    for (const g of value.groups) expect(await pushedPatch(bare, base, branchOf(g.id))).toBe(g.patch);
+    expect(await branches(evil)).toEqual([]);
+    expect(await readdir(lab)).toEqual([]);
+  });
+
+  it("the GIT_* drop keeps a git trace from writing the clone's commands or the auth header to a file", async () => {
+    const { dir, bare, branch } = await origin();
+    const plan = await prepare(dir, { noTest: true });
+    const traceFile = join(await temp("darnit-lab-"), "trace.log");
+    stubGitHub(branch);
+    const job2 = await fresh(bare);
+    // GIT_TRACE writes every command (GIT_TRACE_CURL would add the http header, but a local remote uses no curl).
+    vi.stubEnv("GIT_TRACE", traceFile);
+    vi.stubEnv("GIT_TRACE_CURL", traceFile);
+    expect((await publish(job2, plan)).records.map((r) => r.pr?.state)).toEqual(["opened", "opened"]);
+    // The trace is never written: no record of the clone's commands, and no Authorization header could reach it.
+    const trace = await readFile(traceFile, "utf8").catch(() => "");
+    expect(trace).toBe("");
+    expect(trace.toLowerCase()).not.toContain("authorization");
+  });
+
+  it("removes its temporary clone folder even when the fetch fails", async () => {
+    const { dir, bare, branch } = await origin();
+    const plan = await prepare(dir, { noTest: true });
+    const value = await readPlan(plan);
+    // A base no remote serves: the fetch fails.
+    await writePlan(plan, { ...value, base: "1".repeat(40) });
+    stubGitHub(branch);
+    const left = async () => (await readdir(tmpdir())).filter((n) => n.startsWith("darnit-publish-"));
+    const before = await left();
+    await expect(publish(await fresh(bare), plan)).rejects.toThrow();
+    expect((await left()).filter((n) => !before.includes(n))).toEqual([]);
+  });
+
+  it("outside GitHub Actions refuses a plan whose commit is not the remote default branch's tip", async () => {
+    const { dir, bare, branch, base } = await origin();
+    // A commit the remote serves by id (a fork's, reachable as refs/pull/9/head) but that no branch points to.
+    await writeFile(join(dir, "evil.js"), "steal()\n");
+    await git(dir, ["add", "evil.js"]);
+    await commit(dir, "fork commit");
+    const fork = (await git(dir, ["rev-parse", "HEAD"])).trim();
+    await git(dir, ["push", "-q", "origin", `${fork}:refs/pull/9/head`], 60);
+    const plan = await prepare(dir, { noTest: true });
+    expect((await readPlan(plan)).base).toBe(fork);
+    const posts = stubGitHub(branch);
+    await expect(publish(await fresh(bare), plan)).rejects.toThrow(
+      `outside GitHub Actions --publish only publishes the default branch's tip; the remote's is ${base}, but the plan was made on ${fork}; nothing published`,
+    );
+    expect(posts).toEqual([]);
+    expect(await branches(bare)).toEqual([]);
+    // In Actions the GITHUB_SHA rule governs instead, and the same fork commit publishes when it is the checked-out one.
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("GITHUB_SHA", fork);
+    expect((await publish(await fresh(bare), plan)).records.map((r) => r.pr?.state)).toEqual(["opened", "opened"]);
+    expect(await git(bare, ["ls-tree", "-r", "--name-only", BRANCHES[0]!])).toContain("evil.js");
   });
 
   it("refuses a GITHUB_SERVER_URL for another GitHub host", async () => {

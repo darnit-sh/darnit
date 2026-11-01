@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
+import { tmpdir } from "node:os";
 import { promisify } from "node:util";
+import { onPath } from "./detect.js";
 import { Refusal } from "./refusal.js";
 
 const exec = promisify(execFile);
@@ -22,9 +24,12 @@ export const envToken = () => checked(process.env.GITHUB_TOKEN?.trim() || proces
 export async function githubToken(): Promise<string | undefined> {
   const env = envToken();
   if (env) return env;
+  // gh is resolved to an absolute path and run from a neutral folder, so a scanned repository cannot ship the gh that runs here.
+  const gh = await onPath("gh");
+  if (!gh) return undefined;
   let out: string;
   try {
-    out = (await exec("gh", ["auth", "token"])).stdout;
+    out = (await exec(gh, ["auth", "token"], { cwd: tmpdir() })).stdout;
   } catch {
     return undefined;
   }

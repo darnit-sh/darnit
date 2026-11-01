@@ -74,18 +74,24 @@ secret in any of them can reach the plan through test output.
 `fix --publish` holds the token and runs none of the repository's code: no install, build, tests or
 git hooks. It reads none of the folder it is run from, so a reused self-hosted workspace cannot steer
 it. Instead it makes its own clone: in a new temporary folder it fetches only the plan's commit from
-`https://github.com/<owner>/<repo>.git`, recomputes each rewrite there, and pushes to that same URL,
-with every git command run under `GIT_CONFIG_NOSYSTEM`, an empty global config, `HOME` and
-`XDG_CONFIG_HOME` in an empty folder, `GIT_NO_REPLACE_OBJECTS`, and no hooks, fsmonitor, filters,
-signing or submodule push; the token reaches git only as an http header scoped to github.com. It
-trusts darnit's own install (its code, records and rewrite rules) and, through that header, that
-github.com serves the real commit and accepts the push. It does not trust the workspace, the
-machine's user or system git config, or the plan: it applies nothing from the plan, makes each change
-again and compares it with the plan's patch byte for byte, and treats the build and test results and
-notes as text to report. A plan can still say tests passed when they did not; the pull request then
-holds darnit's own change only, and says the verify job reported the results. In GitHub Actions the
-plan's commit must equal `GITHUB_SHA`, and `--publish` does not run when `GITHUB_SERVER_URL` names a
-GitHub host other than github.com, where the token's header would not apply.
+`https://github.com/<owner>/<repo>.git`, recomputes each rewrite there, and pushes to that same URL.
+git is run by its absolute path (resolved from an absolute `PATH` entry, never by bare name, so a
+`git` the commit ships cannot be run) with the process started outside the work tree and the work
+tree named by `-C`, under `GIT_CONFIG_NOSYSTEM`, an empty global config, `HOME` and
+`XDG_CONFIG_HOME` in an empty folder, `GIT_NO_REPLACE_OBJECTS`, every other `GIT_*` variable
+dropped, and no hooks, fsmonitor, filters, signing or submodule push; the token reaches git only as
+an http header scoped to github.com. `gh auth token`, used only when no token is set, is resolved
+and run the same way. It trusts darnit's own install (its code, records and rewrite rules) and,
+through that header, that github.com serves the real commit and accepts the push. It does not trust
+the workspace, the machine's user or system git config, or the plan: it applies nothing from the
+plan, makes each change again and compares it with the plan's patch byte for byte, and treats the
+build and test results and notes as text to report. A plan can still say tests passed when they did
+not; the pull request then holds darnit's own change only on top of the published commit, and says
+the verify job reported the results. That commit must be the one the job is meant to publish, not any
+commit the remote serves by id (github.com serves every commit in a fork network): in GitHub Actions
+it must equal `GITHUB_SHA`; outside Actions it must be the tip of the repository's default branch on
+the remote, checked before anything is fetched. `--publish` does not run when `GITHUB_SERVER_URL`
+names a GitHub host other than github.com, where the token's header would not apply.
 
 ## How we handle a report
 

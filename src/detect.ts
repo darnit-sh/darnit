@@ -1,7 +1,24 @@
 import { constants } from "node:fs";
-import { open, readdir, realpath, stat } from "node:fs/promises";
+import { access, open, readdir, realpath, stat } from "node:fs/promises";
 import type { VendorClients } from "./scan/clients.js";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, delimiter, isAbsolute, join, resolve, sep } from "node:path";
+
+/**
+ * The absolute path of the executable `name` in the first absolute PATH entry that has it, or undefined.
+ * Relative and empty entries are skipped, so a program a scanned repository ships in its folder or in
+ * `node_modules/.bin` is never resolved and run by a bare name.
+ */
+export async function onPath(name: string, path = process.env.PATH ?? ""): Promise<string | undefined> {
+  const names = process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`, name] : [name];
+  for (const dir of path.split(delimiter)) {
+    if (!dir || !isAbsolute(dir)) continue;
+    for (const n of names) {
+      const p = join(dir, n);
+      if (await access(p, constants.X_OK).then(() => true, () => false)) return p;
+    }
+  }
+  return undefined;
+}
 
 // Known vendors. "supported" = a rule pack exists in packs/; "recognized" = named
 // in config only. Extend by adding a row.
