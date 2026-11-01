@@ -43,13 +43,15 @@ test | docs | chore | ci | build) ;;
 esac
 
 deps="dependencies devDependencies optionalDependencies peerDependencies overrides"
-# Each dependency spec in package.json and each lock entry this change adds or alters that npm would fetch
-# from somewhere other than the registry, so that npm test could run code of the change's own in place of a
-# package the suite runs. A file this change leaves unreadable counts, as does a reader that fails.
+# Each dependency spec in package.json that npm would fetch from somewhere other than the registry, and each
+# lock entry that is not what the registry published, among those this change adds or alters, so that npm test
+# could run code of the change's own in place of a package the suite runs. A file this change leaves
+# unreadable counts, as does a reader that fails or a registry this check cannot ask.
 sources() {
   git diff --quiet "$base...$head" -- package.json package-lock.json npm-shrinkwrap.json && return 0
-  node -e '
+  node -e '(async () => {
     const { execFileSync } = require("node:child_process");
+    const { posix } = require("node:path");
     const [mb, head, fields] = process.argv.slice(1);
     // By type, as a key named constructor must not hide the object holding it.
     const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -62,11 +64,11 @@ sources() {
     // Leaves keyed by their path, so only what this change adds or alters is judged.
     const walk = (v, at, out, next) => { for (const [k, x] of Object.entries(obj(v))) next(x, [...at, k], out); return out; };
     const specs = (j) => { const out = new Map(); const leaf = (v, at) => (isObj(v) ? walk(v, at, out, leaf) : out.set(JSON.stringify(at), [at, v])); for (const f of fields.split(" ")) if (Object.hasOwn(j, f)) leaf(j[f], [f]); return out; };
-    const entries = (j) => {
-      const out = walk(j.packages, [], new Map(), (v, at, out) => at[0] && out.set(JSON.stringify(["p", ...at]), [at, v, at[0]]));
-      const old = (v, at, out) => { out.set(JSON.stringify(at), [at, v]); walk(obj(v).dependencies, at, out, old); };
-      return walk(j.dependencies, [], out, old);
-    };
+    // npm reads a lock old style, from "dependencies", only when it has no "packages".
+    const entries = (j) =>
+      isObj(j.packages) || !Object.hasOwn(j, "dependencies")
+        ? walk(j.packages, [], new Map(), (v, at, out) => at[0] && out.set(at[0], [at, v]))
+        : new Map([["", [["dependencies"], j.dependencies]]]);
     const show = (at, sep) => at.map((k) => JSON.stringify(k).slice(1, -1)).join(sep);
     const changed = (f, list, judge) => {
       const b = read(head, f);
@@ -74,7 +76,7 @@ sources() {
       if (b === null) return;
       const a = list(read(mb, f) ?? {});
       const say = (at, why) => console.log(`${f} ${show(at, f === "package.json" ? "." : " > ")} ${why}`);
-      for (const [k, [at, v, loc]] of list(b)) if (JSON.stringify(a.get(k)?.[1]) !== JSON.stringify(v)) judge((why) => say(at, why), at, v, a, a.get(k)?.[1], loc);
+      for (const [k, [at, v]] of list(b)) if (JSON.stringify(a.get(k)?.[1]) !== JSON.stringify(v)) judge((why) => say(at, why), at, v, a, a.get(k)?.[1]);
     };
     // A version, range or tag, or an npm: alias to one; anything with a path, a protocol or a host is not.
     // An alias may only keep the package base already names under that name.
@@ -87,29 +89,78 @@ sources() {
       if (t === undefined || t === named(at) || [...a.values()].some(([was, w]) => named(was) === named(at) && target(w) === t)) return;
       say(`${JSON.stringify(v)} (an alias to ${show([t])})`);
     });
-    // Each entry is the registry tarball of its own name and a plain version, byte for byte and as npm parses it,
-    // at a node_modules path npm installs to.
+    // Each entry sits at a node_modules path npm installs to and holds a plain version, then matches what the
+    // registry published for that name and version: every field npm writes from the manifest, and no other.
     const name = "(@[^/\\\\]+/)?[^/\\\\]+";
     const place = new RegExp(`^node_modules/${name}(/node_modules/${name})*$`);
     const semver = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+    const asked = [];
     for (const f of ["package-lock.json", "npm-shrinkwrap.json"])
-      changed(f, entries, (say, at, e, a, was, loc) => {
-        if (loc !== undefined && !place.test(loc)) return say("location outside node_modules");
-        if (Object.hasOwn(obj(e), "link")) return say("link");
-        const { resolved, integrity, version, name: alias } = obj(e);
-        const here = loc === undefined ? at.at(-1) : loc.slice(loc.lastIndexOf("node_modules/") + 13);
+      changed(f, entries, (say, [loc], e, a, was) => {
+        if (loc === "dependencies") return say("in the old format, without \"packages\"");
+        if (!place.test(loc)) return say("location outside node_modules");
+        const { version, name: alias } = obj(e);
+        const here = loc.slice(loc.lastIndexOf("node_modules/") + 13);
         if (alias !== undefined && alias !== here && alias !== obj(was).name) return say(`name ${JSON.stringify(alias)}`);
         if (typeof version !== "string" || !semver.test(version)) return say(`version ${JSON.stringify(version) ?? "(none)"}`);
-        const pkg = typeof alias === "string" ? alias : here;
-        const path = `/${pkg}/-/${pkg.split("/").pop()}-${version}.tgz`;
-        if (resolved !== `https://registry.npmjs.org${path}` || new URL(resolved).pathname !== path) return say(`resolved ${JSON.stringify(resolved) ?? "(none)"}`);
-        if (typeof integrity !== "string" || !integrity) say("integrity (none)");
+        asked.push([say, obj(e), typeof alias === "string" ? alias : here, version]);
       });
-  ' "$mb" "$head" "$deps" || echo "dependency sources (unreadable)"
+    // Only the tests point this at a registry of their own, and only on this machine.
+    const test = process.env.DARNIT_TEST_REGISTRY;
+    const origin = !test ? "https://registry.npmjs.org" : /^http:\/\/127\.0\.0\.1:\d+$/.test(test) ? test : undefined;
+    const manifest = async (pkg, version) => {
+      if (!origin) throw new Error("DARNIT_TEST_REGISTRY is not http://127.0.0.1:<port>");
+      const at = `${origin}/${pkg[0] === "@" ? "@" + encodeURIComponent(pkg.slice(1)) : encodeURIComponent(pkg)}/${version}`;
+      const r = await fetch(at, { redirect: "error", signal: AbortSignal.timeout(30_000) }).catch((e) => {
+        throw new Error(`the registry could not be reached (${e.cause?.code ?? e.cause?.message ?? e.name})`);
+      });
+      if (r.status !== 200 || !/^application\/json\b/.test(r.headers.get("content-type") ?? "")) throw new Error(`the registry answered ${r.status} ${r.headers.get("content-type") ?? ""}`.trim());
+      const parts = [];
+      let size = 0;
+      for await (const part of r.body) if ((size += part.length) > 2 ** 23) throw new Error("the registry answer is over 8 MiB");
+      else parts.push(part);
+      const m = JSON.parse(Buffer.concat(parts).toString("utf8"));
+      if (!isObj(m) || m.name !== pkg || m.version !== version) throw new Error(`the registry answered for another package than ${show([`${pkg}@${version}`])}`);
+      return m;
+    };
+    // The entry npm writes from a manifest: pacote normalizes it, then arborist keeps each field that is set.
+    const secure = (r) => { const s = posix.join(".", posix.join("/", r.replace(/\\|:/g, "/"))).replace(/\\|:/g, "/"); return s.startsWith("./") ? "" : s; };
+    const expected = (m) => {
+      m = structuredClone(m);
+      const bd = m.bundleDependencies ?? m.bundledDependencies;
+      m.bundleDependencies = bd === true ? Object.keys(obj(m.dependencies)) : isObj(bd) ? Object.keys(bd) : Array.isArray(bd) ? bd : undefined;
+      if (m.dependencies && isObj(m.optionalDependencies)) for (const n of Object.keys(m.optionalDependencies)) delete m.dependencies[n];
+      let bin = typeof m.bin === "string" ? { [m.name]: m.bin } : Array.isArray(m.bin) ? Object.fromEntries(m.bin.map((k) => [posix.basename(k), k])) : m.bin;
+      if (isObj(bin)) bin = Object.fromEntries(Object.entries(bin).map(([k, v]) => [posix.basename(secure(k)), typeof v === "string" && secure(v)]).filter(([k, v]) => k && v));
+      const s = obj(m.scripts), dist = obj(m.dist);
+      const meta = {
+        resolved: dist.tarball, version: m.version, dependencies: m.dependencies, peerDependencies: m.peerDependencies, peerDependenciesMeta: m.peerDependenciesMeta,
+        optionalDependencies: m.optionalDependencies, bundleDependencies: m.bundleDependencies, acceptDependencies: m.acceptDependencies,
+        funding: typeof m.funding === "string" ? { url: m.funding } : m.funding, engines: m.engines, os: m.os, cpu: m.cpu, libc: m.libc,
+        integrity: dist.integrity || (dist.shasum && `sha1-${Buffer.from(dist.shasum, "hex").toString("base64")}`),
+        license: isObj(m.license) && m.license.type ? m.license.type : m.license, hasShrinkwrap: m._hasShrinkwrap,
+        hasInstallScript: !!(m.hasInstallScript || ["install", "preinstall", "postinstall"].some((k) => typeof s[k] === "string" && s[k])), bin, deprecated: m.deprecated, workspaces: m.workspaces,
+      };
+      return Object.fromEntries(Object.entries(meta).filter(([, v]) => v && (typeof v !== "object" || Object.keys(v).length)));
+    };
+    const sorted = (v) => (isObj(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : Array.isArray(v) ? v.map(sorted) : v);
+    const flags = new Set(["dev", "optional", "devOptional", "peer"]);
+    if (asked.length > 500) console.log(`${asked.length} lock entries to compare with the registry, over the 500 this check asks for; a person reviews this change`);
+    else
+      for (let i = 0; i < asked.length; i += 16)
+        await Promise.all(asked.slice(i, i + 16).map(async ([say, e, pkg, version]) => {
+          const m = await manifest(pkg, version).catch((err) => say(`not compared: ${err.message}`));
+          if (!m) return;
+          const want = expected(m);
+          for (const k of new Set([...Object.keys(want), ...Object.keys(e)]))
+            if (k !== "name" && (flags.has(k) ? e[k] !== true : JSON.stringify(sorted(e[k])) !== JSON.stringify(sorted(want[k]))))
+              say(`${show([k])} ${JSON.stringify(e[k]) ?? "(none)"}, published ${JSON.stringify(want[k]) ?? "(none)"}`);
+        }));
+  })()' "$mb" "$head" "$deps" || echo "dependency sources (unreadable)"
 }
 fetched=$(sources)
 if [ -n "$fetched" ]; then
-  say "**Failed:** npm installs every dependency from https://registry.npmjs.org/ with an integrity, so that the suite runs the packages it names; this change adds or alters one it would fetch from elsewhere:"
+  say "**Failed:** npm installs every dependency as https://registry.npmjs.org/ published it, so that the suite runs the packages it names; this change adds or alters one it would install otherwise, or that this check could not compare:"
   list "$fetched"
   exit 1
 fi
