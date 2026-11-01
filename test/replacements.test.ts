@@ -269,6 +269,33 @@ describe("fix.models from the page", () => {
     expect(replacementsFor([shutdown("one", ["a-1"])], page, KNOWN).problems).toEqual([]);
   });
 
+  it("reads the page's tables inside its real ancestor markup, a styled div among them, as it reads them alone", async () => {
+    const fixture = await FIXTURE;
+    // As parse5 reads the live page: html > body > div > div style > main > div > div > div > article.
+    expect(fixture).toContain('<html><body><div><div style="padding-top: var(--docs-header-offset)"><main><div><div><div><article id="mainContent">');
+    const tables = fixture.slice(fixture.indexOf('<article id="mainContent">') + '<article id="mainContent">'.length, fixture.indexOf("</article>"));
+    const [inChain, alone] = [readPage(fixture), readPage(tables)];
+    expect(inChain.replacements.size).toBeGreaterThan(140);
+    expect(inChain).toEqual(alone);
+  });
+
+  it.each(["display:none", "display: none !important", "DISPLAY: None", "color: red; visibility:hidden", "visibility: collapse"])("reads no table under an element styled %s", (style) => {
+    const page = readPage(`<div style="${style}">${table(["a-1 || b-9"])}</div>${table(["a-1 || b-1"])}`);
+    expect(page.replacements.get("a-1")).toEqual(["b-1"]);
+  });
+
+  it.each(["color: red", "padding-top: var(--docs-header-offset)", "display: block", "display: nonesuch", "visibility: visible", ""])("reads a table under an element styled %j as shown", (style) => {
+    const page = readPage(`<div style="${style}">${table(["a-1 || b-9"])}</div>${table(["a-1 || b-1"])}`);
+    expect(page.replacements.get("a-1")).toEqual(["b-9", "b-1"]);
+  });
+
+  it("fails a table whose row carries a style, hiding or not, rather than reading the row", () => {
+    for (const style of ["display:none", "color: red"]) {
+      const page = readPage(table(["a-1 || b-1"]).replace("<tr> <td>2026</td>", `<tr style="${style}"> <td>2026</td>`));
+      expect([style, page.replacements.get("a-1"), page.tables[0]!.error]).toEqual([style, undefined, expect.stringMatching(/^it holds a <tr> with style /)]);
+    }
+  });
+
   it("reads a table a browser shows inside an svg's foreignObject as the newer row", () => {
     const page = readPage(`<svg><foreignObject>${table(["a-1 || b-9"])}</foreignObject></svg>${table(["a-1 || b-1"])}`);
     expect(page.replacements.get("a-1")).toEqual(["b-9", "b-1"]);

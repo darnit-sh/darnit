@@ -57,8 +57,15 @@ const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
 const isElement = (n: T.ChildNode): n is T.Element => "tagName" in n;
 const children = (e: T.Element) => e.childNodes.filter(isElement);
 const attr = (e: T.Element, name: string) => e.attrs.find((a) => a.name === name)?.value;
-/** Whether an element's own attributes hide it, or may. Hiding through a CSS class is not seen. */
-const unshown = (e: T.Element) => attr(e, "hidden") !== undefined || attr(e, "style") !== undefined || attr(e, "aria-hidden") === "true";
+/** Whether an inline style hides an element: display none, or visibility hidden or collapse. Any other style shows it. */
+const hides = (style: string) =>
+  style.split(";").some((declaration) => {
+    const at = declaration.indexOf(":");
+    const [name, value] = [declaration.slice(0, at), declaration.slice(at + 1)].map((s) => s.trim().toLowerCase().replace(/\s*!\s*important$/, ""));
+    return at !== -1 && ((name === "display" && value === "none") || (name === "visibility" && (value === "hidden" || value === "collapse")));
+  });
+/** Whether an element's own attributes hide it. Hiding through a CSS class is not seen. */
+const unshown = (e: T.Element) => attr(e, "hidden") !== undefined || hides(attr(e, "style") ?? "") || attr(e, "aria-hidden") === "true";
 /**
  * The text a node shows: its text nodes, a <br> as a line break, and a <sup> as a word of its own, as a footnote mark
  * reads, so "o1-mini" with a footnote is not the model "o1-mini2". Comments and template content are not shown.

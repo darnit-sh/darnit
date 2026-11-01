@@ -1,5 +1,5 @@
-<!-- Deprecation tables from https://developers.openai.com/api/docs/deprecations, trimmed to the tables, with the page's cell markup. -->
-<main>
+<!-- Deprecation tables from https://developers.openai.com/api/docs/deprecations, trimmed to the tables, in the page's own ancestor markup (html > body > div > div style > main > div > div > div > article, as parse5 reads the page) and the page's cell markup. Keep both: a fixture with simplified ancestors hid a reader that skipped every table under the styled div. -->
+<html><body><div><div style="padding-top: var(--docs-header-offset)"><main><div><div><div><article id="mainContent">
 <h3>Deprecation</h3>
 <table>
 <thead><tr><th>Shutdown date</th><th>Model / system</th><th>Recommended replacement</th></tr></thead>
@@ -346,4 +346,4 @@
 <tr> <td>2022-12-03</td> <td><code>/v1/classifications</code></td> <td>View transition guide</td> </tr>
 <tr> <td>2022-12-03</td> <td><code>/v1/answers</code></td> <td>View transition guide</td> </tr>
 </tbody></table>
-</main>
+</article></div></div></div></main></div></div></body></html>
