@@ -1,0 +1,37 @@
+openapi: 3.1.0
+info: { title: accounting fixture, version: "1" }
+paths:
+  /images/generations:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateImageRequest" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImagesResponse" }
+  /assistants:
+    post:
+      deprecated: true
+      responses: { "200": { description: ok } }
+components:
+  schemas:
+    CreateImageRequest:
+      type: object
+      properties:
+        style: { type: string, deprecated: true }
+        seed: { type: integer, deprecated: true }
+        user: { type: string, deprecated: true }
+        model:
+          type: string
+          enum: [gpt-image-1, gpt-4o-search-preview, gpt-5.1-mini]
+          x-openai-enum-deprecations:
+            gpt-4o-search-preview: { message: "Announced shutdown date: 2026-07-23." }
+            gpt-5.1-mini: { message: "Not a supported model ID. Retained for SDK compatibility." }
+    ImagesResponse:
+      type: object
+      properties:
+        status: { type: string, deprecated: true }
