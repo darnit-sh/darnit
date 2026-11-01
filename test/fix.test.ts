@@ -44,11 +44,31 @@ vi.mock("../src/packs/apply.js", async (original) => {
   return { ...real, applyRules: (packDir: string, targets: readonly string[]) => real.applyRules(rules.packDir ?? packDir, targets) };
 });
 
+// Records a test marks mechanical, as a scratch copy would, without changing a shipped pack.
+const scratch = vi.hoisted(() => ({ mechanical: new Set<string>() }));
+vi.mock("../src/records/load.js", async (original) => {
+  const real = await original<typeof import("../src/records/load.js")>();
+  return {
+    ...real,
+    loadRecords: async (dir?: string) =>
+      (await real.loadRecords(dir)).map((l) => (scratch.mechanical.has(l.record.id) ? { ...l, record: { ...l.record, classification: "mechanical" as const } } : l)),
+  };
+});
+
+// Runs just before darnit builds and pushes its commit, after its last look at the files.
+const beforePush = vi.hoisted(() => ({ run: undefined as (() => Promise<void>) | undefined }));
+vi.mock("../src/git.js", async (original) => {
+  const real = await original<typeof import("../src/git.js")>();
+  return { ...real, pushExact: async (...args: Parameters<typeof real.pushExact>) => (await beforePush.run?.(), real.pushExact(...args)) };
+});
+
 const PACKS = fileURLToPath(new URL("../packs/", import.meta.url));
 
 const tempDirs: string[] = [];
 afterEach(async () => {
   rules.packDir = undefined;
+  scratch.mechanical.clear();
+  beforePush.run = undefined;
   runs.limitMs = undefined;
   runs.count = 0;
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
@@ -1664,10 +1684,11 @@ console.log(config);`,
       ["set a filter on it", (o) => `git config filter.x.clean ${o}/filter && echo "sdk.js filter=x" > .git/info/attributes`],
       ["stage another file", () => "echo x >> README.md && git add README.md"],
       ["stage it executable", () => "git config core.fileMode false && git update-index --chmod=+x sdk.js"],
+      ["tag HEAD and ask git to push tags along", () => "git -c user.name=x -c user.email=x@y tag -a v9.9.9 -m evil HEAD && git config push.followTags true"],
     ];
     for (const [what, command] of exact) {
       it(`pushes darnit's exact change when the tests ${what}`, async () => {
-        const { dir, bare, outside, posts, close } = await setup();
+        const { dir, bare, branch, outside, posts, close } = await setup();
         // Programs the tests point git at log here; neither may run while darnit commits or pushes.
         await writeFile(join(outside, "gpg"), `#!/bin/sh\necho gpg >> "$(dirname "$0")/ran"\nexit 1\n`, { mode: 0o755 });
         await writeFile(join(outside, "filter"), `#!/bin/sh\necho "filter $GIT_INDEX_FILE" >> "$(dirname "$0")/ran"\nsed s/5/6/\n`, { mode: 0o755 });
@@ -1685,11 +1706,64 @@ console.log(config);`,
           expect(await readFile(join(outside, "ran"), "utf8").catch(() => "")).not.toMatch(/gpg|darnit-commit/);
           expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
           expect((await git(dir, ["branch", "--list", SDK_BRANCH])).trim()).toBe("");
+          expect((await git(bare, ["for-each-ref", "--format=%(refname)"])).split("\n").filter(Boolean).sort()).toEqual([`refs/heads/${branch}`, `refs/heads/${SDK_BRANCH}`].sort());
         } finally {
           close();
         }
       });
     }
+
+    // Run from app/, where sdk.js is the call; the sdk.js at the top must not take its bytes.
+    const moved: [string, string][] = [
+      ["point core.worktree at the folder darnit runs in", 'git config core.worktree "$PWD"'],
+      ["make that folder a repository of its own", "cp -r ../.git .git"],
+    ];
+    for (const [what, command] of moved) {
+      it(`pushes darnit's change to the file it rewrote when the tests ${what}`, async () => {
+        const { dir, bare, posts, close } = await setup({ "app/sdk.js": SDK_CALL, "sdk.js": "export const keep = 1;\n" });
+        const base = (await git(dir, ["rev-parse", "HEAD"])).trim();
+        try {
+          const result = await fix(join(dir, "app"), { pr: true, repo: "o/r", test: command });
+          expect(result.records[0]?.pr).toMatchObject({ state: "opened" });
+          expect(posts).toHaveLength(1);
+          expect(await git(bare, ["diff-tree", "-r", "--name-only", base, SDK_BRANCH])).toBe("app/sdk.js\n");
+          expect(await git(bare, ["show", `${SDK_BRANCH}:app/sdk.js`])).toBe(REWRITTEN);
+        } finally {
+          close();
+        }
+      });
+    }
+
+    it("pushes nothing an earlier change's tests planted in a later change's file", async () => {
+      scratch.mechanical.add("openai:2023-11-06:chat-functions-to-tools");
+      const functions = `import OpenAI from "openai";\nexport const r = new OpenAI().chat.completions.create({ model: "x", messages: [], functions: [{ name: "f", parameters: {} }] });\n`;
+      const { dir, bare, posts, close } = await setup({ "a.js": SDK_CALL, "b.js": functions });
+      // Once, in whichever file darnit has not rewritten yet, hidden from git status.
+      const plant = `if [ ! -e .git/zz ]; then touch .git/zz; for f in a.js b.js; do git diff --quiet -- $f && git update-index --assume-unchanged $f && echo 'fetch("https://evil.example")' >> $f; done; fi; true`;
+      try {
+        const result = await fix(dir, { pr: true, repo: "o/r", test: plant });
+        expect(result.records.map((r) => r.pr?.state).sort()).toEqual(["opened", "refused"]);
+        expect(result.records.find((r) => r.pr?.state === "refused")?.pr).toMatchObject({
+          reason: expect.stringMatching(/^the build or tests of an earlier change changed [ab]\.js before darnit rewrote it$/) as string,
+        });
+        expect(posts).toHaveLength(1);
+        expect(await git(bare, ["log", "--all", "-p"])).not.toContain("evil.example");
+      } finally {
+        close();
+      }
+    });
+
+    it("pushes the bytes it kept, not a write that lands after its last look at the file", async () => {
+      const { dir, bare, close } = await setup();
+      beforePush.run = () => appendFile(join(dir, "sdk.js"), 'fetch("https://evil.example")\n');
+      try {
+        const result = await fix(dir, { pr: true, repo: "o/r", test: "true" });
+        expect(result.records[0]?.pr).toMatchObject({ state: "opened" });
+        expect(await git(bare, ["show", `${SDK_BRANCH}:sdk.js`])).toBe(REWRITTEN);
+      } finally {
+        close();
+      }
+    });
 
     it("pushes darnit's exact bytes when run from a folder inside the repository, on a name with a space and an accent", async () => {
       const { dir, bare, posts, close } = await setup({ "app/sdk é.js": SDK_CALL, "README.md": "# app\n" });

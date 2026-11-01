@@ -558,8 +558,10 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
   const token = await githubToken();
   if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
   const target = await defaultBranch(token, repo);
-  // What each change is committed on, taken before any of the repository's code runs.
-  const head = await g.head(root);
+  // What each change is committed on, and its files as committed there, read before any of the repository's code runs.
+  const at = await g.start(root);
+  const before = new Map<string, Kept | undefined>();
+  for (const f of new Set(groups.flatMap((grp) => grp.files))) before.set(f, await regularFile(join(root, f)));
   let anyFailed = false;
 
   for (const grp of groups) {
@@ -574,7 +576,13 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       result.pr = { state: "skipped", reason: `branch ${branch} already exists; delete it or open the pull request from it yourself` };
       continue;
     }
-
+    // An earlier change's build or tests can write this one's files; each is rewritten only from what was committed.
+    const earlier = await changedSince(root, new Map(grp.files.map((f) => [f, before.get(f)])));
+    if (earlier !== undefined) {
+      result.pr = { state: "refused", reason: `the build or tests of an earlier change changed ${earlier} before darnit rewrote it` };
+      anyFailed = true;
+      continue;
+    }
     const snap = await snapshotOf(root, grp.files);
     try {
       const changed = settle(result, await applyAndVerify(root, grp), grp.held);
@@ -608,7 +616,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         continue;
       }
       const files = [...kept].map(([path, own]) => ({ path, mode: own!.mode & 0o100 ? "100755" : "100644", bytes: own!.bytes }));
-      await g.pushExact(root, head, files, [result.title, `Source: ${grp.record.sources[0]!.url}`], branch);
+      await g.pushExact(at, files, [result.title, `Source: ${grp.record.sources[0]!.url}`], branch);
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
       result.pr = { state: "opened", url, build, tests };
     } finally {

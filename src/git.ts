@@ -166,7 +166,7 @@ export async function git(root: string, args: string[], stall?: number, site = G
     Object.assign(env, { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
     config.push(...originAuth(site));
     // A process timeout would cut a slow but healthy HTTPS push and leave its helper pushing.
-    const urls = (await git(root, ["remote", "get-url", "--all", ...(name === "push" ? ["--push"] : []), "origin"])).split("\n").filter(Boolean);
+    const urls = (await git(root, ["remote", "get-url", "--all", ...(name === "push" ? ["--push"] : []), "origin"], undefined, site, { env: more.env })).split("\n").filter(Boolean);
     if (!urls.every((u) => /^https?:\/\//i.test(u))) timeout = stall * 4 * 1000;
   }
   // Read the repository's filters before adding config of our own to the environment.
@@ -301,18 +301,29 @@ function originAuth(site: string): [string, string][] {
   return [[`http.${site}.extraheader`, ""], [`http.${site}.extraheader`, header]];
 }
 
-/** Pushes `ref` (a branch, or `<commit>:refs/heads/<branch>`) to origin, unsigned whatever the config says. */
-export const push = (root: string, ref: string, site = GITHUB, env?: NodeJS.ProcessEnv) => git(root, ["push", "-q", "--no-signed", "origin", ref], 60, site, { env });
+/** Pushes `ref` (a branch, or `<commit>:refs/heads/<branch>`) to origin, alone and unsigned whatever the config says. */
+export const push = (root: string, ref: string, site = GITHUB, env?: NodeJS.ProcessEnv) =>
+  git(root, ["push", "-q", "--no-signed", "--no-follow-tags", "origin", ref], 60, site, { env });
+
+/** HEAD's commit, the top level and `root`'s path under it: where darnit's commit starts, read before any of the repository's code runs. */
+export type Start = { commit: string; top: string; prefix: string };
+
+export async function start(root: string): Promise<Start> {
+  const args = ["rev-parse", "--show-toplevel", "--show-prefix", "--verify", "HEAD^{commit}"];
+  const [top = "", prefix = "", commit = ""] = (await git(root, args, undefined, GITHUB, { env: { GIT_NO_REPLACE_OBJECTS: "1" } })).split("\n");
+  return { commit, top, prefix };
+}
 
 /**
- * Pushes to origin as `branch` a commit of `base` with `files` (path from `root`, git mode, bytes) in place, built from
+ * Pushes to origin as `branch` a commit of `at` with `files` (path from its root, git mode, bytes) in place, built from
  * those bytes alone in an index of its own: the work tree, the repository's index and HEAD, replace refs, filters,
  * hooks and signing play no part. Before pushing, refuses a commit that changes anything else, or a file's mode.
  */
-export async function pushExact(root: string, base: string, files: readonly { path: string; mode: string; bytes: Buffer }[], message: string[], branch: string, site = GITHUB): Promise<void> {
+export async function pushExact(at: Start, files: readonly { path: string; mode: string; bytes: Buffer }[], message: string[], branch: string, site = GITHUB): Promise<void> {
   const tmp = await mkdtemp(join(tmpdir(), "darnit-commit-"));
   const env = { GIT_NO_REPLACE_OBJECTS: "1", GIT_INDEX_FILE: join(tmp, "index") };
-  const [top = "", prefix = ""] = (await git(root, ["rev-parse", "--show-toplevel", "--show-prefix"], undefined, site, { env })).split("\n");
+  // From the top level found at the start, so a core.worktree or a nested repository set up since cannot move a path.
+  const { commit: base, top, prefix } = at;
   const run = async (args: string[], input?: Buffer) => (await git(top, args, undefined, site, { env, input })).trim();
   try {
     await run(["read-tree", base]);

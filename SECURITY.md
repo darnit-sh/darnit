@@ -59,12 +59,14 @@ for example `http.curloptResolve` pointing github.com at another address with
 `http.sslVerify false`. The README workflow cannot prevent either. On code you do not trust, run
 `check` only.
 
-`fix --pr` pushes darnit's rewrite only. Before the build and tests run, it notes the commit the tree is
-at and keeps the bytes of each file it rewrote. It then builds the commit from those bytes alone, on that
-commit, in an index of its own, with replace refs off and no filter, hook or signing program run, checks
-that it changes exactly those files, and pushes it by its id. What the tests do to the work tree, the
-index, HEAD or refs therefore cannot change what is pushed. When a rewritten file on disk differs
-afterwards, is a link or has a second name, darnit opens no pull request and says why. Git config the
+`fix --pr` pushes darnit's rewrite only. Before the build and tests run, it notes the commit and top
+level the tree is at, and keeps the bytes of each file it rewrote. It then builds the commit from those
+bytes alone, on that commit, in an index of its own, with replace refs off and no filter, hook or signing
+program run, checks that it changes exactly those files, and pushes that commit id alone, with no tags
+following it. What the tests do to the work tree, the index, HEAD, refs, `core.worktree` or a nested
+repository therefore cannot change what is pushed. Each change starts from its files as committed: when
+an earlier change's build or tests changed them, or when a rewritten file on disk differs afterwards, is a
+link or has a second name, darnit opens no pull request for that change and says why. Git config the
 tests write, or a process they leave running writes, still applies to that commit and push: the author
 and committer name and email, and where the push goes with what credentials, as above. Such a process
 could also rewrite the object files darnit reads the starting commit from, since git does not check an
