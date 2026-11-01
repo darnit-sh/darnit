@@ -3,7 +3,7 @@ import python from "@ast-grep/lang-python";
 import { kind as kindId, Lang as NapiLang, parse, registerDynamicLanguage, type SgNode } from "@ast-grep/napi";
 import { escapeRegExp } from "../detect.js";
 import type { AstGrepPattern, Lang } from "../records/schema.js";
-import { clientOrigin, FUNCTIONS, isStatic, stringText, unwrap, urlOrigin, vendorClass, type VendorClients } from "./clients.js";
+import { clientOrigin, FUNCTIONS, holdsNamespace, isStatic, stringText, unwrap, urlOrigin, vendorClass, type VendorClients } from "./clients.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
 export type Grammar = Parameters<typeof parse>[0];
@@ -200,7 +200,7 @@ type Request = { call: SgNode | undefined; symbol: string | undefined; url: stri
  * or else the URL of the raw request around it. One walk down from the root keeps each node's
  * ancestors, since asking a node for its parent walks down from the root each time.
  */
-function requests(root: SgNode, source: string, nodes: readonly SgNode[], symbols: readonly string[], namesEndpoint: ((call: SgNode, url: SgNode) => boolean) | undefined, isVendorClass: (callee: string) => boolean): Map<number, Request> {
+function requests(root: SgNode, source: string, nodes: readonly SgNode[], symbols: readonly string[], namesEndpoint: ((call: SgNode, url: SgNode) => boolean) | undefined, isSymbol: (call: SgNode, callee: string, symbol: string) => boolean): Map<number, Request> {
   const wanted = new Set(nodes.map((n) => n.id()));
   const starts = [...new Set(nodes.map((n) => n.range().start.index))].sort((a, b) => a - b);
   /** The first match starting at or after `at`. */
@@ -223,7 +223,7 @@ function requests(root: SgNode, source: string, nodes: readonly SgNode[], symbol
       const call = up.slice(-8).reverse().find((f) => isCall(f.node))?.node;
       const raw = call?.field("function")?.text();
       const callee = raw === undefined ? undefined : normalized(raw);
-      const symbol = callee === undefined ? undefined : symbols.filter((s) => endsWithSymbol(callee, s) && (!isStatic(s) || isVendorClass(callee))).sort((a, b) => b.length - a.length)[0];
+      const symbol = callee === undefined ? undefined : symbols.filter((s) => isSymbol(call!, callee, s)).sort((a, b) => b.length - a.length)[0];
       const url = symbol === undefined && namesEndpoint ? endpointUrl(up, namesEndpoint, source) : undefined;
       out.set(node.id(), { call, symbol, url });
     }
@@ -342,7 +342,14 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
     if (!classes.has(name)) classes.set(name, vendorClass(root, grammar, callee, gate.vendor));
     return classes.get(name)!;
   };
-  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, source, found.flat(), symbols, endpoints.length > 0 ? endpointTest(root, grammar, endpoints) : undefined, isVendorClass) : undefined;
+  // A method counts after a dot, or on a name the file assigns from the client's namespace (`m_chat = OpenAI().chat`).
+  const isSymbol = (call: SgNode, callee: string, s: string) => {
+    if (!callee.endsWith(s)) return false;
+    const first = s.split(".")[0]!;
+    const named = endsWithSymbol(callee, s) || holdsNamespace(root, grammar, call, callee.slice(0, callee.length - s.length + first.length), first);
+    return named && (!isStatic(s) || isVendorClass(callee));
+  };
+  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, source, found.flat(), symbols, endpoints.length > 0 ? endpointTest(root, grammar, endpoints) : undefined, isSymbol) : undefined;
   const matches: Match[] = [];
   for (const nodes of found) {
     for (const node of nodes) {

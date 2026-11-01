@@ -386,6 +386,20 @@ describe("check matches SDK names on a dot boundary", () => {
     expect(of(hits, "max-tokens")).toEqual(["d.ts:3"]);
   });
 
+  it("reports a method on any name assigned from a client's namespace, and leaves out the same name assigned from anything else", async () => {
+    const dir = await scratch({
+      "a.py": 'from openai import OpenAI\n\nclass Svc:\n    def __init__(self):\n        self.m_chat = OpenAI().chat\n    def run(self):\n        return self.m_chat.completions.create(model="x", max_tokens=5)\n',
+      "b.py": 'from openai import OpenAI\n\nopenai_images = OpenAI().images\nopenai_images.generate(model="dall-e-2")\n',
+      "c.py": 'class Svc:\n    def run(self):\n        return self.__images.generate(model="dall-e-2")\n',
+      "d.py": 'from pictures import load\n\nmy_images = load()\nmy_images.generate(model="dall-e-2")\nx_images = load().pictures\nx_images.generate(model="dall-e-2")\n',
+      "e.ts":
+        'import OpenAI from "openai";\nconst client = new OpenAI();\nclient._mychat.completions.create({ model: "x", messages: [], max_tokens: 5 });\nmy$images.generate({ model: "dall-e-2", n: 1 });\nx_images.generate({ model: "dall-e-2", n: 1 });\n',
+    });
+    const { hits } = await checkReport(dir);
+    expect(of(hits, "dall-e")).toEqual(["b.py:4", "c.py:3"]);
+    expect(of(hits, "max-tokens")).toEqual(["a.py:7"]);
+  });
+
   it("reads a dot in a JavaScript package name as part of the name, and in a Python import as a submodule", async () => {
     const old = "gpt-4o-realtime-preview-2024-10-01";
     const dir = await scratch({
@@ -394,12 +408,14 @@ describe("check matches SDK names on a dot boundary", () => {
       "required.js": 'const Groq = require("groq.custom");\nconst g = new Groq();\ng.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
       "router.py": 'from openai.lib import OpenAI\n\nclient = OpenAI(base_url="https://api.groq.com/openai/v1")\nclient.chat.completions.create(model="x", max_tokens=5)\n',
       "sub.py": 'import groq.sub\n\nc = groq.sub.Groq()\nc.chat.completions.create(model="x", max_tokens=5)\n',
+      "scoped.js": 'import Cerebras from "@cerebras/cerebras_cloud_sdk";\nconst c = new Cerebras();\nc.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "rt.js": ['const OpenAI = require("openai");', 'const { OpenAIRealtimeWS } = require("openai.fake");', `OpenAIRealtimeWS.create(new OpenAI(), { model: "${old}" });`, ""].join("\n"),
     });
     const { hits, coverage, values } = await checkReport(dir);
     expect(of(hits, "shut-down")).toEqual([]);
-    expect(values.map((v) => `${v.file}:${v.line}`)).toContain("rt.ts:4");
+    expect(values.map((v) => `${v.file}:${v.line}`)).toEqual(expect.arrayContaining(["rt.js:3", "rt.ts:4"]));
     expect(of(hits, "max-tokens")).toEqual(["groq.js:3", "required.js:3"]);
-    expect(coverage.foreignAt).toEqual(["router.py:4", "sub.py:4"]);
+    expect(coverage.foreignAt).toEqual(["router.py:4", "scoped.js:3", "sub.py:4"]);
   });
 });
 
@@ -1542,6 +1558,18 @@ describe("check on a repository built to slow it down", () => {
     let hits: Hit[] = [];
     expect(await cpuTime(async () => (hits = await check(dir)), 3, budget)).toBeLessThan(budget);
     expect(maxTokens(hits)).toHaveLength(count);
+  });
+
+  // A name assigned too often to trace counts as the SDK's namespace, so its calls are reported.
+  it.each([
+    ["a thousand calls on a look-alike name set a thousand times", times(1000, () => "x_images = load()\n"), 1000, 1000],
+    ["three thousand calls on a look-alike name set 40 times", times(40, () => "x_images = load()\n"), 3000, 0],
+  ])("finishes quickly on %s", { timeout: 60_000 }, async (_, sets, calls, count) => {
+    const dir = await scratch({ "app.py": `from pictures import load\n${sets}${times(calls, () => 'x_images.generate(model="dall-e-2")\n')}` });
+    let hits: Hit[] = [];
+    // Under a second on a laptop.
+    expect(await cpuTime(async () => (hits = await check(dir)), 3, 4000)).toBeLessThan(4000);
+    expect(new Set(hits.filter((h) => h.record.id.includes("dall-e")).map((h) => h.line)).size).toBe(count);
   });
 
   it("checks thousands of realtime class calls, and as many on a look-alike class, within a CPU budget", { timeout: 60_000 }, async () => {

@@ -239,9 +239,10 @@ function declaresGlobal(fn: SgNode, name: string): boolean {
 // often than this where one call can see it is not traced, and its calls count as the vendor's.
 const MAX_TRACED = 50;
 
-/** Every assignment to `target` that could be the value the call sees. */
-function visibleAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] {
+/** Every assignment to `target` that could be the value the call sees; undefined when there are too many to trace. */
+function visibleAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] | undefined {
   const visible = reachingAssignments(index, target, call);
+  if (!visible) return undefined;
   // A let or const in an inner block hides one of the same name in a block around it.
   const blocks = visible.filter((a) => a.blockScoped).map((a) => a.block);
   return visible.filter((a) => {
@@ -251,13 +252,13 @@ function visibleAssignments(index: FileIndex, target: string, call: SgNode): Ass
 }
 
 /** Assignments to `target` whose scope reaches the call, before any shadowing. */
-function reachingAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] {
+function reachingAssignments(index: FileIndex, target: string, call: SgNode): Assignment[] | undefined {
   const at = index.calls.get(call.id()) ?? {};
   const member = /^(?:this|self)\.([\w$#]+)$/.exec(target)?.[1];
   if (member !== undefined) {
     if (!at.cls) return [];
     const own = [...(index.classed.get(target)?.get(at.cls) ?? []), ...(index.classed.get(member)?.get(at.cls) ?? []).filter((a) => a.field)];
-    return own.length > MAX_TRACED ? [] : own;
+    return own.length > MAX_TRACED ? undefined : own;
   }
   const groups = index.scoped.get(target);
   if (!groups) return [];
@@ -278,7 +279,7 @@ function reachingAssignments(index: FileIndex, target: string, call: SgNode): As
   // Counted before anything is copied, so a name assigned thousands of times costs little per call.
   let count = global.total;
   for (const home of homes) count += (groups.get(home)?.length ?? 0) - (home ? (global.homes.get(home)?.length ?? 0) : 0);
-  if (count > MAX_TRACED) return [];
+  if (count > MAX_TRACED) return undefined;
   const reaching = [...homes].flatMap((home) => groups.get(home) ?? []);
   for (const [home, list] of global.homes) if (!homes.has(home)) reaching.push(...list);
   // A parameter with the same name, between the assignment and the call, shadows it.
@@ -351,6 +352,22 @@ export function vendorClass(root: SgNode, grammar: Grammar, callee: string, v: V
   return [...pkgs].some((p) => v.packages.includes(p));
 }
 
+/**
+ * Whether `receiver` (`self.m_chat` in `self.m_chat.completions.create`) is assigned, where the call sees it, from
+ * a member named `namespace`, such as `OpenAI().chat`: then it is the SDK's namespace whatever its name. A name
+ * assigned too often to trace counts as one.
+ */
+export function holdsNamespace(root: SgNode, grammar: Grammar, call: SgNode, receiver: string, namespace: string): boolean {
+  const seen = visibleAssignments(indexOf(root, grammar), receiver, call);
+  return (
+    seen === undefined ||
+    seen.some((a) => {
+      const value = unwrap(a.value);
+      return value !== undefined && (value.is("member_expression") || value.is("attribute")) && (value.field("property") ?? value.field("attribute"))?.text() === namespace;
+    })
+  );
+}
+
 /** The client expression an SDK call hangs off: `x` in `x.beta.chat.completions.create`. */
 function clientNode(callee: SgNode, symbol: string): SgNode | undefined {
   let node: SgNode | null = callee;
@@ -376,7 +393,7 @@ export function clientOrigin(root: SgNode, grammar: Grammar, call: SgNode, symbo
     if (typeof built !== "object" || !("name" in built)) return built;
     let origin = byName.get(built.name);
     if (!origin) {
-      const consts = visibleAssignments(index, built.name, call).map((a) => stringText(a.value));
+      const consts = (visibleAssignments(index, built.name, call) ?? []).map((a) => stringText(a.value));
       byName.set(built.name, (origin = consts.length === 1 && consts[0] ? urlOrigin(consts[0], v) : "vendor"));
     }
     return origin;
@@ -385,7 +402,7 @@ export function clientOrigin(root: SgNode, grammar: Grammar, call: SgNode, symbo
   const target = client.text().replace(/\s+/g, "");
   if (!/^(?:(?:this|self)\.)?[\w$#]+$/.test(target)) return "unknown";
   const origins: Origin[] = [];
-  for (const a of visibleAssignments(index, target, call)) {
+  for (const a of visibleAssignments(index, target, call) ?? []) {
     // Every record on the file shares the index, so what was built is reused only with the same client list (each record passes its own).
     if (a.built?.v !== v) a.built = { v, built: a.value.is("new_expression") || a.value.is("call_expression") || a.value.is("call") ? constructed(a.value, index, v) : "unknown" };
     const origin = traced(a.built.built);
