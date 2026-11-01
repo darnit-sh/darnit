@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
 import { detectApis, readText, skippedNote, tooLargeNote, VENDORS, type Skipped } from "./detect.js";
-import { isRepo, uncommitted, uncommittedReasons } from "./git.js";
+import { ensureGitVersion, isRepo, uncommitted, uncommittedReasons } from "./git.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -109,6 +109,7 @@ async function refuseUncommitted(root: string, files: { rel: string; real: strin
 
 /** `darnit init`: detect APIs, write darnit.yml and the scheduled workflow. Returns log lines. */
 export async function init(root: string, { force = false } = {}): Promise<string[]> {
+  await ensureGitVersion();
   const tooLarge: string[] = [];
   const skipped: Skipped[] = [];
   const found = await detectApis(root, tooLarge, skipped);
