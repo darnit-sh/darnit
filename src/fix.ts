@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, type Stats } from "node:fs";
 import { cp, type FileHandle, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
@@ -149,8 +149,12 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
   return { groups: [...byId.values()], coverage, namesElsewhere: values.length + mentions.length > 0 };
 }
 
-/** Each file's bytes and mode, and its inode and number of names, to tell a second name the tests gave it from one it had. */
-type Snapshot = Map<string, { bytes: Buffer; mode: number; ino: number; nlink: number }>;
+/** A file's bytes and mode, and its inode and number of names, to tell a second name the tests gave it from one it had. */
+type Entry = { bytes: Buffer; mode: number; ino: number; nlink: number };
+type Snapshot = Map<string, Entry>;
+
+/** Whether `info` is a regular file with no name but its own, or no names but those it had in `before`. */
+const own = (info: Stats, before: Entry) => info.isFile() && (info.nlink === 1 || (info.ino === before.ino && info.nlink <= before.nlink));
 
 // Bytes, not text: a file that is not UTF-8 must come back as it was.
 async function snapshotOf(root: string, files: readonly string[]): Promise<Snapshot> {
@@ -171,21 +175,36 @@ async function snapshotOf(root: string, files: readonly string[]): Promise<Snaps
 const TRIES = 3;
 
 /**
- * Writes each file back as a new regular file with its bytes and mode. Whatever is in its place is removed first and the
- * file is created only if nothing appeared there since, so no link, hard link or folder the repository's code left is
- * written through. The folders above it are checked right before writing; Node cannot hold them open while it writes.
+ * Writes each file back with its bytes and mode, going through every file, then refuses with the first it could not put
+ * back. A file that is still its own is written in place, so its folder need not be writable. Anything else in its place,
+ * a link, a hard link, a folder, is removed and the file created anew where nothing has appeared since, so nothing is
+ * written through it. The folders above are checked right before writing; Node cannot hold them open while it writes.
  */
 async function restore(root: string, snap: Snapshot): Promise<void> {
-  for (const [f, { bytes, mode }] of snap) {
-    await realFolders(root, f);
-    const path = join(root, f);
-    const file = await unlocked(dirname(path), f, () => created(path, f, mode));
-    try {
-      await file.writeFile(bytes);
-      await file.chmod(mode);
-    } finally {
-      await file.close();
-    }
+  let refusal: Refusal | undefined;
+  for (const [f, before] of snap) {
+    await putBack(root, f, before).catch((err: unknown) => {
+      const code = (err as NodeJS.ErrnoException).code ?? String(err);
+      const why = code === "EACCES" || code === "EPERM" ? "permission denied" : code;
+      refusal ??= err instanceof Refusal ? err : new Refusal(`darnit could not put ${shown(f)} back (${why}); restore it with git`);
+    });
+  }
+  if (refusal) throw refusal;
+}
+
+async function putBack(root: string, f: string, before: Entry): Promise<void> {
+  await realFolders(root, f);
+  const path = join(root, f);
+  // Nonblocking, so a pipe in its place cannot hold the open.
+  let file = await open(path, constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => undefined);
+  if (file && !own(await file.stat(), before)) file = await file.close().then(() => undefined);
+  file ??= await created(path, f, before.mode);
+  try {
+    await file.truncate();
+    await file.writeFile(before.bytes);
+    await file.chmod(before.mode);
+  } finally {
+    await file.close();
   }
 }
 
@@ -193,32 +212,12 @@ async function created(path: string, f: string, mode: number): Promise<FileHandl
   for (let tries = 1; ; tries++) {
     await rm(path, { recursive: true, force: true });
     try {
-      return await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, mode);
+      // With O_EXCL, open never follows a link: one in the name is EEXIST.
+      return await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, mode);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
       if (tries === TRIES) throw new Refusal(`a new ${shown(f)} appeared each time darnit removed what was there to put it back, so darnit wrote nothing there; a process the tests started may still be running`);
     }
-  }
-}
-
-/** Runs `step`, which writes in `dir`; if `dir` is not writable, gives it its owner's write bit for that step only. */
-async function unlocked<T>(dir: string, f: string, step: () => Promise<T>): Promise<T> {
-  const denied = (err: unknown) => ["EACCES", "EPERM"].includes((err as NodeJS.ErrnoException).code ?? "");
-  try {
-    return await step();
-  } catch (err) {
-    if (!denied(err)) throw err;
-  }
-  const folder = await open(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  const { mode } = await folder.stat();
-  try {
-    await folder.chmod(mode | 0o200);
-    return await step();
-  } catch (err) {
-    if (denied(err)) throw new Refusal(`darnit could not put ${shown(f)} back: permission denied`);
-    throw err;
-  } finally {
-    await folder.chmod(mode & 0o7777).finally(() => folder.close());
   }
 }
 
@@ -232,10 +231,8 @@ async function realFolders(root: string, f: string): Promise<void> {
     if (info?.isSymbolicLink() && !within(await realpath(root), await resolved(dir))) {
       throw new Refusal(`${shown(relative(root, dir))} became a link out of the repository, so ${shown(f)} was not put back; nothing was written through it`);
     }
-    await unlocked(dirname(dir), f, async () => {
-      await rm(dir, { recursive: true, force: true });
-      await mkdir(dir);
-    });
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir);
   }
 }
 
@@ -248,8 +245,7 @@ async function replaced(root: string, snap: Snapshot): Promise<string | undefine
     const parts = f.split(sep);
     for (let i = 1; i <= parts.length; i++) {
       const info = await lstat(join(root, ...parts.slice(0, i))).catch(() => undefined);
-      const own = info?.isFile() && (info.nlink === 1 || (info.ino === before.ino && info.nlink <= before.nlink));
-      if (!(i < parts.length ? info?.isDirectory() : own)) return f;
+      if (!(i < parts.length ? info?.isDirectory() : info && own(info, before))) return f;
     }
   }
   return undefined;

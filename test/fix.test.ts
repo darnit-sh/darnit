@@ -1,7 +1,8 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { mkdtempSync, rmSync } from "node:fs";
 import { access, appendFile, chmod, cp, link, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
@@ -36,9 +37,10 @@ vi.mock("../src/tests.js", async (original) => {
   };
 });
 
-// Once a build or test run has started, a step run right before darnit opens `path` to read or to write: a process
-// the tests left running, made to act at the worst moment.
-const race = vi.hoisted(() => ({ path: "", beforeRead: undefined as (() => Promise<void>) | undefined, beforeWrite: undefined as (() => Promise<void>) | undefined }));
+// Once a build or test run has started, a step run right before darnit opens `path` to read it, to write it in place or
+// to create it: a process the tests left running, made to act at the worst moment.
+type Step = (() => Promise<void>) | undefined;
+const race = vi.hoisted(() => ({ path: "", beforeRead: undefined as Step, beforeWrite: undefined as Step, beforeCreate: undefined as Step }));
 vi.mock("node:fs/promises", async (original) => {
   const real = await original<typeof import("node:fs/promises")>();
   const { constants } = await import("node:fs");
@@ -47,7 +49,7 @@ vi.mock("node:fs/promises", async (original) => {
     open: async (...args: Parameters<typeof real.open>) => {
       const [path, flags] = args;
       if (runs.count > 0 && String(path) === race.path && typeof flags === "number") {
-        await ((flags & 3) === constants.O_RDONLY ? race.beforeRead : race.beforeWrite)?.();
+        await ((flags & 3) === constants.O_RDONLY ? race.beforeRead : flags & constants.O_CREAT ? race.beforeCreate : race.beforeWrite)?.();
       }
       return real.open(...args);
     },
@@ -68,7 +70,7 @@ afterEach(async () => {
   rules.packDir = undefined;
   runs.limitMs = undefined;
   runs.count = 0;
-  Object.assign(race, { path: "", beforeRead: undefined, beforeWrite: undefined });
+  Object.assign(race, { path: "", beforeRead: undefined, beforeWrite: undefined, beforeCreate: undefined });
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
@@ -1026,6 +1028,20 @@ const notDarnits = (output: string) => {
   return { ran: ran.filter((c) => !/^::stop-commands::[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(c)), stopped };
 };
 
+/** Whether this machine lets these tests make a folder immutable with `chattr +i`, as root on Linux can. */
+const IMMUTABLE = (() => {
+  const dir = mkdtempSync(join(tmpdir(), "darnit-chattr-"));
+  try {
+    execFileSync("chattr", ["+i", dir], { stdio: "ignore" });
+    execFileSync("chattr", ["-i", dir], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
+
 /** A folder outside the repository holding `victim.js`, which the repository's tests point a link at. */
 async function outside(): Promise<{ dir: string; victim: string }> {
   const dir = await mkdtemp(join(tmpdir(), "darnit-outside-"));
@@ -1124,22 +1140,72 @@ describe("fix when the tests remove or replace a file it changed", () => {
     const { victim } = await outside();
     const dir = await repoWith({ "sdk.js": SDK_CALL });
     race.path = join(dir, "sdk.js");
-    race.beforeWrite = once(() => make(victim, race.path));
+    race.beforeCreate = once(() => make(victim, race.path));
     const result = await fix(dir, { test: "rm sdk.js; exit 1" });
     expect(await readFile(victim, "utf8")).toBe("outside\n");
     await putBack(dir, "sdk.js", SDK_CALL);
     expect(result.tests).toMatchObject({ passed: false, removed: "sdk.js" });
   });
 
-  it("refuses, writing nothing, when a new file keeps appearing in its place", async () => {
+  it("still tries a third time when a new file appears twice in its place", async () => {
     const { victim } = await outside();
     const dir = await repoWith({ "sdk.js": SDK_CALL });
     race.path = join(dir, "sdk.js");
-    race.beforeWrite = () => link(victim, race.path).catch(() => undefined);
-    await expect(fix(dir, { test: "rm sdk.js; exit 1" })).rejects.toThrow(
-      new Refusal("a new sdk.js appeared each time darnit removed what was there to put it back, so darnit wrote nothing there; a process the tests started may still be running"),
+    let left = 2;
+    race.beforeCreate = async () => {
+      if (left-- > 0) await link(victim, race.path);
+    };
+    const result = await fix(dir, { test: "rm sdk.js; exit 1" });
+    expect(result.tests).toMatchObject({ passed: false, removed: "sdk.js" });
+    expect(await readFile(victim, "utf8")).toBe("outside\n");
+    await putBack(dir, "sdk.js", SDK_CALL);
+  });
+
+  it("refuses, writing nothing there, when a new file keeps appearing in its place, and still puts the others back", async () => {
+    const { victim } = await outside();
+    const dir = await repoWith({ "a.js": SDK_CALL, "sdk.js": SDK_CALL });
+    race.path = join(dir, "a.js");
+    race.beforeCreate = () => link(victim, race.path).catch(() => undefined);
+    await expect(fix(dir, { test: "rm a.js; exit 1" })).rejects.toThrow(
+      new Refusal("a new a.js appeared each time darnit removed what was there to put it back, so darnit wrote nothing there; a process the tests started may still be running"),
     );
     expect(await readFile(victim, "utf8")).toBe("outside\n");
+    expect(await git(dir, ["status", "--porcelain", "--", "sdk.js"])).toBe("");
+  });
+
+  // What a folder darnit cannot write in does: one made read-only for a user who is not its owner, or immutable.
+  it.each(["EACCES", "EPERM"])("refuses with the file it could not create (%s), and still puts the others back", async (code) => {
+    const dir = await repoWith({ "a.js": SDK_CALL, "lib/sdk.js": SDK_CALL, "sdk.js": SDK_CALL });
+    race.path = join(dir, "lib", "sdk.js");
+    race.beforeCreate = () => Promise.reject(Object.assign(new Error(code), { code }));
+    await expect(fix(dir, { test: "rm lib/sdk.js; exit 1" })).rejects.toThrow(
+      new Refusal(`darnit could not put ${join("lib", "sdk.js")} back (permission denied); restore it with git`),
+    );
+    expect((await git(dir, ["status", "--porcelain"])).split("\n").filter(Boolean)).toEqual([" D lib/sdk.js"]);
+  });
+
+  it("writes a file that is still its own in place, so its folder need not be writable", async () => {
+    const dir = await repoWith({ "a.js": SDK_CALL, "lib/sdk.js": SDK_CALL, "sdk.js": SDK_CALL });
+    race.path = join(dir, "lib", "sdk.js");
+    race.beforeCreate = () => Promise.reject(Object.assign(new Error("EPERM"), { code: "EPERM" }));
+    const result = await fix(dir, { test: "exit 1" });
+    expect(result.tests).toMatchObject({ passed: false, attributed: "baseline" });
+    expect(await git(dir, ["status", "--porcelain"])).toBe("");
+  });
+
+  it("does not hang on a pipe the tests put in its place", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    const result = await fix(dir, { test: "rm sdk.js && mkfifo sdk.js; exit 1" });
+    expect(result.tests).toMatchObject({ passed: false, removed: "sdk.js" });
+    await putBack(dir, "sdk.js", SDK_CALL);
+  });
+
+  it("puts back the exact mode of a file it creates anew, whatever the umask", async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    await chmod(join(dir, "sdk.js"), 0o664);
+    await fix(dir, { test: "rm sdk.js; exit 1" });
+    await putBack(dir, "sdk.js", SDK_CALL);
+    expect((await lstat(join(dir, "sdk.js"))).mode & 0o7777).toBe(0o664);
   });
 
   it("reads no file through a link that appears after its check, and fails the check", async () => {
@@ -1166,6 +1232,16 @@ describe("fix when the tests remove or replace a file it changed", () => {
     expect(result.tests?.removed).toBeUndefined();
   });
 
+  it("counts a hard link to a file outside in place of a file that had a second name", async () => {
+    const out = await outside();
+    const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });
+    await link(join(dir, "client.js"), join(out.dir, "second.js"));
+    const result = await fix(dir, { test: `rm client.js && ln ${out.victim} client.js` });
+    expect(result.tests).toMatchObject({ passed: false, removed: "client.js" });
+    expect(await readFile(out.victim, "utf8")).toBe("outside\n");
+    await putBack(dir, "client.js", RAW_FETCH);
+  });
+
   it("says so when the tests give a file a second name outside, which stays", async () => {
     const out = await outside();
     const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });
@@ -1184,16 +1260,46 @@ describe("fix when the tests remove or replace a file it changed", () => {
     await putBack(dir, join("lib", "sdk.js"), SDK_CALL);
   });
 
-  it("puts a removed file back into a folder the tests made read-only, and leaves the folder as they set it", async () => {
-    const dir = await repoWith({ "lib/sdk.js": SDK_CALL });
+  // Root writes in a read-only folder all the same.
+  it.skipIf(process.getuid?.() === 0)("refuses to put a removed file back into a folder the tests made read-only, and puts the others back", async () => {
+    const dir = await repoWith({ "lib/sdk.js": SDK_CALL, "sdk.js": SDK_CALL });
     try {
-      const result = await fix(dir, { test: "rm lib/sdk.js; chmod 555 lib; exit 1" });
-      expect(result.tests).toMatchObject({ passed: false, removed: join("lib", "sdk.js") });
-      expect((await lstat(join(dir, "lib"))).mode & 0o777).toBe(0o555);
-      await putBack(dir, join("lib", "sdk.js"), SDK_CALL);
+      await expect(fix(dir, { test: "rm lib/sdk.js; chmod 555 lib; exit 1" })).rejects.toThrow(
+        new Refusal(`darnit could not put ${join("lib", "sdk.js")} back (permission denied); restore it with git`),
+      );
+      expect((await git(dir, ["status", "--porcelain"])).split("\n").filter(Boolean)).toEqual([" D lib/sdk.js"]);
     } finally {
       await chmod(join(dir, "lib"), 0o755);
     }
+  });
+
+  describe.runIf(IMMUTABLE)("with a folder made immutable, whose mode no one can change", () => {
+    const thaw = (dir: string) => promisify(execFile)("chattr", ["-i", join(dir, "lib")]).catch(() => undefined);
+    const files = { "a.js": SDK_CALL, "lib/sdk.js": SDK_CALL, "sdk.js": SDK_CALL };
+
+    it("puts every file back, writing each in place", async () => {
+      const dir = await repoWith(files);
+      try {
+        const { code, stderr } = await darnit(dir, "fix", "--test", "chattr +i lib; exit 1");
+        expect(stderr).toBe("");
+        expect(code).toBe(1);
+        expect(await git(dir, ["status", "--porcelain"])).toBe("");
+      } finally {
+        await thaw(dir);
+      }
+    });
+
+    it("refuses with the file the tests removed from it, and puts the others back", async () => {
+      const dir = await repoWith(files);
+      try {
+        const { code, stderr } = await darnit(dir, "fix", "--test", "rm lib/sdk.js; chattr +i lib; exit 1");
+        expect(stderr).toContain(`could not put ${join("lib", "sdk.js")} back (permission denied); restore it with git`);
+        expect(code).toBe(2);
+        expect((await git(dir, ["status", "--porcelain"])).split("\n").filter(Boolean)).toEqual([" D lib/sdk.js"]);
+      } finally {
+        await thaw(dir);
+      }
+    });
   });
 
   it("refuses to put the file back through a folder the tests made a link out of the repository", async () => {
