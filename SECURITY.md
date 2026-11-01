@@ -113,6 +113,39 @@ URL with another scheme, any other environment variable, and config files hidden
 `GIT_CONFIG_NOSYSTEM` or `GIT_CONFIG_GLOBAL=/dev/null` that the repository's code can still read. A
 secret in any of them can reach the plan through test output.
 
+`fix --publish` holds the token and runs none of the repository's code: no install, build, tests or
+git hooks. It reads none of the folder it is run from, so a reused self-hosted workspace cannot steer
+it. Instead it makes its own clone: in a new temporary folder it fetches only the plan's commit from
+`https://github.com/<owner>/<repo>.git`, recomputes each rewrite there, and pushes to that same URL.
+The job runs three programs: git, `gh`, and the bundled ast-grep that applies darnit's rewrite
+rules. git and `gh` are each resolved once to an absolute real path (`realpath`) from an absolute
+`PATH` entry, never by bare name, and refused when that path lies under a folder this job controls
+(the current folder, `GITHUB_WORKSPACE`, or the temp root), compared by real path so a symlink, a
+`..` or a case difference cannot slip past; so a `git` or `gh` the commit ships or the checkout holds
+cannot be run. ast-grep is darnit's own pinned dependency, run from its absolute path in
+`node_modules`. git runs with the process started outside the work tree and the work tree named by
+`-C`. Every one of the three runs with an environment built from an allowlist, not from
+`process.env`: only `PATH`, locale and temp-folder variables carry over, so no credential, no `GIT_*`
+variable (a trace, config or replace setting), no `SSH_ASKPASS` and nothing else inherited reaches
+them. git additionally gets darnit's own hardening: `GIT_CONFIG_NOSYSTEM`, an empty global config,
+`HOME` and `XDG_CONFIG_HOME` in an empty folder, `GIT_NO_REPLACE_OBJECTS`, and pins that turn off
+hooks, fsmonitor, gpg signing and submodule push (a filter needs no pin because the fresh clone names
+none); the git version check at the start runs under the same allowlist. `gh auth token`, run only
+when no token is set, gets the allowlist plus `HOME`, `XDG_CONFIG_HOME` and `GH_CONFIG_DIR`, the
+folders gh reads its own login from, and nothing else. The token reaches git only as an http header
+scoped to github.com. It trusts darnit's own install (its code, records and rewrite rules) and,
+through that header, that github.com serves the real commit and accepts the push. It does not trust
+the workspace, the machine's user or system git config, or the plan: it applies nothing from the
+plan, makes each change again and compares it with the plan's patch byte for byte, and treats the
+build and test results and notes as text to report. A plan can still say tests passed when they did
+not; the pull request then holds darnit's own change only on top of the published commit, and says
+the verify job reported the results. That commit must be the one the job is meant to publish, not any
+commit the remote serves by id (github.com serves every commit in a fork network): in GitHub Actions
+it must equal `GITHUB_SHA`; outside Actions it must be the tip of the repository's default branch on
+the remote, read only from the ref named exactly `HEAD` in `git ls-remote <url> HEAD` before anything
+is fetched. `--publish` does not run when `GITHUB_SERVER_URL` names a GitHub host other than
+github.com, where the token's header would not apply.
+
 ## How we handle a report
 
 1. We confirm the problem with a test that shows it.

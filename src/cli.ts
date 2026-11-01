@@ -78,7 +78,7 @@ program
     process.exitCode = exitCodeForCheck(hits, coverage);
   });
 
-type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean; prepare?: string };
+type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean; prepare?: string; publish?: string };
 
 program
   .command("fix")
@@ -87,6 +87,7 @@ program
   .option("--dry-run", "show what would change without writing anything")
   .option("--pr", "commit on a branch, push, and open one pull request per change")
   .option("--prepare <dir>", "verify each change as --pr does, then write a plan to <dir> instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md)")
+  .option("--publish <dir>", "open the pull requests a plan from --prepare holds, after making each change again and checking it matches the plan; runs none of the repository's code (see SECURITY.md)")
   .option("--allow-dirty", "let --pr or --prepare run with uncommitted changes present")
   .option("--repo <owner/name>", "GitHub repository, when origin is not a GitHub URL")
   .option("--only <id>", "restrict to one change record (repeatable)", (id: string, all: string[] = []) => [...all, id])
@@ -96,6 +97,8 @@ program
   .action(async (dir: string | undefined, flags: FixFlags) => {
     const plan = flags.prepare;
     if (plan !== undefined && (!plan.trim() || plan.startsWith("-"))) throw new Error("--prepare needs the folder to write the plan to");
+    const from = flags.publish;
+    if (from !== undefined && (!from.trim() || from.startsWith("-"))) throw new Error("--publish needs the folder that holds the plan");
     if (plan !== undefined && flags.json) throw new Error("--prepare and --json can't be combined: the plan is the machine-readable output");
     const root = await folder(dir);
     const update = updateNotice(version, { env: process.env, json: flags.json });
@@ -107,6 +110,7 @@ program
       version,
       ...(flags.repo ? { repo: flags.repo } : {}),
       ...(plan !== undefined ? { prepare: resolve(plan) } : {}),
+      ...(from !== undefined ? { publish: resolve(from) } : {}),
       ...(flags.only ? { only: flags.only } : {}),
       ...(typeof flags.test === "string" ? { test: flags.test } : {}),
     });
