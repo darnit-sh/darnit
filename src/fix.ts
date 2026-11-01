@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { cp, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { parse } from "@ast-grep/napi";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
 import { escapedPieces, escapeHidden, shown, vendorName } from "./detect.js";
@@ -10,6 +11,7 @@ import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlu
 import { applyRules, hasRules } from "./packs/apply.js";
 import { pathProblem, PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanOutcome } from "./plan.js";
 import { loadRecords } from "./records/load.js";
+import { grammarFor } from "./scan/astgrep.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { Refusal } from "./refusal.js";
 import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, TIME_LIMIT_MINUTES, unreadSettings } from "./tests.js";
@@ -202,6 +204,19 @@ async function restore(root: string, snap: Map<string, Buffer>): Promise<void> {
  */
 type Outcome = { changed: string[]; remaining: Site[] };
 
+const COMMENT = "the rewrite would drop or change a comment in this file";
+
+/** True when every comment in `before` is still in `after`, byte for byte. A file it cannot parse is not. */
+export function keepsComments(file: string, before: string, after: string): boolean {
+  const grammar = grammarFor(file)?.grammar;
+  if (!grammar) return false;
+  const comments = (text: string) => parse(grammar, text).root().findAll({ rule: { kind: "comment" } }).map((n) => n.text());
+  const left = new Map<string, number>();
+  for (const c of comments(before)) left.set(c, (left.get(c) ?? 0) + 1);
+  for (const c of comments(after)) left.set(c, (left.get(c) ?? 0) - 1);
+  return [...left.values()].every((n) => n <= 0);
+}
+
 export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> {
   const before = await snapshotOf(dir, grp.files);
   await applyRules(grp.packDir, grp.files.map((f) => join(dir, f)));
@@ -211,8 +226,20 @@ export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> 
   await restore(dir, new Map(failed.map((f) => [f, before.get(f)!])));
   for (const f of failed) before.delete(f);
   const changed: string[] = [];
-  for (const [f, bytes] of before) if (!(await readFile(join(dir, f))).equals(bytes)) changed.push(f);
-  const remaining = [...hits.map((h) => ({ file: h.file, line: h.line })), ...putBack];
+  // A rewritten file that lost or changed a comment goes back on its own too, and its call sites to a human.
+  const lost: string[] = [];
+  for (const [f, bytes] of before) {
+    const after = await readFile(join(dir, f));
+    if (after.equals(bytes)) continue;
+    if (keepsComments(f, bytes.toString("utf8"), after.toString("utf8"))) changed.push(f);
+    else lost.push(f);
+  }
+  await restore(dir, new Map(lost.map((f) => [f, before.get(f)!])));
+  const remaining = [
+    ...hits.filter((h) => !lost.includes(h.file)).map((h) => ({ file: h.file, line: h.line })),
+    ...putBack,
+    ...lost.map((file) => ({ file, note: COMMENT, sites: grp.sitesIn[file] ?? 0 })),
+  ];
   if (changed.length > 0 && count(remaining) >= grp.sites) {
     await restore(dir, before);
     return { changed: [], remaining };
@@ -256,10 +283,10 @@ async function versionGate(root: string, grp: Group): Promise<{ blocked?: string
 /** Records the verified outcome on the record's result. Returns the files actually rewritten. */
 function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = []): string[] {
   if (outcome.changed.length === 0) {
-    // Files put back unscanned stay listed; when they were all there was, they are the reason.
-    const back = outcome.remaining.filter((s) => s.note === PUT_BACK);
+    // Files put back unscanned or for a comment stay listed; when they were all there was, they are the reason.
+    const back = outcome.remaining.filter((s) => s.note === PUT_BACK || s.note === COMMENT);
     result.applied = false;
-    result.reason = back.length > 0 && back.length === outcome.remaining.length ? PUT_BACK : NOT_COVERED;
+    result.reason = (back.length === outcome.remaining.length && back[0]?.note) || NOT_COVERED;
     if (back.length + held.length > 0) result.remaining = [...back, ...held];
   } else if (outcome.remaining.length + held.length > 0) {
     result.remaining = [...outcome.remaining, ...held];
