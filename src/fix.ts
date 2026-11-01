@@ -411,6 +411,7 @@ async function runChecks(root: string, commands: Commands, snap: Snapshot): Prom
 }
 
 export async function fix(root: string, opts: FixOptions = {}): Promise<FixResult> {
+  await g.ensureGitVersion();
   if (opts.prepare !== undefined) {
     if (opts.pr) throw new Refusal("--prepare and --pr can't be combined: --prepare runs the repository's code, so it never pushes");
     if (opts.dryRun) throw new Refusal("--prepare and --dry-run can't be combined: --prepare writes a plan");

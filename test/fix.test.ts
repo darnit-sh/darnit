@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { Lang, parse as parseCode } from "@ast-grep/napi";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
+import { checkReport } from "../src/check.js";
 import { applyAndVerify, exitCodeFor, fix, type FixOptions, forTerminal, keepsComments, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { WORKFLOW } from "../src/init.js";
@@ -2487,5 +2488,272 @@ describe("prose", () => {
 
   it("stays fast on hostile input", async () => {
     expect(await cpuTime(() => prose(`${".".repeat(50000)}a`), 3, 500)).toBeLessThan(500);
+  });
+});
+
+describe("the repository's config names no program git runs in darnit's own calls", () => {
+  const BEFORE = join(PACKS, "openai", "2024-09-12-max-tokens-to-max-completion-tokens", "fixtures", "basic", "before");
+  const execFileP = promisify(execFile);
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  // Each key class, set so git would run a marker-writing program if a darnit call let it. Programs
+  // reached through the shell (external diff, textconv, a filter, a pager) take an inline command; the
+  // ones git execs directly (fsmonitor, gpg, a hook) need a script, kept outside the repo so the tree stays clean.
+  const cmd = (marker: string, tail: string) => `touch '${marker}'; ${tail}`;
+  async function script(path: string, marker: string): Promise<string> {
+    await writeFile(path, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`);
+    await chmod(path, 0o755);
+    return path;
+  }
+  type Setup = (dir: string, probe: string, marker: string) => Promise<void>;
+  const KEYS: Record<string, Setup> = {
+    "diff.external": async (dir, _p, m) => void (await git(dir, ["config", "diff.external", cmd(m, "true")])),
+    "a textconv driver": async (dir, _p, m) => {
+      await appendFile(join(dir, ".gitattributes"), "*.py diff=probe\n");
+      await git(dir, ["config", "diff.probe.textconv", cmd(m, "cat")]);
+    },
+    "gpg.program with commit.gpgSign": async (dir, probe, m) => {
+      await git(dir, ["config", "commit.gpgSign", "true"]);
+      await git(dir, ["config", "gpg.format", "openpgp"]);
+      await git(dir, ["config", "gpg.program", await script(join(probe, "gpg"), m)]);
+    },
+    "core.fsmonitor": async (dir, probe, m) => void (await git(dir, ["config", "core.fsmonitor", await script(join(probe, "fsm"), m)])),
+    "a pre-commit hook via core.hooksPath": async (dir, probe, m) => {
+      await mkdir(join(probe, "hooks"), { recursive: true });
+      await script(join(probe, "hooks", "pre-commit"), m);
+      await git(dir, ["config", "core.hooksPath", join(probe, "hooks")]);
+    },
+    "a clean/smudge filter": async (dir, _p, m) => {
+      await appendFile(join(dir, ".gitattributes"), "*.py filter=probe\n");
+      await git(dir, ["config", "filter.probe.clean", cmd(m, "cat")]);
+      await git(dir, ["config", "filter.probe.smudge", cmd(m, "cat")]);
+      await git(dir, ["config", "filter.probe.required", "true"]);
+    },
+    // A driver name holding `=` would survive a `-c filter.<name>.clean=` pin, which git splits at the first `=`.
+    "a filter driver named with =": async (dir, _p, m) => {
+      await appendFile(join(dir, ".gitattributes"), "*.py filter=a=b\n");
+      await git(dir, ["config", "filter.a=b.clean", cmd(m, "cat")]);
+      await git(dir, ["config", "filter.a=b.required", "true"]);
+    },
+    // A process filter stands in for both clean and smudge, so its own pin must turn it off.
+    "a process filter": async (dir, _p, m) => {
+      await appendFile(join(dir, ".gitattributes"), "*.py filter=proc\n");
+      await git(dir, ["config", "filter.proc.process", cmd(m, "cat")]);
+      await git(dir, ["config", "filter.proc.required", "true"]);
+    },
+    "gpg.program with push.gpgSign": async (dir, probe, m) => {
+      await git(dir, ["config", "push.gpgSign", "true"]);
+      await git(dir, ["config", "gpg.format", "openpgp"]);
+      await git(dir, ["config", "gpg.program", await script(join(probe, "gpg"), m)]);
+    },
+    "core.pager": async (dir, _p, m) => void (await git(dir, ["config", "core.pager", cmd(m, "cat")])),
+  };
+
+  async function setup(set: Setup): Promise<{ dir: string; marker: string }> {
+    const dir = await repoFrom(BEFORE);
+    const probe = await mkdtemp(join(tmpdir(), "darnit-probe-"));
+    tempDirs.push(probe);
+    const marker = join(probe, "ran");
+    await set(dir, probe, marker);
+    return { dir, marker };
+  }
+  const ran = (marker: string) => access(marker).then(() => true, () => false);
+
+  it.each(Object.keys(KEYS))("runs no program %s names", async (key) => {
+    const set = KEYS[key]!;
+
+    // check, and the fix modes that read and rewrite the working tree.
+    const a = await setup(set);
+    await checkReport(a.dir);
+    await fix(a.dir, { dryRun: true, noTest: true });
+    await fix(a.dir, { noTest: true });
+    expect(await ran(a.marker), `${key}: check, --dry-run or fix`).toBe(false);
+
+    // --prepare writes the plan patch with no token and no ssh agent in the environment.
+    const b = await setup(set);
+    for (const k of ["GITHUB_TOKEN", "GH_TOKEN", "SSH_AUTH_SOCK"]) vi.stubEnv(k, "");
+    await fix(b.dir, { prepare: join(await planHome(), "plan"), noTest: true, allowDirty: true });
+    expect(await ran(b.marker), `${key}: --prepare`).toBe(false);
+    vi.unstubAllEnvs();
+
+    // --pr commits to a branch and pushes to a local bare remote, GitHub's API stubbed.
+    const c = await setup(set);
+    const bare = await mkdtemp(join(tmpdir(), "darnit-origin-"));
+    tempDirs.push(bare);
+    await git(bare, ["init", "-q", "--bare"]);
+    // Advertise push-cert support so push.gpgSign actually tries to sign.
+    await git(bare, ["config", "receive.certNonceSeed", "seed"]);
+    await git(c.dir, ["remote", "add", "origin", bare]);
+    const branch = (await git(c.dir, ["symbolic-ref", "--short", "HEAD"])).trim();
+    // The setup push goes through plain git, not darnit's pinned helper, so only the `fix --pr` push
+    // below exercises the pins; its own signing (push.gpgSign) is cleared before the real run.
+    await execFileP("git", ["push", "-q", "-u", "origin", branch], { cwd: c.dir }).catch(() => undefined);
+    await rm(c.marker, { force: true });
+    vi.stubEnv("GITHUB_TOKEN", "test-token");
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit): Promise<Response> => {
+      const body = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status }));
+      void init;
+      if (url.endsWith("/repos/o/r")) return body({ default_branch: branch });
+      if (url.includes("/pulls?")) return body([]);
+      return body({ html_url: "https://github.com/o/r/pull/1" }, 201);
+    });
+    await fix(c.dir, { pr: true, noTest: true, repo: "o/r", allowDirty: true });
+    expect(await ran(c.marker), `${key}: --pr`).toBe(false);
+  });
+
+  // git's status and diff start a status inside a submodule, which runs that submodule's own filters.
+  it("does not descend into a submodule, whose own config names a filter", async () => {
+    const sub = await mkdtemp(join(tmpdir(), "darnit-sub-"));
+    tempDirs.push(sub);
+    await git(sub, ["init", "-q"]);
+    await writeFile(join(sub, "s.py"), "s\n");
+    await git(sub, ["add", "s.py"]);
+    await git(sub, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s"]);
+    const { dir, marker } = await setup(() => Promise.resolve());
+    await execFileP("git", ["-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "sub"], { cwd: dir });
+    await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "sub"]);
+    // The submodule's own config runs a filter on a stat-dirty file, even against -c diff.ignoreSubmodules.
+    await appendFile(join(dir, "sub", ".gitattributes"), "s.py filter=ev\n");
+    await git(join(dir, "sub"), ["config", "filter.ev.process", cmd(marker, "cat")]);
+    await git(join(dir, "sub"), ["config", "filter.ev.required", "true"]);
+    await git(dir, ["config", "submodule.sub.ignore", "none"]);
+    await writeFile(join(dir, "sub", "s.py"), "s\n");
+    await checkReport(dir);
+    await fix(dir, { noTest: true, allowDirty: true });
+    expect(await ran(marker)).toBe(false);
+  });
+
+  // A hostile repository with a vast filter list must not slip a real filter past a dropped or
+  // overlong set of pins: darnit refuses rather than run git against it.
+  it("refuses a repository that configures more filter drivers than it will turn off", async () => {
+    const { dir, marker } = await setup(async (d, _p, m) => {
+      await appendFile(join(d, ".gitattributes"), "*.py filter=evil\n");
+      const lines = [`[filter "evil"]\n\tclean = ${cmd(m, "cat")}\n\trequired = true\n`];
+      for (let i = 0; i < 400; i++) lines.push(`[filter "pad${"x".repeat(200)}${i}"]\n\tclean = cat\n`);
+      await writeFile(join(d, "filters.cfg"), lines.join(""));
+      await git(d, ["config", "include.path", join(d, "filters.cfg")]);
+    });
+    await expect(fix(dir, { noTest: true, allowDirty: true })).rejects.toThrow(/over darnit's limit/);
+    expect(await ran(marker)).toBe(false);
+  });
+
+  // A driver name git stores with a byte that is not valid UTF-8 cannot be pinned through an environment
+  // darnit writes as UTF-8, so the run is refused rather than left with that filter live.
+  it("refuses, through fix under a UTF-8 locale, a filter driver name that is not valid UTF-8", async () => {
+    vi.stubEnv("LANG", process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8");
+    vi.stubEnv("LC_ALL", process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8");
+    const { dir, marker } = await setup(async (d, _p, m) => {
+      await writeFile(join(d, ".gitattributes"), Buffer.concat([Buffer.from("*.py filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]));
+      await appendFile(join(d, ".git", "config"), Buffer.concat([Buffer.from('[filter "x'), Buffer.from([0xff]), Buffer.from(`y"]\n\tclean = ${cmd(m, "cat")}\n\trequired = true\n`)]));
+    });
+    await expect(fix(dir, { noTest: true, allowDirty: true })).rejects.toThrow(/not valid UTF-8/);
+    expect(await ran(marker)).toBe(false);
+  });
+
+  // A filter listing that overflows the read buffer must fail the run, not pass for "no filters".
+  it("refuses when the filter listing cannot be read whole, rather than run a filter unpinned", async () => {
+    const { dir, marker } = await setup(async (d, _p, m) => {
+      await appendFile(join(d, ".gitattributes"), "*.py filter=evil\n");
+      const name = "n".repeat(4000);
+      let big = `[filter "evil"]\n\tclean = ${cmd(m, "cat")}\n\trequired = true\n`;
+      for (let i = 0; i < 20000; i++) big += `[filter "${name}${i}"]\n\tclean = cat\n`;
+      await writeFile(join(d, "big.cfg"), big);
+      await git(d, ["config", "include.path", join(d, "big.cfg")]);
+    });
+    await expect(fix(dir, { noTest: true, allowDirty: true })).rejects.toThrow(/could not read the repository's git config/);
+    expect(await ran(marker)).toBe(false);
+  }, 60_000);
+
+  // push.recurseSubmodules (or submodule.recurse) would push a submodule from darnit's own push,
+  // running the submodule's remote helper with darnit's push environment and the token in it. The
+  // superproject is a real breach: its branch is ahead of origin by an unpushed submodule bump, and
+  // the submodule is on a branch named like darnit's with that commit unpushed, so darnit's `fix --pr`
+  // push genuinely needs the submodule. Everything but `fix --pr` is set up in plain git, so no pin
+  // of darnit's masks the setup.
+  const plain = async (cwd: string, args: string[]): Promise<string> => (await execFileP("git", args, { cwd })).stdout;
+
+  async function submoduleProject(form: [string, string]): Promise<{ dir: string; seen: string }> {
+    const BR = "darnit/openai-max-tokens-to-max-completion-tokens";
+    const subrem = await mkdtemp(join(tmpdir(), "darnit-subrem-"));
+    const subsrc = await mkdtemp(join(tmpdir(), "darnit-subsrc-"));
+    tempDirs.push(subrem, subsrc);
+    const seen = join(subrem, "seen");
+    tempDirs.push(seen);
+    const rp = join(subrem, "rp.sh");
+    await writeFile(rp, `#!/bin/sh\nenv | grep -iE 'AUTHORIZATION|extraheader' > '${seen}'\nexec git-receive-pack "$@"\n`);
+    await chmod(rp, 0o755);
+    await plain(subrem, ["init", "-q", "--bare"]);
+    await plain(subsrc, ["init", "-q", "-b", BR]);
+    await writeFile(join(subsrc, "s.txt"), "s\n");
+    await plain(subsrc, ["add", "s.txt"]);
+    await plain(subsrc, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c0"]);
+    await plain(subsrc, ["remote", "add", "origin", subrem]);
+    await plain(subsrc, ["push", "-q", "-u", "origin", BR]);
+
+    const dir = await repoFrom(BEFORE);
+    await plain(dir, ["-c", "protocol.file.allow=always", "submodule", "add", "-q", "-b", BR, subsrc, "sub"]);
+    await plain(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "add sub"]);
+    const outerrem = await mkdtemp(join(tmpdir(), "darnit-origin-"));
+    tempDirs.push(outerrem);
+    await plain(outerrem, ["init", "-q", "--bare"]);
+    await plain(dir, ["remote", "add", "origin", outerrem]);
+    const base = (await plain(dir, ["symbolic-ref", "--short", "HEAD"])).trim();
+    await plain(dir, ["push", "-q", "-u", "origin", base]); // origin has the base; the submodule's commit is on its remote
+    // Now make the submodule a commit ahead on BR, unpushed, and leave the superproject ahead of origin by that bump.
+    await plain(join(dir, "sub"), ["config", "remote.origin.receivepack", rp]);
+    await appendFile(join(dir, "sub", "s.txt"), "s1\n");
+    await plain(join(dir, "sub"), ["add", "s.txt"]);
+    await plain(join(dir, "sub"), ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c1"]);
+    await plain(dir, ["add", "sub"]);
+    await plain(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "bump"]);
+    await plain(dir, ["config", ...form]);
+    return { dir, seen };
+  }
+
+  it.each([
+    ["push.recurseSubmodules", "on-demand"],
+    ["push.recurseSubmodules", "check"],
+    ["submodule.recurse", "true"],
+  ] as [string, string][])("does not push a submodule from its own push, with %s=%s", async (...form) => {
+    const { dir, seen } = await submoduleProject(form);
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("GITHUB_TOKEN", "test-token");
+    vi.stubGlobal("fetch", (url: string): Promise<Response> => {
+      const body = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status }));
+      if (url.endsWith("/repos/o/r")) return body({ default_branch: "main" });
+      if (url.includes("/pulls?")) return body([]);
+      return body({ html_url: "https://github.com/o/r/pull/1" }, 201);
+    });
+    // With the pin darnit's push completes and the submodule is never pushed; without it the push
+    // recurses (on-demand/recurse) into the submodule's token-carrying environment or aborts (check).
+    await fix(dir, { pr: true, noTest: true, repo: "o/r", allowDirty: true });
+    expect(await readFile(seen, "utf8").catch(() => "")).toBe("");
+  }, 60_000);
+
+  // The pins travel in GIT_CONFIG_* environment variables, which git reads only from 2.31 on; an older
+  // git would ignore them and run the filters. darnit refuses before touching the repository.
+  it("refuses to run against a git too old to read the environment config its pins rely on", async () => {
+    const fakeBin = await mkdtemp(join(tmpdir(), "darnit-oldgit-"));
+    tempDirs.push(fakeBin);
+    await writeFile(join(fakeBin, "git"), '#!/bin/sh\n[ "$1" = version ] && echo "git version 2.30.0" || exit 0\n');
+    await chmod(join(fakeBin, "git"), 0o755);
+    const dir = await repoFrom(BEFORE);
+    const run = await darnitWith({ PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}` }, dir, "fix", "--no-test");
+    expect(run.code).toBe(2);
+    expect(run.stderr).toMatch(/needs git 2\.31/);
+  });
+
+  it("refuses init too against a git too old to read the environment config its pins rely on", async () => {
+    const fakeBin = await mkdtemp(join(tmpdir(), "darnit-oldgit-"));
+    tempDirs.push(fakeBin);
+    await writeFile(join(fakeBin, "git"), '#!/bin/sh\n[ "$1" = version ] && echo "git version 2.30.0" || exit 0\n');
+    await chmod(join(fakeBin, "git"), 0o755);
+    const dir = await repoFrom(BEFORE);
+    const run = await darnitWith({ PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}` }, dir, "init");
+    expect(run.code).toBe(2);
+    expect(run.stderr).toMatch(/needs git 2\.31/);
   });
 });
