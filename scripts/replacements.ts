@@ -11,7 +11,7 @@ import { parseChangeRecord, recordModels } from "../src/records/schema.js";
 // only to models OpenAI's API spec in corpus/openai lists. Fails where a record's notes disagree with the page, or the
 // page has no row it could read for a detected model, or a table darnit cannot read as a person would, or any row on
 // the page that may name one darnit did not read from it, is not in corpus/openai/non-model-rows.txt. Model names
-// outside the page's tables, in lists or paragraphs, are not checked.
+// outside the page's tables, in lists or paragraphs, are not checked, nor a table hidden by a CSS class.
 // Usage: npm run replacements -- --page <saved page> [--check]
 // --check writes nothing and also fails when a record's fix.models is not what the page gives.
 

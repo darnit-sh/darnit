@@ -74,7 +74,7 @@ describe("the deprecations page", () => {
   });
 
   it("reads each header shape, and keeps every row on the page, read or not", async () => {
-    const { replacements, rows, tables } = readPage(await FIXTURE);
+    const { replacements, rows, tables, problems } = readPage(await FIXTURE);
     const at = (m: string) => replacements.get(m);
     expect(at("gpt-6-luna")).toBeUndefined();
     expect(at("gpt-4o-2024-11-20")).toEqual(["gpt-6-luna"]); // a family with its snapshots
@@ -91,7 +91,8 @@ describe("the deprecations page", () => {
     expect(at("gpt-5.4-cyber")).toEqual(["The most capable cyber model available to you."]);
     // 151 data rows under 39 header rows, in 39 tables darnit reads as a person would; 2 rows are fine-tuning rows.
     expect(rows).toHaveLength(190);
-    expect(tables.filter((t) => !t.readable)).toEqual([]);
+    expect(tables.filter((t) => t.error)).toEqual([]);
+    expect(problems).toEqual([]);
     expect(tables).toHaveLength(39);
     expect(rows.filter((r) => r.exempt).map((r) => r.exempt)).toEqual(["babbage-002", "davinci-002"]);
   });
@@ -113,10 +114,10 @@ describe("the deprecations page", () => {
     );
     expect(rows.map((r) => r.label)).toEqual(["table 1 row 1", "table 1 row 2", "table 1 row 3", "table 2 row 1", "table 2 row 2", "table 3 row 1", "table 3 row 2"]);
     // "b&1": a & is left after decoding, so darnit cannot read table 1 as a person would.
-    expect(tables.map((t) => [t.label, t.readable])).toEqual([
-      ["table 1", false],
-      ["table 2", true],
-      ["table 3", true],
+    expect(tables.map((t) => [t.label, t.error])).toEqual([
+      ["table 1", "it holds a reference or a letter darnit cannot read as a person would"],
+      ["table 2", undefined],
+      ["table 3", undefined],
     ]);
   });
 
@@ -136,7 +137,6 @@ describe("the deprecations page", () => {
       expect(cellText(cell)).toBeUndefined();
       const page = readPage(table([`a-1 || ${cell}`, `${cell} || b-1`]));
       expect(page.replacements).toEqual(new Map());
-      expect(page.rows).toHaveLength(3);
     }
     // Decoded once: the entities stay text, and the cell gets darnit's fixed words, never its own.
     expect(cellText("&amp;lt;script&amp;gt;")).toBe("&lt;script&gt;");
@@ -235,8 +235,11 @@ describe("fix.models from the page", () => {
     const r = shutdown("one", ["a-1"]);
     for (const newest of ["<code>a-1</code> <abbr>new</abbr> || c-1 or d-1", "a-1 || c-1 || d-1"]) {
       const page = readPage(table([newest, "a-1 || b-1"]));
-      expect(page.replacements.get("a-1")).toEqual(["b-1"]);
-      expect(replacementsFor([r], page, KNOWN).problems).toContainEqual(expect.stringMatching(/^table 1 row 2 \(folded: .*\) may name a-1, which darnit did not read from it$/));
+      // The older row is read, or nothing in a table darnit cannot read strictly; never the newer row's replacement.
+      expect([undefined, ["b-1"]]).toContainEqual(page.replacements.get("a-1"));
+      expect(replacementsFor([r], page, KNOWN).problems).toContainEqual(
+        expect.stringMatching(/^table 1 (row 2 \(folded: .*\) may name a-1, which darnit did not read from it|\(folded: .*\): it holds markup darnit does not read in a table at offset \d+)$/),
+      );
     }
   });
 
@@ -259,15 +262,61 @@ describe("fix.models from the page", () => {
     expect(replacementsFor([r], page, KNOWN, new Set([...confirmed, "oldrow"])).problems).toEqual(["the known non-model table or row oldrow is no longer on the page; take it off the list"]);
   });
 
-  it("checks every row on the page, in a table or not, and a table's text outside its rows", () => {
+  it("fails the run on table markup outside the tables it reads, and on a table it cannot read strictly", () => {
     const r = shutdown("one", ["a-1", "b-1"]);
     const head = "<tr><th>Shutdown date</th><th>Model / system</th><th>Recommended replacement</th></tr>";
-    const page = readPage(`<p>Notes</p><tr><td>2026</td><td>a-1</td></tr><table>${head}</tr><td>2026</td><td>b-1</td><td>x-1</td></table>`);
-    expect(replacementsFor([r], page, KNOWN).problems).toEqual([
-      "outside a table, row 1 (folded: 2026a1) may name a-1, which darnit did not read from it",
-      "table 1, after row 1 (folded: 2026b1x1) may name b-1, which darnit did not read from it",
+    const html = `<p>Notes</p><tr><td>2026</td><td>a-1</td></tr><table>${head}</tr><td>2026</td><td>b-1</td><td>x-1</td></table>`;
+    const { problems } = replacementsFor([r], readPage(html), KNOWN);
+    expect(problems).toEqual([
+      ...["<tr", "<td", "</td", "<td", "</td", "</tr"].map((t, i, all) => {
+        const at = html.split(t).slice(0, all.slice(0, i + 1).filter((x) => x === t).length).join(t).length;
+        return `the page holds ${t} at offset ${at} outside any table darnit read as shown`;
+      }),
+      expect.stringMatching(new RegExp(`^table 1 \\(folded: [a-z0-9]*\\): it holds markup darnit does not read in a table at offset ${html.indexOf("</tr><td>2026</td><td>b-1")}$`)),
       "openai:2026-01-01:one: the page has no row for a-1, b-1",
     ]);
+  });
+
+  it("reads no table a browser does not show, and no cell its end tag of the other kind would cut short", () => {
+    const hidden = table(["a-1 || b-9"]);
+    for (const wrap of [
+      (t: string) => `<!-- ${t} -->`,
+      (t: string) => `<template>${t}</template>`,
+      (t: string) => `<script type="text/html">${t}</script>`,
+      (t: string) => `<textarea>${t}</textarea>`,
+      (t: string) => `<noscript>${t}</noscript>`,
+      (t: string) => `<div data-x="${t}">x</div>`,
+    ]) {
+      const page = readPage(`${wrap(hidden)}${table(["a-1 || b-1"])}`);
+      expect(page.replacements.get("a-1")).toEqual(["b-1"]);
+      expect(page.problems[0]).toMatch(/^the page holds <table at offset \d+ outside any table darnit read as shown$/);
+    }
+    const H = "<table><tr><th>Shutdown date</th><th>Model / system</th><th>Recommended replacement</th></tr>";
+    for (const html of [
+      `${H}<tr><td>d</td><td>o1-pro</td><td>gpt-5.6-sol</th> (reasoning.mode: pro)</td></tr></table>`,
+      `${H}<tr><th>d</th><th>o1-pro</th><th>gpt-5.6-sol</td> (reasoning.mode: pro)</th></tr></table>`,
+    ]) {
+      const page = readPage(html);
+      expect(page.replacements.get("o1-pro")).toBeUndefined();
+      expect(page.tables[0]!.error).toMatch(/^it holds markup darnit does not read in a table at offset \d+$/);
+    }
+  });
+
+  it("reads no layout or visibility attribute: a table takes its class only, its rows and cells none", () => {
+    const H = "<tr><th>Shutdown date</th><th>Model / system</th><th>Recommended replacement</th></tr>";
+    expect(readPage(`<table class="x">${H}<tr><td>2026</td><td>a-1</td><td>b-1</td></tr></table>`).replacements.get("a-1")).toEqual(["b-1"]);
+    for (const html of [
+      `<table id="x">${H}</table>`,
+      `<table>${H}<tr><td rowspan="2">2026</td><td>a-1</td><td>b-1</td></tr></table>`,
+      `<table>${H}<tr><td>2026</td><td colspan="2">a-1</td></tr></table>`,
+      `<table>${H}<tr hidden><td>2026</td><td>a-1</td><td>b-1</td></tr></table>`,
+      `<table>${H}<tr><td>2026</td><td style="display:none">a-1</td><td>b-1</td></tr></table>`,
+      `<table>${H}<tr><td>2026</td><td><span hidden>a-1</span></td><td>b-1</td></tr></table>`,
+      `<table><tbody class="x">${H}</tbody></table>`,
+    ]) {
+      const page = readPage(html);
+      expect([html, page.replacements.get("a-1"), page.tables[0]!.error]).toEqual([html, undefined, expect.stringMatching(/^it holds markup darnit does not read/)]);
+    }
   });
 
   it("reads a table only in the subset of markup it understands, and fails the run on any other, unless a person listed the table", () => {
@@ -281,7 +330,7 @@ describe("fix.models from the page", () => {
       "a&hyphen;1",
       "a-1 &mdash; <sup>1</sup>",
     ])
-      expect(readPage(tableWith(cell)).tables.map((t) => t.readable)).toEqual([true]);
+      expect(readPage(tableWith(cell)).tables.map((t) => t.error)).toEqual([undefined]);
     for (const cell of [
       "<!-->a-1-->",
       "<!--->a-1-->",
@@ -309,12 +358,12 @@ describe("fix.models from the page", () => {
       "\u043e1-mini a-1",
     ]) {
       const page = readPage(tableWith(cell));
-      expect([cell, page.tables.map((t) => t.readable)]).toEqual([cell, [false]]);
+      expect([cell, page.tables.map((t) => t.error === undefined)]).toEqual([cell, [false]]);
       const problems = replacementsFor([r], page, KNOWN).problems;
-      expect(problems[0]).toMatch(/^table 1 \(folded: [a-z0-9]*\) holds markup, a reference or a letter darnit cannot read as a person would$/);
+      expect(problems[0]).toMatch(/^table 1 \(folded: [a-z0-9]*\): it holds (markup darnit does not read in a table at offset \d+|a reference or a letter darnit cannot read as a person would)$/);
       expect(replacementsFor([r], page, KNOWN, new Set([page.tables[0]!.folded])).problems.filter((p) => p.startsWith("table 1 ("))).toEqual([]);
     }
-    expect(readPage(table(["a-1 || b-1"]).replace("<tr>", "<tr/>")).tables[0]!.readable).toBe(false);
+    expect(readPage(table(["a-1 || b-1"]).replace("<tr>", "<tr/>")).tables[0]!.error).toBeDefined();
   });
 
   it("fails when a newer model row it cannot read names a detected model, in any case or with invisible characters", async () => {
@@ -351,9 +400,9 @@ describe("fix.models from the page", () => {
       if (page.replacements.get(model!)?.[0] === "gpt-5.6-sol") continue;
       expect(page.replacements.get(model!)).toEqual(older.get(model!));
       // The run fails on the row, or on the table holding it when darnit cannot read that table as a person would.
-      const inTable = /^table \d+/.exec(page.rows.find((r) => r.folded.startsWith("july242026"))?.label ?? "")?.[0];
+      const inTable = `table ${fixture.slice(0, at).split(/<table[\s>]/).length - 1}`;
       expect(replacementsFor(records, page, known).problems).toContainEqual(
-        expect.stringMatching(new RegExp(`^(table \\d+ row \\d+ \\(folded: july242026[a-z0-9]*\\) may name ${model}, which darnit did not read from it|${inTable} \\(folded: .*\\) holds markup, .*)$`)),
+        expect.stringMatching(new RegExp(`^(table \\d+ row \\d+ \\(folded: july242026[a-z0-9]*\\) may name ${model}, which darnit did not read from it|${inTable} \\(folded: .*\\): it holds .*)$`)),
       );
     }
     // A newer row in a table darnit does not read as a deprecation table fails the run, whatever made it unreadable.
@@ -368,7 +417,9 @@ describe("fix.models from the page", () => {
     ]) {
       const page = readPage(`<table>${newer}</table>\n${fixture}`);
       expect(page.replacements.get("o1-mini")).toEqual(older.get("o1-mini"));
-      expect(replacementsFor(records, page, known).problems).toContainEqual(expect.stringMatching(/^table 1 row \d \(folded: july242026.*\) may name o1-mini, which darnit did not read from it$/));
+      expect(replacementsFor(records, page, known).problems).toContainEqual(
+        expect.stringMatching(/^table 1 (row \d \(folded: july242026.*\) may name o1-mini, which darnit did not read from it|\(folded: .*\): it holds .*)$/),
+      );
     }
     // The same row under the page's own header is read, and is the newest row for o1-mini.
     const read = readPage(`<table>${header("<th>Shutdown date</th><th>Model / system</th><th>Recommended replacement</th>")}${row}</table>\n${fixture}`);
