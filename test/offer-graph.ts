@@ -1,14 +1,14 @@
 import { readPage, replacementsFor } from "../src/corpus/replacements.js";
 import { parseChangeRecord } from "../src/records/schema.js";
 
-// Run by test/replacements.test.ts in a child it can time out: m-0 and a-0 to a-(n-1) each offer all n ids.
-const n = Number(process.argv[2]);
-const ids = Array.from({ length: n }, (_, i) => `a-${i}`);
+// Run by test/replacements.test.ts in a child it can time out: one row naming `k` detected models d-0 to d-(k-1)
+// offers a-0 to a-(n-1), and each a-i offers all n. Prints the problems and the CPU milliseconds the work took.
+const [n, k] = process.argv.slice(2).map(Number) as [number, number];
+const list = (prefix: string, count: number) => Array.from({ length: count }, (_, i) => `${prefix}-${i}`);
+const ids = list("a", n);
 const offer = `${ids.slice(0, -1).join(", ")}, or ${ids.at(-1)}`;
-const rows = [`m-0 || ${offer}`, ...ids.map((id) => `${id} || ${offer}`)];
-const page = readPage(
-  `<table><tr><th>Shutdown date</th><th>Model</th><th>Recommended replacement</th></tr>${rows.map((r) => `<tr><td>2026</td><td>${r.split(" || ").join("</td><td>")}</td></tr>`).join("")}</table>`,
-);
+const rows = [`${list("d", k).join(" | ")} || ${offer}`, ...ids.map((id) => `${id} || ${offer}`)];
+const html = `<table><tr><th>Shutdown date</th><th>Model</th><th>Recommended replacement</th></tr>${rows.map((r) => `<tr><td>2026</td><td>${r.split(" || ").join("</td><td>")}</td></tr>`).join("")}</table>`;
 const record = parseChangeRecord(
   {
     id: "openai:2026-01-01:one",
@@ -19,8 +19,11 @@ const record = parseChangeRecord(
     surface: { sdkSymbols: ["responses.create"], fields: ["model"] },
     classification: "semantic",
     sources: [{ url: "https://developers.openai.com/api/docs/deprecations" }],
-    detection: { astGrepPatterns: { js: [{ context: '({ model: "m-0" })', selector: "pair" }] } },
+    detection: { astGrepPatterns: { js: list("d", k).map((d) => ({ context: `({ model: "${d}" })`, selector: "pair" })) } },
   },
   "one.json",
 );
-console.log(JSON.stringify(replacementsFor([record], page, new Set()).problems));
+const start = process.cpuUsage();
+const { problems } = replacementsFor([record], readPage(html), new Set());
+const { user, system } = process.cpuUsage(start);
+console.log(JSON.stringify({ bytes: html.length, problems, ms: (user + system) / 1000 }));
