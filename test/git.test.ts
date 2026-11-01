@@ -232,6 +232,9 @@ describe("git works on the folder it was given", () => {
     const where = { GIT_CONFIG_GLOBAL: "global", GIT_CONFIG_SYSTEM: "system", HOME: ".gitconfig", XDG_CONFIG_HOME: "git/config" };
     for (const [name, file] of Object.entries(where)) {
       await writeFile(join(home, file), `[darnit]\n\tprobe = ${name}\n`);
+      // The test setup points git away from the user's config files; each is set here alone.
+      vi.stubEnv("GIT_CONFIG_GLOBAL", undefined);
+      vi.stubEnv("GIT_CONFIG_NOSYSTEM", undefined);
       vi.stubEnv(name, name.startsWith("GIT_") ? join(home, file) : home);
       expect((await g.git(dir, ["config", "--get", "darnit.probe"])).trim()).toBe(name);
       vi.unstubAllEnvs();
