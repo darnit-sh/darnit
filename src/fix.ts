@@ -6,7 +6,7 @@ import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parse } from "@ast-grep/napi";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
-import { escapedPieces, escapeHidden, shown, vendorName } from "./detect.js";
+import { cleanEnv, escapedPieces, escapeHidden, shown, vendorName } from "./detect.js";
 import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug, type Repo } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
 import { CAPS, parsePlan, pathProblem, PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanGroup, type PlanOutcome } from "./plan.js";
@@ -771,7 +771,7 @@ async function publish(opts: FixOptions): Promise<FixResult> {
   }
   // The two programs this job runs, each resolved once to an absolute real path outside any folder the job controls.
   const gitBin = (await g.trustedProgram("git"))!;
-  await g.ensureGitVersion(gitBin, g.cleanEnv());
+  await g.ensureGitVersion(gitBin, cleanEnv());
   const token = await githubToken(() => g.trustedProgram("gh", false));
   if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
   const target = await defaultBranch(token, repo);

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { parse as parseYaml, stringify as toYaml } from "yaml";
-import { cleanEnv } from "../git.js";
+import { cleanEnv } from "../detect.js";
 import { LANGS, type Lang } from "../records/schema.js";
 
 // The one place rule packs are applied. The fixture runner and `fix` both use

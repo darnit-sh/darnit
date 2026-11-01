@@ -114,8 +114,10 @@ variable (a trace, config or replace setting), no `SSH_ASKPASS` and nothing else
 them. git additionally gets darnit's own hardening: `GIT_CONFIG_NOSYSTEM`, an empty global config,
 `HOME` and `XDG_CONFIG_HOME` in an empty folder, `GIT_NO_REPLACE_OBJECTS`, and pins that turn off
 hooks, fsmonitor, gpg signing and submodule push (a filter needs no pin because the fresh clone names
-none); the git version check at the start runs under the same allowlist. The token reaches git only
-as an http header scoped to github.com. `gh auth token` is run only when no token is set. It trusts darnit's own install (its code, records and rewrite rules) and,
+none); the git version check at the start runs under the same allowlist. `gh auth token`, run only
+when no token is set, gets the allowlist plus `HOME`, `XDG_CONFIG_HOME` and `GH_CONFIG_DIR`, the
+folders gh reads its own login from, and nothing else. The token reaches git only as an http header
+scoped to github.com. It trusts darnit's own install (its code, records and rewrite rules) and,
 through that header, that github.com serves the real commit and accepts the push. It does not trust
 the workspace, the machine's user or system git config, or the plan: it applies nothing from the
 plan, makes each change again and compares it with the plan's patch byte for byte, and treats the
@@ -125,8 +127,8 @@ the verify job reported the results. That commit must be the one the job is mean
 commit the remote serves by id (github.com serves every commit in a fork network): in GitHub Actions
 it must equal `GITHUB_SHA`; outside Actions it must be the tip of the repository's default branch on
 the remote, read only from the ref named exactly `HEAD` in `git ls-remote <url> HEAD` before anything
-is fetched. `--publish` does not run when `GITHUB_SERVER_URL`
-names a GitHub host other than github.com, where the token's header would not apply.
+is fetched. `--publish` does not run when `GITHUB_SERVER_URL` names a GitHub host other than
+github.com, where the token's header would not apply.
 
 ## How we handle a report
 

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
-import { firstFive, onPath } from "./detect.js";
+import { cleanEnv, firstFive, onPath } from "./detect.js";
 import { envToken } from "./github.js";
 import { Refusal } from "./refusal.js";
 
@@ -422,14 +422,6 @@ export async function trustedProgram(name: string, required = true): Promise<str
   return real;
 }
 
-// What carries into a program the token job runs: nothing but these, so credentials, GIT_* (trace, config, replace),
-// SSH_ASKPASS and any other inherited variable are left out. `extra` adds darnit's own hardening on top.
-const ENV_ALLOW = /^(PATH|LANG|LC_[A-Z]+|TZ|TMPDIR|TEMP|TMP|SYSTEMROOT)$/;
-export function cleanEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && ENV_ALLOW.test(k)) env[k] = v;
-  return { ...env, ...extra };
-}
 
 /**
  * Runs `body` against a fresh, shallow clone of `sha` fetched from `url` (github.com) with the already-resolved absolute

@@ -22,6 +22,15 @@ export async function onPath(name: string, path = process.env.PATH ?? ""): Promi
   return undefined;
 }
 
+// What carries into a program a token-holding job runs: nothing but these, so credentials, GIT_* (trace, config,
+// replace), SSH_ASKPASS and any other inherited variable are left out. `extra` adds what a given program is given on top.
+const ENV_ALLOW = /^(PATH|LANG|LC_[A-Z]+|TZ|TMPDIR|TEMP|TMP|SYSTEMROOT)$/;
+export function cleanEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && ENV_ALLOW.test(k)) env[k] = v;
+  return { ...env, ...extra };
+}
+
 // Known vendors. "supported" = a rule pack exists in packs/; "recognized" = named
 // in config only. Extend by adding a row.
 export const VENDORS = {

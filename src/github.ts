@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
-import { onPath } from "./detect.js";
+import { cleanEnv, onPath } from "./detect.js";
 import { Refusal } from "./refusal.js";
 
 const exec = promisify(execFile);
@@ -33,7 +33,10 @@ export async function githubToken(resolveGh: () => Promise<string | undefined> =
   if (!gh) return undefined;
   let out: string;
   try {
-    out = (await exec(gh, ["auth", "token"], { cwd: tmpdir() })).stdout;
+    // The allowlist environment, plus the folders gh reads its login from; no credential or other inherited variable reaches it.
+    const extra: NodeJS.ProcessEnv = {};
+    for (const k of ["HOME", "XDG_CONFIG_HOME", "GH_CONFIG_DIR"]) if (process.env[k] !== undefined) extra[k] = process.env[k];
+    out = (await exec(gh, ["auth", "token"], { cwd: tmpdir(), env: cleanEnv(extra) })).stdout;
   } catch {
     return undefined;
   }
