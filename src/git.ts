@@ -33,7 +33,7 @@ const UNTRUSTED_REPO = [
 
 // darnit turns off the programs a repository's config names by passing git config in the child's
 // environment, which git reads only from this version on; an older git would ignore it and run them.
-const MIN_GIT: [number, number] = [2, 31];
+export const MIN_GIT: [number, number] = [2, 31];
 const gitChecked = new Map<string, Promise<void>>();
 /** Refuses the run on a git too old to read the environment config darnit's pins rely on. `gitBin` defaults to bare `git` for calls in darnit's own job; --publish passes the absolute path it resolved, with `env` the clone's clean environment so no trace or token-bearing variable reaches this call either. */
 export function ensureGitVersion(gitBin = "git", env: NodeJS.ProcessEnv = process.env): Promise<void> {

@@ -14,7 +14,7 @@ const QUOTES = new Set(['"', "'", "`"]);
 const SETTING = /^[ \t]*[=:][ \t]*$/;
 const LINE_END = /[ \t]*\r?(?:\n|$)/y;
 /** Longer lines are minified or machine-made. */
-const LONG_LINE = 5000;
+export const LONG_LINE = 5000;
 
 /**
  * How a language writes comments and strings: `hash` comments, strings in `multiline` that may span lines,
