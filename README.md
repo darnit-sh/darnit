@@ -157,7 +157,9 @@ virtual environments and the like), copies of an SDK bundled into the project,
 symbolic links to outside the repository, and folders and files darnit could not
 read are not searched; "Not checked" names them, and `--json` lists each in
 `scanned.skipped` with its `path` and `reason`, leaving the field out when there
-are none, as with `scanned.tooLarge`. When anything was not checked, a clean
+are none, as with `scanned.tooLarge`. A file darnit fails to scan is named
+there too, with reason `could not be scanned`: its own call sites are not
+reported, every other file's are, and `check` exits 2. When anything was not checked, a clean
 result reads "No call sites of known vendor changes found." rather than claiming
 nothing affects the repository.
 
@@ -170,7 +172,7 @@ nothing affects the repository.
 |---|---|
 | 0 | nothing affected, or only unreviewed changes |
 | 1 | affected call sites found for a reviewed or parser-verified change |
-| 2 | darnit itself failed, or a mistyped command or flag |
+| 2 | darnit itself failed, including on one file it failed to scan, or a mistyped command or flag |
 
 ### `darnit fix`
 
@@ -205,7 +207,8 @@ and says so.
 
 After rewriting, darnit checks its own work: it scans the files again, and any
 call site still there is listed as `needs a human: file:line` (also in the pull
-request). If the rules changed nothing, it says so instead of claiming a fix.
+request). A rewritten file it then fails to scan is put back and listed as
+`needs a human: file`. If the rules changed nothing, it says so instead of claiming a fix.
 
 `fix` skips changes that are not yet reviewed, and changes that a rule can't
 fully make. Both still show up in `check`. It works from the same scan as
@@ -228,10 +231,11 @@ could not check the change) and `timedOut`. A check that timed out has
 |---|---|
 | `--dry-run` | show the diff, write nothing (works outside git too) |
 | `--pr` | one branch, one build and test run, and one pull request per change |
+| `--prepare <dir>` | verify each change as `--pr` does, then write `<dir>/plan.json` instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md) |
 | `--only <id>` | just this change, by its id from `check --json` (repeatable) |
 | `--test <command>` | run this instead of the detected test command |
 | `--no-test` | skip tests and the build check |
-| `--allow-dirty` | let `--pr` run with uncommitted changes elsewhere in the tree |
+| `--allow-dirty` | let `--pr` or `--prepare` run with uncommitted changes elsewhere in the tree |
 | `--repo <owner/name>` | the GitHub repository, when `origin` is not a GitHub URL |
 | `--json` | machine-readable output |
 

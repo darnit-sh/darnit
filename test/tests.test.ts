@@ -139,6 +139,15 @@ describe("runTests", () => {
     expect(run.output.endsWith("\nend")).toBe(true);
   });
 
+  it("decodes a character split across two writes whole, on stdout and stderr", async () => {
+    // Each write is read on its own: "ok ", two bytes of U+202E, then the rest, then the last two bytes of an emoji.
+    const split = (stream: string) =>
+      `const b = Buffer.from("ok \\u202e x \\u200b \\u{1F389}\\n"); const w = (s, e) => process.${stream}.write(b.subarray(s, e));` +
+      `w(0, 5); setTimeout(() => { w(5, b.length - 3); setTimeout(() => w(b.length - 3), 200); }, 200);`;
+    const dir = await dirWith({ "out.js": split("stdout"), "err.js": split("stderr") });
+    for (const script of ["out.js", "err.js"]) expect((await runTests(dir, `node ${script}`)).output).toBe("ok \\u202e x \\u200b \u{1F389}");
+  });
+
   it("redacts a token cut in half by the output limit", async () => {
     const dir = await dirWith({});
     const saved = process.env.GITHUB_TOKEN;
