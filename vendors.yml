@@ -11,6 +11,8 @@ openai:
     "POST /chat/completions": chat.completions.create
     "POST /responses": responses.create
     "POST /responses/compact": responses.compact
+    "POST /responses?beta=true": beta.responses.create
+    "POST /responses/compact?beta=true": beta.responses.compact
     "POST /completions": completions.create
     "POST /embeddings": embeddings.create
     "POST /images/generations": images.generate

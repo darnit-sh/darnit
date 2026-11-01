@@ -74,7 +74,11 @@ export function settingsOf(r: ChangeRecord): Setting[] {
   return found;
 }
 
-/** Whether a record's surface names an operation: its endpoint (with its method, when both give one) or its SDK call. */
+/**
+ * Whether a record's surface names an operation: its endpoint (with its method, when both give one), or its SDK call
+ * as detection matches one: the call ends with one of the record's symbols, so `beta.responses.create` is a
+ * `responses.create` call.
+ */
 export function namesOperation(r: ChangeRecord, path: string, method?: string, symbol?: string): boolean {
   const want = endpointOf(path);
   return (
@@ -82,7 +86,7 @@ export function namesOperation(r: ChangeRecord, path: string, method?: string, s
       const have = endpointOf(e);
       return have.path === want.path && (!have.method || !method || have.method === method);
     }) ||
-    (symbol !== undefined && !!r.surface.sdkSymbols?.includes(symbol))
+    (symbol !== undefined && !!r.surface.sdkSymbols?.some((s) => symbol.endsWith(s)))
   );
 }
 

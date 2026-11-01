@@ -224,6 +224,26 @@ describe("account", () => {
     expect(run(forA, forB).covered.get("schema Models enum old")).toEqual([forA.id, forB.id]);
   });
 
+  it("takes an operation on a spec path with a query as covered by a record for the SDK call vendors.yml gives it", () => {
+    const spec = {
+      paths: { "/responses": { post: body("Request") }, "/responses?beta=true": { post: body("BetaRequest") } },
+      components: {
+        schemas: {
+          Request: { properties: { model: { $ref: "#/components/schemas/Models" } } },
+          BetaRequest: { properties: { model: { $ref: "#/components/schemas/BetaModels" } } },
+          Models: { type: "string", enum: ["old"], "x-openai-enum-deprecations": { old: { message: "" } } },
+          BetaModels: { type: "string", enum: ["old"], "x-openai-enum-deprecations": { old: { message: "" } } },
+        },
+      },
+    };
+    // A record for the plain path and its call, as the model shutdown records are; detection matches a call that ends with its symbol.
+    const shutdown = record("old", ["/v1/responses"], ["model"], ['({ model: "old" })'], ["responses.create"]);
+    const run = (symbols: Record<string, string>) => account({ vendor: "openai", spec, removals: [], records: [shutdown], notCovered: [], symbols });
+    const plain = { "POST /responses": "responses.create" };
+    expect([...run({ ...plain, "POST /responses?beta=true": "beta.responses.create" }).covered.keys()]).toEqual(["schema Models enum old", "schema BetaModels enum old"]);
+    expect(run(plain).unaccounted).toEqual(["schema BetaModels enum old"]);
+  });
+
   it("walks a YAML alias that contains itself once", () => {
     const spec = parseSpec("components:\n  schemas:\n    Loop: &loop\n      deprecated: true\n      properties:\n        again: *loop\n");
     expect(deprecatedItems(spec).map((i) => i.key)).toEqual(["schema Loop"]);
