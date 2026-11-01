@@ -1,0 +1,12 @@
+{
+  "id": "openai:2026-01-01:style-deprecated",
+  "title": "style is deprecated on images.generate",
+  "status": "candidate",
+  "vendor": "openai",
+  "announcedAt": "2026-01-01",
+  "kind": "deprecation",
+  "surface": { "endpoints": ["/images/generations"], "sdkSymbols": ["images.generate"], "fields": ["style"] },
+  "classification": "semantic",
+  "sources": [{ "url": "https://example.com/openapi.yaml" }],
+  "detection": { "astGrepPatterns": { "js": [{ "context": "({ style: $V })", "selector": "pair" }] } }
+}
