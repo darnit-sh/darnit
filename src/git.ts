@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { lstat, readdir } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { firstFive } from "./detect.js";
 import { envToken } from "./github.js";
@@ -251,11 +253,56 @@ const ENV_CONFIG = /^GIT_CONFIG_(?:COUNT|PARAMETERS|KEY_\d+|VALUE_\d+)$/;
 export async function savedCredential(root: string): Promise<Credential | undefined> {
   const env = { ...(await childEnv()), ...Object.fromEntries(Object.entries(process.env).filter(([k]) => ENV_CONFIG.test(k))) };
   const { stdout } = await exec("git", [...UNTRUSTED_REPO, "config", "--list", "-z"], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
-  const entries = stdout.split("\0").filter(Boolean).map((e) => {
+  return credentialIn(entriesOf(stdout));
+}
+
+/** `git config --list -z` output as key and value pairs. */
+const entriesOf = (stdout: string) =>
+  stdout.split("\0").filter(Boolean).map((e) => {
     const i = e.indexOf("\n");
     return i < 0 ? ([e, ""] as const) : ([e.slice(0, i), e.slice(i + 1)] as const);
   });
-  return credentialIn(entries);
+
+/** One file's config as git reads it, with no include followed; none for a file that is not there. */
+const configFile = async (root: string, file: string) =>
+  (await lstat(file).catch(() => undefined)) ? entriesOf(await git(root, ["config", "--file", file, "--no-includes", "--list", "-z"])) : [];
+
+// The keys a fresh clone or actions/checkout writes to a repository's own config. Any other can run a program
+// (a filter, a hook path, an ssh command) or point a git call elsewhere (url.*.insteadOf, http.*).
+const FRESH =
+  /^(?:core\.(?:repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks|autocrlf)|remote\.origin\.(?:url|fetch|promisor|partialclonefilter)|branch\..+\.(?:remote|merge)|gc\.auto|extensions\.worktreeconfig|http\.https:\/\/github\.com\/\.extraheader)$/;
+const SAVED = "http.https://github.com/.extraheader";
+
+/**
+ * Whether `path`, named by an includeIf in the repository's config, is the file actions/checkout v6 and later saves its
+ * token in: git-credentials-<id>.config in the runner's temporary folder, on the host or in a container, holding that header only.
+ */
+async function checkoutCredentials(root: string, path: string): Promise<boolean> {
+  const temps = [process.env.RUNNER_TEMP?.trim(), "/github/runner_temp"].filter(Boolean);
+  if (!temps.includes(dirname(path)) || !/^git-credentials-[\w-]+\.config$/.test(basename(path))) return false;
+  return (await configFile(root, path)).every(([k]) => k === SAVED);
+}
+
+/**
+ * Why `root` is not a checkout as git clone or actions/checkout leaves it, or undefined: its own config holds a key
+ * outside FRESH, an include other than the checkout's saved token, worktree config, git attributes or a hook.
+ * Read with `git config` and the file system only, so nothing the repository set up runs.
+ */
+export async function freshCheckout(root: string): Promise<string | undefined> {
+  const [gitDir = "", common = ""] = (await git(root, ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"])).trim().split("\n");
+  for (const [key, value] of entriesOf(await git(root, ["config", "--local", "--no-includes", "--list", "-z"]))) {
+    if (FRESH.test(key) || (/^includeif\.gitdir:.+\.path$/.test(key) && (await checkoutCredentials(root, value)))) continue;
+    return `its git config holds ${JSON.stringify(key)}`;
+  }
+  for (const dir of new Set([gitDir, common])) {
+    if ((await configFile(root, join(dir, "config.worktree"))).length > 0) return `${join(dir, "config.worktree")} holds git config`;
+  }
+  const attributes = join(common, "info", "attributes");
+  const info = await lstat(attributes).catch(() => undefined);
+  if (info && (!info.isFile() || info.size > 0)) return `${attributes} is not empty`;
+  const hook = (await readdir(join(common, "hooks"), { withFileTypes: true }).catch(() => [])).find((e) => !e.isFile() || !e.name.endsWith(".sample"));
+  if (hook) return `${join(common, "hooks")} holds ${JSON.stringify(hook.name)}`;
+  return undefined;
 }
 
 export const topLevel = async (root: string) => (await git(root, ["rev-parse", "--show-toplevel"])).trim();

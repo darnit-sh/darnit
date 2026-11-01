@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,7 +33,9 @@ const BRANCHES = ["darnit/openai-max-tokens-to-max-completion-tokens", "darnit/o
 const SORTED = [...BRANCHES].sort();
 const TOKEN = "ghp_fake0123456789abcdefghijklmnopqrstuv";
 const REPORTED = "Build and test results were reported by the verify job. This job ran none of the repository's code: darnit made the change again on the same commit and checked it is the one verified.\n\n";
+const MISMATCH_MEANS = "The plan was changed after the verify job wrote it, or the rewrite is not deterministic; either way this run is not all good.";
 const ids = new Set((await loadRecords()).map((l) => l.record.id));
+const { version: VERSION } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
 
 const tempDirs: string[] = [];
 const temp = async (prefix: string) => {
@@ -98,6 +100,36 @@ function stubGitHub(base: string) {
   return posts;
 }
 
+/** A plan for the command line, which loads darnit's real records only and checks the plan's darnit version. */
+async function cliPlan(dir: string): Promise<string> {
+  const plan = await prepare(dir, { test: "node -e 1", version: VERSION });
+  const value = await readPlan(plan);
+  await writePlan(plan, { ...value, groups: value.groups.filter((g) => g.id === MAX) });
+  return plan;
+}
+
+/** A local server in GitHub's place, and a preload that sends a darnit process's API calls to it. */
+async function localApi(branch: string) {
+  const posts: Record<string, string>[] = [];
+  const auth: (string | undefined)[] = [];
+  const server = createServer((req, res) => {
+    auth.push(req.headers.authorization);
+    let data = "";
+    req.on("data", (c: Buffer) => (data += c.toString()));
+    req.on("end", () => {
+      if (req.method === "POST") posts.push(JSON.parse(data) as Record<string, string>);
+      const reply = req.url === "/repos/o/r" ? { default_branch: branch } : req.method === "POST" ? { html_url: `https://github.com/o/r/pull/${posts.length}` } : [];
+      res.writeHead(req.method === "POST" ? 201 : 200).end(JSON.stringify(reply));
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const preload = join(await temp("darnit-tools-"), "local-api.mjs");
+  const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+  await writeFile(preload, `const f = globalThis.fetch;\nglobalThis.fetch = (url, init) => f(String(url).replace(/^https:\\/\\/api\\.github\\.com\\//, ${JSON.stringify(api)}), init);\n`);
+  return { posts, auth, preload, close: () => server.close() };
+}
+
 const publish = (dir: string, plan: string, opts: FixOptions = {}) => fix(dir, { publish: plan, repo: "o/r", version: "t", ...opts });
 const branches = async (bare: string) => (await git(bare, ["branch", "--list", "darnit/*", "--format=%(refname:short)"])).split("\n").filter(Boolean).sort();
 const treeOf = async (bare: string, branch: string) => (await git(bare, ["rev-parse", `${branch}^{tree}`])).trim();
@@ -141,37 +173,119 @@ describe("fix --publish", () => {
 
   it("publishes from the command line with the token in its environment, against a local API", async () => {
     const { dir, bare, branch } = await origin();
-    // The command line loads darnit's real records only.
-    const plan = await prepare(dir);
-    const value = await readPlan(plan);
-    await writePlan(plan, { ...value, groups: value.groups.filter((g) => g.id === MAX) });
-    const posts: Record<string, string>[] = [];
-    const auth: (string | undefined)[] = [];
-    const server = createServer((req, res) => {
-      auth.push(req.headers.authorization);
-      let data = "";
-      req.on("data", (c: Buffer) => (data += c.toString()));
-      req.on("end", () => {
-        if (req.method === "POST") posts.push(JSON.parse(data) as Record<string, string>);
-        const reply = req.url === "/repos/o/r" ? { default_branch: branch } : req.method === "POST" ? { html_url: "https://github.com/o/r/pull/1" } : [];
-        res.writeHead(req.method === "POST" ? 201 : 200).end(JSON.stringify(reply));
-      });
-    });
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const preload = join(await temp("darnit-tools-"), "local-api.mjs");
-    const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
-    await writeFile(preload, `const f = globalThis.fetch;\nglobalThis.fetch = (url, init) => f(String(url).replace(/^https:\\/\\/api\\.github\\.com\\//, ${JSON.stringify(api)}), init);\n`);
+    const plan = await cliPlan(dir);
+    const api = await localApi(branch);
     try {
-      const run = await cli(await fresh(bare), { GITHUB_TOKEN: TOKEN, NODE_OPTIONS: `--import ${preload}` }, "fix", "--publish", plan, "--repo", "o/r");
+      const run = await cli(await fresh(bare), { GITHUB_TOKEN: TOKEN, NODE_OPTIONS: `--import ${api.preload}` }, "fix", "--publish", plan, "--repo", "o/r");
       expect(run).toMatchObject({ code: 0, stderr: "" });
       expect(run.stdout).toContain("✓ Rename max_tokens to max_completion_tokens on chat completions: pull request opened https://github.com/o/r/pull/1\n  tests: node -e 1 passed");
     } finally {
-      server.close();
+      api.close();
     }
-    expect(auth).toEqual([`Bearer ${TOKEN}`, `Bearer ${TOKEN}`, `Bearer ${TOKEN}`]);
-    expect(posts.map((p) => p.head)).toEqual([BRANCHES[0]]);
+    expect(api.auth).toEqual([`Bearer ${TOKEN}`, `Bearer ${TOKEN}`, `Bearer ${TOKEN}`]);
+    expect(api.posts.map((p) => p.head)).toEqual([BRANCHES[0]]);
     expect(await branches(bare)).toEqual([BRANCHES[0]]);
+  });
+
+  // What a reused self-hosted workspace can hold: a remote that points elsewhere, and a filter that reads darnit's environment.
+  it("refuses a checkout a reused workspace set up, before git runs anything there", async () => {
+    const { dir, bare, branch } = await origin();
+    const plan = await cliPlan(dir);
+    const evil = await temp("darnit-attacker-");
+    await git(evil, ["init", "-q", "--bare"]);
+    const lab = await temp("darnit-lab-");
+    const marker = join(lab, "MARKER");
+    await writeFile(
+      join(lab, "pwn.sh"),
+      `#!/bin/sh\necho ran >> '${marker}'\ntr '\\0' '\\n' < /proc/$(ps -o ppid= -p $PPID | tr -d ' ')/environ 2>/dev/null | grep GITHUB_TOKEN= >> '${marker}'\ncat\n`,
+      { mode: 0o755 },
+    );
+    const job2 = await fresh(bare);
+    await git(job2, ["config", `url.${evil}.insteadOf`, bare]);
+    await git(job2, ["config", "filter.pwn.clean", join(lab, "pwn.sh")]);
+    await writeFile(join(job2, ".git", "info", "attributes"), "* filter=pwn\n");
+    const api = await localApi(branch);
+    try {
+      const run = await cli(job2, { GITHUB_TOKEN: TOKEN, NODE_OPTIONS: `--import ${api.preload}` }, "fix", "--publish", plan, "--repo", "o/r");
+      expect(run.code).toBe(2);
+      expect(run.stderr).toContain(`its git config holds "url.${evil}.insteadof", which a fresh checkout does not; --publish holds the token`);
+    } finally {
+      api.close();
+    }
+    await expect(access(marker)).rejects.toThrow();
+    expect(api.auth).toEqual([]);
+    expect(await branches(bare)).toEqual([]);
+    expect(await branches(evil)).toEqual([]);
+  });
+
+  it.each([
+    ["url.https://evil.example/.insteadOf", "https://github.com/"],
+    ["filter.pwn.clean", "sh -c cat"],
+    ["core.hooksPath", "/tmp"],
+    ["core.fsmonitor", "true"],
+    ["core.sshCommand", "ssh -i key"],
+    ["core.attributesFile", "/tmp/attributes"],
+    ["http.proxy", "http://127.0.0.1:1"],
+    ["http.sslVerify", "false"],
+    ["http.https://github.com/.curloptResolve", "github.com:443:127.0.0.1"],
+    ["http.https://evil.example/.extraheader", "AUTHORIZATION: basic x"],
+    ["credential.helper", "!cat"],
+    ["remote.origin.pushurl", "/tmp/elsewhere"],
+    ["remote.evil.url", "/tmp/elsewhere"],
+    ["diff.external", "sh"],
+    ["include.path", "/tmp/other.config"],
+    ["includeIf.gitdir:/.path", "/tmp/other.config"],
+  ])("refuses a checkout whose git config holds %s", async (key, value) => {
+    const { bare } = await origin();
+    const job2 = await fresh(bare);
+    await git(job2, ["config", key, value]);
+    // git writes a section and a name in lower case, and a subsection as it was given.
+    const shown = key.replace(/^[^.]+/, (s) => s.toLowerCase()).replace(/[^.]+$/, (s) => s.toLowerCase());
+    await expect(publish(job2, join(bare, "no-plan-needed"))).rejects.toThrow(`its git config holds ${JSON.stringify(shown)}, which a fresh checkout does not`);
+  });
+
+  it("refuses worktree config, git attributes, hooks, and a checkout credentials file holding more than the header", async () => {
+    const { bare } = await origin();
+    const refused = async (setUp: (job2: string) => Promise<unknown>, message: string) => {
+      const job2 = await fresh(bare);
+      await setUp(job2);
+      await expect(publish(job2, join(bare, "no-plan-needed"))).rejects.toThrow(message);
+    };
+    await refused(async (job2) => {
+      await git(job2, ["config", "extensions.worktreeConfig", "true"]);
+      await git(job2, ["config", "--worktree", "core.sshCommand", "ssh -i key"]);
+    }, "config.worktree holds git config");
+    await refused((job2) => writeFile(join(job2, ".git", "info", "attributes"), "* filter=pwn\n"), "info/attributes is not empty");
+    await refused((job2) => writeFile(join(job2, ".git", "hooks", "pre-push"), "#!/bin/sh\n", { mode: 0o755 }), 'hooks holds "pre-push"');
+    const runnerTemp = await temp("darnit-runner-temp-");
+    vi.stubEnv("RUNNER_TEMP", runnerTemp);
+    const saved = join(runnerTemp, "git-credentials-1.config");
+    await git(runnerTemp, ["config", "-f", saved, "http.https://github.com/.extraheader", "AUTHORIZATION: basic eA=="]);
+    await git(runnerTemp, ["config", "-f", saved, "core.sshCommand", "ssh -i key"]);
+    await refused((job2) => git(job2, ["config", `includeIf.gitdir:${job2}/.git.path`, saved]), "its git config holds");
+  });
+
+  it("runs on a fresh clone with what actions/checkout adds: the saved header, inline or in its credentials file", async () => {
+    const { dir, bare, branch } = await origin();
+    const plan = await prepare(dir);
+    const runnerTemp = await temp("darnit-runner-temp-");
+    vi.stubEnv("RUNNER_TEMP", runnerTemp);
+    const saved = join(runnerTemp, "git-credentials-0a1b2c3d-4e5f.config");
+    await git(runnerTemp, ["config", "-f", saved, "http.https://github.com/.extraheader", "AUTHORIZATION: basic eA=="]);
+    const job2 = await fresh(bare);
+    for (const [key, value] of [
+      ["http.https://github.com/.extraheader", "AUTHORIZATION: basic eA=="],
+      ["gc.auto", "0"],
+      ["core.autocrlf", "false"],
+      [`includeIf.gitdir:${job2}/.git.path`, saved],
+      [`includeIf.gitdir:${job2}/.git/worktrees/*.path`, saved],
+      // The same file as a container job sees it; not there on this machine.
+      ["includeIf.gitdir:/github/workspace/.git.path", "/github/runner_temp/git-credentials-0a1b2c3d-4e5f.config"],
+    ]) {
+      await git(job2, ["config", "--add", key!, value!]);
+    }
+    stubGitHub(branch);
+    expect((await publish(job2, plan)).records.map((r) => r.pr?.state)).toEqual(["opened", "opened"]);
   });
 
   it("opens no pull request for a change whose patch in the plan is not darnit's, and still opens the others", async () => {
@@ -189,16 +303,30 @@ describe("fix --publish", () => {
     const posts = stubGitHub(branch);
     const result = await publish(job2, plan);
     expect(result.records.map((r) => r.pr)).toEqual([
-      { state: "skipped", reason: "the plan's patch is not darnit's rewrite of this commit" },
+      { state: "mismatch", reason: "the plan's patch is not darnit's rewrite of this commit" },
       expect.objectContaining({ state: "opened", url: "https://github.com/o/r/pull/1" }),
     ]);
-    expect(renderSummary(result)).toContain("Rename max_tokens to max_completion_tokens on chat completions: skipped, the plan's patch is not darnit's rewrite of this commit");
+    expect(renderSummary(result)).toContain(`✗ Rename max_tokens to max_completion_tokens on chat completions: nothing pushed, the plan's patch is not darnit's rewrite of this commit\n  ${MISMATCH_MEANS}`);
     expect(posts.map((p) => p.head)).toEqual([BRANCHES[1]]);
     expect(await branches(bare)).toEqual([BRANCHES[1]]);
     expect(await git(bare, ["show", `${BRANCHES[1]}:app.py`])).not.toContain("evil.example");
     expect((await git(job2, ["status", "--porcelain"])).trim()).toBe("");
     expect(await branches(job2)).toEqual([BRANCHES[1]]);
-    expect(exitCodeFor(result)).toBe(0);
+    // A workflow must not read a plan that does not match as all good.
+    expect(exitCodeFor(result)).toBe(1);
+  });
+
+  it("opens nothing and exits 1 when the plan was written by another darnit version", async () => {
+    const { dir, bare, branch } = await origin();
+    const plan = await prepare(dir);
+    const posts = stubGitHub(branch);
+    const result = await publish(await fresh(bare), plan, { version: "u" });
+    const reason = 'the plan was written by darnit "t" and this is darnit u; run both jobs with the same version';
+    expect(result.records.map((r) => r.pr)).toEqual([{ state: "mismatch", reason }, { state: "mismatch", reason }]);
+    expect(renderSummary(result)).toContain(`nothing pushed, ${reason}\n  ${MISMATCH_MEANS}`);
+    expect(exitCodeFor(result)).toBe(1);
+    expect(posts).toEqual([]);
+    expect(await branches(bare)).toEqual([]);
   });
 
   it("opens nothing when the plan was made on another commit, or GITHUB_SHA names another", async () => {
@@ -219,6 +347,12 @@ describe("fix --publish", () => {
     vi.stubEnv("GITHUB_ACTIONS", "true");
     vi.stubEnv("GITHUB_SHA", head);
     await expect(publish(job2, plan)).rejects.toThrow(`but GITHUB_SHA is ${head}; nothing published`);
+    for (const blank of ["", " "]) {
+      vi.stubEnv("GITHUB_SHA", blank);
+      await expect(publish(job2, plan)).rejects.toThrow("GITHUB_SHA is not set; in GitHub Actions --publish checks the plan's commit against it");
+    }
+    delete process.env.GITHUB_SHA;
+    await expect(publish(job2, plan)).rejects.toThrow("GITHUB_SHA is not set");
     expect(posts).toEqual([]);
     expect(await branches(bare)).toEqual([]);
     vi.stubEnv("GITHUB_SHA", base);
@@ -235,27 +369,35 @@ describe("fix --publish", () => {
       noise,
       "Authorization: Bearer sekret-value-1234",
       `token ${TOKEN} ${b64(`x-access-token:${TOKEN}`)} ${b64(TOKEN)}`,
-      "esc \u001b[8mhidden\u001b[0m bidi ‮evil‬ c1 \u009b31m",
+      "esc \u001b[8mhidden\u001b[0m bidi \u202eevil\u202c c1 \u009b31m",
       "```\n</details>\n@everyone",
       "last line",
     ].join("\n");
-    value.groups[0]!.tests = { command: "npm test", passed: true, attributed: null, notChecked: false, timedOut: false, output: hostile };
+    value.groups[0]!.tests = { command: "npm test # Authorization: Bearer sekret-cmd-9876", passed: true, attributed: null, notChecked: false, timedOut: false, output: hostile };
     value.groups[0]!.testsNote = null;
     const note = "<img src=x onerror=alert(1)> @everyone see [here](https://evil.example)";
-    value.groups[0]!.buildNote = note;
+    value.groups[0]!.buildNote = `${note} Authorization: Bearer sekret-note-5555 ${TOKEN}`;
+    // The other change's notes and command go the same way.
+    value.groups[1]!.build = { command: `npm run build ${TOKEN}`, passed: true, attributed: null, notChecked: false, timedOut: false, output: "" };
+    value.groups[1]!.buildNote = null;
+    value.groups[1]!.testsNote = note;
     await writePlan(plan, value);
 
     const posts = stubGitHub(branch);
     await publish(await fresh(bare), plan);
     const body = posts[0]!.body!;
-    expect(body).toContain(`- [ ] build not checked: ${prose(note)}`);
-    expect(body).not.toMatch(/(?<!`)<img/);
-    expect(body).not.toContain("](https://evil.example)");
-    expect(body).not.toContain("sekret-value-1234");
+    expect(body).toContain(`- [ ] build not checked: ${prose(`${note} Authorization: Bearer *** ***`)}`);
+    expect(body).toContain("- [x] `npm test # Authorization: Bearer ***` passed");
+    expect(posts[1]!.body).toContain(`- [x] \`npm run build ***\` passed\n- [ ] tests not run: ${prose(note)}\n`);
+    for (const text of [body, posts[1]!.body!]) {
+      expect(text).not.toMatch(/(?<!`)<img/);
+      expect(text).not.toContain("](https://evil.example)");
+      expect(text).not.toMatch(/sekret|ghp_/);
+    }
     for (const form of [TOKEN, b64(`x-access-token:${TOKEN}`), b64(TOKEN)]) expect(body).not.toContain(form);
     expect(body).toContain("Authorization: Bearer ***\ntoken *** *** ***\nesc hidden bidi \\u202eevil\\u202c c1 \\u009b31m");
     // eslint-disable-next-line no-control-regex
-    expect(body).not.toMatch(/[\u001b\u009b‮]/);
+    expect(body).not.toMatch(/[\u001b\u009b\u202e]/);
     // The last 40 lines, in a fence no line of them closes.
     expect(body).toContain("````\nnoise 967\n");
     expect(body).not.toContain("noise 966\n");
@@ -304,6 +446,28 @@ execSync("git config http.sslVerify false");
     await expect(git(job2, ["config", "--local", "--get-regexp", "^(url\\.|http\\.)"])).rejects.toBeDefined();
   });
 
+  it("opens no pull request for a change whose build failed in the plan, and words a rerun for --publish", async () => {
+    const { dir, bare } = await origin();
+    const plan = await prepare(dir, { noTest: true });
+    const value = await readPlan(plan);
+    const run = { passed: false, notChecked: false, output: "" } as const;
+    value.groups[0] = { ...value.groups[0]!, build: { ...run, command: "npm run build", attributed: "change", timedOut: false }, buildNote: null, tests: null, testsNote: "the build failed first" };
+    value.groups[1] = { ...value.groups[1]!, tests: { ...run, command: "npm test", attributed: null, timedOut: true }, testsNote: null };
+    await writePlan(plan, value);
+    vi.stubGlobal("fetch", () => Promise.reject(new Error("no request expected")));
+    const result = await publish(await fresh(bare), plan);
+    expect(result.records.map((r) => r.pr?.state)).toEqual(["build-failed", "tests-failed"]);
+    expect(exitCodeFor(result)).toBe(1);
+    const summary = renderSummary(result);
+    expect(summary).toContain("nothing pushed\n  build: npm run build failed; files put back. The change broke your build.");
+    expect(summary).toContain("tests: npm test timed out after 10 minutes; files put back, since a run that did not finish can't check the change. Rerun --prepare with --no-test to apply it");
+    expect(summary).not.toContain("Rerun with --no-test");
+    value.groups[1].tests = { ...run, command: "npm test", attributed: "baseline", timedOut: false };
+    await writePlan(plan, value);
+    expect(renderSummary(await publish(await fresh(bare), plan))).toContain("They already fail without the change. Fix them first, or rerun --prepare with --no-test to apply it");
+    expect(await branches(bare)).toEqual([]);
+  });
+
   it("reports a change the plan says failed with the plan's result, and opens no pull request for it", async () => {
     const { dir, bare } = await origin();
     const breaks = "node -e \"process.exit(require('fs').readFileSync('app.js','utf8').includes('max_completion_tokens') ? 1 : 0)\"";
@@ -332,8 +496,9 @@ execSync("git config http.sslVerify false");
     await writePlan(plan, { ...value, base: (await git(dir, ["rev-parse", "HEAD"])).trim(), groups: [value.groups[1]!] });
     const posts = stubGitHub(branch);
     const result = await publish(await fresh(bare), plan);
-    expect(result.records.map((r) => [r.record.id, r.pr])).toEqual([[COPY, { state: "skipped", reason: "the plan's patch is not darnit's rewrite of this commit" }]]);
-    expect(renderSummary(result)).toContain("- The same rename, again: not rewritten: the plan's patch is not darnit's rewrite of this commit");
+    expect(result.records.map((r) => [r.record.id, r.pr])).toEqual([[COPY, { state: "mismatch", reason: "the plan's patch is not darnit's rewrite of this commit" }]]);
+    expect(renderSummary(result)).toContain(`✗ The same rename, again: nothing pushed, the plan's patch is not darnit's rewrite of this commit\n  ${MISMATCH_MEANS}`);
+    expect(exitCodeFor(result)).toBe(1);
     expect(posts).toEqual([]);
   });
 

@@ -72,9 +72,17 @@ URL with another scheme, any other environment variable, and config files hidden
 secret in any of them can reach the plan through test output.
 
 `fix --publish` holds the token and runs none of the repository's code: no install, build, tests or
-git hooks. It trusts darnit's own records and rewrite rules, the commit checked out, and the git
-config that checkout left, so run it on a fresh checkout in a job of its own, never where
-`--prepare` or the repository's code ran. It does not trust the plan: it applies nothing from it,
+git hooks. It trusts darnit's own records and rewrite rules, the commit checked out, and git config
+outside the repository (system and global). Run it on a fresh checkout in a job of its own, never
+where `--prepare` or the repository's code ran. Since a self-hosted runner can reuse a workspace,
+it refuses, before running any git command that reads the work tree or a remote, a checkout whose
+repository-local git state is more than git clone or actions/checkout leaves: config keys outside
+core settings a clone writes, `remote.origin.url`, `fetch`, `promisor` and `partialclonefilter`,
+`branch.*.remote` and `merge`, `gc.auto`, `extensions.worktreeConfig` and
+`http.https://github.com/.extraheader`; any include other than actions/checkout's
+`git-credentials-*.config` under `$RUNNER_TEMP` holding only that header; worktree config; a
+non-empty `.git/info/attributes`; or a hook that is not a `.sample` file. Other local state, such as
+`.git/info/grafts`, replace refs or object alternates, is not checked. It does not trust the plan: it applies nothing from it,
 makes each change again and compares it with the plan's patch byte for byte, and treats the build
 and test results and notes as text to report. A plan can still say tests passed when they did not;
 the pull request then holds darnit's own change only, and says the verify job reported the results.

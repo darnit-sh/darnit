@@ -47,6 +47,8 @@ export type PrResult =
   | { state: "opened"; url: string; build?: TestOutcome | undefined; tests?: TestOutcome | undefined }
   | { state: "exists"; url: string }
   | { state: "skipped"; reason: string }
+  /** --publish: the plan does not match what darnit makes of this commit, so it was changed or the rewrite is not deterministic. */
+  | { state: "mismatch"; reason: string }
   | { state: "tests-failed"; tests: TestOutcome }
   | { state: "build-failed"; build: TestOutcome }
   | { state: "prepared"; build?: TestOutcome | undefined; tests?: TestOutcome | undefined };
@@ -79,6 +81,8 @@ export type FixResult = {
   pr: boolean;
   /** Where --prepare wrote the plan. */
   plan?: string;
+  /** --publish: build and test results come from the plan. */
+  fromPlan?: boolean;
   build?: TestOutcome | undefined;
   tests?: TestOutcome | undefined;
   testsSkipped: boolean;
@@ -519,6 +523,11 @@ async function prepare(root: string, groups: Group[], base: FixResult, commands:
 
 /** The plan in `dir`, checked against darnit's records and the commit checked out. Refuses anything else in the folder. */
 async function planFrom(root: string, dir: string): Promise<Plan> {
+  // The token is in this job, so before git runs anything a reused workspace could have set up.
+  const stale = await g.freshCheckout(root);
+  if (stale) throw new Refusal(`${stale}, which a fresh checkout does not; --publish holds the token, so it runs only on a new clone or actions/checkout, in a job of its own`);
+  const actions = process.env.GITHUB_ACTIONS === "true";
+  if (actions && !process.env.GITHUB_SHA?.trim()) throw new Refusal("GITHUB_SHA is not set; in GitHub Actions --publish checks the plan's commit against it");
   const info = await lstat(dir).catch(() => undefined);
   const why = !info ? "does not exist" : info.isSymbolicLink() ? "is a symbolic link" : !info.isDirectory() ? "is not a folder" : undefined;
   if (why) throw new Refusal(`${dir} ${why}; give --publish the folder --prepare wrote`);
@@ -542,7 +551,7 @@ async function planFrom(root: string, dir: string): Promise<Plan> {
   } catch (err) {
     throw new Refusal(`${file}: ${(err as Error).message}\nnothing published`);
   }
-  const sha = process.env.GITHUB_ACTIONS === "true" ? process.env.GITHUB_SHA?.trim() : undefined;
+  const sha = actions ? process.env.GITHUB_SHA?.trim() : undefined;
   for (const [what, commit] of [["this checkout is at", await g.head(root)], ["GITHUB_SHA is", sha]] as const) {
     if (commit && commit !== plan.base) throw new Refusal(`the plan was made on commit ${plan.base}, but ${what} ${commit}; nothing published. Publish from a checkout of the commit the plan was made on`);
   }
@@ -550,6 +559,7 @@ async function planFrom(root: string, dir: string): Promise<Plan> {
 }
 
 const MISMATCH = "the plan's patch is not darnit's rewrite of this commit";
+const MISMATCH_MEANS = "The plan was changed after the verify job wrote it, or the rewrite is not deterministic; either way this run is not all good.";
 
 /** A plan group's build and test results and notes, their text kept as darnit keeps test output. */
 function reported(group: PlanGroup): PrEvidence {
@@ -569,6 +579,9 @@ function reported(group: PlanGroup): PrEvidence {
 // opens its pull request only when the patch is the plan's, byte for byte. Nothing from the plan is applied or run.
 async function publish(root: string, plan: Plan, applicable: Group[], base: FixResult, opts: FixOptions): Promise<FixResult> {
   const known = new Map((await loadRecords()).map((l) => [l.record.id, l.record]));
+  const version = opts.version ?? "dev";
+  // Another version can rewrite differently, so its plan says nothing about this one's change.
+  const otherVersion = plan.darnit !== version && `the plan was written by darnit ${JSON.stringify(plan.darnit)} and this is darnit ${version}; run both jobs with the same version`;
   const inPlan: RecordResult[] = [];
   const ready: Group[] = [];
   for (const group of plan.groups) {
@@ -579,7 +592,8 @@ async function publish(root: string, plan: Plan, applicable: Group[], base: FixR
     }
     inPlan.push(result);
     const { build, tests } = reported(group);
-    if (failed(build)) result.pr = { state: "build-failed", build: build! };
+    if (otherVersion) result.pr = { state: "mismatch", reason: otherVersion };
+    else if (failed(build)) result.pr = { state: "build-failed", build: build! };
     else if (failed(tests)) result.pr = { state: "tests-failed", tests: tests! };
     else ready.push(...applicable.filter((grp) => grp.record.id === group.id));
   }
@@ -589,13 +603,13 @@ async function publish(root: string, plan: Plan, applicable: Group[], base: FixR
       const group = groups.get(grp.record.id)!;
       if ((await g.patch(root, changed)) === group.patch) return { ...reported(group), reported: true };
       await restore(root, snap);
-      result.pr = { state: "skipped", reason: MISMATCH };
+      result.pr = { state: "mismatch", reason: MISMATCH };
       return undefined;
     });
   }
   // A change darnit does not make here, or makes with no effect, does not match the plan either.
-  for (const r of inPlan) r.pr ??= { state: "skipped", reason: MISMATCH };
-  return withFailures(base);
+  for (const r of inPlan) r.pr ??= { state: "mismatch", reason: MISMATCH };
+  return { ...withFailures(base), fromPlan: true };
 }
 
 /** `base`, marked reverted when a change's build or tests failed. */
@@ -832,14 +846,16 @@ function recordUrl(id: string): string {
 
 export function exitCodeFor(result: FixResult): 0 | 1 {
   if (failed(result.build) || failed(result.tests)) return 1;
-  return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed") ? 1 : 0;
+  return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed" || r.pr?.state === "mismatch") ? 1 : 0;
 }
 
-function testLine(t: TestOutcome): string {
+function testLine(t: TestOutcome, fromPlan = false): string {
+  // --publish runs no tests, so the rerun it can suggest is the verify job's.
+  const rerun = (start: string) => `${start} ${fromPlan ? "--prepare " : ""}with --no-test`;
   if (t.passed) return `${t.kind}: ${t.command} passed`;
   if (t.notChecked) return `${t.kind}: ${t.command} already fails without the change, so it could not check it; change kept`;
   if (t.timedOut) {
-    return `${t.kind}: ${t.command} timed out after ${TIME_LIMIT_MINUTES} minutes; files put back, since a run that did not finish can't check the change. Rerun with --no-test to apply it without the tests or the build check.${t.output ? `\n${t.output}` : ""}`;
+    return `${t.kind}: ${t.command} timed out after ${TIME_LIMIT_MINUTES} minutes; files put back, since a run that did not finish can't check the change. ${rerun("Rerun")} to apply it without the tests or the build check.${t.output ? `\n${t.output}` : ""}`;
   }
   const why =
     t.kind === "build"
@@ -848,7 +864,7 @@ function testLine(t: TestOutcome): string {
         : "It already fails without the change."
       : t.attributed === "change"
         ? "The change broke your tests."
-        : "They already fail without the change. Fix them first, or rerun with --no-test to apply it without the tests or the build check.";
+        : `They already fail without the change. Fix them first, or ${rerun("rerun")} to apply it without the tests or the build check.`;
   return `${t.kind}: ${t.command} failed; files put back. ${why}${t.output ? `\n${t.output}` : ""}`;
 }
 
@@ -856,7 +872,8 @@ export function renderSummary(result: FixResult): string {
   const lines: string[] = [];
   for (const r of result.records) {
     const where = `${r.files.length} file${r.files.length === 1 ? "" : "s"}`;
-    if (!r.applied) lines.push(`- ${r.title}: ${r.files.length > 0 ? `found in ${where}, ` : ""}not rewritten: ${shown(r.reason ?? "")}`);
+    if (r.pr?.state === "mismatch") lines.push(`✗ ${r.title}: nothing pushed, ${r.pr.reason}\n  ${MISMATCH_MEANS}`);
+    else if (!r.applied) lines.push(`- ${r.title}: ${r.files.length > 0 ? `found in ${where}, ` : ""}not rewritten: ${shown(r.reason ?? "")}`);
     else if (!r.pr && result.reverted) lines.push(`✗ ${r.title}: rewritten, then put back`);
     else if (!r.pr) lines.push(`✓ ${r.title}: ${r.remaining ? `${r.sites - count(r.remaining)} of ${r.sites} call sites rewritten` : where}`);
     else if (r.pr.state === "opened") {
@@ -870,7 +887,7 @@ export function renderSummary(result: FixResult): string {
     }
     else if (r.pr.state === "exists") lines.push(`= ${r.title}: pull request already open ${r.pr.url}`);
     else if (r.pr.state === "skipped") lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
-    else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
+    else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests, result.fromPlan)}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;
     if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}${s.line ? `:${s.line}` : ""}${s.note ? ` (${shown(s.note)})` : ""}`);
