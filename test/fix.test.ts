@@ -2,7 +2,7 @@ import { execFile, execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtempSync, rmSync } from "node:fs";
+import { constants, mkdtempSync, rmSync } from "node:fs";
 import { access, appendFile, chmod, cp, link, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
@@ -1220,6 +1220,21 @@ describe("fix when the tests remove or replace a file it changed", () => {
     const result = await fix(dir, { test: "exit 1" });
     expect(result.tests).toMatchObject({ passed: false, removed: "sdk.js" });
     expect(await readFile(victim, "utf8")).toBe("outside\n");
+    await putBack(dir, "sdk.js", SDK_CALL);
+  });
+
+  // A read that waits on the pipe fails the test at its time limit; a writer opened a second later then frees it.
+  it("does not wait on a pipe that appears after its check, and fails the check", { timeout: 3000 }, async () => {
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    race.path = join(dir, "sdk.js");
+    race.beforeRead = once(async () => {
+      await rm(race.path);
+      await promisify(execFile)("mkfifo", [race.path]);
+      const free = setTimeout(() => void writeFile(race.path, "", { flag: constants.O_WRONLY | constants.O_NONBLOCK }).catch(() => undefined), 4000);
+      free.unref();
+    });
+    const result = await fix(dir, { test: "exit 1" });
+    expect(result.tests).toMatchObject({ passed: false, removed: "sdk.js" });
     await putBack(dir, "sdk.js", SDK_CALL);
   });
 

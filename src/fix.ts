@@ -160,10 +160,12 @@ const own = (info: Stats, before: Entry) => info.isFile() && (info.nlink === 1 |
 async function snapshotOf(root: string, files: readonly string[]): Promise<Snapshot> {
   const snap: Snapshot = new Map();
   for (const f of files) {
-    const file = await open(join(root, f), constants.O_RDONLY | constants.O_NOFOLLOW);
+    // Nonblocking, so a pipe in its place cannot hold the open.
+    const file = await open(join(root, f), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
-      const { mode, ino, nlink } = await file.stat();
-      snap.set(f, { bytes: await file.readFile(), mode: mode & 0o7777, ino, nlink });
+      const info = await file.stat();
+      if (!info.isFile()) throw new Refusal(`${shown(f)} is not a regular file`);
+      snap.set(f, { bytes: await file.readFile(), mode: info.mode & 0o7777, ino: info.ino, nlink: info.nlink });
     } finally {
       await file.close();
     }
@@ -356,7 +358,7 @@ async function testAndAttribute(root: string, command: string, snap: Snapshot, k
   const outcome: TestOutcome = { ...(await runTests(root, command)), kind };
   if (await tampered(root, snap, outcome)) return outcome;
   if (!outcome.passed) {
-    // A link that appears after the check is caught by the read, which does not follow it.
+    // A link or pipe that appears after the check is caught by the read, which neither follows nor waits on it.
     const changed = await snapshotOf(root, [...snap.keys()]).catch(async (err: unknown) => {
       if (await tampered(root, snap, outcome)) return undefined;
       throw err;
