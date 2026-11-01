@@ -544,20 +544,19 @@ describe("npm run accounting", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("accounts for many deprecated enum values within its time budget", async () => {
-    // 1,000 schemas, each with 5 $refs to others and a model enum of 20 deprecated values: 20,000 values to look up.
-    const schemas: Record<string, unknown> = {};
-    for (let i = 0; i < 1000; i++) {
-      const values = Array.from({ length: 20 }, (_, v) => `model-${i}-${v}`);
-      const properties: Record<string, unknown> = { model: { type: "string", enum: values, "x-openai-enum-deprecations": Object.fromEntries(values.map((v) => [v, { message: "" }])) } };
-      for (let k = 1; k <= 5; k++) properties[`r${k}`] = { $ref: `#/components/schemas/S${(i + k) % 1000}` };
-      schemas[`S${i}`] = { properties };
-    }
-    const paths: Record<string, unknown> = {};
-    for (let i = 0; i < 100; i++) paths[`/p${i}`] = { post: body(`S${i * 10}`) };
-    const records = (await loadRecords()).map((l) => l.record);
-    const spec = { paths, components: { schemas } };
-    const ms = await cpuTime(() => account({ vendor: "openai", spec, removals: [], records, notCovered: [] }), 3, 1000);
+  it("accounts for many enum values the records set, on the operations they name, within its time budget", async () => {
+    // 143 model names on each of 140 schemas: 20,020 deprecated values, each set by a record that names all 80
+    // operations sending them, so every value is checked against every operation before it counts as covered.
+    const names = Array.from({ length: 143 }, (_, i) => `model-${i}`);
+    const paths = Array.from({ length: 80 }, (_, i) => `/p${i}`);
+    const records = Array.from({ length: 11 }, (_, r) => record(`shutdown-${r}`, paths.map((p) => `/v1${p}`), ["model"], names.slice(r * 13, r * 13 + 13).map((n) => `({ model: "${n}" })`)));
+    const enumOf = { type: "string", enum: names, "x-openai-enum-deprecations": Object.fromEntries(names.map((n) => [n, { message: "" }])) };
+    const schemas: Record<string, unknown> = { All: { properties: Object.fromEntries(Array.from({ length: 140 }, (_, i) => [`s${i}`, { $ref: `#/components/schemas/S${i}` }])) } };
+    for (let i = 0; i < 140; i++) schemas[`S${i}`] = { properties: { model: enumOf } };
+    const spec = { paths: Object.fromEntries(paths.map((p) => [p, { post: body("All") }])), components: { schemas } };
+    const run = () => account({ vendor: "openai", spec, removals: [], records, notCovered: [] });
+    expect(run().covered.size).toBe(20020);
+    const ms = await cpuTime(run, 3, 1000);
     expect(ms).toBeLessThan(1000);
   });
 

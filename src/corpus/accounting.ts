@@ -268,19 +268,23 @@ export function account(input: {
   const held = holders(spec);
   const coversOp = (r: ChangeRecord, method: string, path: string, field: string | undefined) =>
     covers(r, vendor, path, field, method, input.symbols?.[`${method} ${path}`]);
-  // Each record's exact `field: "value"` settings, looked up instead of scanned for every enum value.
-  const setting = new Map<string, ChangeRecord[]>();
-  for (const r of records)
-    if (r.vendor === vendor)
-      for (const id of new Set(settingsOf(r).flatMap((s) => (s.value === undefined ? [] : [`${s.key}\n${s.value}`])))) setting.set(id, [...(setting.get(id) ?? []), r]);
+  // Whether a record names an operation, worked out once per record and operation, not once per enum value.
+  const named = new Map<ChangeRecord, Map<string, boolean>>();
+  const namesOp = (r: ChangeRecord, op: { method: string; path: string }) => {
+    const key = `${op.method} ${op.path}`;
+    const known = named.get(r) ?? new Map<string, boolean>();
+    named.set(r, known);
+    if (!known.has(key)) known.set(key, namesOperation(r, op.path, op.method, input.symbols?.[key]));
+    return known.get(key)!;
+  };
   const coveredBy = (item: Item): ChangeRecord[] => {
     if (item.value !== undefined) {
       const fields = item.field !== undefined ? [item.field] : [...(held.get(item.schema ?? "") ?? [])];
-      const candidates = [...new Set(fields.flatMap((f) => (setting.get(`${f}\n${item.value}`) ?? []).filter((r) => r.surface.fields?.includes(f))))];
+      const candidates = records.filter((r) => r.vendor === vendor && fields.some((f) => r.surface.fields?.includes(f) && settingsOf(r).some((s) => s.key === f && s.value === item.value)));
       // As for a property: every operation whose request reaches the schema needs a record that names it.
       const found = new Set<ChangeRecord>();
       for (const op of reach.get(item.schema ?? "") ?? []) {
-        const these = candidates.filter((r) => namesOperation(r, op.path, op.method, input.symbols?.[`${op.method} ${op.path}`]));
+        const these = candidates.filter((r) => namesOp(r, op));
         if (these.length === 0) return [];
         for (const r of these) found.add(r);
       }
