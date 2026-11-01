@@ -29,7 +29,8 @@ import { cpuTime } from "./helpers.js";
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const tsx = join(ROOT, "node_modules", ".bin", "tsx");
 
-const record = (slug: string, endpoints: string[], fields: string[], contexts = [`({ ${fields[0] ?? "x"}: $V })`], sdkSymbols?: string[]) =>
+// With no fields, the record finds the call itself, as an endpoint record does.
+const record = (slug: string, endpoints: string[], fields: string[], contexts = [fields[0] ? `({ ${fields[0]}: $V })` : "$C.call($$$ARGS)"], sdkSymbols?: string[]) =>
   parseChangeRecord(
     {
       id: `openai:2026-01-01:${slug}`,
@@ -146,6 +147,62 @@ describe("account", () => {
     expect(run(record("old-call", ["/v1/elsewhere"], [], undefined, ["old.create"])).unaccounted).toEqual(["GET /old"]);
     // A record for one field of the endpoint does not cover the whole operation.
     expect(run(record("old-field", ["/v1/old"], ["x"])).unaccounted).toEqual(["POST /old", "GET /old", "schema OldRequest"]);
+  });
+
+  it("covers a deprecated operation or its removal only by a record that finds every call to it", () => {
+    const spec = { paths: { "/old": { post: { deprecated: true } } } };
+    const removals: Removal[] = [{ observedAt: "2026-01-01", id: "api-removed-without-deprecation", operation: "POST", path: "/old", text: "api removed without deprecation" }];
+    const run = (r: ReturnType<typeof record>) => account({ vendor: "openai", spec, removals, records: [r], notCovered: [] });
+    // A record with no fields that still finds only calls setting a value reports some calls, not the endpoint.
+    expect(run(record("pinned", ["/v1/old"], [], ['({ model: "x" })'])).unaccounted).toEqual(["POST /old", "2026-01-01 POST /old api-removed-without-deprecation"]);
+    expect(run(record("by-key", ["/v1/old"], [], ["f(model=$M)"])).unaccounted).toHaveLength(2);
+    expect(run(record("call", ["/v1/old"], [], ["$C.old.create($$$ARGS)"])).unaccounted).toEqual([]);
+
+    // Candidate derivation shares the rule: such a record no longer makes the endpoint's removal "already recorded".
+    const entries = [{ id: "api-removed-without-deprecation", level: 3 as const, text: "api removed without deprecation", operation: "POST", path: "/old" }];
+    const derive = (r: ReturnType<typeof record>) =>
+      deriveCandidates({ vendor: "openai", config: { spec: "https://example.com/openapi.yaml", symbols: { "POST /old": "old.create" } }, entries, spec: {}, existing: [r], observedAt: "2026-01-01" }).candidates;
+    expect(derive(record("pinned", ["/v1/old"], [], ['({ model: "x" })']))).toHaveLength(1);
+    expect(derive(record("call", ["/v1/old"], [], ["$C.old.create($$$ARGS)"]))).toHaveLength(0);
+  });
+
+  it("covers a field only by a record whose surface names that field", () => {
+    const removal: Removal = { observedAt: "2026-01-01", id: "request-property-removed", operation: "POST", path: "/x", text: "removed the request property `x`" };
+    const run = (r: ReturnType<typeof record>) => account({ vendor: "openai", spec: {}, removals: [removal], records: [r], notCovered: [] }).unaccounted;
+    expect(run(record("other", ["/v1/x"], ["other"], ["({ x: $V })"]))).toHaveLength(1);
+    expect(run(record("x", ["/v1/x"], ["x"], ["({ x: $V })"]))).toEqual([]);
+  });
+
+  it("covers an enum value only by a record for that whole field, on an operation that sends it, set to that exact value", () => {
+    const spec = {
+      paths: { "/images/generations": { post: body("CreateImageRequest") }, "/other": { post: body("Other") } },
+      components: {
+        schemas: {
+          CreateImageRequest: {
+            properties: {
+              size: { type: "string", enum: ["256x256", "1024x1024"], "x-openai-enum-deprecations": { "256x256": { message: "" } } },
+              model: { $ref: "#/components/schemas/Models" },
+            },
+          },
+          Other: { properties: { model: { $ref: "#/components/schemas/Models" } } },
+          Models: { type: "string", enum: ["old", "new"], "x-openai-enum-deprecations": { old: { message: "" } } },
+        },
+      },
+    };
+    const records = [
+      record("image-size", ["/v1/images/generations"], ["image_size"], ['({ image_size: "256x256" })']),
+      record("not-size", ["/v1/images/generations"], ["size"], ['f(not_size="256x256")']),
+      record("submodel", ["/v1/images/generations"], ["model"], ['({ submodel: "old" })']),
+      record("surface-lacks-size", ["/v1/images/generations"], ["other"], ['({ size: "256x256" })']),
+      record("other-endpoint", ["/v1/elsewhere"], ["size"], ['({ size: "256x256" })']),
+      record("size", ["/v1/images/generations"], ["size"], ['({ size: "256x256" })']),
+      record("model-by-call", ["/v1/nothing"], ["model"], ["f(model='old')"], ["images.generate"]),
+    ];
+    const result = account({ vendor: "openai", spec, removals: [], records, notCovered: [], symbols: { "POST /images/generations": "images.generate" } });
+    expect(Object.fromEntries(result.covered)).toEqual({
+      "schema CreateImageRequest property size enum 256x256": ["openai:2026-01-01:size"],
+      "schema Models enum old": ["openai:2026-01-01:model-by-call"],
+    });
   });
 
   it("walks a YAML alias that contains itself once", () => {
@@ -265,6 +322,10 @@ describe("account", () => {
     });
     expect(result.reasons).toHaveLength(5);
     expect(result.contradicted).toEqual(["schema Sent property old", "schema Note", request]);
+  });
+
+  it("does not flag a date of today as already past", () => {
+    expect(openItems([{ key: "a", proposal: "Today.", date: "2026-11-01" }], "2026-11-01")).toEqual([{ proposal: "Today.", date: "2026-11-01", past: false, keys: ["a"] }]);
   });
 
   it("lists open items soonest first, undated last, and flags dates already past", () => {
@@ -430,6 +491,23 @@ describe("npm run accounting", () => {
     const offenders: string[] = [];
     for (const f of files) if (committed.test(await readFile(join(ROOT, "test", f), "utf8"))) offenders.push(f);
     expect(offenders).toEqual([]);
+  });
+
+  it("accounts for many deprecated enum values within its time budget", async () => {
+    // 1,000 schemas, each with 5 $refs to others and a model enum of 20 deprecated values: 20,000 values to look up.
+    const schemas: Record<string, unknown> = {};
+    for (let i = 0; i < 1000; i++) {
+      const values = Array.from({ length: 20 }, (_, v) => `model-${i}-${v}`);
+      const properties: Record<string, unknown> = { model: { type: "string", enum: values, "x-openai-enum-deprecations": Object.fromEntries(values.map((v) => [v, { message: "" }])) } };
+      for (let k = 1; k <= 5; k++) properties[`r${k}`] = { $ref: `#/components/schemas/S${(i + k) % 1000}` };
+      schemas[`S${i}`] = { properties };
+    }
+    const paths: Record<string, unknown> = {};
+    for (let i = 0; i < 100; i++) paths[`/p${i}`] = { post: body(`S${i * 10}`) };
+    const records = (await loadRecords()).map((l) => l.record);
+    const spec = { paths, components: { schemas } };
+    const ms = await cpuTime(() => account({ vendor: "openai", spec, removals: [], records, notCovered: [] }), 3, 1000);
+    expect(ms).toBeLessThan(1000);
   });
 
   it("accounts for a large spec within its time budget", async () => {
