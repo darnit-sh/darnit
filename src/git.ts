@@ -10,14 +10,37 @@ export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
 
 // The repository's config can name programs git would run inside darnit's own calls, even with
 // `--no-test`. These pins, on every call, turn off the ones keyed by a fixed name: no hooks (on
-// commit or checkout), no fsmonitor, no gpg signing of a commit or on push. Clean/smudge/process
-// filters are keyed by driver name, so `filterConfig` empties each one git would use; an external
-// diff and textconv are turned off per diff, and a submodule's own status (which runs its filters)
-// is skipped, both in `git`. A pager never starts because darnit captures git's output rather than
-// writing to a terminal. git also never sees darnit's credentials and takes file names literally,
-// never as patterns. SECURITY.md lists the keys that still apply (an ssh command, credential helper
-// or proxy on a call to origin, a remote helper program).
-const UNTRUSTED_REPO = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", "-c", "push.gpgSign=false"];
+// commit or checkout), no fsmonitor, no gpg signing of a commit or on push, and no recursion into a
+// submodule on push (which would run the submodule's own hooks and remote helper, with darnit's push
+// environment). Clean/smudge/process filters are keyed by driver name, so `filterConfig` empties each
+// one git would use; an external diff and textconv are turned off per diff, and a submodule's own
+// status (which runs its filters) is skipped, both in `git`. A pager never starts because darnit
+// captures git's output rather than writing to a terminal. git also never sees darnit's credentials
+// and takes file names literally, never as patterns. SECURITY.md lists the keys that still apply (an
+// ssh command, credential helper or proxy on a call to origin, a remote helper program).
+const UNTRUSTED_REPO = [
+  "-c", "core.hooksPath=/dev/null",
+  "-c", "core.fsmonitor=false",
+  "-c", "commit.gpgSign=false",
+  "-c", "push.gpgSign=false",
+  "-c", "submodule.recurse=false",
+  "-c", "push.recurseSubmodules=no",
+];
+
+// darnit turns off the programs a repository's config names by passing git config in the child's
+// environment, which git reads only from this version on; an older git would ignore it and run them.
+const MIN_GIT: [number, number] = [2, 31];
+let gitChecked: Promise<void> | undefined;
+/** Refuses the run on a git too old to read the environment config darnit's pins rely on. Call before any git. */
+export function ensureGitVersion(): Promise<void> {
+  return (gitChecked ??= exec("git", ["version"]).then(({ stdout }) => {
+    const m = /^git version (\d+)\.(\d+)/.exec(stdout.trim());
+    const [maj, min] = [Number(m?.[1]), Number(m?.[2])];
+    if (!m || maj < MIN_GIT[0] || (maj === MIN_GIT[0] && min < MIN_GIT[1])) {
+      throw new Error(`darnit needs git ${MIN_GIT.join(".")} or newer to run git safely against a repository; this is ${stdout.trim() || "an unknown version"}`);
+    }
+  }));
+}
 
 // The git commands darnit runs that apply a clean, smudge or process filter to content: `add` and
 // `commit` and `status` and `diff` on the index side, `checkout` (discard) and `switch` on the worktree side.
@@ -33,21 +56,31 @@ const FILTER_DRIVER = /^filter\.(.*)\.(?:clean|smudge|process)$/s;
  * through unchanged, so one pin per driver covers all three directions. A driver's name can hold any
  * byte, including the `=` that `-c name=value` splits on, so these go in the child's environment (see
  * `configEnv`), where key and value stay apart. Fails closed: a listing that errors, overflows its
- * buffer, or names more than `FILTER_CAP` drivers throws rather than leave a filter unpinned.
+ * buffer, names more than `FILTER_CAP` drivers, or holds a name that is not valid UTF-8 (which git
+ * writes raw but darnit cannot pass back through an environment it can only write as UTF-8) throws
+ * rather than leave a filter unpinned.
  */
 async function filterConfig(root: string, env: NodeJS.ProcessEnv): Promise<[string, string][]> {
-  const names = new Set<string>();
+  let raw: Buffer;
   try {
-    const { stdout } = await exec("git", [...UNTRUSTED_REPO, "config", "-z", "--name-only", "--get-regexp", String.raw`^filter\..*\.(clean|smudge|process)$`], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
-    for (const key of stdout.split("\0")) {
-      const m = FILTER_DRIVER.exec(key);
-      if (m) names.add(m[1]!);
-    }
+    ({ stdout: raw } = await exec("git", [...UNTRUSTED_REPO, "config", "-z", "--name-only", "--get-regexp", String.raw`^filter\..*\.(clean|smudge|process)$`], { cwd: root, env, encoding: "buffer", maxBuffer: 64 * 1024 * 1024 }));
   } catch (err) {
     // git config exits 1 with no output when nothing matches: no filters to turn off. Any other
     // failure (a read error, or output past the buffer) must not pass for "none", or a filter runs.
-    const e = err as { code?: number | string; stdout?: string };
-    if (e.code !== 1 || (e.stdout ?? "") !== "") throw new Error(`could not read the repository's filter config (git config exited ${String(e.code)})`, { cause: err });
+    const e = err as { code?: number | string; stdout?: Buffer };
+    if (e.code === 1 && (e.stdout?.length ?? 0) === 0) raw = Buffer.alloc(0);
+    else throw new Error("could not read the repository's git filter config; refusing to run git against it", { cause: err });
+  }
+  let listing: string;
+  try {
+    listing = new TextDecoder("utf-8", { fatal: true }).decode(raw);
+  } catch {
+    throw new Error("the repository names a git filter driver with bytes that are not valid UTF-8; refusing to run git against it");
+  }
+  const names = new Set<string>();
+  for (const key of listing.split("\0")) {
+    const m = FILTER_DRIVER.exec(key);
+    if (m) names.add(m[1]!);
   }
   if (names.size > FILTER_CAP) throw new Error(`the repository configures ${names.size} git filter drivers, over darnit's limit of ${FILTER_CAP}; refusing to run git against it`);
   return [...names].flatMap((n): [string, string][] => [[`filter.${n}.process`, ""], [`filter.${n}.required`, "false"]]);

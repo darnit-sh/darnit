@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -109,6 +109,19 @@ describe("git treats the repo as untrusted", () => {
     await g.git(dir, ["config", "filter.a=b.required", "true"]);
     await writeFile(join(dir, "a.ts"), "b\n");
     await g.add(dir, ["a.ts"]);
+    expect(await access(mark).then(() => true, () => false)).toBe(false);
+  });
+
+  it("refuses a repository whose filter driver name is not valid UTF-8, which an environment pin cannot carry", async () => {
+    const dir = await repoWith({ "a.ts": "a\n" });
+    const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+    tempDirs.push(mark);
+    const run = `touch '${mark}'; cat`;
+    // A driver name with a raw 0xff byte: git stores and reads it, but it is not valid UTF-8.
+    await writeFile(join(dir, ".gitattributes"), Buffer.concat([Buffer.from("*.ts filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]));
+    await appendFile(join(dir, ".git", "config"), Buffer.concat([Buffer.from('[filter "x'), Buffer.from([0xff]), Buffer.from(`y"]\n\tclean = ${run}\n\tsmudge = ${run}\n\trequired = true\n`)]));
+    await writeFile(join(dir, "a.ts"), "b\n");
+    await expect(g.add(dir, ["a.ts"])).rejects.toThrow(/not valid UTF-8/);
     expect(await access(mark).then(() => true, () => false)).toBe(false);
   });
 
@@ -480,8 +493,10 @@ describe("uncommitted where git composes file names, as on macOS", () => {
       const real = await original<typeof import("node:child_process")>();
       const exec = promisify(real.execFile);
       const execFile = Object.assign((...args: never[]) => (real.execFile as (...a: never[]) => unknown)(...args), {
-        [promisify.custom]: async (file: string, args: string[], opts: object) => {
-          const out = await exec(file, args, opts);
+        [promisify.custom]: async (file: string, args: string[], opts?: { encoding?: string }) => {
+          const out = await exec(file, args, opts ?? {});
+          // Only the text output git's name listings return is composed; a buffer read (filter config) passes through.
+          if (opts?.encoding === "buffer" || Buffer.isBuffer(out.stdout)) return out;
           return { ...out, stdout: String(out.stdout).normalize("NFC") };
         },
       });

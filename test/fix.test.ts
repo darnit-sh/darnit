@@ -2210,4 +2210,93 @@ describe("the repository's config names no program git runs in darnit's own call
     await expect(fix(dir, { noTest: true, allowDirty: true })).rejects.toThrow(/over darnit's limit/);
     expect(await ran(marker)).toBe(false);
   });
+
+  // A driver name git stores with a byte that is not valid UTF-8 cannot be pinned through an environment
+  // darnit writes as UTF-8, so the run is refused rather than left with that filter live.
+  it("refuses, through fix, a filter driver name that is not valid UTF-8", async () => {
+    const { dir, marker } = await setup(async (d, _p, m) => {
+      await writeFile(join(d, ".gitattributes"), Buffer.concat([Buffer.from("*.py filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]));
+      await appendFile(join(d, ".git", "config"), Buffer.concat([Buffer.from('[filter "x'), Buffer.from([0xff]), Buffer.from(`y"]\n\tclean = ${cmd(m, "cat")}\n\trequired = true\n`)]));
+    });
+    await expect(fix(dir, { noTest: true, allowDirty: true })).rejects.toThrow(/not valid UTF-8/);
+    expect(await ran(marker)).toBe(false);
+  });
+
+  // A filter listing that overflows the read buffer must fail the run, not pass for "no filters".
+  it("refuses when the filter listing cannot be read whole, rather than run a filter unpinned", async () => {
+    const { dir, marker } = await setup(async (d, _p, m) => {
+      await appendFile(join(d, ".gitattributes"), "*.py filter=evil\n");
+      const name = "n".repeat(4000);
+      let big = `[filter "evil"]\n\tclean = ${cmd(m, "cat")}\n\trequired = true\n`;
+      for (let i = 0; i < 20000; i++) big += `[filter "${name}${i}"]\n\tclean = cat\n`;
+      await writeFile(join(d, "big.cfg"), big);
+      await git(d, ["config", "include.path", join(d, "big.cfg")]);
+    });
+    await expect(fix(dir, { noTest: true, allowDirty: true })).rejects.toThrow(/could not read the repository's git filter config/);
+    expect(await ran(marker)).toBe(false);
+  }, 60_000);
+
+  // push.recurseSubmodules would push a submodule from darnit's push, running its remote helper with
+  // darnit's push environment and the token in it.
+  it("does not push a submodule from its own push, even with push.recurseSubmodules set", async () => {
+    const subsrc = await mkdtemp(join(tmpdir(), "darnit-subsrc-"));
+    const subrem = await mkdtemp(join(tmpdir(), "darnit-subrem-"));
+    tempDirs.push(subsrc, subrem);
+    await git(subsrc, ["init", "-q"]);
+    await writeFile(join(subsrc, "s.txt"), "s\n");
+    await git(subsrc, ["add", "s.txt"]);
+    await git(subsrc, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s"]);
+    await git(subsrc, ["branch", "-M", "main"]);
+    await git(subrem, ["init", "-q", "--bare"]);
+
+    const { dir } = await setup(() => Promise.resolve());
+    const seen = join(subrem, "seen");
+    tempDirs.push(seen);
+    const rp = join(subrem, "rp.sh");
+    await writeFile(rp, `#!/bin/sh\nenv | grep -i AUTHORIZATION > '${seen}'\nexec git-receive-pack "$@"\n`);
+    await chmod(rp, 0o755);
+    await execFileP("git", ["-c", "protocol.file.allow=always", "submodule", "add", "-q", subsrc, "sub"], { cwd: dir });
+    await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "sub"]);
+    // The submodule tracks a bare whose receive-pack records its environment; leave it a commit ahead.
+    await git(join(dir, "sub"), ["remote", "set-url", "origin", subrem]);
+    await git(join(dir, "sub"), ["config", "remote.origin.receivepack", rp]);
+    await git(join(dir, "sub"), ["push", "-q", "-u", "origin", "main"], 60);
+    await appendFile(join(dir, "sub", "s.txt"), "s2\n");
+    await git(join(dir, "sub"), ["add", "s.txt"]);
+    await git(join(dir, "sub"), ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s2"]);
+    await git(dir, ["add", "sub"]);
+    await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "bump"]);
+    await git(dir, ["config", "push.recurseSubmodules", "on-demand"]);
+
+    const bare = await mkdtemp(join(tmpdir(), "darnit-origin-"));
+    tempDirs.push(bare);
+    await git(bare, ["init", "-q", "--bare"]);
+    await git(dir, ["remote", "add", "origin", bare]);
+    const branch = (await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim();
+    await git(dir, ["push", "-q", "-u", "origin", branch], 60);
+    await rm(seen, { force: true }); // the setup push above already touched it
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("GITHUB_TOKEN", "test-token");
+    vi.stubGlobal("fetch", (url: string): Promise<Response> => {
+      const body = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status }));
+      if (url.endsWith("/repos/o/r")) return body({ default_branch: branch });
+      if (url.includes("/pulls?")) return body([]);
+      return body({ html_url: "https://github.com/o/r/pull/1" }, 201);
+    });
+    await fix(dir, { pr: true, noTest: true, repo: "o/r", allowDirty: true });
+    expect(await readFile(seen, "utf8").catch(() => "")).toBe("");
+  }, 60_000);
+
+  // The pins travel in GIT_CONFIG_* environment variables, which git reads only from 2.31 on; an older
+  // git would ignore them and run the filters. darnit refuses before touching the repository.
+  it("refuses to run against a git too old to read the environment config its pins rely on", async () => {
+    const fakeBin = await mkdtemp(join(tmpdir(), "darnit-oldgit-"));
+    tempDirs.push(fakeBin);
+    await writeFile(join(fakeBin, "git"), '#!/bin/sh\n[ "$1" = version ] && echo "git version 2.30.0" || exit 0\n');
+    await chmod(join(fakeBin, "git"), 0o755);
+    const dir = await repoFrom(BEFORE);
+    const run = await darnitWith({ PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}` }, dir, "fix", "--no-test");
+    expect(run.code).toBe(2);
+    expect(run.stderr).toMatch(/needs git 2\.31/);
+  });
 });
