@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -81,6 +81,77 @@ describe("git treats the repo as untrusted", () => {
       else process.env.GITHUB_TOKEN = token;
     }
     expect(await readFile(log, "utf8").catch(() => "")).toBe("");
+  });
+
+  it("runs no clean, smudge or process filter the repo's config names, on any of its commands", async () => {
+    const dir = await repoWith({ "a.ts": "a\n", ".gitattributes": "*.ts filter=p\n" });
+    const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+    tempDirs.push(mark);
+    const cmd = `touch '${mark}'; cat`;
+    for (const [k, v] of [["filter.p.process", cmd], ["filter.p.clean", cmd], ["filter.p.smudge", cmd], ["filter.p.required", "true"]]) {
+      await g.git(dir, ["config", k!, v!]);
+    }
+    await writeFile(join(dir, "a.ts"), "b\n");
+    await g.isClean(dir); // status
+    await g.git(dir, ["add", "--", "a.ts"]);
+    await g.git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c"]); // re-stages through clean
+    await g.diff(dir, ["a.ts"]);
+    await writeFile(join(dir, "a.ts"), "c\n");
+    await g.discard(dir, ["a.ts"]); // checkout writes through smudge
+    expect(await access(mark).then(() => true, () => false)).toBe(false);
+  });
+
+  it("turns off a filter driver whose name holds an equals sign, which a -c pin would split", async () => {
+    const dir = await repoWith({ "a.ts": "a\n", ".gitattributes": "*.ts filter=a=b\n" });
+    const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+    tempDirs.push(mark);
+    await g.git(dir, ["config", "filter.a=b.clean", `touch '${mark}'; cat`]);
+    await g.git(dir, ["config", "filter.a=b.required", "true"]);
+    await writeFile(join(dir, "a.ts"), "b\n");
+    await g.git(dir, ["add", "--", "a.ts"]);
+    expect(await access(mark).then(() => true, () => false)).toBe(false);
+  });
+
+  // Under a UTF-8 locale git's config regex `.` would not match a byte like 0xff, so a name read by a
+  // `--get-regexp` pattern would be dropped and its filter left live; darnit reads the list itself.
+  const utf8Locale = process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8";
+
+  it("refuses, under a UTF-8 locale, a filter driver name that is not valid UTF-8, on status, diff and add", async () => {
+    vi.stubEnv("LANG", utf8Locale);
+    vi.stubEnv("LC_ALL", utf8Locale);
+    try {
+      const dir = await repoWith({ "a.ts": "a\n" });
+      const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+      tempDirs.push(mark);
+      const run = `touch '${mark}'; cat`;
+      // A driver name with a raw 0xff byte: git stores and reads it, but it is not valid UTF-8.
+      await writeFile(join(dir, ".gitattributes"), Buffer.concat([Buffer.from("*.ts filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]));
+      await appendFile(join(dir, ".git", "config"), Buffer.concat([Buffer.from('[filter "x'), Buffer.from([0xff]), Buffer.from(`y"]\n\tclean = ${run}\n\tsmudge = ${run}\n\trequired = true\n`)]));
+      for (const op of [() => g.isClean(dir), () => g.diff(dir, ["a.ts"]), () => g.git(dir, ["add", "--", "a.ts"])]) {
+        await writeFile(join(dir, "a.ts"), `b${Math.random()}\n`); // unstaged and stat-dirty, so a live filter would run
+        await expect(op()).rejects.toThrow(/not valid UTF-8/);
+      }
+      expect(await access(mark).then(() => true, () => false)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("turns off a plain ASCII filter driver under a UTF-8 locale too", async () => {
+    vi.stubEnv("LANG", utf8Locale);
+    vi.stubEnv("LC_ALL", utf8Locale);
+    try {
+      const dir = await repoWith({ "a.ts": "a\n", ".gitattributes": "*.ts filter=p\n" });
+      const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+      tempDirs.push(mark);
+      await g.git(dir, ["config", "filter.p.clean", `touch '${mark}'; cat`]);
+      await g.git(dir, ["config", "filter.p.required", "true"]);
+      await writeFile(join(dir, "a.ts"), "b\n");
+      await g.git(dir, ["add", "--", "a.ts"]);
+      expect(await access(mark).then(() => true, () => false)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("takes file names literally, never as patterns", async () => {
@@ -470,8 +541,10 @@ describe("uncommitted where git composes file names, as on macOS", () => {
       const real = await original<typeof import("node:child_process")>();
       const exec = promisify(real.execFile);
       const execFile = Object.assign((...args: never[]) => (real.execFile as (...a: never[]) => unknown)(...args), {
-        [promisify.custom]: async (file: string, args: string[], opts: object) => {
-          const out = await exec(file, args, opts);
+        [promisify.custom]: async (file: string, args: string[], opts?: { encoding?: string }) => {
+          const out = await exec(file, args, opts ?? {});
+          // Only the text output git's name listings return is composed; a buffer read (filter config) passes through.
+          if (opts?.encoding === "buffer" || Buffer.isBuffer(out.stdout)) return out;
           return { ...out, stdout: String(out.stdout).normalize("NFC") };
         },
       });
