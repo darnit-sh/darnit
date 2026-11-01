@@ -703,9 +703,18 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
     try {
       const changed = settle(result, await applyAndVerify(root, grp), grp.held);
       if (changed.length === 0) continue;
-      // The repository's build and tests run next and can write these files; the commit is built from these bytes.
+      // The repository's build and tests run next and can write these files and git's settings; the commit is built
+      // from these bytes, stored as git stores them now.
       const kept = new Map<string, Kept | undefined>();
       for (const f of changed) kept.set(f, await regularFile(join(root, f)));
+      const stored = [...kept.values()].every(Boolean)
+        ? await g.blobsFor(at, [...kept].map(([path, own]) => ({ path, bytes: own!.bytes, was: before.get(path)!.bytes })))
+        : { blobs: [] };
+      if ("unlike" in stored) {
+        result.pr = { state: "refused", reason: `git no longer stores ${stored.unlike} as committed, so its line-ending or encoding settings changed before darnit rewrote it` };
+        anyFailed = true;
+        continue;
+      }
       const { build, tests, passed } = await checkGroup(root, commands, snap, result);
       if (!passed) {
         anyFailed = true;
@@ -731,7 +740,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         anyFailed = true;
         continue;
       }
-      const files = [...kept].map(([path, own]) => ({ path, mode: own!.mode & 0o100 ? "100755" : "100644", bytes: own!.bytes }));
+      const files = [...kept].map(([path, own], i) => ({ path, mode: own!.mode & 0o100 ? "100755" : "100644", blob: stored.blobs[i]! }));
       await g.pushExact(at, files, [result.title, `Source: ${grp.record.sources[0]!.url}`], branch);
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
       result.pr = { state: "opened", url, build, tests };

@@ -46,8 +46,8 @@ export function ensureGitVersion(): Promise<void> {
 }
 
 // The git commands darnit runs that apply a clean, smudge or process filter to content: `add` and
-// `commit` and `status` and `diff` on the index side, `checkout` (discard) and `switch` on the worktree side.
-const FILTERED = new Set(["add", "status", "commit", "diff", "checkout", "switch"]);
+// `commit` and `status` and `diff` and `hash-object` on the index side, `checkout` (discard) and `switch` on the worktree side.
+const FILTERED = new Set(["add", "status", "commit", "diff", "hash-object", "checkout", "switch"]);
 // More filter drivers than darnit will turn off one by one; past this it refuses rather than run them.
 const FILTER_CAP = 256;
 const FILTER_VARS = [".clean", ".smudge", ".process"];
@@ -315,11 +315,27 @@ export async function start(root: string): Promise<Start> {
 }
 
 /**
- * Pushes to origin as `branch` a commit of `at` with `files` (path from its root, git mode, bytes) in place, built from
- * those bytes alone in an index of its own: the work tree, the repository's index and HEAD, replace refs, filters,
+ * Writes each file's `bytes` as the blob git stores at its path, with the repository's line-ending and encoding
+ * settings and no filter driver, once git still stores `was` there as the blob `at` has: so the settings in force
+ * are the ones its committed files were stored with. Returns the blob ids, or the first path where they are not.
+ */
+export async function blobsFor(at: Start, files: readonly { path: string; bytes: Buffer; was: Buffer }[]): Promise<{ blobs: string[] } | { unlike: string }> {
+  const run = async (args: string[], input?: Buffer) => (await git(at.top, args, undefined, GITHUB, { env: { GIT_NO_REPLACE_OBJECTS: "1" }, input })).trim();
+  const blobs: string[] = [];
+  for (const f of files) {
+    const path = `--path=${at.prefix}${f.path}`;
+    if ((await run(["hash-object", path, "--stdin"], f.was)) !== (await run(["rev-parse", `${at.commit}:${at.prefix}${f.path}`]))) return { unlike: f.path };
+    blobs.push(await run(["hash-object", "-w", path, "--stdin"], f.bytes));
+  }
+  return { blobs };
+}
+
+/**
+ * Pushes to origin as `branch` a commit of `at` with `files` (path from its root, git mode, blob) in place, built
+ * from those blobs alone in an index of its own: the work tree, the repository's index and HEAD, replace refs, filters,
  * hooks and signing play no part. Before pushing, refuses a commit that changes anything else, or a file's mode.
  */
-export async function pushExact(at: Start, files: readonly { path: string; mode: string; bytes: Buffer }[], message: string[], branch: string, site = GITHUB): Promise<void> {
+export async function pushExact(at: Start, files: readonly { path: string; mode: string; blob: string }[], message: string[], branch: string, site = GITHUB): Promise<void> {
   const tmp = await mkdtemp(join(tmpdir(), "darnit-commit-"));
   const env = { GIT_NO_REPLACE_OBJECTS: "1", GIT_INDEX_FILE: join(tmp, "index") };
   // From the top level found at the start, so a core.worktree or a nested repository set up since cannot move a path.
@@ -329,9 +345,8 @@ export async function pushExact(at: Start, files: readonly { path: string; mode:
     await run(["read-tree", base]);
     const want = new Set<string>();
     for (const f of files) {
-      const blob = await run(["hash-object", "-w", "--no-filters", "--stdin"], f.bytes);
-      await run(["update-index", "--add", "--cacheinfo", `${f.mode},${blob},${prefix}${f.path}`]);
-      want.add(`${f.mode} ${f.mode} ${blob}\0${prefix}${f.path}`);
+      await run(["update-index", "--add", "--cacheinfo", `${f.mode},${f.blob},${prefix}${f.path}`]);
+      want.add(`${f.mode} ${f.mode} ${f.blob}\0${prefix}${f.path}`);
     }
     const email = await run(["config", "user.email"]).catch(() => "");
     const identity = email ? [] : ["-c", "user.name=darnit", "-c", "user.email=darnit@users.noreply.github.com"];

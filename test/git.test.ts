@@ -520,13 +520,13 @@ describe("pushExact", () => {
     await g.git(bare, ["init", "-q", "--bare"]);
     await g.git(dir, ["remote", "add", "origin", bare]);
     const at = await g.start(dir);
-    const file = (mode: string, text: string) => [{ path: "a.ts", mode, bytes: Buffer.from(text) }];
+    const file = async (mode: string, text: string) => [{ path: "a.ts", mode, blob: (await g.git(dir, ["hash-object", "-w", "--stdin"], undefined, undefined, { input: Buffer.from(text) })).trim() }];
     // A mode change, and bytes that change nothing.
-    for (const files of [file("100755", "c\n"), file("100644", "a\n")]) {
+    for (const files of [await file("100755", "c\n"), await file("100644", "a\n")]) {
       await expect(g.pushExact(at, files, ["m"], "x")).rejects.toThrow("the commit darnit built for x changes more than its rewrite; nothing pushed");
     }
     expect(await g.git(bare, ["branch", "--list"])).toBe("");
-    await g.pushExact(at, file("100644", "c\n"), ["m", "body"], "x");
+    await g.pushExact(at, await file("100644", "c\n"), ["m", "body"], "x");
     expect(await g.git(bare, ["diff-tree", "-r", "--name-only", at.commit, "x"])).toBe("a.ts\n");
     expect(await g.git(bare, ["log", "-1", "--format=%P%n%B", "x"])).toBe(`${at.commit}\nm\n\nbody\n\n`);
   });

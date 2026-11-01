@@ -2067,6 +2067,69 @@ console.log(config);`,
       });
     }
 
+    // Committed with LF and checked out with CRLF; darnit's commit must change the max_tokens line alone, as `git add` did.
+    const crlf: [string, Record<string, string>, string?, string?][] = [
+      ["a .gitattributes eol=crlf", { ".gitattributes": "*.js text eol=crlf\n" }],
+      ["core.autocrlf=true", {}, "true"],
+      ["core.autocrlf=true, and the tests turn line-ending conversion off", {}, "true", `echo '*.js -text' > .gitattributes && echo '* -text' > .git/info/attributes && git config core.autocrlf false`],
+    ];
+    for (const [what, extra, autocrlf, command = "true"] of crlf) {
+      it(`stores the rewrite as git add would, with ${what}`, async () => {
+        const { dir, bare, posts, close } = await setup({ "sdk.js": SDK_CALL, ...extra });
+        if (autocrlf) await git(dir, ["config", "core.autocrlf", autocrlf]);
+        await rm(join(dir, "sdk.js"));
+        await git(dir, ["checkout", "--", "sdk.js"]);
+        expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL.replaceAll("\n", "\r\n"));
+        try {
+          const result = await fix(dir, { pr: true, repo: "o/r", test: command });
+          expect(result.records[0]?.pr).toMatchObject({ state: "opened" });
+          expect(posts).toHaveLength(1);
+          expect(await git(bare, ["show", `${SDK_BRANCH}:sdk.js`])).toBe(REWRITTEN);
+        } finally {
+          close();
+        }
+      });
+    }
+
+    it("runs no filter driver the repository configures while storing the rewrite", async () => {
+      const { dir, bare, outside, close } = await setup({ "sdk.js": SDK_CALL, ".gitattributes": "sdk.js filter=x\n" });
+      await writeFile(join(outside, "filter"), `#!/bin/sh\necho ran >> "$(dirname "$0")/ran"\nsed s/5/6/\n`, { mode: 0o755 });
+      await git(dir, ["config", "filter.x.clean", join(outside, "filter")]);
+      try {
+        const result = await fix(dir, { pr: true, repo: "o/r", test: "true" });
+        expect(result.records[0]?.pr).toMatchObject({ state: "opened" });
+        expect(await git(bare, ["show", `${SDK_BRANCH}:sdk.js`])).toBe(REWRITTEN);
+        expect(await readFile(join(outside, "ran"), "utf8").catch(() => "")).toBe("");
+      } finally {
+        close();
+      }
+    });
+
+    it("refuses a later change after an earlier change's tests turned line-ending conversion off", async () => {
+      scratch.mechanical.add("openai:2023-11-06:chat-functions-to-tools");
+      const functions = `import OpenAI from "openai";\nexport const r = new OpenAI().chat.completions.create({ model: "x", messages: [], functions: [{ name: "f", parameters: {} }] });\n`;
+      const { dir, bare, posts, close } = await setup({ "a.js": SDK_CALL, "b.js": functions });
+      await git(dir, ["config", "core.autocrlf", "true"]);
+      await rm(join(dir, "a.js"));
+      await rm(join(dir, "b.js"));
+      await git(dir, ["checkout", "--", "a.js", "b.js"]);
+      // Past the second the index was written in, so git trusts the files' timestamps instead of reading them again.
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      await git(dir, ["update-index", "-q", "--refresh"]);
+      try {
+        // b.js stays as it was on disk, so nothing puts it back; only how git would store it changes.
+        const result = await fix(dir, { pr: true, repo: "o/r", test: "git config core.autocrlf false" });
+        expect(result.records.map((r) => r.pr?.state).sort()).toEqual(["opened", "refused"]);
+        expect(result.records.find((r) => r.pr?.state === "refused")?.pr).toMatchObject({
+          reason: expect.stringMatching(/^git no longer stores [ab]\.js as committed, so its line-ending or encoding settings changed before darnit rewrote it$/) as string,
+        });
+        expect(posts).toHaveLength(1);
+        expect(await git(bare, ["log", "--all", "-p"])).not.toContain("\r");
+      } finally {
+        close();
+      }
+    });
+
     it("pushes nothing an earlier change's tests planted in a later change's file", async () => {
       scratch.mechanical.add("openai:2023-11-06:chat-functions-to-tools");
       const functions = `import OpenAI from "openai";\nexport const r = new OpenAI().chat.completions.create({ model: "x", messages: [], functions: [{ name: "f", parameters: {} }] });\n`;
