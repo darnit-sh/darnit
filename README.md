@@ -45,7 +45,7 @@ darnit check
 
 Or skip the install: `npx darnit check`. Run inside a repository, npx trusts it: a
 darnit in its `node_modules` or a setting in its `.npmrc` can run the repository's
-own code before darnit starts. Needs Node 22.12 or newer.
+own code before darnit starts. Needs Node 22.12 or newer and git 2.31 or newer.
 
 ### Code you don't trust
 
