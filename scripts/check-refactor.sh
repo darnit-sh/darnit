@@ -78,13 +78,19 @@ sources() {
       const say = (at, why) => console.log(`${f} ${show(at, f === "package.json" ? "." : " > ")} ${why}`);
       for (const [k, [at, v]] of list(b)) if (JSON.stringify(a.get(k)?.[1]) !== JSON.stringify(v)) judge((why) => say(at, why), at, v, a, a.get(k)?.[1]);
     };
-    // A version, range or tag, or an npm: alias to one; anything with a path, a protocol or a host is not.
-    // An alias may only keep the package base already names under that name.
+    // A version, range or tag, or an npm: alias to one: only the characters those use, no leading dot, and no
+    // tarball ending as npm 10 reads one, with any character for its inner dot. An override may also name a
+    // root dependency with $. An alias may only keep the package base already names under that name.
     const target = (s) => (typeof s === "string" ? /^npm:((?:@[^/@]+\/)?[^/@]+)(?:@|$)/.exec(s.trim())?.[1] : undefined);
-    const registry = (s) => typeof s === "string" && !/[:/\\]|^\.|\.(tgz|tar|tar\.gz)$/i.test(s.trim().replace(/^npm:(@[^/@]+\/)?[^/@]+(@|$)/, ""));
+    const registry = (s, at) => {
+      if (typeof s !== "string") return false;
+      const spec = s.trim().replace(/^npm:(@[^/@]+\/)?[^/@]+(@|$)/, "");
+      if (at[0] === "overrides" && /^\$(@[\w.~-]+\/)?[\w.~-]+$/.test(spec)) return true;
+      return /^[\w.*^~<>=|+ -]*$/.test(spec) && !spec.startsWith(".") && !/[.](?:tgz|tar.gz|tar)$/i.test(spec);
+    };
     const named = (at) => String(at.at(-1) === "." ? at.at(-2) : at.at(-1)).replace(/(.)@.*$/, "$1");
     changed("package.json", specs, (say, at, v, a) => {
-      if (!registry(v)) return say(JSON.stringify(v) ?? "(none)");
+      if (!registry(v, at)) return say(JSON.stringify(v) ?? "(none)");
       const t = target(v);
       if (t === undefined || t === named(at) || [...a.values()].some(([was, w]) => named(was) === named(at) && target(w) === t)) return;
       say(`${JSON.stringify(v)} (an alias to ${show([t])})`);

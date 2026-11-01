@@ -346,6 +346,12 @@ describe("the rule picked by the title's type", () => {
       " file:../x",
       "npm:vitest@file:../x",
       "npm:@evil/v@github:evil/vitest",
+      // npm 10 reads the dot in its tarball ending as any character.
+      "x.tar_gz",
+      "x.TAR-GZ",
+      "1.0.0 - x.tar_gz",
+      "$zod",
+      "latest!",
     ];
     const fields = ["dependencies", "optionalDependencies", "peerDependencies"];
     const deps = Object.fromEntries(fields.map((f, n) => [f, Object.fromEntries(hostile.flatMap((spec, i) => (i % 3 === n ? [[`p${i}`, spec]] : [])))]));
@@ -357,6 +363,9 @@ describe("the rule picked by the title's type", () => {
     const override = await rule("fix: x", [{ write: "package.json", text: withDeps({ overrides: { vitest: "git+https://example.test/v.git" } }) }]);
     expect(override.status).toBe(1);
     expect(override.summary).toContain('- package.json overrides.vitest "git+https://example.test/v.git"');
+    const tarball = await rule("chore(deps): bump vitest", [{ write: "package.json", text: withDeps({ devDependencies: { vitest: "vitest.tar_gz" }, overrides: { a: "x.tar_gz", b: { c: "x.TGZ" } } }) }]);
+    expect(tarball.status).toBe(1);
+    for (const line of ['devDependencies.vitest "vitest.tar_gz"', 'overrides.a "x.tar_gz"', 'overrides.b.c "x.TGZ"']) expect(tarball.summary).toContain(`- package.json ${line}\n`);
     const nested = await rule("fix: x", [{ write: "package.json", text: withDeps({ overrides: { eslint: { ".": "^10.0.0", vitest: "evil/vitest" } } }) }]);
     expect(nested.status).toBe(1);
     expect(nested.summary).toContain('- package.json overrides.eslint.vitest "evil/vitest"');
