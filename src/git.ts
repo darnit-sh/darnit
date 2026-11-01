@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { firstFive } from "./detect.js";
 import { envToken } from "./github.js";
@@ -197,6 +198,26 @@ export const discard = async (root: string, files: readonly string[]) => {
 export const deleteBranch = (root: string, name: string) => git(root, ["branch", "-q", "-D", name]);
 
 export const add = (root: string, files: readonly string[]) => git(root, ["add", "--", ...files]);
+
+/** Puts tracked files, in the index and on disk, back to HEAD, replacing a link in their place rather than writing through it. */
+export const resetToHead = (root: string, files: readonly string[]) => git(root, ["checkout", "-q", "HEAD", "--", ...files]);
+
+/** What the index would commit over HEAD, by path from the top of the repository: the mode in HEAD, and the mode and blob staged. */
+export async function staged(root: string): Promise<{ path: string; from: string; mode: string; blob: string }[]> {
+  const out = (await git(root, ["diff", "--cached", "--raw", "-z", "--no-renames", "--no-abbrev", "HEAD"])).split("\0");
+  const entries = [];
+  for (let i = 0; i + 1 < out.length; i += 2) {
+    const [from = "", mode = "", , blob = ""] = out[i]!.slice(1).split(" ");
+    entries.push({ path: out[i + 1]!, from, mode, blob });
+  }
+  return entries;
+}
+
+/** The id git gives a blob of `bytes`, unfiltered, and where `root` sits in its repository, as staged() names paths. */
+export async function blobIds(root: string): Promise<{ prefix: string; id: (bytes: Buffer) => string }> {
+  const [prefix = "", format = "sha1"] = (await git(root, ["rev-parse", "--show-prefix", "--show-object-format"])).split("\n");
+  return { prefix, id: (bytes) => createHash(format).update(`blob ${bytes.length}\0`).update(bytes).digest("hex") };
+}
 
 /** Commits as the configured user, or as darnit when the machine has no identity (CI runners). */
 export async function commit(root: string, subject: string, body: string): Promise<void> {

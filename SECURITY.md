@@ -59,6 +59,12 @@ for example `http.curloptResolve` pointing github.com at another address with
 `http.sslVerify false`. The README workflow cannot prevent either. On code you do not trust, run
 `check` only.
 
+`fix --pr` commits darnit's rewrite only. Before the build and tests run, it keeps the bytes and mode
+of each file it rewrote. Before committing, it opens no pull request when a file on disk then differs,
+is a link or has a second name, and after `git add` of those files alone, when the index would commit
+anything else: another file, a different mode, or a file a git filter changed on the way in. A process
+the tests leave running can still change the index or the branch between that check and the push.
+
 `fix --prepare` runs the repository's code, and its plan is uploaded for another job to read, so its
 job must hold no secrets at all: no token or other secret in its environment or git config, and no
 `id-token: write`. darnit refuses to start when it finds one in these places only: `GITHUB_TOKEN` or

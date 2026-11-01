@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { cp, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
@@ -46,6 +47,8 @@ export type PrResult =
   | { state: "skipped"; reason: string }
   | { state: "tests-failed"; tests: TestOutcome }
   | { state: "build-failed"; build: TestOutcome }
+  /** The build or tests changed darnit's rewrite, or git would commit something else. */
+  | { state: "refused"; reason: string }
   | { state: "prepared"; build?: TestOutcome | undefined; tests?: TestOutcome | undefined };
 
 /** A call site; one listed by file only, with no line, counts as the `sites` call sites in it. */
@@ -149,6 +152,43 @@ async function snapshotOf(root: string, files: readonly string[]): Promise<Map<s
   const snap = new Map<string, Buffer>();
   for (const f of files) snap.set(f, await readFile(join(root, f)));
   return snap;
+}
+
+type Kept = { bytes: Buffer; mode: number };
+
+/** A file's bytes and mode, read without following a link; undefined unless it is a regular file with one name. */
+async function regularFile(path: string): Promise<Kept | undefined> {
+  // Nonblocking, so a pipe in the file's place cannot hold the open.
+  const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)).catch(() => undefined);
+  if (!handle) return undefined;
+  try {
+    const [info, named] = [await handle.stat(), await lstat(path).catch(() => undefined)];
+    if (!named?.isFile() || named.nlink !== 1 || named.ino !== info.ino || named.dev !== info.dev) return undefined;
+    return { bytes: await handle.readFile(), mode: info.mode };
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Stages `kept`, darnit's rewrite as read before the build and tests ran, and only that. Returns why not: a file
+ * the checks changed, replaced or linked since, or an index that would commit anything else.
+ */
+async function stageOwn(root: string, kept: Map<string, Kept | undefined>, checks: string): Promise<string | undefined> {
+  for (const [f, own] of kept) {
+    const now = await regularFile(join(root, f));
+    if (!own || !now || now.mode !== own.mode || !now.bytes.equals(own.bytes)) return `${checks} changed ${f} after darnit rewrote it`;
+  }
+  await g.add(root, [...kept.keys()]);
+  const { prefix, id } = await g.blobIds(root);
+  const want = new Map([...kept].map(([f, own]) => [prefix + f, id(own!.bytes)]));
+  const staged = await g.staged(root);
+  for (const s of staged) {
+    if (!want.has(s.path)) return `git would also commit ${s.path}, which darnit did not change`;
+    if (s.blob !== want.get(s.path) || s.mode !== s.from) return `git would commit ${s.path.slice(prefix.length)} other than as darnit rewrote it`;
+  }
+  const missing = [...kept.keys()].find((f) => !staged.some((s) => s.path === prefix + f));
+  return missing === undefined ? undefined : `git would commit ${missing} other than as darnit rewrote it`;
 }
 
 async function restore(root: string, snap: Map<string, Buffer>): Promise<void> {
@@ -525,6 +565,9 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
     try {
       const changed = settle(result, await applyAndVerify(root, grp), grp.held);
       if (changed.length === 0) continue;
+      // The repository's build and tests run next and can write these files; only what darnit wrote is committed.
+      const kept = new Map<string, Kept | undefined>();
+      for (const f of changed) kept.set(f, await regularFile(join(root, f)));
       const { build, tests, passed } = await checkGroup(root, commands, snap, result);
       if (!passed) {
         anyFailed = true;
@@ -543,7 +586,16 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
         result.pr = { state: "skipped", reason: `its description would be ${body.length} characters, over GitHub's limit of ${PR_BODY_LIMIT}; nothing pushed` };
         continue;
       }
-      await g.add(root, changed);
+      const ran = (["build", "tests"] as const).filter((k) => ({ build, tests })[k]);
+      const notOwn = await stageOwn(root, kept, ran.length > 0 ? `the ${ran.join(" or ")}` : "something");
+      if (notOwn) {
+        // Removed first, so a link goes instead of being written through, and no filter lets git take a file as unchanged.
+        for (const f of changed) await rm(join(root, f), { force: true });
+        await g.resetToHead(root, changed);
+        result.pr = { state: "refused", reason: notOwn };
+        anyFailed = true;
+        continue;
+      }
       await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
       committed = true;
       await g.push(root, branch);
@@ -729,7 +781,7 @@ function recordUrl(id: string): string {
 
 export function exitCodeFor(result: FixResult): 0 | 1 {
   if (failed(result.build) || failed(result.tests)) return 1;
-  return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed") ? 1 : 0;
+  return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed" || r.pr?.state === "refused") ? 1 : 0;
 }
 
 function testLine(t: TestOutcome): string {
@@ -767,6 +819,7 @@ export function renderSummary(result: FixResult): string {
     }
     else if (r.pr.state === "exists") lines.push(`= ${r.title}: pull request already open ${r.pr.url}`);
     else if (r.pr.state === "skipped") lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
+    else if (r.pr.state === "refused") lines.push(`✗ ${r.title}: ${shown(r.pr.reason)}; no pull request was opened`);
     else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;

@@ -1472,6 +1472,120 @@ console.log(config);`,
       server.close();
     }
   }, 120_000);
+
+  describe("commits only darnit's own change", () => {
+    const TOKEN = "ghp_fake0123456789abcdefghijklmnopqrstuv";
+    const REWRITTEN = SDK_CALL.replace("max_tokens", "max_completion_tokens");
+    const SDK_BRANCH = "darnit/openai-max-tokens-to-max-completion-tokens";
+
+    /** A repository with sdk.js and a README, its bare origin, a GitHub API on 127.0.0.1 that records each pull request, and a folder outside both. */
+    async function setup(files: Record<string, string> = { "sdk.js": SDK_CALL, "README.md": "# app\n" }) {
+      const { dir, bare, branch } = await repoWithOrigin(await repoWith(files));
+      const outside = await mkdtemp(join(tmpdir(), "darnit-outside-"));
+      tempDirs.push(outside);
+      const posts: Record<string, unknown>[] = [];
+      const server = createServer((req, res) => {
+        let text = "";
+        req.setEncoding("utf8").on("data", (d: string) => (text += d));
+        req.on("end", () => {
+          if (req.method === "POST") posts.push(JSON.parse(text) as Record<string, unknown>);
+          const data = req.method === "POST" ? { html_url: `https://github.com/o/r/pull/${posts.length}` } : req.url === "/repos/o/r" ? { default_branch: branch } : [];
+          res.writeHead(req.method === "POST" ? 201 : 200, { "content-type": "application/json" }).end(JSON.stringify(data));
+        });
+      });
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+      const real = globalThis.fetch;
+      vi.stubGlobal("fetch", (url: string, init?: RequestInit) => real(String(url).replace(/^https:\/\/api\.github\.com\//, api), init));
+      vi.stubEnv("GITHUB_TOKEN", TOKEN);
+      return { dir, bare, branch, outside, posts, api, close: () => server.close() };
+    }
+
+    const pushed = async (bare: string) => (await git(bare, ["branch", "--list", SDK_BRANCH])).trim();
+
+    it("opens no pull request, exits 1 and names the file when the tests append to it and pass", async () => {
+      const { dir, bare, outside, posts, api, close } = await setup();
+      const preload = join(outside, "local-api.mjs");
+      await writeFile(preload, `const f = globalThis.fetch;\nglobalThis.fetch = (url, init) => f(String(url).replace(/^https:\\/\\/api\\.github\\.com\\//, ${JSON.stringify(api)}), init);\n`);
+      try {
+        const out = await darnitWith(
+          { GITHUB_TOKEN: TOKEN, NODE_OPTIONS: `--import ${preload}` },
+          dir,
+          ...["fix", "--pr", "--repo", "o/r", "--test", `echo 'fetch("https://evil.example")' >> sdk.js`],
+        );
+        expect(out.stdout).toContain("the tests changed sdk.js after darnit rewrote it; no pull request was opened");
+        expect(out.code).toBe(1);
+        expect(posts).toEqual([]);
+        expect(await pushed(bare)).toBe("");
+        expect((await git(dir, ["branch", "--list", SDK_BRANCH])).trim()).toBe("");
+        expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+        expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+      } finally {
+        close();
+      }
+    }, 60_000);
+
+    // Each leaves sdk.js reading as darnit wrote it, or stages something else, and exits 0. The last field says
+    // whether git status can be clean after: not with a change the tests staged, or a filter they set that changes the file.
+    const hostile: [string, (outside: string) => string, RegExp, boolean?][] = [
+      ["change its mode only", () => "chmod 755 sdk.js", /^the tests changed sdk\.js after darnit rewrote it$/],
+      ["swap it for a link to a copy", (o) => `cp sdk.js ${o}/copy.js && rm sdk.js && ln -s ${o}/copy.js sdk.js`, /^the tests changed sdk\.js/],
+      ["give it a second name", (o) => `ln sdk.js ${o}/second.js`, /^the tests changed sdk\.js/],
+      ["stage another file", () => "echo x >> README.md && git add README.md", /^git would also commit README\.md, which darnit did not change$/, false],
+      ["set a filter that changes what git stages", () => `git config filter.x.clean "sed s/5/6/" && echo "sdk.js filter=x" > .git/info/attributes`, /^git would commit sdk\.js other than as darnit rewrote it$/, false],
+      ["set a filter that stages it as it was", () => `git config filter.x.clean "sed s/max_completion_tokens/max_tokens/" && echo "sdk.js filter=x" > .git/info/attributes`, /^git would commit sdk\.js other than as darnit rewrote it$/],
+      ["stage it executable", () => "git config core.fileMode false && git update-index --chmod=+x sdk.js", /^git would commit sdk\.js other than as darnit rewrote it$/],
+    ];
+    for (const [what, command, reason, clean = true] of hostile) {
+      it(`opens no pull request when the tests ${what}`, async () => {
+        const { dir, bare, outside, posts, close } = await setup();
+        try {
+          const result = await fix(dir, { pr: true, repo: "o/r", test: command(outside) });
+          expect(toJson(result)).toMatchObject({ records: [{ pr: { state: "refused", reason: expect.stringMatching(reason) as string } }] });
+          expect(exitCodeFor(result)).toBe(1);
+          expect(renderSummary(result)).toContain("; no pull request was opened");
+          expect(posts).toEqual([]);
+          expect(await pushed(bare)).toBe("");
+          expect((await git(dir, ["branch", "--list", SDK_BRANCH])).trim()).toBe("");
+          expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
+          if (clean) expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+          for (const f of await readdir(outside)) expect(await readFile(join(outside, f), "utf8")).toBe(REWRITTEN);
+        } finally {
+          close();
+        }
+      });
+    }
+
+    it("pushes darnit's exact bytes when the tests change nothing", async () => {
+      const { dir, bare, posts, close } = await setup();
+      try {
+        const result = await fix(dir, { pr: true, repo: "o/r", test: "cat sdk.js" });
+        expect(result.records[0]?.pr).toMatchObject({ state: "opened", tests: { passed: true } });
+        expect(posts).toHaveLength(1);
+        const blob = await promisify(execFile)("git", ["cat-file", "blob", `${SDK_BRANCH}:sdk.js`], { cwd: bare, encoding: "buffer" });
+        expect(blob.stdout).toEqual(Buffer.from(REWRITTEN));
+        expect(await git(bare, ["ls-tree", SDK_BRANCH])).toMatch(/^100644 blob \w+\tREADME\.md\n100644 blob \w+\tsdk\.js\n$/);
+        expect((await git(bare, ["diff", "--name-only", "HEAD", SDK_BRANCH])).trim()).toBe("sdk.js");
+        expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+      } finally {
+        close();
+      }
+    });
+
+    it("pushes darnit's exact bytes when run from a folder inside the repository, on a name with a space and an accent", async () => {
+      const { dir, bare, posts, close } = await setup({ "app/sdk é.js": SDK_CALL, "README.md": "# app\n" });
+      try {
+        const result = await fix(join(dir, "app"), { pr: true, repo: "o/r", test: "true" });
+        expect(result.records[0]?.pr).toMatchObject({ state: "opened" });
+        expect(posts).toHaveLength(1);
+        const blob = await promisify(execFile)("git", ["cat-file", "blob", `${SDK_BRANCH}:app/sdk é.js`], { cwd: bare, encoding: "buffer" });
+        expect(blob.stdout).toEqual(Buffer.from(REWRITTEN));
+      } finally {
+        close();
+      }
+    });
+  });
 });
 
 describe("fix --prepare", () => {
