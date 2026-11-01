@@ -41,16 +41,28 @@ const server = createServer((req, res) => {
   send(200, "application/json; charset=utf-8", JSON.stringify({ name: at, version, dist: { tarball, integrity: "sha512-fake" } }));
 });
 let registry = "";
+/** A name in a registry path, as the rule writes it: a scope keeps its @, and the rest is encoded. */
+const escaped = (name: string) => (name[0] === "@" ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name));
 beforeAll(async () => {
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   registry = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 afterAll(() => new Promise<void>((done) => server.close(() => done())));
 
-/** Runs sh without blocking, so the registry above can answer it. */
-function sh(args: string[], cwd: string, env: NodeJS.ProcessEnv) {
+/**
+ * The rule's scripts, copied into each repo under .git, so it runs them by a path inside the repo. timed.sh
+ * prints the CPU time of the rule's processes, as the shell counts its children's.
+ */
+const guard = {
+  "check-refactor.sh": readFileSync(script, "utf8"),
+  "pr-common.sh": readFileSync("scripts/pr-common.sh", "utf8"),
+  "timed.sh": 'sh "$(dirname "$0")/check-refactor.sh" "$@"\ns=$?\ntimes\nexit $s\n',
+};
+
+/** Runs one of the rule's scripts in `cwd` without blocking, so the registry above can answer it. */
+function sh(file: keyof typeof guard, base: string, head: string, cwd: string, env: NodeJS.ProcessEnv) {
   return new Promise<{ status: number | null; stdout: string }>((done, fail) => {
-    const child = spawn("sh", args, { cwd, env, stdio: ["ignore", "pipe", "ignore"] });
+    const child = spawn("sh", [`.git/guard/${file}`, base, head], { cwd, env, stdio: ["ignore", "pipe", "ignore"] });
     let stdout = "";
     child.stdout.setEncoding("utf8").on("data", (d: string) => (stdout += d));
     child.on("error", fail).on("close", (status) => done({ status, stdout }));
@@ -127,6 +139,7 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
     }
   };
   git("init", "-q");
+  for (const [f, text] of Object.entries(guard)) await write(`.git/guard/${f}`, text);
   for (const f of baseFiles) await write(f, `${f}\n`);
   await write("package.json", pkg());
   await write("package-lock.json", lock());
@@ -188,7 +201,7 @@ async function rule(
   if (typeof body === "function") body = body(base, execFileSync("git", ["rev-parse", `${base}~1`], { cwd: dir, encoding: "utf8" }).trim());
   const output = await scratch("output");
   const summary = await scratch("summary");
-  const run = await sh([script, base, head], dir, {
+  const run = await sh("check-refactor.sh", base, head, dir, {
     ...process.env,
     TITLE: title,
     BODY: body,
@@ -521,8 +534,7 @@ describe("the rule picked by the title's type", () => {
     const { dir, base, head } = await repo([{ write: "package-lock.json", text: lock(altered) }], [{ write: "package-lock.json", text: lock(many) }]);
     const summary = await scratch("summary");
     asked.length = 0;
-    // The check runs in a child shell, so its CPU time is the shell's own count of its children's.
-    const run = await sh(["-c", 'sh "$@"; s=$?; times; exit $s', "sh", script, base, head], dir, {
+    const run = await sh("timed.sh", base, head, dir, {
       ...process.env,
       LC_ALL: "C",
       TITLE: "chore(deps): x",
@@ -582,7 +594,7 @@ describe("the rule picked by the title's type", () => {
       const r = await rule(title, [{ write: "package-lock.json", text: bumped }], "", {}, [{ write: "package-lock.json", text: lock(older) }]);
       expect(r, title).toMatchObject({ status: 0 });
       expect(r.out).toContain("**Passed:**");
-      expect(asked.sort()).toEqual(Object.values(published).map((p) => `/${p.manifest.name.replace("/", "%2F")}/${p.manifest.version}`).sort());
+      expect(asked.sort()).toEqual(Object.values(published).map((p) => `/${escaped(p.manifest.name)}/${p.manifest.version}`).sort());
     }
   });
 
