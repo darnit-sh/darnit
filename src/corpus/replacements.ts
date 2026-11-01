@@ -1,3 +1,4 @@
+import { parse, type DefaultTreeAdapterTypes as T } from "parse5";
 import { vendorName } from "../detect.js";
 import { ModelId, recordModels, ReplacementSchema, type ChangeRecord, type Replacement } from "../records/schema.js";
 
@@ -42,204 +43,115 @@ export function cellModels(text: string): string[] | undefined {
   return ids && [name, ...ids];
 }
 
-// Named entities the page uses, decoded; any other is left, so a fold holding it fails closed.
-// The page writes "no replacement" as an em dash, decoded from &mdash; to this.
+// The page writes "no replacement" as an em dash.
 const EM_DASH = "\u2014";
-const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", shy: "\u00ad", hyphen: "\u2010", ndash: "\u2013", mdash: EM_DASH, rsquo: "\u2019", rdquo: "\u201d" };
-// Tags the page wraps cell text in. Any other tag, such as img or script, refuses the cell.
-const INLINE = new Set(["a", "b", "br", "code", "em", "i", "p", "span", "strong", "sub", "sup"]);
+// What a cell of a deprecation table may hold besides text, each with the attributes it may carry.
+const INLINE: Record<string, readonly string[]> = { code: [], a: ["href"], strong: [], em: [], br: [], sup: [] };
 const MAX_CELL = 10_000;
-// Left after decoding, these refuse the cell: markup, control characters and bidi controls.
+// A cell holding these is refused: markup characters, controls and bidi controls.
 const UNSAFE = /[<>\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
-
-/** References decoded once: hex and decimal of any length, with or without ";", and the named ones above. The page's non-breaking hyphens read as hyphens. */
-const decode = (text: string) =>
-  text
-    .replace(/&#(?:[xX]([0-9a-fA-F]+)|(\d+));?|&([a-zA-Z]+);/g, (ref: string, hex?: string, dec?: string, name?: string) => {
-      if (name !== undefined) return NAMED[name] ?? ref;
-      const code = hex !== undefined ? Number.parseInt(hex, 16) : Number(dec);
-      return code <= 0x10ffff ? String.fromCodePoint(code) : ref;
-    })
-    .replace(/[\u2010\u2011]/g, "-");
-
-/** A cell's text: each inline tag read as a space, entities decoded once, whitespace collapsed. Undefined for a cell holding anything else. */
-export function cellText(html: string): string | undefined {
-  if (html.length > MAX_CELL) return undefined;
-  let text = "";
-  let at = 0;
-  for (let open = html.indexOf("<"); open !== -1; open = html.indexOf("<", at)) {
-    const close = html.indexOf(">", open);
-    const name = close === -1 ? undefined : /^\/?([a-z0-9]+)(?:[\s/]|$)/i.exec(html.slice(open + 1, close))?.[1]?.toLowerCase();
-    if (name === undefined || !INLINE.has(name)) return undefined;
-    text += `${html.slice(at, open)} `;
-    at = close + 1;
-  }
-  text += html.slice(at);
-  const decoded = decode(text)
-    .replace(/\s+/g, " ")
-    .replace(/\( | (?=[),])/g, (m) => m.trim())
-    .trim();
-  return UNSAFE.test(decoded) ? undefined : decoded;
-}
-/** Markup's text with each tag left out, from a "<" to the next ">", and references decoded once. */
-function untag(html: string): string {
-  let text = "";
-  let at = 0;
-  for (let open = html.indexOf("<"); open !== -1; open = html.indexOf("<", at)) {
-    const close = html.indexOf(">", open);
-    text += html.slice(at, open);
-    at = close === -1 ? html.length : close + 1;
-  }
-  return decode(text + html.slice(at));
-}
-
-/** The letters and digits a person reads in markup, lower case. */
-export const fold = (html: string) => untag(html).toLowerCase().replace(/[^a-z0-9]/g, "");
-
-// The structure darnit reads a table in, each in the parent it may open in. Only <table> takes an attribute, its class.
-const PARENTS: Record<string, readonly (string | undefined)[]> = { table: [undefined], thead: ["table"], tbody: ["table"], tr: ["table", "thead", "tbody"], td: ["tr"], th: ["tr"] };
-// Every table-structure token on the page; each must be one darnit read as a table a browser shows.
-const STRUCTURE = /<\/?(?:table|thead|tbody|tfoot|tr|td|th|caption|colgroup|col)(?=[\s/>])/gi;
-// A token in a table: a tag with double-quoted attribute values, a comment whose body holds no ">", a reference, or text.
-const TOKEN = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:\s+[a-zA-Z][a-zA-Z0-9_:.-]*="[^"<>]*")*)\s*>|<!--(?!-?>)[^>]*-->|&(?:#[xX][0-9a-fA-F]+;?|#\d+;?|([a-zA-Z]+);)|[^<&]+/y;
-// After decoding, a table holding these is not read as a person would: a & or <, or a letter, digit or mark outside ASCII.
-const UNREADABLE = /[&<]|(?![\0-\x7f])[\p{L}\p{N}\p{M}]/u;
-
-/**
- * A table starting at `start`, read strictly: the structure above in matching pairs, the inline tags inside cells
- * with at most a class (and an href on a link), comments, references darnit decodes, and whitespace between cells.
- * Anything else is an error: an unclosed or mismatched tag, `</th>` closing a `<td>`, a `rowspan`, `hidden` or `style`.
- */
-function parseTable(html: string, start: number): { end: number; marks: number[]; rows: { markup: string; cells: string[] }[]; error?: string } {
-  const [stack, marks, rows]: [string[], number[], { markup: string; cells: string[] }[]] = [[], [], []];
-  let row = { start: 0, cells: [] as string[] };
-  let cell = 0;
-  for (let at = start; at < html.length; at = TOKEN.lastIndex) {
-    TOKEN.lastIndex = at;
-    const [token = "", slash, tag, attrs = "", ref] = TOKEN.exec(html) ?? [];
-    const name = tag?.toLowerCase();
-    const inCell = stack.includes("td") || stack.includes("th");
-    const names = [...attrs.matchAll(/\s+([^\s=]+)=/g)].map((a) => a[1]!.toLowerCase());
-    const ok =
-      token === ""
-        ? false
-        : name === undefined
-          ? token.startsWith("<!--") || (inCell && (!token.startsWith("&") || ref === undefined || Object.hasOwn(NAMED, ref))) || token.trim() === ""
-          : slash
-            ? attrs === "" && stack.at(-1) === name
-            : name in PARENTS
-              ? PARENTS[name]!.includes(stack.at(-1)) && names.every((a) => name === "table" && a === "class")
-              : inCell && INLINE.has(name) && names.every((a) => a === "class" || (name === "a" && a === "href"));
-    if (!ok) return { end: at, marks, rows, error: `it holds markup darnit does not read in a table at offset ${at}` };
-    if (name === undefined) continue;
-    if (name in PARENTS) marks.push(at);
-    if (!slash && name !== "br") stack.push(name);
-    if (!slash && name === "tr") row = { start: at, cells: [] };
-    if (!slash && (name === "td" || name === "th")) cell = TOKEN.lastIndex;
-    if (slash) stack.pop();
-    if (slash && (name === "td" || name === "th")) row.cells.push(html.slice(cell, at));
-    if (slash && name === "tr") rows.push({ markup: html.slice(row.start, TOKEN.lastIndex), cells: row.cells });
-    if (slash && name === "table") return { end: TOKEN.lastIndex, marks, rows };
-  }
-  return { end: html.length, marks, rows, error: "it has no end" };
-}
-
-// Elements whose content a browser does not show as markup of the page. The first ones hold raw text, so the first end
-// tag closes them; the others nest.
-const RAW = ["script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript"];
-const HIDDEN = new Map([...RAW, "template", "svg", "math", "select", "object"].map((n) => [n, new RegExp(`<(/?)${n}(?=[\\s/>])`, "gi")]));
-
-/** Where the tag at `open` ends, past quoted attribute values, or -1 when it does not. */
-function tagEnd(html: string, open: number): number {
-  let quote = "";
-  for (let i = open + 1; i < html.length; i++) {
-    const c = html[i]!;
-    if (quote) quote = c === quote ? "" : quote;
-    else if (c === '"' || c === "'") quote = c;
-    else if (c === ">") return i + 1;
-  }
-  return -1;
-}
-
-/**
- * The offset of the next table a browser shows, past comments, tags with their attribute values, and hidden elements'
- * content; -1 when there is none, or where darnit cannot follow the page, so no table after it is read.
- */
-function nextTable(html: string, from: number): number {
-  for (let at = from; ; ) {
-    const open = html.indexOf("<", at);
-    if (open === -1) return -1;
-    const name = /^<([a-zA-Z][a-zA-Z0-9-]*)/.exec(html.slice(open, open + 40))?.[1]?.toLowerCase();
-    if (name === "table") return open;
-    const comment = html.startsWith("<!--", open) ? html.indexOf("-->", open + 4) : undefined;
-    if (comment !== undefined) at = comment === -1 ? -1 : comment + 3;
-    else if (name === undefined && !/^<[/!?]/.test(html.slice(open, open + 2))) at = open + 1;
-    else at = name === "plaintext" ? -1 : tagEnd(html, open);
-    const hidden = name === undefined ? undefined : HIDDEN.get(name);
-    if (at > 0 && hidden && html[at - 2] !== "/") {
-      let depth = 1;
-      let tag: RegExpExecArray | null = null;
-      for (hidden.lastIndex = at; depth > 0 && (tag = hidden.exec(html)); ) depth += tag[1] ? -1 : RAW.includes(name!) ? 0 : 1;
-      at = depth > 0 || !tag ? -1 : tagEnd(html, tag.index);
-    }
-    if (at <= 0) return -1;
-  }
-}
-
+// A letter, digit or mark outside ASCII, such as a Cyrillic o: a table holding one is not read as a person would.
+const NON_ASCII = /(?![\0-\x7f])[\p{L}\p{N}\p{M}]/u;
 const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
 
+const isElement = (n: T.ChildNode): n is T.Element => "tagName" in n;
+const children = (e: T.Element) => e.childNodes.filter(isElement);
+const attr = (e: T.Element, name: string) => e.attrs.find((a) => a.name === name)?.value;
+/** Whether an element's own attributes hide it, or may. Hiding through a CSS class is not seen. */
+const unshown = (e: T.Element) => attr(e, "hidden") !== undefined || attr(e, "style") !== undefined || attr(e, "aria-hidden") === "true";
 /**
- * A `<tr>` of a table darnit read, folded, with what darnit read from it: the models in its model cell and the models
- * its replacement offers. `exempt` is the model a row retiring fine-tuning on it names.
+ * The text a node shows: its text nodes, a <br> as a line break, and a <sup> as a word of its own, as a footnote mark
+ * reads, so "o1-mini" with a footnote is not the model "o1-mini2". Comments and template content are not shown.
  */
+const text = (n: T.ChildNode): string =>
+  n.nodeName === "#text" ? (n as T.TextNode).value : !isElement(n) ? "" : n.tagName === "br" ? "\n" : n.tagName === "sup" ? ` ${n.childNodes.map(text).join("")} ` : n.childNodes.map(text).join("");
+/** HTML's whitespace collapsing: ASCII whitespace only, so a no-break space stays a character. */
+const collapse = (s: string) => s.replace(/[\t\n\f\r ]+/g, " ").replace(/^ | $/g, "");
+/** Whether a cell's elements are all ones a deprecation table may hold, with only the attributes each may carry. */
+const plain = (n: T.ChildNode): boolean => !isElement(n) || (Object.hasOwn(INLINE, n.tagName) && n.attrs.every((a) => INLINE[n.tagName]!.includes(a.name)) && n.childNodes.every(plain));
+
+/** The letters and digits a person reads in text, lower case. */
+export const fold = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Every table a browser shows on the page, outermost first; a table inside one is part of its text. The parser gives
+ * raw-text elements such as script, style, textarea and noscript no elements, and keeps a template's content apart,
+ * so tables there are never met; a table an svg shows through foreignObject is.
+ */
+function shownTables(page: T.Document): T.Element[] {
+  const out: T.Element[] = [];
+  const todo: T.ParentNode[] = [page];
+  for (let node = todo.pop(); node !== undefined; node = todo.pop()) {
+    if ("tagName" in node && node.tagName === "table") out.push(node);
+    else todo.push(...node.childNodes.filter((c) => isElement(c) && !unshown(c)).reverse() as T.Element[]);
+  }
+  return out;
+}
+
+/**
+ * A table's rows, read strictly: rows only in the table or its thead and tbody, cells only in rows, and no attribute
+ * but a class on any of them. Otherwise why darnit does not read the table.
+ */
+function rowsOf(table: T.Element): { rows: T.Element[]; error?: string } {
+  const rows: T.Element[] = [];
+  const odd = (e: T.Element, kinds: string[]) => !kinds.includes(e.tagName) || e.attrs.some((a) => a.name !== "class");
+  const error = (e: T.Element) => ({ rows, error: `it holds a <${e.tagName}> with ${e.attrs.map((a) => a.name).join(", ") || "no attributes"} where darnit reads only a table, its sections, rows and cells, each with at most a class` });
+  if (odd(table, ["table"])) return error(table);
+  for (const part of children(table)) {
+    if (odd(part, ["thead", "tbody", "tr"])) return error(part);
+    for (const tr of part.tagName === "tr" ? [part] : children(part)) {
+      if (odd(tr, ["tr"])) return error(tr);
+      const cell = children(tr).find((c) => odd(c, ["td", "th"]));
+      if (cell) return error(cell);
+      rows.push(tr);
+    }
+  }
+  return { rows };
+}
+
+/** One row of a table on the page, folded, with the models darnit read from it and, for a fine-tuning row, its model. */
 export type Row = { label: string; folded: string; read: string[]; exempt?: string };
 
 /** A table of the page, folded, and why darnit does not read it as a person would, if it does not. */
 export type Table = { label: string; folded: string; error?: string };
 
-/**
- * What the page's tables say: each model's replacement cells in page order, newest first, every table, every row of
- * the tables darnit read, and every table-structure token darnit did not read as part of a table a browser shows.
- */
-export type Page = { replacements: Map<string, string[]>; tables: Table[]; rows: Row[]; problems: string[] };
+/** What the page's tables say: each model's replacement cells in page order, newest first, every table, and every row of the tables darnit read. */
+export type Page = { replacements: Map<string, string[]>; tables: Table[]; rows: Row[] };
 
 /**
- * The page's deprecation tables: shutdown date first, then the model, any price columns, and the replacement column.
- * A table darnit cannot read strictly is passed over to its first </table> and reported, never read.
+ * The tables a browser shows on OpenAI's deprecations page, from the tree the WHATWG HTML parser (parse5) builds. A
+ * deprecation table has the shutdown date first, then the model, any price columns, and the replacement column; its
+ * cells may hold only text, code, strong, em, br, sup and a link, every row as many cells as its header.
  */
 export function readPage(html: string): Page {
   const replacements = new Map<string, string[]>();
-  const [tables, rows, read]: [Table[], Row[], Set<number>] = [[], [], new Set()];
-  for (let at = nextTable(html, 0); at !== -1; ) {
+  const [tables, rows]: [Table[], Row[]] = [[], []];
+  for (const table of shownTables(parse(html))) {
     const label = `table ${tables.length + 1}`;
-    const parsed = parseTable(html, at);
-    const close = parsed.error ? /<\/table\s*>/gi : undefined;
-    if (close) close.lastIndex = at;
-    const end = close ? (close.exec(html) ? close.lastIndex : html.length) : parsed.end;
-    const markup = html.slice(at, end);
-    const error = parsed.error ?? (UNREADABLE.test(untag(markup)) ? "it holds a reference or a letter darnit cannot read as a person would" : undefined);
-    tables.push({ label, folded: fold(markup), ...(error ? { error } : {}) });
-    for (const m of parsed.error ? markup.matchAll(STRUCTURE) : []) read.add(at + m.index);
-    for (const m of parsed.error ? [] : parsed.marks) read.add(m);
-    const [head = [], ...body] = parsed.error ? [] : parsed.rows.map((r) => r.cells.map(cellText));
-    const to = head[0]?.toLowerCase() === "shutdown date" && head.every((h) => h !== undefined) ? head.findIndex((h) => REPLACEMENT.has(h.toLowerCase())) : -1;
-    for (const [i, raw] of (parsed.error ? [] : parsed.rows).entries()) {
-      const cells = i === 0 ? [] : body[i - 1]!;
-      let found: string[] = [];
+    const { rows: trs, error: structure } = rowsOf(table);
+    const cells = trs.map(children);
+    const texts = cells.map((row) => row.map((c) => collapse(text(c))));
+    const [head = []] = texts;
+    const to = head[0]?.toLowerCase() === "shutdown date" ? head.findIndex((h) => REPLACEMENT.has(h.toLowerCase())) : -1;
+    const strict = to < 2 ? undefined : cells.find((row) => row.length !== head.length) ? "a row has a different number of cells from its header" : undefined;
+    const markup = to >= 2 && cells.some((row) => row.some((c) => !c.childNodes.every(plain))) ? "a cell holds markup darnit does not read in a deprecation table" : undefined;
+    const error = structure ?? strict ?? markup ?? (NON_ASCII.test(text(table)) ? "it holds a letter, digit or mark outside ASCII" : undefined);
+    tables.push({ label, folded: fold(text(table)), ...(error ? { error } : {}) });
+    if (error) continue;
+    for (const [i, row] of texts.entries()) {
+      let read: string[] = [];
       let exempt: string | undefined;
-      if (i > 0 && to >= 2 && cells.length === head.length && cells.every((c) => c !== undefined)) {
-        const models = cellModels(cells[1]!);
-        for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), cells[to]!]);
+      if (i > 0 && to >= 2 && row.every((c) => c.length <= MAX_CELL && !UNSAFE.test(c))) {
+        const models = cellModels(row[1]!);
+        for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), row[to]!]);
         // A row retiring fine-tuning on a model, not calls to it: exempt when that is a real model.
-        exempt = models ? undefined : /^New fine-tuning training on ([a-z0-9._:-]+)$/.exec(cells[1]!)?.[1];
-        if (models || exempt) found = [...(models ?? []), ...offered(cells[to]!)];
+        exempt = models ? undefined : /^New fine-tuning training on ([a-z0-9._:-]+)$/.exec(row[1]!)?.[1];
+        if (models || exempt) read = [...(models ?? []), ...offered(row[to]!)];
       }
-      rows.push({ label: `${label} row ${i + 1}`, folded: fold(raw.markup), read: found, ...(exempt ? { exempt } : {}) });
+      rows.push({ label: `${label} row ${i + 1}`, folded: fold(text(trs[i]!)), read, ...(exempt ? { exempt } : {}) });
     }
-    at = nextTable(html, end);
   }
-  const problems = [...html.matchAll(STRUCTURE)].filter((m) => !read.has(m.index)).map((m) => `the page holds ${m[0]} at offset ${m.index} outside any table darnit read as shown`);
-  return { replacements, tables, rows, problems };
+  return { replacements, tables, rows };
 }
 
 // One model id and one setting such as "(reasoning.mode: pro)"; any other words get the fixed reason.
@@ -293,11 +205,10 @@ const flat = (id: string) => id.replace(/[^a-z0-9]/g, "");
  * A replacement the page retires too is followed to one it does not; one that ends with no plain swap, or loops,
  * becomes `human`, and so does one the API spec does not list. A model a reason offers is followed the same way, or
  * said to retire too, and the model being replaced is never offered. A detected model the page has no row for is a
- * problem. So is table markup outside the tables darnit read as shown, every table it cannot read strictly, and every
- * row of a table it read whose folded text holds a detected model darnit did not read from it: an older row must never
- * stand in for a newer one. That check over-reports on purpose; a table or row a person has confirmed names no
+ * problem. So is every table a browser shows that darnit cannot read strictly, and every row of a table it read whose
+ * folded text holds a detected model darnit did not read from it: an older row must never stand in for a newer one. That check over-reports on purpose; a table or row a person has confirmed names no
  * model goes in `notModels`, by its exact folded text. Model names outside the page's tables are not checked, nor a
- * table or row hidden by a CSS class or a hidden element around it.
+ * table hidden by a CSS class rather than an attribute.
  */
 export function replacementsFor(
   records: readonly ChangeRecord[],
@@ -347,7 +258,6 @@ export function replacementsFor(
   const real = new Set([...detected, ...known]);
   const onPage = new Set([...page.tables, ...page.rows].map((r) => r.folded));
   const problems = [...notModels].filter((n) => !onPage.has(n)).map((n) => `the known non-model table or row ${n} is no longer on the page; take it off the list`);
-  problems.push(...page.problems);
   for (const table of page.tables.filter((t) => t.error !== undefined && !notModels.has(t.folded))) problems.push(`${table.label} (folded: ${table.folded.slice(0, 200)}): ${table.error}`);
   const unread = new Set<string>();
   for (const row of page.rows.filter((r) => !notModels.has(r.folded))) {

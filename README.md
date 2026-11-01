@@ -382,11 +382,11 @@ on any difference. A rule that quietly changes nothing fails the build too.
 Records are written by hand from vendor announcements, except model shutdowns:
 those are read from OpenAI's deprecations page by a script, confirmed by a second,
 separate parser, and stay parser-verified until a person reviews them. Their replacements
-come from the same page's tables (`npm run replacements`), which fails on any table it cannot
-read as a person would, on any table row naming a model it did not read from that row, and on
-table markup in a comment, script, template, attribute or other place a browser does not show
-it. Known limits: model names outside the page's tables, in lists or paragraphs, are not
-checked, and neither is a table or row hidden by a CSS class or a hidden element around it. New candidates also
+come from the same page's tables (`npm run replacements`), read from the tree a WHATWG HTML
+parser builds, so only tables a browser shows count. It fails on a deprecation table it cannot
+read strictly and on any table row naming a model it did not read from that row. Known limits:
+model names outside the page's tables, in lists or paragraphs, are not checked, and neither is a
+table hidden by a CSS class rather than an attribute. New candidates also
 come from the vendors' own API specs: once a week a workflow
 compares each spec in `vendors.yml` with the last saved copy (using
 [oasdiff](https://github.com/oasdiff/oasdiff)) and turns deprecated or removed
