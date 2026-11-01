@@ -118,11 +118,19 @@
     - schema BetaImageGenTool property model anyOf 1 enum gpt-image-1
   date: "2026-10-23"
   needs-record: >-
-    Add conversations.create, conversations.items.create, evals.runs.create and
-    responses.input_tokens.count, beta call included, to the SDK calls of
-    openai:2026-04-22:legacy-gpt-model-snapshots-shut-down, with /v1/conversations and /v1/evals
-    in its endpoints. Those requests can carry an image generation tool whose model is gpt-image-1,
-    and `darnit check` reports such calls only as possibly affected, not as call sites.
+    Add conversations.create, conversations.items.create, evals.runs.create,
+    responses.input_tokens.count and responses.inputTokens.count to the SDK calls of
+    openai:2026-04-22:legacy-gpt-model-snapshots-shut-down, and map those operations in
+    vendors.yml: "POST /conversations": conversations.create, "POST
+    /conversations/{conversation_id}/items": conversations.items.create, "POST
+    /evals/{eval_id}/runs": evals.runs.create, "POST /responses/input_tokens":
+    responses.input_tokens.count, "POST /responses/input_tokens?beta=true":
+    beta.responses.input_tokens.count. Both halves are needed; either alone leaves both items open.
+    Endpoints would not do it: detection matches a URL's text, and a path such as
+    /conversations/{conversation_id}/items never appears in one. With those calls `darnit check`
+    reports a conversation or token count request whose image generation tool model is
+    gpt-image-1; check an eval run too, which it did not report with the tool under
+    data_source.sampling_params.
 
 - items:
     - schema ModelIdsShared anyOf 1 enum gpt-5
