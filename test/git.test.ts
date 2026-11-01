@@ -112,17 +112,46 @@ describe("git treats the repo as untrusted", () => {
     expect(await access(mark).then(() => true, () => false)).toBe(false);
   });
 
-  it("refuses a repository whose filter driver name is not valid UTF-8, which an environment pin cannot carry", async () => {
-    const dir = await repoWith({ "a.ts": "a\n" });
-    const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
-    tempDirs.push(mark);
-    const run = `touch '${mark}'; cat`;
-    // A driver name with a raw 0xff byte: git stores and reads it, but it is not valid UTF-8.
-    await writeFile(join(dir, ".gitattributes"), Buffer.concat([Buffer.from("*.ts filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]));
-    await appendFile(join(dir, ".git", "config"), Buffer.concat([Buffer.from('[filter "x'), Buffer.from([0xff]), Buffer.from(`y"]\n\tclean = ${run}\n\tsmudge = ${run}\n\trequired = true\n`)]));
-    await writeFile(join(dir, "a.ts"), "b\n");
-    await expect(g.add(dir, ["a.ts"])).rejects.toThrow(/not valid UTF-8/);
-    expect(await access(mark).then(() => true, () => false)).toBe(false);
+  // Under a UTF-8 locale git's config regex `.` would not match a byte like 0xff, so a name read by a
+  // `--get-regexp` pattern would be dropped and its filter left live; darnit reads the list itself.
+  const utf8Locale = process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8";
+
+  it("refuses, under a UTF-8 locale, a filter driver name that is not valid UTF-8, on status, diff and add", async () => {
+    vi.stubEnv("LANG", utf8Locale);
+    vi.stubEnv("LC_ALL", utf8Locale);
+    try {
+      const dir = await repoWith({ "a.ts": "a\n" });
+      const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+      tempDirs.push(mark);
+      const run = `touch '${mark}'; cat`;
+      // A driver name with a raw 0xff byte: git stores and reads it, but it is not valid UTF-8.
+      await writeFile(join(dir, ".gitattributes"), Buffer.concat([Buffer.from("*.ts filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]));
+      await appendFile(join(dir, ".git", "config"), Buffer.concat([Buffer.from('[filter "x'), Buffer.from([0xff]), Buffer.from(`y"]\n\tclean = ${run}\n\tsmudge = ${run}\n\trequired = true\n`)]));
+      for (const op of [() => g.isClean(dir), () => g.diff(dir, ["a.ts"]), () => g.add(dir, ["a.ts"])]) {
+        await writeFile(join(dir, "a.ts"), `b${Math.random()}\n`); // unstaged and stat-dirty, so a live filter would run
+        await expect(op()).rejects.toThrow(/not valid UTF-8/);
+      }
+      expect(await access(mark).then(() => true, () => false)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("turns off a plain ASCII filter driver under a UTF-8 locale too", async () => {
+    vi.stubEnv("LANG", utf8Locale);
+    vi.stubEnv("LC_ALL", utf8Locale);
+    try {
+      const dir = await repoWith({ "a.ts": "a\n", ".gitattributes": "*.ts filter=p\n" });
+      const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
+      tempDirs.push(mark);
+      await g.git(dir, ["config", "filter.p.clean", `touch '${mark}'; cat`]);
+      await g.git(dir, ["config", "filter.p.required", "true"]);
+      await writeFile(join(dir, "a.ts"), "b\n");
+      await g.add(dir, ["a.ts"]);
+      expect(await access(mark).then(() => true, () => false)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("takes file names literally, never as patterns", async () => {

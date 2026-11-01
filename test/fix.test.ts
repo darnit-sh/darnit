@@ -2213,7 +2213,9 @@ describe("the repository's config names no program git runs in darnit's own call
 
   // A driver name git stores with a byte that is not valid UTF-8 cannot be pinned through an environment
   // darnit writes as UTF-8, so the run is refused rather than left with that filter live.
-  it("refuses, through fix, a filter driver name that is not valid UTF-8", async () => {
+  it("refuses, through fix under a UTF-8 locale, a filter driver name that is not valid UTF-8", async () => {
+    vi.stubEnv("LANG", process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8");
+    vi.stubEnv("LC_ALL", process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8");
     const { dir, marker } = await setup(async (d, _p, m) => {
       await writeFile(join(d, ".gitattributes"), Buffer.concat([Buffer.from("*.py filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]));
       await appendFile(join(d, ".git", "config"), Buffer.concat([Buffer.from('[filter "x'), Buffer.from([0xff]), Buffer.from(`y"]\n\tclean = ${cmd(m, "cat")}\n\trequired = true\n`)]));
@@ -2232,7 +2234,7 @@ describe("the repository's config names no program git runs in darnit's own call
       await writeFile(join(d, "big.cfg"), big);
       await git(d, ["config", "include.path", join(d, "big.cfg")]);
     });
-    await expect(fix(dir, { noTest: true, allowDirty: true })).rejects.toThrow(/could not read the repository's git filter config/);
+    await expect(fix(dir, { noTest: true, allowDirty: true })).rejects.toThrow(/could not read the repository's git config/);
     expect(await ran(marker)).toBe(false);
   }, 60_000);
 

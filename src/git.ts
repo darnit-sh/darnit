@@ -11,19 +11,19 @@ export const CREDENTIALS = ["GITHUB_TOKEN", "GH_TOKEN"];
 // The repository's config can name programs git would run inside darnit's own calls, even with
 // `--no-test`. These pins, on every call, turn off the ones keyed by a fixed name: no hooks (on
 // commit or checkout), no fsmonitor, no gpg signing of a commit or on push, and no recursion into a
-// submodule on push (which would run the submodule's own hooks and remote helper, with darnit's push
-// environment). Clean/smudge/process filters are keyed by driver name, so `filterConfig` empties each
-// one git would use; an external diff and textconv are turned off per diff, and a submodule's own
-// status (which runs its filters) is skipped, both in `git`. A pager never starts because darnit
-// captures git's output rather than writing to a terminal. git also never sees darnit's credentials
-// and takes file names literally, never as patterns. SECURITY.md lists the keys that still apply (an
-// ssh command, credential helper or proxy on a call to origin, a remote helper program).
+// submodule on push (which would run the submodule's own remote helper, with darnit's push
+// environment and token; `push.recurseSubmodules=no` overrides a repository's `submodule.recurse=true`
+// too). Clean/smudge/process filters are keyed by driver name, so `filterConfig` empties each one git
+// would use; an external diff and textconv are turned off per diff, and a submodule's own status
+// (which runs its filters) is skipped, both in `git`. A pager never starts because darnit captures
+// git's output rather than writing to a terminal. git also never sees darnit's credentials and takes
+// file names literally, never as patterns. SECURITY.md lists the keys that still apply (an ssh
+// command, credential helper or proxy on a call to origin, a remote helper program).
 const UNTRUSTED_REPO = [
   "-c", "core.hooksPath=/dev/null",
   "-c", "core.fsmonitor=false",
   "-c", "commit.gpgSign=false",
   "-c", "push.gpgSign=false",
-  "-c", "submodule.recurse=false",
   "-c", "push.recurseSubmodules=no",
 ];
 
@@ -47,7 +47,7 @@ export function ensureGitVersion(): Promise<void> {
 const FILTERED = new Set(["add", "status", "commit", "diff", "checkout", "switch"]);
 // More filter drivers than darnit will turn off one by one; past this it refuses rather than run them.
 const FILTER_CAP = 256;
-const FILTER_DRIVER = /^filter\.(.*)\.(?:clean|smudge|process)$/s;
+const FILTER_VARS = [".clean", ".smudge", ".process"];
 
 /**
  * The git config entries that turn off every clean/smudge/process filter git would apply in `root`,
@@ -55,32 +55,37 @@ const FILTER_DRIVER = /^filter\.(.*)\.(?:clean|smudge|process)$/s;
  * filter in place of that driver's clean and smudge, and an empty one marked optional passes content
  * through unchanged, so one pin per driver covers all three directions. A driver's name can hold any
  * byte, including the `=` that `-c name=value` splits on, so these go in the child's environment (see
- * `configEnv`), where key and value stay apart. Fails closed: a listing that errors, overflows its
- * buffer, names more than `FILTER_CAP` drivers, or holds a name that is not valid UTF-8 (which git
+ * `configEnv`), where key and value stay apart. The listing uses `--list`, not a `--get-regexp`
+ * pattern: git's regex runs under the locale and its `.` does not match a byte such as 0xff, so a
+ * hostile driver name would be dropped and its filter left live. darnit picks the filter keys itself,
+ * by bytes (forcing LC_ALL=C so nothing else shifts). Fails closed: a listing that errors, overflows
+ * its buffer, names more than `FILTER_CAP` drivers, or holds a name that is not valid UTF-8 (which git
  * writes raw but darnit cannot pass back through an environment it can only write as UTF-8) throws
  * rather than leave a filter unpinned.
  */
 async function filterConfig(root: string, env: NodeJS.ProcessEnv): Promise<[string, string][]> {
   let raw: Buffer;
   try {
-    ({ stdout: raw } = await exec("git", [...UNTRUSTED_REPO, "config", "-z", "--name-only", "--get-regexp", String.raw`^filter\..*\.(clean|smudge|process)$`], { cwd: root, env, encoding: "buffer", maxBuffer: 64 * 1024 * 1024 }));
+    ({ stdout: raw } = await exec("git", [...UNTRUSTED_REPO, "config", "-z", "--name-only", "--list"], { cwd: root, env: { ...env, LC_ALL: "C", LANG: "C" }, encoding: "buffer", maxBuffer: 64 * 1024 * 1024 }));
   } catch (err) {
-    // git config exits 1 with no output when nothing matches: no filters to turn off. Any other
-    // failure (a read error, or output past the buffer) must not pass for "none", or a filter runs.
+    // git config exits 1 with no output only when there is no config to list. Any other failure (a read
+    // error, or output past the buffer) must not pass for "none", or a filter runs.
     const e = err as { code?: number | string; stdout?: Buffer };
     if (e.code === 1 && (e.stdout?.length ?? 0) === 0) raw = Buffer.alloc(0);
-    else throw new Error("could not read the repository's git filter config; refusing to run git against it", { cause: err });
+    else throw new Error("could not read the repository's git config; refusing to run git against it", { cause: err });
   }
-  let listing: string;
-  try {
-    listing = new TextDecoder("utf-8", { fatal: true }).decode(raw);
-  } catch {
-    throw new Error("the repository names a git filter driver with bytes that are not valid UTF-8; refusing to run git against it");
-  }
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const names = new Set<string>();
-  for (const key of listing.split("\0")) {
-    const m = FILTER_DRIVER.exec(key);
-    if (m) names.add(m[1]!);
+  // Keys are NUL-separated; latin1 keeps every byte, so a driver name of any bytes survives the split.
+  for (const key of raw.toString("latin1").split("\0")) {
+    const suffix = key.startsWith("filter.") ? FILTER_VARS.find((v) => key.endsWith(v)) : undefined;
+    if (suffix === undefined) continue;
+    const name = Buffer.from(key.slice("filter.".length, key.length - suffix.length), "latin1");
+    try {
+      names.add(decoder.decode(name));
+    } catch {
+      throw new Error("the repository names a git filter driver with bytes that are not valid UTF-8; refusing to run git against it");
+    }
   }
   if (names.size > FILTER_CAP) throw new Error(`the repository configures ${names.size} git filter drivers, over darnit's limit of ${FILTER_CAP}; refusing to run git against it`);
   return [...names].flatMap((n): [string, string][] => [[`filter.${n}.process`, ""], [`filter.${n}.required`, "false"]]);

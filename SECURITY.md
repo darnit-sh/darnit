@@ -74,9 +74,9 @@ filter drivers than darnit will handle, whose filter config cannot be read whole
 driver with bytes that are not valid UTF-8 (which darnit cannot carry back through the environment),
 is refused rather than run. A status or diff does not descend into a submodule
 (`--ignore-submodules=all`), and darnit never pushes a submodule from its own push
-(`push.recurseSubmodules=no`, `submodule.recurse=false`), so a submodule's own filters and remote
-helper never run and the token never reaches them; darnit passes no `--recurse-submodules` and checks
-out no submodule path. A pager (`core.pager`, `pager.*`) never starts because darnit captures git's
+(`push.recurseSubmodules=no`, which also overrides a repository's `submodule.recurse=true`), so a
+submodule's own filters and remote helper never run and the token never reaches them; darnit passes no
+`--recurse-submodules` and checks out no submodule path. A pager (`core.pager`, `pager.*`) never starts because darnit captures git's
 output rather than writing to a terminal. darnit's own commit therefore does not run the repository's
 commit hooks; they are repository code, and `fix --pr` runs the repository's tests separately. This
 does not cover config that only matters on a call that reaches origin, which darnit makes only to push
