@@ -359,6 +359,35 @@ describe("check judges each client by the vendor of the record", () => {
   });
 });
 
+describe("check matches SDK names on a dot boundary", () => {
+  const of = (hits: Hit[], id: string) => [...new Set(locations(hits.filter((h) => h.record.id.includes(id))))].sort();
+
+  it("reports a record's method only when it is the whole callee or ends it after a dot", async () => {
+    const dir = await scratch({
+      "a.js": 'import OpenAI from "openai";\nconst client = new OpenAI();\nmyimages.generate({ model: "dall-e-3" });\nclient.images.generate({ model: "dall-e-3" });\n',
+      "b.py": 'from openai import OpenAI\n\nclient = OpenAI()\nmyimages.generate(model="dall-e-3")\nclient.images.generate(model="dall-e-3")\n',
+      "c.ts":
+        'import OpenAI from "openai";\nconst client = new OpenAI();\nclient.myimages.generate({ model: "dall-e-3" });\nclient.notimages.generate({ model: "dall-e-3" });\nclient?.images\n  .generate({ model: "dall-e-3" });\n',
+    });
+    const { hits } = await checkReport(dir);
+    expect(of(hits, "dall-e")).toEqual(["a.js:4", "b.py:5", "c.ts:6"]);
+  });
+
+  it("reads a dot in a JavaScript package name as part of the name, and in a Python import as a submodule", async () => {
+    const old = "gpt-4o-realtime-preview-2024-10-01";
+    const dir = await scratch({
+      "rt.ts": ['import OpenAI from "openai";', 'import { OpenAIRealtimeWS } from "openai.fake";', "const client = new OpenAI();", `await OpenAIRealtimeWS.create(client, { model: "${old}" });`, ""].join("\n"),
+      "groq.js": 'import Groq from "groq.custom";\nconst g = new Groq();\ng.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "router.py": 'from openai.lib import OpenAI\n\nclient = OpenAI(base_url="https://api.groq.com/openai/v1")\nclient.chat.completions.create(model="x", max_tokens=5)\n',
+    });
+    const { hits, coverage, values } = await checkReport(dir);
+    expect(of(hits, "shut-down")).toEqual([]);
+    expect(values.map((v) => `${v.file}:${v.line}`)).toContain("rt.ts:4");
+    expect(of(hits, "max-tokens")).toEqual(["groq.js:3"]);
+    expect(coverage.foreignAt).toEqual(["router.py:4"]);
+  });
+});
+
 describe("check reads raw HTTP calls by their URL argument only", () => {
   const maxTokens = (hits: Hit[]) => locations(hits.filter((h) => h.record.id.includes("max-tokens")));
   const body = "{ method: \"POST\", body: JSON.stringify({ model: \"m\", max_tokens: 5 }) }";

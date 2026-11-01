@@ -215,7 +215,7 @@ function requests(root: SgNode, source: string, nodes: readonly SgNode[], symbol
       const call = up.slice(-8).reverse().find((f) => isCall(f.node))?.node;
       const raw = call?.field("function")?.text();
       const callee = raw === undefined ? undefined : normalized(raw);
-      const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s) && (!isStatic(s) || isVendorClass(callee))).sort((a, b) => b.length - a.length)[0];
+      const symbol = callee === undefined ? undefined : symbols.filter((s) => (callee === s || callee.endsWith(`.${s}`)) && (!isStatic(s) || isVendorClass(callee))).sort((a, b) => b.length - a.length)[0];
       const url = symbol === undefined && namesEndpoint ? endpointUrl(up, namesEndpoint, source) : undefined;
       out.set(node.id(), { call, symbol, url });
     }
