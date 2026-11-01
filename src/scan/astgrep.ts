@@ -66,6 +66,14 @@ const isCall = (n: SgNode) => n.is("call_expression") || n.is("call");
 /** Callee text as written, minus line breaks and optional chaining, so `chat?.completions\n .create` still matches. */
 const normalized = (callee: string) => callee.replace(/\s+/g, "").replace(/\?\./g, ".");
 
+/** Whether `callee` ends with `symbol` at a name boundary: `client.images.generate`, `self._images.generate` and `$images.generate`, never `myimages.generate`. */
+function endsWithSymbol(callee: string, symbol: string): boolean {
+  if (!callee.endsWith(symbol)) return false;
+  let i = callee.length - symbol.length;
+  while (i > 0 && "_#$".includes(callee[i - 1]!)) i--;
+  return i === 0 || callee[i - 1] === ".";
+}
+
 // Code inside a URL (an interpolation, a helper call) is not URL text.
 const OPAQUE = ["template_substitution", "interpolation", "call_expression", "call"];
 const URL_KINDS = new Set(["string", "template_string", "concatenated_string", "binary_expression", "binary_operator", "ternary_expression", "conditional_expression"]);
@@ -215,7 +223,7 @@ function requests(root: SgNode, source: string, nodes: readonly SgNode[], symbol
       const call = up.slice(-8).reverse().find((f) => isCall(f.node))?.node;
       const raw = call?.field("function")?.text();
       const callee = raw === undefined ? undefined : normalized(raw);
-      const symbol = callee === undefined ? undefined : symbols.filter((s) => (callee === s || callee.endsWith(`.${s}`)) && (!isStatic(s) || isVendorClass(callee))).sort((a, b) => b.length - a.length)[0];
+      const symbol = callee === undefined ? undefined : symbols.filter((s) => endsWithSymbol(callee, s) && (!isStatic(s) || isVendorClass(callee))).sort((a, b) => b.length - a.length)[0];
       const url = symbol === undefined && namesEndpoint ? endpointUrl(up, namesEndpoint, source) : undefined;
       out.set(node.id(), { call, symbol, url });
     }

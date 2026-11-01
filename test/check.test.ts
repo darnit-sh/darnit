@@ -373,18 +373,33 @@ describe("check matches SDK names on a dot boundary", () => {
     expect(of(hits, "dall-e")).toEqual(["a.js:4", "b.py:5", "c.ts:6"]);
   });
 
+  it("reports a method on a private or prefixed field holding the client's namespace", async () => {
+    const dir = await scratch({
+      "a.py": 'from openai import OpenAI\n\nclass Svc:\n    def __init__(self):\n        self._images = OpenAI().images\n    def run(self):\n        return self._images.generate(model="dall-e-2")\n',
+      "b.ts": 'import OpenAI from "openai";\nclass Svc {\n  #images = new OpenAI().images;\n  run() {\n    return this.#images.generate({ model: "dall-e-2", n: 1 });\n  }\n}\nexport { Svc };\n',
+      "c.js": 'import OpenAI from "openai";\nconst client = new OpenAI();\nconst $images = client.images;\n$images.generate({ model: "dall-e-2", n: 1 });\n',
+      "d.ts":
+        'import OpenAI from "openai";\nconst client = new OpenAI();\nclient._chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\nclient.mychat.completions.create({ model: "x", messages: [], max_tokens: 5 });\nclient.notchat.completions.create({ model: "x", messages: [], max_tokens: 5 });\nclient.my_chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+    });
+    const { hits } = await checkReport(dir);
+    expect(of(hits, "dall-e")).toEqual(["a.py:7", "b.ts:5", "c.js:4"]);
+    expect(of(hits, "max-tokens")).toEqual(["d.ts:3"]);
+  });
+
   it("reads a dot in a JavaScript package name as part of the name, and in a Python import as a submodule", async () => {
     const old = "gpt-4o-realtime-preview-2024-10-01";
     const dir = await scratch({
       "rt.ts": ['import OpenAI from "openai";', 'import { OpenAIRealtimeWS } from "openai.fake";', "const client = new OpenAI();", `await OpenAIRealtimeWS.create(client, { model: "${old}" });`, ""].join("\n"),
       "groq.js": 'import Groq from "groq.custom";\nconst g = new Groq();\ng.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "required.js": 'const Groq = require("groq.custom");\nconst g = new Groq();\ng.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
       "router.py": 'from openai.lib import OpenAI\n\nclient = OpenAI(base_url="https://api.groq.com/openai/v1")\nclient.chat.completions.create(model="x", max_tokens=5)\n',
+      "sub.py": 'import groq.sub\n\nc = groq.sub.Groq()\nc.chat.completions.create(model="x", max_tokens=5)\n',
     });
     const { hits, coverage, values } = await checkReport(dir);
     expect(of(hits, "shut-down")).toEqual([]);
     expect(values.map((v) => `${v.file}:${v.line}`)).toContain("rt.ts:4");
-    expect(of(hits, "max-tokens")).toEqual(["groq.js:3"]);
-    expect(coverage.foreignAt).toEqual(["router.py:4"]);
+    expect(of(hits, "max-tokens")).toEqual(["groq.js:3", "required.js:3"]);
+    expect(coverage.foreignAt).toEqual(["router.py:4", "sub.py:4"]);
   });
 });
 
