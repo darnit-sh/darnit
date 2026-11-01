@@ -7,10 +7,10 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { parse as parseCode } from "@ast-grep/napi";
+import { Lang, parse as parseCode } from "@ast-grep/napi";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
-import { applyAndVerify, exitCodeFor, fix, type FixOptions, forTerminal, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
+import { applyAndVerify, exitCodeFor, fix, type FixOptions, forTerminal, keepsComments, prBody, prose, Refusal, renderSummary, toJson } from "../src/fix.js";
 import { git } from "../src/git.js";
 import { WORKFLOW } from "../src/init.js";
 import { CAPS, type Plan } from "../src/plan.js";
@@ -54,10 +54,18 @@ vi.mock("node:fs/promises", async (original) => {
   };
 });
 
+// A pack to apply in place of the record's own, so a test can run fix with a rule that misbehaves.
+const rules = vi.hoisted(() => ({ packDir: undefined as string | undefined }));
+vi.mock("../src/packs/apply.js", async (original) => {
+  const real = await original<typeof import("../src/packs/apply.js")>();
+  return { ...real, applyRules: (packDir: string, targets: readonly string[]) => real.applyRules(rules.packDir ?? packDir, targets) };
+});
+
 const PACKS = fileURLToPath(new URL("../packs/", import.meta.url));
 
 const tempDirs: string[] = [];
 afterEach(async () => {
+  rules.packDir = undefined;
   runs.limitMs = undefined;
   runs.count = 0;
   Object.assign(race, { path: "", beforeRead: undefined, beforeWrite: undefined });
@@ -145,7 +153,7 @@ describe("text from the repository in output", () => {
     const { stdout } = await darnit(dir, "fix", "--dry-run", "--no-test");
     expect(stdout).not.toMatch(HIDDEN);
     expect(stdout).toContain(String.raw`-export const r = c.chat.completions.create({ max_tokens: /*\u202e\u2066*/ cap("\u202eab\u2069\u009b\u200b\ufeff1A") });`);
-    expect(stdout).toContain(String.raw`+export const r = c.chat.completions.create({ max_completion_tokens: cap("\u202eab\u2069\u009b\u200b\ufeff1A") });`);
+    expect(stdout).toContain(String.raw`+export const r = c.chat.completions.create({ max_completion_tokens: /*\u202e\u2066*/ cap("\u202eab\u2069\u009b\u200b\ufeff1A") });`);
     expect(stdout).toContain(`+export const s = c.chat.completions.create({ ${plain.replace("max_tokens", "max_completion_tokens")} });`);
     const json = await darnit(dir, "fix", "--dry-run", "--no-test", "--json");
     expect(json.stdout).not.toMatch(HIDDEN);
@@ -481,6 +489,93 @@ describe("fix verifies its own rewrites", () => {
     expect(outcome).toEqual({ changed: [], remaining: [{ file: "sdk.js", line: 2 }] });
     expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
   });
+
+  it("keeps every comment between a renamed key and its value, byte for byte", async () => {
+    const js = `import OpenAI from "openai";
+const client = new OpenAI();
+export const b1 = () => client.chat.completions.create({ model: "o1", max_tokens: /* cap for cost */ 500, messages: [] });
+export const b2 = () => client.chat.completions.create({ model: "o1", max_tokens /* cap */ : 500, messages: [] });
+export const l1 = () => client.chat.completions.create({ model: "o1", max_tokens: // cap for cost
+  500, messages: [] });
+export const l2 = () => client.chat.completions.create({ model: "o1", max_tokens // cap
+  : 500, messages: [] });
+`;
+    const py = `from openai import OpenAI
+client = OpenAI()
+client.chat.completions.create(model="o1", max_tokens=  # cap for cost
+    500, messages=[])
+client.chat.completions.create(model="o1", max_tokens  # cap
+    =500, messages=[])
+`;
+    const files = { "app.js": js, "app.ts": js, "app.py": py };
+    const renamed = (s: string) => s.replaceAll("max_tokens", "max_completion_tokens");
+    const preview = await fix(await repoWith(files), { noTest: true, dryRun: true });
+    for (const line of renamed(js + py).split("\n").filter((l) => l.includes("max_completion_tokens"))) expect(preview.diff).toContain(`+${line}\n`);
+    const dir = await repoWith(files);
+    const result = await fix(dir, { noTest: true });
+    expect(result.records[0]).toMatchObject({ applied: true, sites: 10 });
+    expect(result.records[0]!.remaining).toBeUndefined();
+    expect(await tree(dir)).toEqual({ "app.js": renamed(js), "app.ts": renamed(js), "app.py": renamed(py) });
+  });
+
+  // The old rule, which replaced the whole pair and so everything between key and value.
+  async function pairRulePack(): Promise<string> {
+    const pack = await mkdtemp(join(tmpdir(), "darnit-pack-"));
+    tempDirs.push(pack);
+    await mkdir(join(pack, "rules", "js"), { recursive: true });
+    await writeFile(
+      join(pack, "rules", "js", "01-pair.yml"),
+      "id: pair\nlanguage: javascript\nrule:\n  pattern:\n    context: '({ max_tokens: $N })'\n    selector: pair\nfix: 'max_completion_tokens: $N'\n",
+    );
+    return pack;
+  }
+  const COMMENT = "the rewrite would drop or change a comment in this file";
+  const commented = SDK_CALL.replace("max_tokens: 5", "max_tokens: /* cap */ 5");
+
+  it("leaves a file for a person when the rewrite would drop a comment", async () => {
+    rules.packDir = await pairRulePack();
+    for (const dryRun of [true, false]) {
+      const dir = await repoWith({ "a.js": commented });
+      const result = await fix(dir, { noTest: true, dryRun });
+      expect(result.records[0]).toMatchObject({ applied: false, reason: COMMENT, remaining: [{ file: "a.js", note: COMMENT, sites: 1 }] });
+      expect(result.diff).toBe("");
+      expect(renderSummary(result)).toContain(`not rewritten: ${COMMENT}\n  needs a human: a.js (${COMMENT})`);
+      expect(await tree(dir)).toEqual({ "a.js": commented });
+    }
+  });
+
+  it("puts back only the files whose comments a rule drops", async () => {
+    const dir = await repoWith({ "a.js": commented, "sdk.js": SDK_CALL });
+    const record = (await loadRecords()).find((l) => l.record.id.includes("max-tokens"))!.record;
+    const outcome = await applyAndVerify(dir, { record, packDir: await pairRulePack(), files: ["a.js", "sdk.js"], sites: 2, sitesIn: { "a.js": 1, "sdk.js": 1 } });
+    expect(outcome).toEqual({ changed: ["sdk.js"], remaining: [{ file: "a.js", note: COMMENT, sites: 1 }] });
+    expect(await tree(dir)).toEqual({ "a.js": commented, "sdk.js": SDK_CALL.replace("max_tokens", "max_completion_tokens") });
+  });
+
+  it("keeps comments when it renames functions and function_call, and puts back a wrap that would change one", async () => {
+    const record = (await loadRecords()).find((l) => l.record.id.includes("functions-to-tools"))!;
+    const call = (options: string) => `import OpenAI from "openai";\nexport const r = new OpenAI().chat.completions.create({\n${options}});\n`;
+    const renamed = call('  functions /* old */ : [{ name: "a" }],\n  function_call: // pick\n    "auto",\n');
+    // The wrap rule puts its closing braces after a trailing line comment, which turns them into comment text.
+    const wrapped = call('  functions: [{ name: "b" // trailing\n  }],\n');
+    const dir = await repoWith({ "renamed.js": renamed, "wrapped.js": wrapped });
+    const outcome = await applyAndVerify(dir, { ...record, files: ["renamed.js", "wrapped.js"], sites: 3, sitesIn: { "renamed.js": 2, "wrapped.js": 1 } });
+    expect(outcome.changed).toEqual(["renamed.js"]);
+    expect(outcome.remaining).toEqual([{ file: "wrapped.js", note: COMMENT, sites: 1 }]);
+    expect(await tree(dir)).toEqual({
+      "renamed.js": call('  tools /* old */ : [{ type: "function", function: { name: "a" } }],\n  tool_choice: // pick\n    "auto",\n'),
+      "wrapped.js": wrapped,
+    });
+  });
+
+  it("compares comments in time near a parse, on a file made of comments", async () => {
+    const source = `${"// note\nconst a = { max_tokens: /* x */ 1 }; /* y */\n".repeat(40_000)}`;
+    const after = source.replaceAll("max_tokens", "max_completion_tokens");
+    const parsing = await cpuTime(() => parseCode(Lang.JavaScript, source), 3);
+    expect(await cpuTime(() => expect(keepsComments("big.js", source, after)).toBe(true), 3)).toBeLessThan(6 * parsing + 500);
+    expect(keepsComments("big.js", source, after.replace("/* y */\n", "\n"))).toBe(false);
+    expect(keepsComments("big.txt", source, source)).toBe(false);
+  }, 60_000);
 
   it("does not list leftovers under a partial rewrite that was put back", async () => {
     const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });

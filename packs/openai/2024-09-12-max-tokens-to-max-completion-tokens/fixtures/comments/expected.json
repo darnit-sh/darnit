@@ -1,0 +1,8 @@
+{
+  "note": "Comments on either side of the colon or = stay byte for byte: the rules replace only the key.",
+  "matches": {
+    "before/app.js": 4,
+    "before/app.ts": 4,
+    "before/app.py": 2
+  }
+}
