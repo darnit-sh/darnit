@@ -26,7 +26,7 @@ const KIND: Record<string, ChangeRecord["kind"]> = {
   "request-parameter-removed": "breaking",
   "endpoint-deprecated": "deprecation",
 };
-const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
+export const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
 // Spec text lands in ast-grep patterns, fixtures and the corpus pull request,
 // so only plain names and paths get through; anything else is counted in `ignored`, never echoed.
 // The caps keep folder names short (longest in OpenAI's spec: a 35-character name, an 82-character path).
@@ -47,6 +47,40 @@ const firstSentence = (s: string) => sentences(s)[0]!.slice(0, 200);
 // The sentence that states the deprecation, when there is one.
 const quote = (s: string) => (sentences(s).find((x) => /deprecat|in favou?r of|replaced by/i.test(x)) ?? firstSentence(s)).slice(0, 200);
 
+// "POST /v1/chat/completions" or "/v1/chat/completions" as its method, if any, and its path without the
+// /v1 prefix, so "/completions" is not "/chat/completions". A query stays: "/responses?beta=true" is the spec's
+// separate beta surface, which a record for "/responses" does not cover.
+const endpointOf = (e: string) => {
+  const m = /^([A-Z]+) (.*)$/.exec(e);
+  return { method: m?.[1], path: (m?.[2] ?? e).replace(/^\/v1(?=\/|$)/, "") };
+};
+
+/** Whether a record finds `field` whatever its value: a pattern sets it to a metavariable or names it bare, not only to a literal. */
+function findsAnyValue(r: ChangeRecord, field: string): boolean {
+  const name = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const any = new RegExp(`(^|[^\\w$])["']?${name}["']?\\s*[:=]\\s*\\$|\\{\\s*${name}\\s*\\}`);
+  return Object.values(r.detection.astGrepPatterns).some((ps) => ps?.some((p) => any.test(p.context)));
+}
+
+/**
+ * Whether a record covers `field` on `path` (the whole endpoint when there is no field), and on `method` when
+ * both name one. With `symbol`, the operation's SDK call, a record that lists that call covers it too. A record
+ * that finds a field only set to particular values, as a model shutdown finds `model: "dall-e-2"`, covers those
+ * values, never the field.
+ */
+export function covers(r: ChangeRecord, vendor: string, path: string, field: string | undefined, method?: string, symbol?: string): boolean {
+  const want = endpointOf(path);
+  return (
+    r.vendor === vendor &&
+    (field ? !!r.surface.fields?.includes(field) && findsAnyValue(r, field) : !r.surface.fields?.length) &&
+    (!!r.surface.endpoints?.some((e) => {
+      const have = endpointOf(e);
+      return have.path === want.path && (!have.method || !method || have.method === method);
+    }) ||
+      (symbol !== undefined && !!r.surface.sdkSymbols?.includes(symbol)))
+  );
+}
+
 export function deriveCandidates(input: {
   vendor: string;
   config: VendorConfig;
@@ -64,11 +98,6 @@ export function deriveCandidates(input: {
   // The same field changing on several endpoints is one record with several endpoints.
   type Draft = { slug: string; kind: ChangeRecord["kind"]; field?: string | undefined; rename?: string | undefined; description: string; text: string; endpoints: string[]; paths: string[]; symbols: string[] };
   const drafts = new Map<string, Draft>();
-
-  const covered = (path: string, field: string | undefined) =>
-    existing.some(
-      (r) => r.vendor === vendor && r.surface.endpoints?.some((e) => e.endsWith(path)) && (field ? r.surface.fields?.includes(field) : !r.surface.fields?.length),
-    );
 
   for (const e of entries) {
     const kind = KIND[e.id] ?? (ENDPOINT_GONE.test(e.id) ? "breaking" : undefined);
@@ -104,7 +133,7 @@ export function deriveCandidates(input: {
     const key = `${endpoint} ${field ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (covered(e.path, field)) {
+    if (existing.some((r) => covers(r, vendor, e.path!, field))) {
       skip(`${e.id} (already recorded)`);
       continue;
     }
