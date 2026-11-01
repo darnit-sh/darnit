@@ -43,7 +43,9 @@ export function cellModels(text: string): string[] | undefined {
 }
 
 // Named entities the page uses, decoded; any other is left, so a fold holding it fails closed.
-const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", shy: "\u00ad", hyphen: "\u2010", ndash: "\u2013", mdash: "\u2014", rsquo: "\u2019", rdquo: "\u201d" };
+// The page writes "no replacement" as an em dash, decoded from &mdash; to this.
+const EM_DASH = "\u2014";
+const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", shy: "\u00ad", hyphen: "\u2010", ndash: "\u2013", mdash: EM_DASH, rsquo: "\u2019", rdquo: "\u201d" };
 // Tags the page wraps cell text in. Any other tag, such as img or script, refuses the cell.
 const INLINE = new Set(["a", "b", "br", "code", "em", "i", "p", "span", "strong", "sub", "sup"]);
 const MAX_CELL = 10_000;
@@ -219,7 +221,7 @@ function entry(record: ChangeRecord, text: string, retiring: (id: string) => str
   const vendor = vendorName(record.vendor);
   const source = record.sources[0]!.url;
   if (isModel(text)) return { model: text, source };
-  if (text === "\u2014") return { human: `${vendor} names no replacement`, source };
+  if (text === EM_DASH) return { human: `${vendor} names no replacement`, source };
   const other = (ids: string[]) => [...new Set(ids.flatMap((id) => retiring(id)))].filter((o) => !selves.has(o.replace(/\*? \(retiring too\)$|\*$/, "")));
   const loop = { human: `the recommended replacements loop back to ${[...selves].at(-1)}`, source };
   const setting = SETTING.exec(text);
