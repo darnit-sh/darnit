@@ -249,8 +249,8 @@ type Accounting = {
  * Joins each item to the records that cover it or to its not-covered entry. An operation is covered by a record for
  * its endpoint (or its SDK call, from `symbols`) with no fields. A request schema, or one of its properties, is
  * covered only when every operation whose request reaches the schema has such a record, for that field when there
- * is one. A deprecated enum value is covered by a record whose surface names a field that holds it, on an operation
- * whose request reaches its schema, and whose patterns set that field to that exact value.
+ * is one. A deprecated enum value is covered when every operation whose request reaches its schema has a record whose
+ * surface names that operation and a field that holds the value, and whose patterns set that field to that exact value.
  */
 export function account(input: {
   vendor: string;
@@ -276,9 +276,15 @@ export function account(input: {
   const coveredBy = (item: Item): ChangeRecord[] => {
     if (item.value !== undefined) {
       const fields = item.field !== undefined ? [item.field] : [...(held.get(item.schema ?? "") ?? [])];
-      const ops = reach.get(item.schema ?? "") ?? [];
-      const found = fields.flatMap((f) => (setting.get(`${f}\n${item.value}`) ?? []).filter((r) => r.surface.fields?.includes(f)));
-      return [...new Set(found)].filter((r) => ops.some((op) => namesOperation(r, op.path, op.method, input.symbols?.[`${op.method} ${op.path}`])));
+      const candidates = [...new Set(fields.flatMap((f) => (setting.get(`${f}\n${item.value}`) ?? []).filter((r) => r.surface.fields?.includes(f))))];
+      // As for a property: every operation whose request reaches the schema needs a record that names it.
+      const found = new Set<ChangeRecord>();
+      for (const op of reach.get(item.schema ?? "") ?? []) {
+        const these = candidates.filter((r) => namesOperation(r, op.path, op.method, input.symbols?.[`${op.method} ${op.path}`]));
+        if (these.length === 0) return [];
+        for (const r of these) found.add(r);
+      }
+      return [...found];
     }
     if (item.method !== undefined && item.path !== undefined) return records.filter((r) => coversOp(r, item.method!, item.path!, item.field));
     if (item.schema === undefined) return [];

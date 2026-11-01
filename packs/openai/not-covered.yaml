@@ -114,6 +114,16 @@
     is missed.
 
 - items:
+    - schema ImageGenTool property model anyOf 1 enum gpt-image-1
+  date: "2026-10-23"
+  needs-record: >-
+    Add conversations.create, conversations.items.create, evals.runs.create and
+    responses.input_tokens.count to the SDK calls of
+    openai:2026-04-22:legacy-gpt-model-snapshots-shut-down, with /v1/conversations and /v1/evals
+    in its endpoints. Those requests can carry an image generation tool whose model is gpt-image-1,
+    and `darnit check` reports such calls only as possibly affected, not as call sites.
+
+- items:
     - schema ModelIdsShared anyOf 1 enum gpt-5
     - schema ModelIdsShared anyOf 1 enum gpt-5-mini
     - schema ModelIdsShared anyOf 1 enum gpt-5-nano

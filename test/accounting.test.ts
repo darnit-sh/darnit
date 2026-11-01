@@ -196,13 +196,32 @@ describe("account", () => {
       record("surface-lacks-size", ["/v1/images/generations"], ["other"], ['({ size: "256x256" })']),
       record("other-endpoint", ["/v1/elsewhere"], ["size"], ['({ size: "256x256" })']),
       record("size", ["/v1/images/generations"], ["size"], ['({ size: "256x256" })']),
-      record("model-by-call", ["/v1/nothing"], ["model"], ["f(model='old')"], ["images.generate"]),
+      record("model-by-call", ["/v1/nothing"], ["model"], ["f(model='old')"], ["images.generate", "other.create"]),
     ];
-    const result = account({ vendor: "openai", spec, removals: [], records, notCovered: [], symbols: { "POST /images/generations": "images.generate" } });
+    const symbols = { "POST /images/generations": "images.generate", "POST /other": "other.create" };
+    const result = account({ vendor: "openai", spec, removals: [], records, notCovered: [], symbols });
     expect(Object.fromEntries(result.covered)).toEqual({
       "schema CreateImageRequest property size enum 256x256": ["openai:2026-01-01:size"],
       "schema Models enum old": ["openai:2026-01-01:model-by-call"],
     });
+  });
+
+  it("covers an enum value only when records name every operation whose request reaches its schema", () => {
+    const spec = {
+      paths: { "/a": { post: body("A") }, "/b": { post: body("B") } },
+      components: {
+        schemas: {
+          A: { properties: { model: { $ref: "#/components/schemas/Models" } } },
+          B: { properties: { model: { $ref: "#/components/schemas/Models" } } },
+          Models: { type: "string", enum: ["old"], "x-openai-enum-deprecations": { old: { message: "" } } },
+        },
+      },
+    };
+    const forA = record("old-on-a", ["/v1/a"], ["model"], ['({ model: "old" })']);
+    const forB = record("old-on-b", ["/v1/b"], ["model"], ['({ model: "old" })']);
+    const run = (...records: ReturnType<typeof record>[]) => account({ vendor: "openai", spec, removals: [], records, notCovered: [] });
+    expect(run(forA).unaccounted).toEqual(["schema Models enum old"]);
+    expect(run(forA, forB).covered.get("schema Models enum old")).toEqual([forA.id, forB.id]);
   });
 
   it("walks a YAML alias that contains itself once", () => {
