@@ -166,6 +166,18 @@ describe("account", () => {
     expect(derive(record("call", ["/v1/old"], [], ["$C.old.create($$$ARGS)"]))).toHaveLength(0);
   });
 
+  it("takes only a metavariable as any value: a record that sets a field to another literal covers only that literal", () => {
+    const spec = { paths: { "/chat/completions": { post: body("Request") } }, components: { schemas: { Request: { properties: { functions: { deprecated: true } } } } } };
+    const removal: Removal = { observedAt: "2026-01-01", id: "request-property-removed", operation: "POST", path: "/chat/completions", text: "removed the request property `functions`" };
+    const run = (...contexts: string[]) =>
+      account({ vendor: "openai", spec, removals: [removal], records: [record("functions", ["/v1/chat/completions"], ["functions"], contexts)], notCovered: [] }).unaccounted;
+    const both = ["schema Request property functions", "2026-01-01 POST /chat/completions request-property-removed `functions`"];
+    expect(run("({ functions: true })", "f(functions=True)")).toEqual(both);
+    for (const literal of ["1", "None", "null", "[]", "{ a: $V }"]) expect(run(`({ functions: ${literal} })`), literal).toEqual(both);
+    expect(run("({ functions: $FNS })")).toEqual([]);
+    expect(run("f(functions=$$$FNS)")).toEqual([]);
+  });
+
   it("covers a field only by a record whose surface names that field", () => {
     const removal: Removal = { observedAt: "2026-01-01", id: "request-property-removed", operation: "POST", path: "/x", text: "removed the request property `x`" };
     const run = (r: ReturnType<typeof record>) => account({ vendor: "openai", spec: {}, removals: [removal], records: [r], notCovered: [] }).unaccounted;

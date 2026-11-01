@@ -55,11 +55,12 @@ const endpointOf = (e: string) => {
   return { method: m?.[1], path: (m?.[2] ?? e).replace(/^\/v1(?=\/|$)/, "") };
 };
 
-type Setting = { key: string; value: string | undefined };
+type Setting = { key: string; any: boolean; value?: string | undefined };
 const settingsMemo = new WeakMap<ChangeRecord, Setting[]>();
 /**
- * Every key a record's patterns set, with the literal they set it to, or undefined for any value (a metavariable, a
- * bare `{ key }`, or anything else). Keys are whole names: `image_size: "x"` sets `image_size`, never `size`.
+ * Every key a record's patterns set: to any value (a metavariable such as `$V`, or a bare `{ key }`), to a string
+ * (`value`), or to another literal (`true`, `1`, `None`, an object), which is only that literal. Keys are whole names:
+ * `image_size: "x"` sets `image_size`, never `size`.
  */
 export function settingsOf(r: ChangeRecord): Setting[] {
   let found = settingsMemo.get(r);
@@ -67,8 +68,8 @@ export function settingsOf(r: ChangeRecord): Setting[] {
   found = [];
   for (const ps of Object.values(r.detection.astGrepPatterns))
     for (const { context } of ps ?? []) {
-      for (const m of context.matchAll(/["']?([A-Za-z_]\w*)["']?\s*[:=]\s*(?:"([^"]*)"|'([^']*)')?/g)) found.push({ key: m[1]!, value: m[2] ?? m[3] });
-      for (const m of context.matchAll(/\{\s*([A-Za-z_]\w*)\s*\}/g)) found.push({ key: m[1]!, value: undefined });
+      for (const m of context.matchAll(/["']?([A-Za-z_]\w*)["']?\s*[:=]\s*(\$|"([^"]*)"|'([^']*)')?/g)) found.push({ key: m[1]!, any: m[2] === "$", value: m[3] ?? m[4] });
+      for (const m of context.matchAll(/\{\s*([A-Za-z_]\w*)\s*\}/g)) found.push({ key: m[1]!, any: true });
     }
   settingsMemo.set(r, found);
   return found;
@@ -101,7 +102,7 @@ export function covers(r: ChangeRecord, vendor: string, path: string, field: str
   return (
     r.vendor === vendor &&
     (field
-      ? !!r.surface.fields?.includes(field) && settings.some((s) => s.key === field && s.value === undefined)
+      ? !!r.surface.fields?.includes(field) && settings.some((s) => s.key === field && s.any)
       : !r.surface.fields?.length && settings.length === 0) &&
     namesOperation(r, path, method, symbol)
   );
