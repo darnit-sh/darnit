@@ -9,8 +9,9 @@ import { parseChangeRecord, recordModels } from "../src/records/schema.js";
 
 // Writes fix.models into every record that detects models, from a saved copy of OpenAI's deprecations page, renaming
 // only to models OpenAI's API spec in corpus/openai lists. Fails where a record's notes disagree with the page, or the
-// page has no row it could read for a detected model, or any row on the page may name one darnit did not read from it,
-// or folds to something darnit cannot read, and is not in corpus/openai/non-model-rows.txt.
+// page has no row it could read for a detected model, or a table darnit cannot read as a person would, or any row on
+// the page that may name one darnit did not read from it, is not in corpus/openai/non-model-rows.txt. Model names
+// outside the page's tables, in lists or paragraphs, are not checked.
 // Usage: npm run replacements -- --page <saved page> [--check]
 // --check writes nothing and also fails when a record's fix.models is not what the page gives.
 

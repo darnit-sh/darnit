@@ -86,85 +86,116 @@ const rawCells = (row: string) =>
     .filter((c) => /^<t[dh]/i.test(c))
     .map((c) => c.slice(c.indexOf(">") + 1).split(/<\/t[dh]\s*>/i)[0]!);
 
-/** Where the tag starting at `open` ends, past any quoted attribute value, or -1 when it does not. */
-function tagEnd(html: string, open: number): number {
-  let quote = "";
-  for (let i = open + 1; i < html.length; i++) {
-    const c = html[i]!;
-    if (quote) quote = c === quote ? "" : quote;
-    else if (c === '"' || c === "'") quote = c;
-    else if (c === ">") return i + 1;
+// Markup a deprecation table may hold: its own tags and the inline ones cells use, attribute values double-quoted, and
+// comments whose body holds no ">". Anything else in a table fails the run.
+const TABLE_TAGS = new Set(["table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col", ...INLINE]);
+const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:\s+[a-zA-Z][a-zA-Z0-9_:.-]*="[^"<>]*")*)\s*>/y;
+const COMMENT = /<!--(?!-?>)[^>]*-->/y;
+const REF = /&(?:#[xX][0-9a-fA-F]+;?|#\d+;?|([a-zA-Z]+);)/y;
+const NEXT = /[<&]/g;
+
+/** Whether markup keeps to that subset, every reference one darnit decodes. */
+function strict(html: string): boolean {
+  for (NEXT.lastIndex = 0; NEXT.exec(html) !== null; ) {
+    const at = NEXT.lastIndex - 1;
+    for (const re of [TAG, COMMENT, REF]) re.lastIndex = at;
+    const tag = html[at] === "<" ? TAG.exec(html) : null;
+    const ref = html[at] === "&" ? REF.exec(html) : null;
+    if (tag && TABLE_TAGS.has(tag[2]!.toLowerCase()) && !(tag[1] && tag[3])) NEXT.lastIndex = TAG.lastIndex;
+    else if (ref && (ref[1] === undefined || Object.hasOwn(NAMED, ref[1]))) NEXT.lastIndex = REF.lastIndex;
+    else if (html[at] === "<" && COMMENT.exec(html)) NEXT.lastIndex = COMMENT.lastIndex;
+    else return false;
   }
-  return -1;
+  return true;
 }
 
-/**
- * Markup kept to the letters and digits a person reads in it: comments and tags left out, references decoded once,
- * NFKC, lower case. A model is checked against it the same way, so no spelling hides one. `unsafe` when anything is
- * left that darnit cannot read as a person would: a `&` or `<`, an unclosed tag or comment, or a letter, digit or mark
- * outside ASCII, such as a Cyrillic o.
- */
-export function fold(html: string): { folded: string; unsafe: boolean } {
+/** Markup's text with each tag left out, from a "<" to the next ">", and references decoded once. */
+function untag(html: string): string {
   let text = "";
-  let unsafe = false;
-  for (let at = 0; at < html.length; ) {
-    const open = html.indexOf("<", at);
-    const end = open === -1 ? -1 : html.startsWith("<!--", open) ? html.indexOf("-->", open + 4) : tagEnd(html, open);
-    text += html.slice(at, open === -1 || end === -1 ? undefined : open);
-    if (open === -1 || end === -1) {
-      unsafe ||= open !== -1;
-      break;
-    }
-    at = html.startsWith("<!--", open) ? end + 3 : end;
+  let at = 0;
+  for (let open = html.indexOf("<"); open !== -1; open = html.indexOf("<", at)) {
+    const close = html.indexOf(">", open);
+    text += html.slice(at, open);
+    at = close === -1 ? html.length : close + 1;
   }
-  const plain = decode(text).normalize("NFKC").toLowerCase();
-  return { folded: plain.replace(/[^a-z0-9]/g, ""), unsafe: unsafe || /[&<]|(?![\0-\x7f])[\p{L}\p{N}\p{M}]/u.test(plain) };
+  return decode(text + html.slice(at));
 }
+
+/** The letters and digits a person reads in markup, lower case. */
+export const fold = (html: string) => untag(html).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Whether darnit reads a table as a person would: its markup keeps to the subset above, and no `&` or `<` is left after
+ * decoding, nor a letter, digit or mark outside ASCII, such as a Cyrillic o.
+ */
+const readable = (html: string) => strict(html) && !/[&<]|(?![\0-\x7f])[\p{L}\p{N}\p{M}]/u.test(untag(html));
 
 const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
 
 /**
- * One `<tr>` of the page, folded, with what darnit read from it: the models in its model cell and the models its
- * replacement offers. `exempt` is the model a row retiring fine-tuning on it names.
+ * A `<tr>` of the page, or a table's text outside its rows, folded, with what darnit read from it: the models in its
+ * model cell and the models its replacement offers. `exempt` is the model a row retiring fine-tuning on it names.
  */
-export type Row = { label: string; folded: string; unsafe: boolean; read: string[]; exempt?: string };
+export type Row = { label: string; folded: string; read: string[]; exempt?: string };
 
-/** What the page's tables say: each model's replacement cells in page order, newest first, and every row on the page. */
-export type Page = { replacements: Map<string, string[]>; rows: Row[] };
+/** A table of the page, folded, and whether darnit reads it as a person would. */
+export type Table = { label: string; folded: string; readable: boolean };
+
+/** What the page's tables say: each model's replacement cells in page order, newest first, every table, and every row. */
+export type Page = { replacements: Map<string, string[]>; tables: Table[]; rows: Row[] };
 
 /**
  * The page's deprecation tables: shutdown date first, then the model, any price columns, and the replacement column.
- * Every `<tr>` on the page, in any table or none, is kept as a Row, read or not.
+ * Every `<tr>` on the page, in any table or none, is kept as a Row, read or not, and so is a table's text outside its rows.
  */
 export function readPage(html: string): Page {
   const replacements = new Map<string, string[]>();
   const rows: Row[] = [];
-  // The table a row is in, 0 outside any; its header cells once read; its replacement column, -1 if not a deprecation table.
-  let [table, open, n] = [0, false, 0];
-  let head: (string | undefined)[] | undefined;
-  let to = -1;
+  // Tables not nested in another, with their whole markup; and the open tables, innermost last, each with its header
+  // cells once read, its replacement column, and its rows so far.
+  const tables: (Table & { markup: string })[] = [];
+  const open: { label: string; head?: (string | undefined)[]; to: number; n: number }[] = [];
+  let [count, loose] = [0, 0];
+  const keep = (label: string, markup: string, read: string[] = [], exempt?: string) => {
+    if (open.length > 0) tables.at(-1)!.markup += markup;
+    const folded = fold(markup);
+    if (folded || /^<tr/i.test(markup)) rows.push({ label, folded, read, ...(exempt ? { exempt } : {}) });
+  };
   for (const part of html.split(/(?=<table[\s>]|<\/table\s*>|<tr[\s>])/i)) {
-    if (/^<\/?table/i.test(part)) [table, open, n, head, to] = [/^<t/i.test(part) ? table + 1 : table, /^<t/i.test(part), 0, undefined, -1];
-    if (!/^<tr/i.test(part)) continue;
-    const raw = part.split(/<\/tr\s*>/i)[0]!;
-    const cells = rawCells(raw).map(cellText);
-    const row: Row = { label: `${open ? `table ${table}` : "outside a table,"} row ${++n}`, ...fold(raw), read: [] };
-    rows.push(row);
-    if (!open) continue;
-    if (head === undefined) {
-      head = cells;
-      to = head[0]?.toLowerCase() === "shutdown date" && head.every((h) => h !== undefined) ? head.findIndex((h) => REPLACEMENT.has(h.toLowerCase())) : -1;
+    const close = /^<\/table\s*>/i.exec(part)?.[0];
+    if (close !== undefined && open.length > 0) {
+      tables.at(-1)!.markup += close;
+      open.pop();
+      if (open.length > 0) keep(`${open.at(-1)!.label}, outside its rows`, part.slice(close.length));
       continue;
     }
-    if (to < 2 || cells.length !== head.length || cells.some((c) => c === undefined)) continue;
-    const models = cellModels(cells[1]!);
-    for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), cells[to]!]);
-    // A row retiring fine-tuning on a model, not calls to it: exempt when that is a real model.
-    const exempt = models ? undefined : /^New fine-tuning training on ([a-z0-9._:-]+)$/.exec(cells[1]!)?.[1];
-    if (exempt) row.exempt = exempt;
-    if (models || exempt) row.read.push(...(models ?? []), ...offered(cells[to]!));
+    if (/^<table/i.test(part)) {
+      const label = `table ${++count}`;
+      if (open.length === 0) tables.push({ label, folded: "", readable: false, markup: "" });
+      open.push({ label, to: -1, n: 0 });
+      keep(`${label}, outside its rows`, part);
+      continue;
+    }
+    if (!/^<tr/i.test(part)) continue;
+    const [raw = "", ...after] = part.split(/(?<=<\/tr\s*>)/i);
+    const table = open.at(-1);
+    const cells = rawCells(raw).map(cellText);
+    let read: string[] = [];
+    let exempt: string | undefined;
+    if (table && table.head === undefined) {
+      table.head = cells;
+      table.to = cells[0]?.toLowerCase() === "shutdown date" && cells.every((h) => h !== undefined) ? cells.findIndex((h) => REPLACEMENT.has(h.toLowerCase())) : -1;
+    } else if (table && table.to >= 2 && cells.length === table.head!.length && cells.every((c) => c !== undefined)) {
+      const models = cellModels(cells[1]!);
+      for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), cells[table.to]!]);
+      // A row retiring fine-tuning on a model, not calls to it: exempt when that is a real model.
+      exempt = models ? undefined : /^New fine-tuning training on ([a-z0-9._:-]+)$/.exec(cells[1]!)?.[1];
+      if (models || exempt) read = [...(models ?? []), ...offered(cells[table.to]!)];
+    }
+    keep(table ? `${table.label} row ${++table.n}` : `outside a table, row ${++loose}`, raw, read, exempt);
+    if (table) keep(`${table.label}, after row ${table.n}`, after.join(""));
   }
-  return { replacements, rows };
+  return { replacements, rows, tables: tables.map(({ markup, ...t }) => ({ ...t, folded: fold(markup), readable: readable(markup) })) };
 }
 
 // One model id and one setting such as "(reasoning.mode: pro)"; any other words get the fixed reason.
@@ -218,9 +249,10 @@ const flat = (id: string) => id.replace(/[^a-z0-9]/g, "");
  * A replacement the page retires too is followed to one it does not; one that ends with no plain swap, or loops,
  * becomes `human`, and so does one the API spec does not list. A model a reason offers is followed the same way, or
  * said to retire too, and the model being replaced is never offered. A detected model the page has no row for is a
- * problem. So is every row on the page, read or not, whose folded text holds a detected model darnit did not read
- * from it, or that folds unsafe: an older row must never stand in for a newer one. That check over-reports on
- * purpose; a row a person has confirmed names no model goes in `notModels`, by its folded text.
+ * problem. So is every table darnit cannot read as a person would, and every row on the page, read or not, or text of
+ * a table outside its rows, whose folded text holds a detected model darnit did not read from it: an older row must
+ * never stand in for a newer one. That check over-reports on purpose; a table or row a person has confirmed names no
+ * model goes in `notModels`, by its exact folded text. Model names outside the page's tables are not checked.
  */
 export function replacementsFor(
   records: readonly ChangeRecord[],
@@ -268,20 +300,18 @@ export function replacementsFor(
   };
   const detected = [...new Set(records.flatMap(recordModels))];
   const real = new Set([...detected, ...known]);
-  const onPage = new Set(page.rows.map((r) => r.folded));
-  const problems = [...notModels].filter((n) => !onPage.has(n)).map((n) => `the known non-model row ${n} is no longer on the page; take it off the list`);
+  const onPage = new Set([...page.tables, ...page.rows].map((r) => r.folded));
+  const problems = [...notModels].filter((n) => !onPage.has(n)).map((n) => `the known non-model table or row ${n} is no longer on the page; take it off the list`);
+  for (const table of page.tables.filter((t) => !t.readable && !notModels.has(t.folded)))
+    problems.push(`${table.label} (folded: ${table.folded.slice(0, 200)}) holds markup, a reference or a letter darnit cannot read as a person would`);
   const unread = new Set<string>();
-  for (const row of page.rows) {
-    if (notModels.has(row.folded)) continue;
-    const said = `${row.label} (folded: ${row.folded.slice(0, 200)})`;
-    if (row.unsafe) problems.push(`${said} holds markup, a reference or a letter darnit cannot read as a person would`);
-    if (row.unsafe) continue;
+  for (const row of page.rows.filter((r) => !notModels.has(r.folded))) {
     // What darnit read from the row is taken out, longest first, so only names it did not read are left.
     const read = [...row.read, ...(row.exempt && real.has(row.exempt) ? [row.exempt] : [])].map(flat).sort((a, b) => b.length - a.length);
     const rest = read.reduce((text, id) => text.replaceAll(id, " "), row.folded);
     for (const m of detected.filter((d) => rest.includes(flat(d)))) {
       unread.add(m);
-      problems.push(`${said} may name ${m}, which darnit did not read from it`);
+      problems.push(`${row.label} (folded: ${row.folded.slice(0, 200)}) may name ${m}, which darnit did not read from it`);
     }
   }
   const models = new Map<string, Record<string, Replacement>>();

@@ -381,7 +381,10 @@ on any difference. A rule that quietly changes nothing fails the build too.
 
 Records are written by hand from vendor announcements, except model shutdowns:
 those are read from OpenAI's deprecations page by a script, confirmed by a second,
-separate parser, and stay parser-verified until a person reviews them. New candidates also
+separate parser, and stay parser-verified until a person reviews them. Their replacements
+come from the same page's tables (`npm run replacements`), which fails on any table it cannot
+read as a person would and on any table row naming a model it did not read from that row;
+model names outside the page's tables, in lists or paragraphs, are not checked. New candidates also
 come from the vendors' own API specs: once a week a workflow
 compares each spec in `vendors.yml` with the last saved copy (using
 [oasdiff](https://github.com/oasdiff/oasdiff)) and turns deprecated or removed
