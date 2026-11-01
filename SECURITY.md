@@ -59,11 +59,17 @@ for example `http.curloptResolve` pointing github.com at another address with
 `http.sslVerify false`. The README workflow cannot prevent either. On code you do not trust, run
 `check` only.
 
-`fix --pr` commits darnit's rewrite only. Before the build and tests run, it keeps the bytes and mode
-of each file it rewrote. Before committing, it opens no pull request when a file on disk then differs,
-is a link or has a second name, and after `git add` of those files alone, when the index would commit
-anything else: another file, a different mode, or a file a git filter changed on the way in. A process
-the tests leave running can still change the index or the branch between that check and the push.
+`fix --pr` pushes darnit's rewrite only. Before the build and tests run, it notes the commit the tree is
+at and keeps the bytes of each file it rewrote. It then builds the commit from those bytes alone, on that
+commit, in an index of its own, with replace refs off and no filter, hook or signing program run, checks
+that it changes exactly those files, and pushes it by its id. What the tests do to the work tree, the
+index, HEAD or refs therefore cannot change what is pushed. When a rewritten file on disk differs
+afterwards, is a link or has a second name, darnit opens no pull request and says why. Git config the
+tests write, or a process they leave running writes, still applies to that commit and push: the author
+and committer name and email, and where the push goes with what credentials, as above. Such a process
+could also rewrite the object files darnit reads the starting commit from, since git does not check an
+object against its id when reading it. Commits, staged changes and config the tests make stay in the
+repository.
 
 `fix --prepare` runs the repository's code, and its plan is uploaded for another job to read, so its
 job must hold no secrets at all: no token or other secret in its environment or git config, and no

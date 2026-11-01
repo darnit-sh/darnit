@@ -49,7 +49,7 @@ export type PrResult =
   | { state: "skipped"; reason: string }
   | { state: "tests-failed"; tests: TestOutcome }
   | { state: "build-failed"; build: TestOutcome }
-  /** The build or tests changed darnit's rewrite, or git would commit something else. */
+  /** The build or tests changed a file darnit rewrote. */
   | { state: "refused"; reason: string }
   | { state: "prepared"; build?: TestOutcome | undefined; tests?: TestOutcome | undefined };
 
@@ -172,25 +172,13 @@ async function regularFile(path: string): Promise<Kept | undefined> {
   }
 }
 
-/**
- * Stages `kept`, darnit's rewrite as read before the build and tests ran, and only that. Returns why not: a file
- * the checks changed, replaced or linked since, or an index that would commit anything else.
- */
-async function stageOwn(root: string, kept: Map<string, Kept | undefined>, checks: string): Promise<string | undefined> {
+/** The first of `kept` that is no longer what darnit wrote: other bytes or mode, a link, or a second name. */
+async function changedSince(root: string, kept: Map<string, Kept | undefined>): Promise<string | undefined> {
   for (const [f, own] of kept) {
     const now = await regularFile(join(root, f));
-    if (!own || !now || now.mode !== own.mode || !now.bytes.equals(own.bytes)) return `${checks} changed ${f} after darnit rewrote it`;
+    if (!own || !now || now.mode !== own.mode || !now.bytes.equals(own.bytes)) return f;
   }
-  await g.add(root, [...kept.keys()]);
-  const { prefix, id } = await g.blobIds(root);
-  const want = new Map([...kept].map(([f, own]) => [prefix + f, id(own!.bytes)]));
-  const staged = await g.staged(root);
-  for (const s of staged) {
-    if (!want.has(s.path)) return `git would also commit ${s.path}, which darnit did not change`;
-    if (s.blob !== want.get(s.path) || s.mode !== s.from) return `git would commit ${s.path.slice(prefix.length)} other than as darnit rewrote it`;
-  }
-  const missing = [...kept.keys()].find((f) => !staged.some((s) => s.path === prefix + f));
-  return missing === undefined ? undefined : `git would commit ${missing} other than as darnit rewrote it`;
+  return undefined;
 }
 
 async function restore(root: string, snap: Map<string, Buffer>): Promise<void> {
@@ -561,15 +549,16 @@ async function prepare(root: string, groups: Group[], base: FixResult, commands:
   return { ...base, reverted: anyFailed, plan: join(dir, PLAN_FILE) };
 }
 
-// One branch, one test run and one pull request per change. The working tree is
-// left exactly as it was found, on the branch it was found on.
+// One branch, one test run and one pull request per change, each pushed as a commit darnit builds on the
+// commit the tree was at. The working tree is left as it was found.
 async function pullRequests(root: string, groups: Group[], base: FixResult, commands: Commands, opts: FixOptions): Promise<FixResult> {
   const repo = opts.repo ? parseSlug(opts.repo) : parseRemote(await g.remoteUrl(root).catch(() => ""));
   if (!repo) throw new Refusal("could not tell which GitHub repository this is; pass --repo owner/name");
   const token = await githubToken();
   if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
   const target = await defaultBranch(token, repo);
-  const home = await g.position(root);
+  // What each change is committed on, taken before any of the repository's code runs.
+  const head = await g.head(root);
   let anyFailed = false;
 
   for (const grp of groups) {
@@ -586,13 +575,10 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
     }
 
     const snap = await snapshotOf(root, grp.files);
-    await g.switchTo(root, branch, "create");
-    let committed = false;
-    let opened = false;
     try {
       const changed = settle(result, await applyAndVerify(root, grp), grp.held);
       if (changed.length === 0) continue;
-      // The repository's build and tests run next and can write these files; only what darnit wrote is committed.
+      // The repository's build and tests run next and can write these files; the commit is built from these bytes.
       const kept = new Map<string, Kept | undefined>();
       for (const f of changed) kept.set(f, await regularFile(join(root, f)));
       const { build, tests, passed } = await checkGroup(root, commands, snap, result);
@@ -609,33 +595,23 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       });
       // GitHub refuses a longer description, and by then the branch would already be pushed.
       if (body.length > PR_BODY_LIMIT) {
-        await restore(root, snap);
         result.pr = { state: "skipped", reason: `its description would be ${body.length} characters, over GitHub's limit of ${PR_BODY_LIMIT}; nothing pushed` };
         continue;
       }
-      const ran = (["build", "tests"] as const).filter((k) => ({ build, tests })[k]);
-      const notOwn = await stageOwn(root, kept, ran.length > 0 ? `the ${ran.join(" or ")}` : "something");
-      if (notOwn) {
-        // Removed first, so a link goes instead of being written through, and no filter lets git take a file as unchanged.
-        for (const f of changed) await rm(join(root, f), { force: true });
-        await g.resetToHead(root, changed);
-        result.pr = { state: "refused", reason: notOwn };
+      // The commit does not depend on this check; it says why nothing was pushed.
+      const moved = await changedSince(root, kept);
+      if (moved !== undefined) {
+        const ran = (["build", "tests"] as const).filter((k) => ({ build, tests })[k]);
+        result.pr = { state: "refused", reason: `${ran.length > 0 ? `the ${ran.join(" or ")}` : "something"} changed ${moved} after darnit rewrote it` };
         anyFailed = true;
         continue;
       }
-      await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
-      committed = true;
-      await g.push(root, branch);
+      const files = [...kept].map(([path, own]) => ({ path, mode: own!.mode & 0o100 ? "100755" : "100644", bytes: own!.bytes }));
+      await g.pushExact(root, head, files, [result.title, `Source: ${grp.record.sources[0]!.url}`], branch);
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
       result.pr = { state: "opened", url, build, tests };
-      opened = true;
-    } catch (err) {
-      // Once committed, the tree already matches the branch; restoring would only block the switch back.
-      if (!committed) await restore(root, snap);
-      throw err;
     } finally {
-      await g.switchTo(root, home.ref, home.detached ? "detach" : "existing");
-      if (!opened) await g.deleteBranch(root, branch).catch(() => undefined);
+      await restore(root, snap);
     }
   }
   return { ...base, reverted: anyFailed };

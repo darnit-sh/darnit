@@ -74,8 +74,8 @@ describe("git treats the repo as untrusted", () => {
     try {
       await writeFile(join(dir, "a.ts"), "b\n");
       await g.isClean(dir);
-      await g.add(dir, ["a.ts"]);
-      await g.commit(dir, "change", "body");
+      await g.git(dir, ["add", "a.ts"]);
+      await g.git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "change"]);
     } finally {
       if (token === undefined) delete process.env.GITHUB_TOKEN;
       else process.env.GITHUB_TOKEN = token;
@@ -342,8 +342,7 @@ describe("push", () => {
     expect(await readFile(join(dir, ".git/config"), "utf8")).not.toContain(header);
     await g.git(dir, ["config", `http.${url}.extraheader`, `AUTHORIZATION: ${header}`]);
     await writeFile(join(dir, "a.ts"), "b\n");
-    await g.add(dir, ["a.ts"]);
-    await g.commit(dir, "b", "b");
+    await g.git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "b"]);
     await g.push(dir, branch, url);
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
@@ -440,6 +439,26 @@ describe("push", () => {
     await g.push(dir, branch, url);
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
+});
+
+describe("pushExact", () => {
+  it("pushes a commit of base with the given bytes alone, and refuses one that would change anything else", async () => {
+    const dir = await repoWith({ "a.ts": "a\n", "b.ts": "b\n" });
+    const bare = await mkdtemp(join(tmpdir(), "darnit-bare-"));
+    tempDirs.push(bare);
+    await g.git(bare, ["init", "-q", "--bare"]);
+    await g.git(dir, ["remote", "add", "origin", bare]);
+    const base = await g.head(dir);
+    const file = (mode: string, text: string) => [{ path: "a.ts", mode, bytes: Buffer.from(text) }];
+    // A mode change, and bytes that change nothing.
+    for (const files of [file("100755", "c\n"), file("100644", "a\n")]) {
+      await expect(g.pushExact(dir, base, files, ["m"], "x")).rejects.toThrow("the commit darnit built for x changes more than its rewrite; nothing pushed");
+    }
+    expect(await g.git(bare, ["branch", "--list"])).toBe("");
+    await g.pushExact(dir, base, file("100644", "c\n"), ["m", "body"], "x");
+    expect(await g.git(bare, ["diff-tree", "-r", "--name-only", base, "x"])).toBe("a.ts\n");
+    expect(await g.git(bare, ["log", "-1", "--format=%P%n%B", "x"])).toBe(`${base}\nm\n\nbody\n\n`);
+  });
 });
 
 describe("uncommitted where git composes file names, as on macOS", () => {

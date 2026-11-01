@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { firstFive } from "./detect.js";
 import { envToken } from "./github.js";
@@ -65,10 +67,10 @@ function command(args: string[]): { name: string; remote: boolean } {
  * config. Any other transport is stopped after four times as long, which can leave its ssh child
  * running. In GitHub Actions the call also gets the token for `site` (see originAuth).
  */
-export async function git(root: string, args: string[], stall?: number, site = GITHUB): Promise<string> {
+export async function git(root: string, args: string[], stall?: number, site = GITHUB, more: { env?: NodeJS.ProcessEnv | undefined; input?: Buffer | undefined } = {}): Promise<string> {
   const { name, remote } = command(args);
   if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
-  const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1" };
+  const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1", ...more.env };
   let timeout = 0;
   if (stall) {
     Object.assign(env, originAuth(site), { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
@@ -77,8 +79,9 @@ export async function git(root: string, args: string[], stall?: number, site = G
     if (!urls.every((u) => /^https?:\/\//i.test(u))) timeout = stall * 4 * 1000;
   }
   try {
-    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...args], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
-    return stdout;
+    const run = exec("git", [...UNTRUSTED_REPO, ...args], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
+    if (more.input) run.child.stdin?.end(more.input);
+    return (await run).stdout;
   } catch (err) {
     const { killed, stderr } = err as { killed?: boolean; stderr?: string };
     if (stall && (killed || stderr?.includes("Operation too slow"))) {
@@ -103,8 +106,6 @@ export const hasCommit = (root: string) =>
 
 export const isClean = async (root: string) => (await git(root, ["status", "--porcelain"])).trim() === "";
 
-const currentBranch = async (root: string) => (await git(root, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
-
 export const localBranchExists = (root: string, name: string) =>
   git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).then(
     () => true,
@@ -115,16 +116,6 @@ export const remoteBranchExists = async (root: string, name: string, site = GITH
   (await git(root, ["ls-remote", "--heads", "origin", name], 30, site)).trim() !== "";
 
 export const remoteUrl = async (root: string) => (await git(root, ["remote", "get-url", "origin"])).trim();
-
-export const switchTo = (root: string, ref: string, mode: "existing" | "create" | "detach" = "existing") =>
-  git(root, ["switch", "-q", ...(mode === "create" ? ["-c"] : mode === "detach" ? ["--detach"] : []), ref]);
-
-/** Where to come back to: a branch name, or a commit when HEAD is detached. */
-export async function position(root: string): Promise<{ ref: string; detached: boolean }> {
-  const branch = await currentBranch(root);
-  if (branch !== "HEAD") return { ref: branch, detached: false };
-  return { ref: (await git(root, ["rev-parse", "HEAD"])).trim(), detached: true };
-}
 
 /** Tracked files under `root` with changes, staged or not, relative to `root`. */
 export const modified = async (root: string) => (await git(root, ["diff", "--name-only", "-z", "--relative", "HEAD"])).split("\0").filter(Boolean);
@@ -195,37 +186,6 @@ export const discard = async (root: string, files: readonly string[]) => {
   if (files.length > 0) await git(root, ["checkout", "--", ...files]);
 };
 
-export const deleteBranch = (root: string, name: string) => git(root, ["branch", "-q", "-D", name]);
-
-export const add = (root: string, files: readonly string[]) => git(root, ["add", "--", ...files]);
-
-/** Puts tracked files, in the index and on disk, back to HEAD, replacing a link in their place rather than writing through it. */
-export const resetToHead = (root: string, files: readonly string[]) => git(root, ["checkout", "-q", "HEAD", "--", ...files]);
-
-/** What the index would commit over HEAD, by path from the top of the repository: the mode in HEAD, and the mode and blob staged. */
-export async function staged(root: string): Promise<{ path: string; from: string; mode: string; blob: string }[]> {
-  const out = (await git(root, ["diff", "--cached", "--raw", "-z", "--no-renames", "--no-abbrev", "HEAD"])).split("\0");
-  const entries = [];
-  for (let i = 0; i + 1 < out.length; i += 2) {
-    const [from = "", mode = "", , blob = ""] = out[i]!.slice(1).split(" ");
-    entries.push({ path: out[i + 1]!, from, mode, blob });
-  }
-  return entries;
-}
-
-/** The id git gives a blob of `bytes`, unfiltered, and where `root` sits in its repository, as staged() names paths. */
-export async function blobIds(root: string): Promise<{ prefix: string; id: (bytes: Buffer) => string }> {
-  const [prefix = "", format = "sha1"] = (await git(root, ["rev-parse", "--show-prefix", "--show-object-format"])).split("\n");
-  return { prefix, id: (bytes) => createHash(format).update(`blob ${bytes.length}\0`).update(bytes).digest("hex") };
-}
-
-/** Commits as the configured user, or as darnit when the machine has no identity (CI runners). */
-export async function commit(root: string, subject: string, body: string): Promise<void> {
-  const email = await git(root, ["config", "user.email"]).catch(() => "");
-  const identity = email.trim() ? [] : ["-c", "user.name=darnit", "-c", "user.email=darnit@users.noreply.github.com"];
-  await git(root, [...identity, "commit", "-q", "-m", subject, "-m", body]);
-}
-
 /**
  * In GitHub Actions with a token in the environment, a call to origin gets it as git config in its
  * own environment: never on disk or in arguments, sent to `site` only. The empty value first drops
@@ -249,7 +209,42 @@ function originAuth(site: string): NodeJS.ProcessEnv {
   };
 }
 
-export const push = (root: string, branch: string, site = GITHUB) => git(root, ["push", "-q", "-u", "origin", branch], 60, site);
+/** Pushes `ref` (a branch, or `<commit>:refs/heads/<branch>`) to origin, unsigned whatever the config says. */
+export const push = (root: string, ref: string, site = GITHUB, env?: NodeJS.ProcessEnv) => git(root, ["push", "-q", "--no-signed", "origin", ref], 60, site, { env });
+
+/**
+ * Pushes to origin as `branch` a commit of `base` with `files` (path from `root`, git mode, bytes) in place, built from
+ * those bytes alone in an index of its own: the work tree, the repository's index and HEAD, replace refs, filters,
+ * hooks and signing play no part. Before pushing, refuses a commit that changes anything else, or a file's mode.
+ */
+export async function pushExact(root: string, base: string, files: readonly { path: string; mode: string; bytes: Buffer }[], message: string[], branch: string, site = GITHUB): Promise<void> {
+  const tmp = await mkdtemp(join(tmpdir(), "darnit-commit-"));
+  const env = { GIT_NO_REPLACE_OBJECTS: "1", GIT_INDEX_FILE: join(tmp, "index") };
+  const [top = "", prefix = ""] = (await git(root, ["rev-parse", "--show-toplevel", "--show-prefix"], undefined, site, { env })).split("\n");
+  const run = async (args: string[], input?: Buffer) => (await git(top, args, undefined, site, { env, input })).trim();
+  try {
+    await run(["read-tree", base]);
+    const want = new Set<string>();
+    for (const f of files) {
+      const blob = await run(["hash-object", "-w", "--no-filters", "--stdin"], f.bytes);
+      await run(["update-index", "--add", "--cacheinfo", `${f.mode},${blob},${prefix}${f.path}`]);
+      want.add(`${f.mode} ${f.mode} ${blob}\0${prefix}${f.path}`);
+    }
+    const email = await run(["config", "user.email"]).catch(() => "");
+    const identity = email ? [] : ["-c", "user.name=darnit", "-c", "user.email=darnit@users.noreply.github.com"];
+    const commit = await run([...identity, "commit-tree", await run(["write-tree"]), "-p", base, "--no-gpg-sign", ...message.flatMap((m) => ["-m", m])]);
+    const out = (await git(top, ["diff-tree", "-r", "-z", "--no-renames", base, commit], undefined, site, { env })).split("\0");
+    const got: string[] = [];
+    for (let i = 0; i + 1 < out.length; i += 2) {
+      const [from, mode, , blob] = out[i]!.slice(1).split(" ");
+      got.push(`${from} ${mode} ${blob}\0${out[i + 1]}`);
+    }
+    if (got.length !== want.size || !got.every((e) => want.has(e))) throw new Error(`the commit darnit built for ${branch} changes more than its rewrite; nothing pushed`);
+    await push(top, `${commit}:refs/heads/${branch}`, site, env);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
 
 export const diff = (root: string, files: readonly string[]) => git(root, ["--no-pager", "diff", "--color=never", "--", ...files]);
 
