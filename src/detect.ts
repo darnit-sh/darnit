@@ -1,7 +1,35 @@
 import { constants } from "node:fs";
-import { open, readdir, realpath, stat } from "node:fs/promises";
+import { access, open, readdir, realpath, stat } from "node:fs/promises";
 import type { VendorClients } from "./scan/clients.js";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, delimiter, isAbsolute, join, resolve, sep } from "node:path";
+
+/**
+ * The absolute path of the executable `name` in the first absolute PATH entry that has it, or undefined.
+ * Relative and empty entries are skipped, so a program a scanned repository ships in its folder or in
+ * `node_modules/.bin` is never resolved and run by a bare name.
+ */
+export async function onPath(name: string, path = process.env.PATH ?? ""): Promise<string | undefined> {
+  const names = process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`, name] : [name];
+  for (const dir of path.split(delimiter)) {
+    if (!dir || !isAbsolute(dir)) continue;
+    for (const n of names) {
+      const p = join(dir, n);
+      // An executable regular file: a directory named `git` has X_OK too, so it is skipped rather than run.
+      const ok = (await stat(p).then((s) => s.isFile(), () => false)) && (await access(p, constants.X_OK).then(() => true, () => false));
+      if (ok) return p;
+    }
+  }
+  return undefined;
+}
+
+// What carries into a program a token-holding job runs: nothing but these, so credentials, GIT_* (trace, config,
+// replace), SSH_ASKPASS and any other inherited variable are left out. `extra` adds what a given program is given on top.
+const ENV_ALLOW = /^(PATH|LANG|LC_[A-Z]+|TZ|TMPDIR|TEMP|TMP|SYSTEMROOT)$/;
+export function cleanEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && ENV_ALLOW.test(k)) env[k] = v;
+  return { ...env, ...extra };
+}
 
 // Known vendors. "supported" = a rule pack exists in packs/; "recognized" = named
 // in config only. Extend by adding a row.
