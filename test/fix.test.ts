@@ -79,7 +79,7 @@ vi.mock("../src/records/load.js", async (original) => {
 const beforePush = vi.hoisted(() => ({ run: undefined as (() => Promise<void>) | undefined }));
 vi.mock("../src/git.js", async (original) => {
   const real = await original<typeof import("../src/git.js")>();
-  return { ...real, pushExact: async (...args: Parameters<typeof real.pushExact>) => (await beforePush.run?.(), real.pushExact(...args)) };
+  return { ...real, pushStaged: async (...args: Parameters<typeof real.pushStaged>) => (await beforePush.run?.(), real.pushStaged(...args)) };
 });
 
 const PACKS = fileURLToPath(new URL("../packs/", import.meta.url));
@@ -2091,6 +2091,61 @@ console.log(config);`,
       });
     }
 
+    // Committed with CRLF, which git add leaves alone under an "auto" conversion; darnit must too.
+    const CRLF = SDK_CALL.replaceAll("\n", "\r\n");
+    const MIXED = SDK_CALL.replace("\n", "\r\n");
+    const kept: [string, string, string, Record<string, string>, string?][] = [
+      ["core.autocrlf=true", "sdk.js", CRLF, { "core.autocrlf": "true" }],
+      ["core.autocrlf=input", "sdk.js", CRLF, { "core.autocrlf": "input" }],
+      ["* text=auto committed after it", "sdk.js", CRLF, {}, "* text=auto\n"],
+      ["mixed line endings and core.autocrlf=true", "sdk.js", MIXED, { "core.autocrlf": "true" }],
+      ["core.autocrlf=true, run from its folder sub dé", "sub dé/sdk.js", CRLF, { "core.autocrlf": "true" }],
+    ];
+    for (const [what, path, text, config, attributes] of kept) {
+      it(`keeps the committed line endings of a file committed with CRLF, with ${what}`, async () => {
+        const { dir, bare, posts, close } = await setup({ [path]: text });
+        if (attributes) {
+          await writeFile(join(dir, ".gitattributes"), attributes);
+          await git(dir, ["add", ".gitattributes"]);
+          await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "attributes"]);
+        }
+        for (const [k, v] of Object.entries(config)) await git(dir, ["config", k, v]);
+        await rm(join(dir, path));
+        await git(dir, ["checkout", "--", path]);
+        expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+        try {
+          const result = await fix(join(dir, dirname(path)), { pr: true, repo: "o/r", test: "true" });
+          expect(result.records[0]?.pr).toMatchObject({ state: "opened" });
+          expect(posts).toHaveLength(1);
+          expect(await git(bare, ["show", `${SDK_BRANCH}:${path}`])).toBe(text.replace("max_tokens", "max_completion_tokens"));
+        } finally {
+          close();
+        }
+      });
+    }
+
+    // CPU time through the CLI, git's included, for 100 rewritten files over 1: about 9 ms a file here and 5 ms on main,
+    // and 46 ms when each file took its own git processes.
+    it("stores and commits many files with a few git processes, not a few per file", async () => {
+      const cpu = async (n: number) => {
+        const { dir, outside, api, close } = await setup(Object.fromEntries(Array.from({ length: n }, (_, i) => [`f${i}.js`, SDK_CALL])));
+        const preload = join(outside, "local-api.mjs");
+        await writeFile(preload, `const f = globalThis.fetch;\nglobalThis.fetch = (url, init) => f(String(url).replace(/^https:\\/\\/api\\.github\\.com\\//, ${JSON.stringify(api)}), init);\n`);
+        const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+        const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "", GITHUB_TOKEN: TOKEN, GH_TOKEN: "", SSH_AUTH_SOCK: "", NODE_OPTIONS: `--import ${preload}` };
+        try {
+          const run = ["node", "--import", import.meta.resolve("tsx"), cli, "fix", "--pr", "--repo", "o/r", "--test", "true", "."];
+          const { stderr } = await promisify(execFile)("bash", ["-c", 'TIMEFORMAT="%U %S"; time "$@" > /dev/null 2>&1', "bash", ...run], { cwd: dir, env });
+          expect((await git(dir, ["ls-remote", "--heads", "origin", SDK_BRANCH], 30)).trim()).not.toBe("");
+          return stderr.trim().split(/\s+/).map(Number).reduce((a, b) => a + b, 0);
+        } finally {
+          close();
+        }
+      };
+      const one = await cpu(1);
+      expect(await cpu(100) - one).toBeLessThan(100 * 0.025);
+    }, 120_000);
+
     it("runs no filter driver the repository configures while storing the rewrite", async () => {
       const { dir, bare, outside, close } = await setup({ "sdk.js": SDK_CALL, ".gitattributes": "sdk.js filter=x\n" });
       await writeFile(join(outside, "filter"), `#!/bin/sh\necho ran >> "$(dirname "$0")/ran"\nsed s/5/6/\n`, { mode: 0o755 });
@@ -2121,7 +2176,7 @@ console.log(config);`,
         const result = await fix(dir, { pr: true, repo: "o/r", test: "git config core.autocrlf false" });
         expect(result.records.map((r) => r.pr?.state).sort()).toEqual(["opened", "refused"]);
         expect(result.records.find((r) => r.pr?.state === "refused")?.pr).toMatchObject({
-          reason: expect.stringMatching(/^git no longer stores [ab]\.js as committed, so its line-ending or encoding settings changed before darnit rewrote it$/) as string,
+          reason: expect.stringMatching(/^git would not store [ab]\.js as committed, so darnit cannot tell its own change from a change in how it is stored$/) as string,
         });
         expect(posts).toHaveLength(1);
         expect(await git(bare, ["log", "--all", "-p"])).not.toContain("\r");

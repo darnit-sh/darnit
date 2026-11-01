@@ -512,21 +512,27 @@ describe("push", () => {
   }, 20_000);
 });
 
-describe("pushExact", () => {
-  it("pushes a commit of base with the given bytes alone, and refuses one that would change anything else", async () => {
+describe("stage and pushStaged", () => {
+  it("push a commit of the start with the staged bytes alone, and refuse one that would change anything else", async () => {
     const dir = await repoWith({ "a.ts": "a\n", "b.ts": "b\n" });
     const bare = await mkdtemp(join(tmpdir(), "darnit-bare-"));
     tempDirs.push(bare);
     await g.git(bare, ["init", "-q", "--bare"]);
     await g.git(dir, ["remote", "add", "origin", bare]);
     const at = await g.start(dir);
-    const file = async (mode: string, text: string) => [{ path: "a.ts", mode, blob: (await g.git(dir, ["hash-object", "-w", "--stdin"], undefined, undefined, { input: Buffer.from(text) })).trim() }];
-    // A mode change, and bytes that change nothing.
-    for (const files of [await file("100755", "c\n"), await file("100644", "a\n")]) {
-      await expect(g.pushExact(at, files, ["m"], "x")).rejects.toThrow("the commit darnit built for x changes more than its rewrite; nothing pushed");
-    }
+    const file = async (mode: number, text: string) => {
+      const staged = await g.stage(at, [{ path: "a.ts", mode, bytes: Buffer.from(text), was: Buffer.from("a\n") }]);
+      if ("unlike" in staged) throw new Error(staged.unlike);
+      return staged;
+    };
+    // Bytes that change nothing.
+    await expect(g.pushStaged(at, await file(0o100644, "a\n"), ["m"], "x")).rejects.toThrow("the commit darnit built for x changes more than its rewrite; nothing pushed");
     expect(await g.git(bare, ["branch", "--list"])).toBe("");
-    await g.pushExact(at, await file("100644", "c\n"), ["m", "body"], "x");
+    // The bytes before, or their mode, not as committed.
+    for (const [mode, was] of [[0o100644, "other\n"], [0o100755, "a\n"]] as const) {
+      expect(await g.stage(at, [{ path: "a.ts", mode, bytes: Buffer.from("c\n"), was: Buffer.from(was) }])).toEqual({ unlike: "a.ts" });
+    }
+    await g.pushStaged(at, await file(0o100644, "c\n"), ["m", "body"], "x");
     expect(await g.git(bare, ["diff-tree", "-r", "--name-only", at.commit, "x"])).toBe("a.ts\n");
     expect(await g.git(bare, ["log", "-1", "--format=%P%n%B", "x"])).toBe(`${at.commit}\nm\n\nbody\n\n`);
   });

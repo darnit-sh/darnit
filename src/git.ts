@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { firstFive } from "./detect.js";
 import { envToken } from "./github.js";
@@ -46,8 +46,9 @@ export function ensureGitVersion(): Promise<void> {
 }
 
 // The git commands darnit runs that apply a clean, smudge or process filter to content: `add` and
-// `commit` and `status` and `diff` and `hash-object` on the index side, `checkout` (discard) and `switch` on the worktree side.
-const FILTERED = new Set(["add", "status", "commit", "diff", "hash-object", "checkout", "switch"]);
+// `commit` and `status` and `diff` on the index side, `write-tree` when it rechecks a file it wrote in the same second,
+// `checkout` (discard) and `switch` on the worktree side.
+const FILTERED = new Set(["add", "status", "commit", "diff", "write-tree", "checkout", "switch"]);
 // More filter drivers than darnit will turn off one by one; past this it refuses rather than run them.
 const FILTER_CAP = 256;
 const FILTER_VARS = [".clean", ".smudge", ".process"];
@@ -156,7 +157,7 @@ function command(args: string[]): { name: string; remote: boolean; at: number } 
  * config. Any other transport is stopped after four times as long, which can leave its ssh child
  * running. In GitHub Actions the call also gets the token for `site` (see originAuth).
  */
-export async function git(root: string, args: string[], stall?: number, site = GITHUB, more: { env?: NodeJS.ProcessEnv | undefined; input?: Buffer | undefined } = {}): Promise<string> {
+export async function git(root: string, args: string[], stall?: number, site = GITHUB, more: { env?: NodeJS.ProcessEnv | undefined } = {}): Promise<string> {
   const { name, remote, at } = command(args);
   if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
   const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1", ...more.env };
@@ -177,9 +178,8 @@ export async function git(root: string, args: string[], stall?: number, site = G
   const inject = name === "diff" ? ["--no-ext-diff", "--no-textconv", "--ignore-submodules=all"] : name === "status" ? ["--ignore-submodules=all"] : [];
   const scoped = inject.length > 0 ? [...args.slice(0, at + 1), ...inject, ...args.slice(at + 1)] : args;
   try {
-    const run = exec("git", [...UNTRUSTED_REPO, ...scoped], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
-    if (more.input) run.child.stdin?.end(more.input);
-    return (await run).stdout;
+    const { stdout } = await exec("git", [...UNTRUSTED_REPO, ...scoped], { cwd: root, env, maxBuffer: 64 * 1024 * 1024, timeout });
+    return stdout;
   } catch (err) {
     const { killed, stderr } = err as { killed?: boolean; stderr?: string };
     if (stall && (killed || stderr?.includes("Operation too slow"))) {
@@ -305,62 +305,87 @@ function originAuth(site: string): [string, string][] {
 export const push = (root: string, ref: string, site = GITHUB, env?: NodeJS.ProcessEnv) =>
   git(root, ["push", "-q", "--no-signed", "--no-follow-tags", "origin", ref], 60, site, { env });
 
-/** HEAD's commit, the top level and `root`'s path under it: where darnit's commit starts, read before any of the repository's code runs. */
-export type Start = { commit: string; top: string; prefix: string };
+/** HEAD's commit, the git folder, the top level and `root`'s path under it: where darnit's commit starts, read before any of the repository's code runs. */
+export type Start = { commit: string; gitDir: string; top: string; prefix: string };
 
 export async function start(root: string): Promise<Start> {
-  const args = ["rev-parse", "--show-toplevel", "--show-prefix", "--verify", "HEAD^{commit}"];
-  const [top = "", prefix = "", commit = ""] = (await git(root, args, undefined, GITHUB, { env: { GIT_NO_REPLACE_OBJECTS: "1" } })).split("\n");
-  return { commit, top, prefix };
+  const args = ["rev-parse", "--absolute-git-dir", "--show-toplevel", "--show-prefix", "--verify", "HEAD^{commit}"];
+  const [gitDir = "", top = "", prefix = "", commit = ""] = (await git(root, args, undefined, GITHUB, { env: { GIT_NO_REPLACE_OBJECTS: "1" } })).split("\n");
+  return { commit, gitDir, top, prefix };
 }
 
-/**
- * Writes each file's `bytes` as the blob git stores at its path, with the repository's line-ending and encoding
- * settings and no filter driver, once git still stores `was` there as the blob `at` has: so the settings in force
- * are the ones its committed files were stored with. Returns the blob ids, or the first path where they are not.
- */
-export async function blobsFor(at: Start, files: readonly { path: string; bytes: Buffer; was: Buffer }[]): Promise<{ blobs: string[] } | { unlike: string }> {
-  const run = async (args: string[], input?: Buffer) => (await git(at.top, args, undefined, GITHUB, { env: { GIT_NO_REPLACE_OBJECTS: "1" }, input })).trim();
-  const blobs: string[] = [];
-  for (const f of files) {
-    const path = `--path=${at.prefix}${f.path}`;
-    if ((await run(["hash-object", path, "--stdin"], f.was)) !== (await run(["rev-parse", `${at.commit}:${at.prefix}${f.path}`]))) return { unlike: f.path };
-    blobs.push(await run(["hash-object", "-w", path, "--stdin"], f.bytes));
+/** darnit's rewrite staged in an index and work tree of its own under `dir`, and what it changes from the start, as diff-tree prints it. */
+export type Staged = { dir: string; want: string[]; paths: string[] };
+
+/** git in `dir`'s index and work tree, on the repository and commit found at the start, with replace refs off. */
+const own = (at: Start, dir: string) => ({ GIT_NO_REPLACE_OBJECTS: "1", GIT_DIR: at.gitDir, GIT_WORK_TREE: join(dir, "tree"), GIT_INDEX_FILE: join(dir, "index") });
+
+/** Entries of a raw diff (-z, --no-renames), each as `<old mode> <new mode> <new blob>\0<path>`. */
+function raw(out: string): string[] {
+  const parts = out.split("\0");
+  const entries: string[] = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const [from, mode, , blob] = parts[i]!.slice(1).split(" ");
+    entries.push(`${from} ${mode} ${blob}\0${parts[i + 1]}`);
   }
-  return { blobs };
+  return entries;
 }
 
 /**
- * Pushes to origin as `branch` a commit of `at` with `files` (path from its root, git mode, blob) in place, built
- * from those blobs alone in an index of its own: the work tree, the repository's index and HEAD, replace refs, filters,
- * hooks and signing play no part. Before pushing, refuses a commit that changes anything else, or a file's mode.
+ * Stages `files` (path from `root`, mode, darnit's bytes, the bytes before) as `git add` stages them: in an index read
+ * from the start commit and a work tree of darnit's own, so the line-ending and encoding conversion is the repository's,
+ * with attributes from that commit and no filter driver run. Before darnit's bytes, the bytes before are staged, and
+ * must change nothing: otherwise git would not store that file as committed, and its path is returned.
  */
-export async function pushExact(at: Start, files: readonly { path: string; mode: string; blob: string }[], message: string[], branch: string, site = GITHUB): Promise<void> {
-  const tmp = await mkdtemp(join(tmpdir(), "darnit-commit-"));
-  const env = { GIT_NO_REPLACE_OBJECTS: "1", GIT_INDEX_FILE: join(tmp, "index") };
-  // From the top level found at the start, so a core.worktree or a nested repository set up since cannot move a path.
-  const { commit: base, top, prefix } = at;
-  const run = async (args: string[], input?: Buffer) => (await git(top, args, undefined, site, { env, input })).trim();
-  try {
-    await run(["read-tree", base]);
-    const want = new Set<string>();
-    for (const f of files) {
-      await run(["update-index", "--add", "--cacheinfo", `${f.mode},${f.blob},${prefix}${f.path}`]);
-      want.add(`${f.mode} ${f.mode} ${f.blob}\0${prefix}${f.path}`);
+export async function stage(at: Start, files: readonly { path: string; mode: number; bytes: Buffer; was: Buffer }[]): Promise<Staged | { unlike: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "darnit-commit-"));
+  const env = own(at, dir);
+  const run = (args: string[]) => git(env.GIT_WORK_TREE, args, undefined, GITHUB, { env });
+  const paths = files.map((f) => `${at.prefix}${f.path}`);
+  const add = async (pick: (f: (typeof files)[number]) => Buffer) => {
+    for (const [i, f] of files.entries()) {
+      const path = join(env.GIT_WORK_TREE, paths[i]!);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, pick(f));
+      await chmod(path, f.mode & 0o777);
     }
+    await run(["add", "--", ...paths]);
+  };
+  try {
+    await mkdir(env.GIT_WORK_TREE);
+    await run(["read-tree", at.commit]);
+    await add((f) => f.was);
+    const [unlike] = (await run(["diff", "--cached", "--name-only", "-z", at.commit])).split("\0").filter(Boolean);
+    if (unlike !== undefined) {
+      await rm(dir, { recursive: true, force: true });
+      return { unlike: unlike.slice(at.prefix.length) };
+    }
+    await add((f) => f.bytes);
+    return { dir, paths, want: raw(await run(["diff", "--cached", "--raw", "-z", "--no-renames", "--no-abbrev", at.commit])) };
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true });
+    throw err;
+  }
+}
+
+/**
+ * Commits `staged` on the start commit and pushes it to origin as `branch`, by its id and alone. The work tree, the
+ * repository's index and HEAD, replace refs, hooks and signing play no part. Before pushing, refuses a commit that
+ * changes anything but what was staged, or leaves a staged path unchanged.
+ */
+export async function pushStaged(at: Start, staged: Staged, message: string[], branch: string, site = GITHUB): Promise<void> {
+  const env = own(at, staged.dir);
+  const run = async (args: string[]) => (await git(env.GIT_WORK_TREE, args, undefined, site, { env })).trim();
+  try {
     const email = await run(["config", "user.email"]).catch(() => "");
     const identity = email ? [] : ["-c", "user.name=darnit", "-c", "user.email=darnit@users.noreply.github.com"];
-    const commit = await run([...identity, "commit-tree", await run(["write-tree"]), "-p", base, "--no-gpg-sign", ...message.flatMap((m) => ["-m", m])]);
-    const out = (await git(top, ["diff-tree", "-r", "-z", "--no-renames", base, commit], undefined, site, { env })).split("\0");
-    const got: string[] = [];
-    for (let i = 0; i + 1 < out.length; i += 2) {
-      const [from, mode, , blob] = out[i]!.slice(1).split(" ");
-      got.push(`${from} ${mode} ${blob}\0${out[i + 1]}`);
-    }
-    if (got.length !== want.size || !got.every((e) => want.has(e))) throw new Error(`the commit darnit built for ${branch} changes more than its rewrite; nothing pushed`);
-    await push(top, `${commit}:refs/heads/${branch}`, site, env);
+    const commit = await run([...identity, "commit-tree", await run(["write-tree"]), "-p", at.commit, "--no-gpg-sign", ...message.flatMap((m) => ["-m", m])]);
+    const got = raw(await git(env.GIT_WORK_TREE, ["diff-tree", "-r", "-z", "--no-renames", at.commit, commit], undefined, site, { env }));
+    const exact = got.length === staged.paths.length && got.every((e, i) => e === staged.want[i]);
+    if (!exact) throw new Error(`the commit darnit built for ${branch} changes more than its rewrite; nothing pushed`);
+    await push(env.GIT_WORK_TREE, `${commit}:refs/heads/${branch}`, site, env);
   } finally {
-    await rm(tmp, { recursive: true, force: true });
+    await rm(staged.dir, { recursive: true, force: true });
   }
 }
 

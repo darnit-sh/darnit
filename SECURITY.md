@@ -60,19 +60,20 @@ for example `http.curloptResolve` pointing github.com at another address with
 `check` only.
 
 `fix --pr` pushes darnit's rewrite only. Before the build and tests run, it notes the commit and top
-level the tree is at, and stores each file it rewrote as `git add` would, with the line-ending and
-encoding settings in force then and no filter driver run. It then builds the commit from those blobs
-alone, on that commit, in an index of its own, with replace refs off and no filter, hook or signing
-program run, checks that it changes exactly those files, and pushes that commit id alone, with no tags
-following it. What the tests do to the work tree, the index, HEAD, refs, `core.worktree` or a nested
-repository therefore cannot change what is pushed. Each change starts from its files as committed: when
-an earlier change's build or tests changed them or how git stores them, or when a rewritten file on disk
-differs afterwards, is a link or has a second name, darnit opens no pull request for that change and
-says why. Git config the tests write, or a process they leave running writes, still applies to that
-commit and push: the author and committer name and email, and where the push goes with what credentials,
-as above. Such a process could also rewrite the object files darnit reads the starting commit from,
-since git does not check an object against its id when reading it. Commits, staged changes and config
-the tests make stay in the repository.
+level the tree is at, and stages each file it rewrote as `git add` would, with the line-ending and
+encoding settings in force then and no filter driver run, in an index and work tree of its own read from
+that commit. It first stages the file as it was, which must change nothing, so the settings are the ones
+the committed file was stored with. After the checks it commits that index on that commit, with replace
+refs off and no hook or signing program run, checks that the commit changes exactly the staged files,
+and pushes that commit id alone, with no tags following it. What the tests do to the work tree, the
+index, HEAD, refs, git's line-ending settings, `core.worktree` or a nested repository therefore cannot
+change what is pushed. When an earlier change's build or tests changed a later change's files or how git
+stores them, or when a rewritten file on disk differs afterwards, darnit opens no pull request for that
+change and says why. Git config the tests write, or a process they leave running writes, still applies
+to that commit and push: the author and committer name and email, and where the push goes with what
+credentials, as above. Such a process could also rewrite the object files darnit reads the starting
+commit from, since git does not check an object against its id when reading it. Commits, staged changes
+and config the tests make stay in the repository.
 
 darnit needs git 2.31 or newer, the first version that reads the config below from its environment;
 on an older git it refuses to run rather than silently skip the pins.
