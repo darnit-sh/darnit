@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
-import { lstat, readdir } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { firstFive } from "./detect.js";
 import { envToken } from "./github.js";
@@ -263,48 +264,6 @@ const entriesOf = (stdout: string) =>
     return i < 0 ? ([e, ""] as const) : ([e.slice(0, i), e.slice(i + 1)] as const);
   });
 
-/** One file's config as git reads it, with no include followed; none for a file that is not there. */
-const configFile = async (root: string, file: string) =>
-  (await lstat(file).catch(() => undefined)) ? entriesOf(await git(root, ["config", "--file", file, "--no-includes", "--list", "-z"])) : [];
-
-// The keys a fresh clone or actions/checkout writes to a repository's own config. Any other can run a program
-// (a filter, a hook path, an ssh command) or point a git call elsewhere (url.*.insteadOf, http.*).
-const FRESH =
-  /^(?:core\.(?:repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks|autocrlf)|remote\.origin\.(?:url|fetch|promisor|partialclonefilter)|branch\..+\.(?:remote|merge)|gc\.auto|extensions\.worktreeconfig|http\.https:\/\/github\.com\/\.extraheader)$/;
-const SAVED = "http.https://github.com/.extraheader";
-
-/**
- * Whether `path`, named by an includeIf in the repository's config, is the file actions/checkout v6 and later saves its
- * token in: git-credentials-<id>.config in the runner's temporary folder, on the host or in a container, holding that header only.
- */
-async function checkoutCredentials(root: string, path: string): Promise<boolean> {
-  const temps = [process.env.RUNNER_TEMP?.trim(), "/github/runner_temp"].filter(Boolean);
-  if (!temps.includes(dirname(path)) || !/^git-credentials-[\w-]+\.config$/.test(basename(path))) return false;
-  return (await configFile(root, path)).every(([k]) => k === SAVED);
-}
-
-/**
- * Why `root` is not a checkout as git clone or actions/checkout leaves it, or undefined: its own config holds a key
- * outside FRESH, an include other than the checkout's saved token, worktree config, git attributes or a hook.
- * Read with `git config` and the file system only, so nothing the repository set up runs.
- */
-export async function freshCheckout(root: string): Promise<string | undefined> {
-  const [gitDir = "", common = ""] = (await git(root, ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"])).trim().split("\n");
-  for (const [key, value] of entriesOf(await git(root, ["config", "--local", "--no-includes", "--list", "-z"]))) {
-    if (FRESH.test(key) || (/^includeif\.gitdir:.+\.path$/.test(key) && (await checkoutCredentials(root, value)))) continue;
-    return `its git config holds ${JSON.stringify(key)}`;
-  }
-  for (const dir of new Set([gitDir, common])) {
-    if ((await configFile(root, join(dir, "config.worktree"))).length > 0) return `${join(dir, "config.worktree")} holds git config`;
-  }
-  const attributes = join(common, "info", "attributes");
-  const info = await lstat(attributes).catch(() => undefined);
-  if (info && (!info.isFile() || info.size > 0)) return `${attributes} is not empty`;
-  const hook = (await readdir(join(common, "hooks"), { withFileTypes: true }).catch(() => [])).find((e) => !e.isFile() || !e.name.endsWith(".sample"));
-  if (hook) return `${join(common, "hooks")} holds ${JSON.stringify(hook.name)}`;
-  return undefined;
-}
-
 export const topLevel = async (root: string) => (await git(root, ["rev-parse", "--show-toplevel"])).trim();
 
 export const head = async (root: string) => (await git(root, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
@@ -312,14 +271,66 @@ export const head = async (root: string) => (await git(root, ["rev-parse", "--ve
 // Settings the repository can set that change a diff's bytes; pinned so two checkouts produce the same patch.
 const PINNED_DIFF = ["core.quotePath=false", "diff.suppressBlankEmpty=false", "diff.orderFile=/dev/null"];
 
+/** The pinned `git diff --binary --full-index` of `files` against HEAD, so two checkouts of the same commit print the same bytes. */
+export const diffArgs = (files: readonly string[]) => [
+  ...PINNED_DIFF.flatMap((c) => ["-c", c]),
+  "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--relative",
+  "--src-prefix=a/", "--dst-prefix=b/", "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers", "--indent-heuristic",
+  "HEAD", "--", ...files,
+];
+
 /** `files` (relative to `root`) against HEAD as `git diff --binary` prints them, with paths relative to `root`. */
-export const patch = (root: string, files: readonly string[]) =>
-  git(root, [
-    ...PINNED_DIFF.flatMap((c) => ["-c", c]),
-    "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--relative",
-    "--src-prefix=a/", "--dst-prefix=b/", "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers", "--indent-heuristic",
-    "HEAD", "--", ...files,
-  ]);
+export const patch = (root: string, files: readonly string[]) => git(root, diffArgs(files));
+
+/** How git prints the token: an http auth header for github.com, never on disk or in an argument. */
+const authHeader = (token: string) => `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+
+/** Config no repository can override: no hooks, fsmonitor, filters, signing or submodule push. The clone carries no config of its own. */
+const CLONE_PINS = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "push.recurseSubmodules=no"];
+
+/** A git command in the publish clone; `network` for the fetch and push to github.com, which git's own low-speed limit bounds. */
+export type CloneGit = (args: string[], network?: boolean) => Promise<string>;
+
+/**
+ * Runs `body` against a fresh, shallow clone of `sha` fetched from `url` (github.com), reading no config, replace object,
+ * hook, filter or object store from the machine or any repository: GIT_CONFIG_NOSYSTEM, an empty global config, HOME and
+ * XDG_CONFIG_HOME in an empty folder, GIT_NO_REPLACE_OBJECTS, and every other GIT_* variable dropped. The token reaches git
+ * only as an http header scoped to github.com. The folder is removed afterwards.
+ */
+export async function withCleanClone<T>(url: string, sha: string, token: string, body: (run: CloneGit, dir: string) => Promise<T>): Promise<T> {
+  const tmp = await mkdtemp(join(tmpdir(), "darnit-publish-"));
+  const [home, dir, global] = [join(tmp, "home"), join(tmp, "repo"), join(tmp, "global.config")];
+  await mkdir(home);
+  await mkdir(dir);
+  await writeFile(global, "");
+  const env = { ...(await childEnv()) };
+  for (const k of Object.keys(env)) if (/^GIT_/.test(k)) delete env[k];
+  Object.assign(env, {
+    HOME: home, XDG_CONFIG_HOME: home, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: global, GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_LITERAL_PATHSPECS: "1", GIT_TERMINAL_PROMPT: "0",
+    GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: `http.${GITHUB}.extraheader`, GIT_CONFIG_VALUE_0: authHeader(token),
+  });
+  const stall = 60;
+  const run: CloneGit = async (args, network = false) => {
+    const netEnv = network ? { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) } : {};
+    try {
+      const { stdout } = await exec("git", [...CLONE_PINS, ...args], { cwd: dir, env: { ...env, ...netEnv }, maxBuffer: 64 * 1024 * 1024, timeout: network ? stall * 4 * 1000 : 0 });
+      return stdout;
+    } catch (err) {
+      const { killed, stderr } = err as { killed?: boolean; stderr?: string };
+      if (network && (killed || stderr?.includes("Operation too slow"))) throw new Error(`git ${args[0] ?? ""} to origin timed out`, { cause: err });
+      throw err;
+    }
+  };
+  try {
+    await run(["init", "-q"]);
+    await run(["fetch", "-q", "--depth=1", "--no-tags", url, sha], true);
+    await run(["checkout", "-q", "--detach", "FETCH_HEAD"]);
+    return await body(run, dir);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
 
 /** Diff between two dirs under cwd, no repo needed. git exits 1 when they differ, which is not an error here. */
 export async function diffDirs(cwd: string, before: string, after: string): Promise<string> {
