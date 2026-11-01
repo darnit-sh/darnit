@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { cp, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { cp, type FileHandle, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
@@ -36,7 +36,7 @@ export type TestOutcome = TestRun & {
   attributed?: "change" | "baseline";
   /** A build that already failed before the change says nothing about it: the change is kept and this is reported instead. */
   notChecked?: boolean;
-  /** A file darnit changed that the run removed or put a link or folder in place of: the check failed, and the files went back. */
+  /** A file darnit edits that the run removed, put something in place of or gave another name: the check failed, and the files went back. */
   removed?: string;
 };
 
@@ -147,35 +147,76 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
   return { groups: [...byId.values()], coverage, namesElsewhere: values.length + mentions.length > 0 };
 }
 
-type Snapshot = Map<string, { bytes: Buffer; mode: number }>;
+/** Each file's bytes and mode, and its inode and number of names, to tell a second name the tests gave it from one it had. */
+type Snapshot = Map<string, { bytes: Buffer; mode: number; ino: number; nlink: number }>;
 
 // Bytes, not text: a file that is not UTF-8 must come back as it was.
 async function snapshotOf(root: string, files: readonly string[]): Promise<Snapshot> {
   const snap: Snapshot = new Map();
   for (const f of files) {
-    const bytes = await readFile(join(root, f), { flag: constants.O_RDONLY | constants.O_NOFOLLOW });
-    snap.set(f, { bytes, mode: (await lstat(join(root, f))).mode & 0o7777 });
+    const file = await open(join(root, f), constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const { mode, ino, nlink } = await file.stat();
+      snap.set(f, { bytes: await file.readFile(), mode: mode & 0o7777, ino, nlink });
+    } finally {
+      await file.close();
+    }
   }
   return snap;
 }
 
+/** How many times restore removes what keeps appearing in a file's place before it refuses. */
+const TRIES = 3;
+
 /**
- * Writes each file back as a regular file with its bytes and mode. Whatever the repository's code left in its place,
- * a link, a folder or a second name for another file, is removed rather than written through.
+ * Writes each file back as a new regular file with its bytes and mode. Whatever is in its place is removed first and the
+ * file is created only if nothing appeared there since, so no link, hard link or folder the repository's code left is
+ * written through. The folders above it are checked right before writing; Node cannot hold them open while it writes.
  */
 async function restore(root: string, snap: Snapshot): Promise<void> {
   for (const [f, { bytes, mode }] of snap) {
     await realFolders(root, f);
     const path = join(root, f);
-    const info = await lstat(path).catch(() => undefined);
-    if (info && !(info.isFile() && info.nlink === 1)) await rm(path, { recursive: true, force: true });
-    const file = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, mode);
+    const file = await unlocked(dirname(path), f, () => created(path, f, mode));
     try {
       await file.writeFile(bytes);
       await file.chmod(mode);
     } finally {
       await file.close();
     }
+  }
+}
+
+async function created(path: string, f: string, mode: number): Promise<FileHandle> {
+  for (let tries = 1; ; tries++) {
+    await rm(path, { recursive: true, force: true });
+    try {
+      return await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, mode);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (tries === TRIES) throw new Refusal(`a new ${shown(f)} appeared each time darnit removed what was there to put it back, so darnit wrote nothing there; a process the tests started may still be running`);
+    }
+  }
+}
+
+/** Runs `step`, which writes in `dir`; if `dir` is not writable, gives it its owner's write bit for that step only. */
+async function unlocked<T>(dir: string, f: string, step: () => Promise<T>): Promise<T> {
+  const denied = (err: unknown) => ["EACCES", "EPERM"].includes((err as NodeJS.ErrnoException).code ?? "");
+  try {
+    return await step();
+  } catch (err) {
+    if (!denied(err)) throw err;
+  }
+  const folder = await open(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  const { mode } = await folder.stat();
+  try {
+    await folder.chmod(mode | 0o200);
+    return await step();
+  } catch (err) {
+    if (denied(err)) throw new Refusal(`darnit could not put ${shown(f)} back: permission denied`);
+    throw err;
+  } finally {
+    await folder.chmod(mode & 0o7777).finally(() => folder.close());
   }
 }
 
@@ -189,18 +230,24 @@ async function realFolders(root: string, f: string): Promise<void> {
     if (info?.isSymbolicLink() && !within(await realpath(root), await resolved(dir))) {
       throw new Refusal(`${shown(relative(root, dir))} became a link out of the repository, so ${shown(f)} was not put back; nothing was written through it`);
     }
-    if (info) await rm(dir, { recursive: true, force: true });
-    await mkdir(dir);
+    await unlocked(dirname(dir), f, async () => {
+      await rm(dir, { recursive: true, force: true });
+      await mkdir(dir);
+    });
   }
 }
 
-/** The first of `files` that is no longer a regular file of its own in real folders: removed, or a link or folder in its place. */
-async function replaced(root: string, files: Iterable<string>): Promise<string | undefined> {
-  for (const f of files) {
+/**
+ * The first file in `snap` that is no longer a regular file in real folders: removed, a link or folder in its place,
+ * or a name it did not have before.
+ */
+async function replaced(root: string, snap: Snapshot): Promise<string | undefined> {
+  for (const [f, before] of snap) {
     const parts = f.split(sep);
     for (let i = 1; i <= parts.length; i++) {
       const info = await lstat(join(root, ...parts.slice(0, i))).catch(() => undefined);
-      if (!(i < parts.length ? info?.isDirectory() : info?.isFile() && info.nlink === 1)) return f;
+      const own = info?.isFile() && (info.nlink === 1 || (info.ino === before.ino && info.nlink <= before.nlink));
+      if (!(i < parts.length ? info?.isDirectory() : own)) return f;
     }
   }
   return undefined;
@@ -286,7 +333,12 @@ async function testAndAttribute(root: string, command: string, snap: Snapshot, k
   const outcome: TestOutcome = { ...(await runTests(root, command)), kind };
   if (await tampered(root, snap, outcome)) return outcome;
   if (!outcome.passed) {
-    const changed = await snapshotOf(root, [...snap.keys()]);
+    // A link that appears after the check is caught by the read, which does not follow it.
+    const changed = await snapshotOf(root, [...snap.keys()]).catch(async (err: unknown) => {
+      if (await tampered(root, snap, outcome)) return undefined;
+      throw err;
+    });
+    if (!changed) return outcome;
     await restore(root, snap);
     if (outcome.timedOut) return outcome;
     const again = await runTests(root, command);
@@ -303,9 +355,9 @@ async function testAndAttribute(root: string, command: string, snap: Snapshot, k
   return outcome;
 }
 
-/** Whether the run removed a file darnit changed or put something in its place; if so the check failed, and the files go back. */
+/** Whether the run removed a file darnit edits, put something in its place or gave it another name; if so the check failed, and the files go back. */
 async function tampered(root: string, snap: Snapshot, outcome: TestOutcome): Promise<boolean> {
-  const gone = await replaced(root, snap.keys());
+  const gone = await replaced(root, snap);
   if (gone === undefined) return false;
   await restore(root, snap);
   Object.assign(outcome, { passed: false, removed: gone });
@@ -802,7 +854,8 @@ export function exitCodeFor(result: FixResult): 0 | 1 {
 function testLine(t: TestOutcome): string {
   if (t.passed) return `${t.kind}: ${t.command} passed`;
   if (t.removed !== undefined) {
-    return `${t.kind}: ${t.command} removed ${shown(t.removed)}, a file darnit changed, or put a link or folder in its place; files put back.${t.output ? `\n${t.output}` : ""}`;
+    const f = shown(t.removed);
+    return `${t.kind}: ${t.command} removed ${f}, a file darnit edits, put something in its place or gave it another name; files put back, ${f} as a new file.${t.output ? `\n${t.output}` : ""}`;
   }
   if (t.notChecked) return `${t.kind}: ${t.command} already fails without the change, so it could not check it; change kept`;
   if (t.timedOut) {

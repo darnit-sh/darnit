@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { access, appendFile, chmod, cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { access, appendFile, chmod, cp, link, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,12 +36,31 @@ vi.mock("../src/tests.js", async (original) => {
   };
 });
 
+// Once a build or test run has started, a step run right before darnit opens `path` to read or to write: a process
+// the tests left running, made to act at the worst moment.
+const race = vi.hoisted(() => ({ path: "", beforeRead: undefined as (() => Promise<void>) | undefined, beforeWrite: undefined as (() => Promise<void>) | undefined }));
+vi.mock("node:fs/promises", async (original) => {
+  const real = await original<typeof import("node:fs/promises")>();
+  const { constants } = await import("node:fs");
+  return {
+    ...real,
+    open: async (...args: Parameters<typeof real.open>) => {
+      const [path, flags] = args;
+      if (runs.count > 0 && String(path) === race.path && typeof flags === "number") {
+        await ((flags & 3) === constants.O_RDONLY ? race.beforeRead : race.beforeWrite)?.();
+      }
+      return real.open(...args);
+    },
+  };
+});
+
 const PACKS = fileURLToPath(new URL("../packs/", import.meta.url));
 
 const tempDirs: string[] = [];
 afterEach(async () => {
   runs.limitMs = undefined;
   runs.count = 0;
+  Object.assign(race, { path: "", beforeRead: undefined, beforeWrite: undefined });
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
@@ -939,7 +958,7 @@ describe("fix when the tests remove or replace a file it changed", () => {
     expect(result.tests).toMatchObject({ passed: false, removed: "sdk.js" });
     expect(result.reverted).toBe(true);
     expect(exitCodeFor(result)).toBe(1);
-    expect(renderSummary(result)).toContain("removed sdk.js, a file darnit changed, or put a link or folder in its place; files put back.");
+    expect(renderSummary(result)).toContain("removed sdk.js, a file darnit edits, put something in its place or gave it another name; files put back, sdk.js as a new file.");
     expect(toJson(result)).toMatchObject({ tests: { passed: false, removed: "sdk.js" } });
   });
 
@@ -962,7 +981,7 @@ describe("fix when the tests remove or replace a file it changed", () => {
     const { code, stdout, stderr } = await darnit(dir, "fix", "--test", "rm sdk.js app.py; exit 1");
     expect(stderr).not.toContain("ENOENT");
     expect(code).toBe(1);
-    expect(stdout).toContain("tests: rm sdk.js app.py; exit 1 removed sdk.js, a file darnit changed");
+    expect(stdout).toContain("tests: rm sdk.js app.py; exit 1 removed sdk.js, a file darnit edits");
     await putBack(dir, "sdk.js", SDK_CALL);
     expect((await lstat(join(dir, "sdk.js"))).mode & 0o777).toBe(0o755);
   });
@@ -992,6 +1011,94 @@ describe("fix when the tests remove or replace a file it changed", () => {
     expect((await lstat(join(dir, "lib"))).isDirectory()).toBe(true);
     expect(await readFile(join(dir, "lib", "sdk.js"), "utf8")).toBe(SDK_CALL);
     expect(result.tests).toMatchObject({ passed: false, removed: join("lib", "sdk.js") });
+  });
+
+  /** Runs `step` once, the first time. */
+  const once = (step: () => Promise<unknown>) => {
+    let done = false;
+    return async () => {
+      if (!done) await step();
+      done = true;
+    };
+  };
+
+  it.each([
+    ["a hard link to a file outside", link],
+    ["a link to a file outside", symlink],
+  ])("removes %s that appears after it removed what the tests left, rather than writing through it", async (_, make) => {
+    const { victim } = await outside();
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    race.path = join(dir, "sdk.js");
+    race.beforeWrite = once(() => make(victim, race.path));
+    const result = await fix(dir, { test: "rm sdk.js; exit 1" });
+    expect(await readFile(victim, "utf8")).toBe("outside\n");
+    await putBack(dir, "sdk.js", SDK_CALL);
+    expect(result.tests).toMatchObject({ passed: false, removed: "sdk.js" });
+  });
+
+  it("refuses, writing nothing, when a new file keeps appearing in its place", async () => {
+    const { victim } = await outside();
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    race.path = join(dir, "sdk.js");
+    race.beforeWrite = () => link(victim, race.path).catch(() => undefined);
+    await expect(fix(dir, { test: "rm sdk.js; exit 1" })).rejects.toThrow(
+      new Refusal("a new sdk.js appeared each time darnit removed what was there to put it back, so darnit wrote nothing there; a process the tests started may still be running"),
+    );
+    expect(await readFile(victim, "utf8")).toBe("outside\n");
+  });
+
+  it("reads no file through a link that appears after its check, and fails the check", async () => {
+    const { victim } = await outside();
+    const dir = await repoWith({ "sdk.js": SDK_CALL });
+    race.path = join(dir, "sdk.js");
+    race.beforeRead = once(async () => {
+      await rm(race.path);
+      await symlink(victim, race.path);
+    });
+    const result = await fix(dir, { test: "exit 1" });
+    expect(result.tests).toMatchObject({ passed: false, removed: "sdk.js" });
+    expect(await readFile(victim, "utf8")).toBe("outside\n");
+    await putBack(dir, "sdk.js", SDK_CALL);
+  });
+
+  it("does not count a second name a file had before the run", async () => {
+    const out = await outside();
+    // The rules leave the raw call in client.js as it is, so darnit puts that file back but never rewrites it.
+    const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });
+    await link(join(dir, "client.js"), join(out.dir, "second.js"));
+    const result = await fix(dir, { test: "exit 0" });
+    expect(result.tests).toMatchObject({ passed: true });
+    expect(result.tests?.removed).toBeUndefined();
+  });
+
+  it("says so when the tests give a file a second name outside, which stays", async () => {
+    const out = await outside();
+    const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });
+    const result = await fix(dir, { test: `ln client.js ${join(out.dir, "kept.js")}` });
+    expect(result.tests).toMatchObject({ passed: false, removed: "client.js" });
+    expect(renderSummary(result)).toContain("removed client.js, a file darnit edits, put something in its place or gave it another name; files put back, client.js as a new file.");
+    await putBack(dir, "client.js", RAW_FETCH);
+    await putBack(dir, "sdk.js", SDK_CALL);
+    expect(await readFile(join(out.dir, "kept.js"), "utf8")).toBe(RAW_FETCH);
+  });
+
+  it("puts back a file the tests made read-only", async () => {
+    const dir = await repoWith({ "lib/sdk.js": SDK_CALL });
+    const result = await fix(dir, { test: "chmod 444 lib/sdk.js; exit 1" });
+    expect(result.tests).toMatchObject({ passed: false });
+    await putBack(dir, join("lib", "sdk.js"), SDK_CALL);
+  });
+
+  it("puts a removed file back into a folder the tests made read-only, and leaves the folder as they set it", async () => {
+    const dir = await repoWith({ "lib/sdk.js": SDK_CALL });
+    try {
+      const result = await fix(dir, { test: "rm lib/sdk.js; chmod 555 lib; exit 1" });
+      expect(result.tests).toMatchObject({ passed: false, removed: join("lib", "sdk.js") });
+      expect((await lstat(join(dir, "lib"))).mode & 0o777).toBe(0o555);
+      await putBack(dir, join("lib", "sdk.js"), SDK_CALL);
+    } finally {
+      await chmod(join(dir, "lib"), 0o755);
+    }
   });
 
   it("refuses to put the file back through a folder the tests made a link out of the repository", async () => {
@@ -1891,7 +1998,7 @@ console.log("bell\\u0007 nul\\u0000 del\\u007f c1\\u0085 sep\\u2028 esc\\u001b[3
     const result = await fix(dir, { prepare: plan, test: `rm sdk.js && ln -s ${victim} sdk.js` });
     expect(result.records[0]?.pr).toMatchObject({ state: "tests-failed", tests: { passed: false, removed: "sdk.js" } });
     expect(exitCodeFor(result)).toBe(1);
-    expect(renderSummary(result)).toContain("removed sdk.js, a file darnit changed");
+    expect(renderSummary(result)).toContain("removed sdk.js, a file darnit edits");
     expect((await readPlan(plan)).groups[0]?.tests).toMatchObject({ passed: false });
     expect(await readFile(victim, "utf8")).toBe("outside\n");
     await putBack(dir, "sdk.js", SDK_CALL);
