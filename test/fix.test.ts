@@ -2093,7 +2093,9 @@ console.log(config);`,
 
     // Committed with CRLF, which git add leaves alone under an "auto" conversion; darnit must too.
     const CRLF = SDK_CALL.replaceAll("\n", "\r\n");
-    const MIXED = SDK_CALL.replace("\n", "\r\n");
+    // The first line ends in CRLF, the rest in LF.
+    const [head, ...tail] = SDK_CALL.split("\n");
+    const MIXED = [`${head}\r`, ...tail].join("\n");
     const kept: [string, string, string, Record<string, string>, string?][] = [
       ["core.autocrlf=true", "sdk.js", CRLF, { "core.autocrlf": "true" }],
       ["core.autocrlf=input", "sdk.js", CRLF, { "core.autocrlf": "input" }],
