@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { parse as parseYaml, stringify as toYaml } from "yaml";
+import { cleanEnv } from "../git.js";
 import { LANGS, type Lang } from "../records/schema.js";
 
 // The one place rule packs are applied. The fixture runner and `fix` both use
@@ -65,7 +66,8 @@ export async function applyRules(packDir: string, targets: readonly string[]): P
           const variant = join(tmp, `${lang}-${i}-${grammar}.yml`);
           await writeFile(variant, toYaml({ ...doc, language: grammar }));
           try {
-            await execFileAsync(bin, ["scan", "--config", config, "--rule", variant, "--update-all", ...targets], { cwd: tmp });
+            // The same clean environment the publish clone uses: no credentials reach ast-grep, which needs none.
+            await execFileAsync(bin, ["scan", "--config", config, "--rule", variant, "--update-all", ...targets], { cwd: tmp, env: cleanEnv() });
           } catch (err) {
             const { stderr } = err as { stderr?: string };
             throw new Error(`ast-grep failed on ${relative(packDir, rule)} (${grammar}): ${(stderr ?? String(err)).trim()}`, { cause: err });

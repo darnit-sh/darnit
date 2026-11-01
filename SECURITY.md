@@ -101,17 +101,21 @@ secret in any of them can reach the plan through test output.
 git hooks. It reads none of the folder it is run from, so a reused self-hosted workspace cannot steer
 it. Instead it makes its own clone: in a new temporary folder it fetches only the plan's commit from
 `https://github.com/<owner>/<repo>.git`, recomputes each rewrite there, and pushes to that same URL.
-git and `gh` are the only programs this job runs. Each is resolved once to an absolute real path
-(`realpath`) from an absolute `PATH` entry, never by bare name, and refused when that path is a
-directory, is not an executable file, or lies under a folder this job controls (the current folder,
-`GITHUB_WORKSPACE`, or the temp root), so a `git` or `gh` the commit ships or the checkout holds
-cannot be run. git runs with the process started outside the work tree and the work tree named by
-`-C`, and with an environment built as `process.env` minus the credential variables and every
-`GIT_*` variable (never through the bare-`git` call that reading git's own local-env-var list would
-need), plus `GIT_CONFIG_NOSYSTEM`, an empty global config, `HOME` and `XDG_CONFIG_HOME` in an empty
-folder, `GIT_NO_REPLACE_OBJECTS`, and pins that turn off hooks, fsmonitor, filters, signing and
-submodule push; the token reaches git only as an http header scoped to github.com. `gh auth token`
-is run only when no token is set. It trusts darnit's own install (its code, records and rewrite rules) and,
+The job runs three programs: git, `gh`, and the bundled ast-grep that applies darnit's rewrite
+rules. git and `gh` are each resolved once to an absolute real path (`realpath`) from an absolute
+`PATH` entry, never by bare name, and refused when that path lies under a folder this job controls
+(the current folder, `GITHUB_WORKSPACE`, or the temp root), compared by real path so a symlink, a
+`..` or a case difference cannot slip past; so a `git` or `gh` the commit ships or the checkout holds
+cannot be run. ast-grep is darnit's own pinned dependency, run from its absolute path in
+`node_modules`. git runs with the process started outside the work tree and the work tree named by
+`-C`. Every one of the three runs with an environment built from an allowlist, not from
+`process.env`: only `PATH`, locale and temp-folder variables carry over, so no credential, no `GIT_*`
+variable (a trace, config or replace setting), no `SSH_ASKPASS` and nothing else inherited reaches
+them. git additionally gets darnit's own hardening: `GIT_CONFIG_NOSYSTEM`, an empty global config,
+`HOME` and `XDG_CONFIG_HOME` in an empty folder, `GIT_NO_REPLACE_OBJECTS`, and pins that turn off
+hooks, fsmonitor, gpg signing and submodule push (a filter needs no pin because the fresh clone names
+none); the git version check at the start runs under the same allowlist. The token reaches git only
+as an http header scoped to github.com. `gh auth token` is run only when no token is set. It trusts darnit's own install (its code, records and rewrite rules) and,
 through that header, that github.com serves the real commit and accepts the push. It does not trust
 the workspace, the machine's user or system git config, or the plan: it applies nothing from the
 plan, makes each change again and compares it with the plan's patch byte for byte, and treats the

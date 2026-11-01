@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { firstFive, onPath } from "./detect.js";
 import { envToken } from "./github.js";
@@ -35,11 +35,11 @@ const UNTRUSTED_REPO = [
 // environment, which git reads only from this version on; an older git would ignore it and run them.
 const MIN_GIT: [number, number] = [2, 31];
 const gitChecked = new Map<string, Promise<void>>();
-/** Refuses the run on a git too old to read the environment config darnit's pins rely on. `gitBin` defaults to bare `git` for calls in darnit's own job; --publish passes the absolute path it resolved. */
-export function ensureGitVersion(gitBin = "git"): Promise<void> {
+/** Refuses the run on a git too old to read the environment config darnit's pins rely on. `gitBin` defaults to bare `git` for calls in darnit's own job; --publish passes the absolute path it resolved, with `env` the clone's clean environment so no trace or token-bearing variable reaches this call either. */
+export function ensureGitVersion(gitBin = "git", env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const checked = gitChecked.get(gitBin);
   if (checked) return checked;
-  const run = exec(gitBin, ["version"]).then(({ stdout }) => {
+  const run = exec(gitBin, ["version"], { env }).then(({ stdout }) => {
     const m = /^git version (\d+)\.(\d+)/.exec(stdout.trim());
     const [maj, min] = [Number(m?.[1]), Number(m?.[2])];
     if (!m || maj < MIN_GIT[0] || (maj === MIN_GIT[0] && min < MIN_GIT[1])) {
@@ -382,17 +382,32 @@ export const patch = (root: string, files: readonly string[]) => git(root, diffA
 /** How git prints the token: an http auth header for github.com, never on disk or in an argument. */
 const authHeader = (token: string) => `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
 
-/** Config no repository can override: no hooks, fsmonitor, filters, signing or submodule push. The clone carries no config of its own. */
+// Pins on every clone command: no hooks, fsmonitor, gpg signing or submodule push. Filters need no pin here because the
+// fresh clone carries no config that names one, so a filter driver is never defined.
 const CLONE_PINS = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "push.recurseSubmodules=no"];
 
 /** A git command in the publish clone; `network` for the fetch and push to github.com, which git's own low-speed limit bounds. */
 export type CloneGit = (args: string[], network?: boolean) => Promise<string>;
 
+/** The real path of `dir`, resolved as far as it exists, so a symlink or `..` in it cannot hide what it points at. */
+const realDir = (dir: string) => realpath(resolve(dir)).catch(() => resolve(dir));
+
+/** Whether `child` is `parent` or inside it, comparing real paths and, where a file system ignores case, case-insensitively. */
+function under(child: string, parent: string): boolean {
+  const rel = (a: string, b: string) => relative(a, b);
+  const inside = (p: string, c: string) => {
+    const r = rel(p, c);
+    return r === "" || (!r.startsWith(`..${sep}`) && r !== ".." && !isAbsolute(r));
+  };
+  return inside(parent, child) || inside(parent.toLowerCase(), child.toLowerCase());
+}
+
 /**
- * The absolute real path of `name` for a job that holds the token: from an absolute PATH entry, a real executable file,
- * outside every folder a repository or this run controls (the current folder, GITHUB_WORKSPACE, the temp root). Refuses
- * otherwise, so a `git` or `gh` the repository ships or the checkout folder holds is never run by a bare name or relative
- * lookup. Returns undefined only when `required` is false and the program is simply not on PATH.
+ * The absolute real path of `name` for a job that holds the token: from an absolute PATH entry, resolved through every
+ * link, and refused when it lies in a folder a repository or this run controls (the current folder, GITHUB_WORKSPACE, the
+ * temp root), compared by real path so a symlink, `..` or case difference cannot slip past. So a `git` or `gh` the
+ * repository ships or the checkout folder holds is never run by a bare name or relative lookup. Returns undefined only
+ * when `required` is false and the program is simply not on PATH.
  */
 export async function trustedProgram(name: string, required = true): Promise<string | undefined> {
   const found = await onPath(name);
@@ -400,12 +415,20 @@ export async function trustedProgram(name: string, required = true): Promise<str
     if (required) throw new Refusal(`${name} was not found in an absolute PATH entry; --publish runs ${name} by its absolute path`);
     return undefined;
   }
-  const real = await realpath(found).catch(() => found);
-  if (!(await stat(real).then((s) => s.isFile(), () => false))) throw new Refusal(`${name} resolves to ${real}, which is not an executable file; refusing to run it`);
-  const owned = [process.cwd(), process.env.GITHUB_WORKSPACE?.trim(), tmpdir()].filter((p): p is string => !!p).map((p) => resolve(p));
-  const under = owned.find((o) => real === o || real.startsWith(o + sep));
-  if (under) throw new Refusal(`${name} resolves to ${real}, under ${under}, a folder this job controls; refusing to run it`);
+  const real = await realpath(found).catch(() => resolve(found));
+  const owned = await Promise.all([process.cwd(), process.env.GITHUB_WORKSPACE?.trim(), tmpdir()].filter((p): p is string => !!p).map(realDir));
+  const bad = owned.find((o) => under(real, o));
+  if (bad) throw new Refusal(`${name} resolves to ${real}, under ${bad}, a folder this job controls; refusing to run it`);
   return real;
+}
+
+// What carries into a program the token job runs: nothing but these, so credentials, GIT_* (trace, config, replace),
+// SSH_ASKPASS and any other inherited variable are left out. `extra` adds darnit's own hardening on top.
+const ENV_ALLOW = /^(PATH|LANG|LC_[A-Z]+|TZ|TMPDIR|TEMP|TMP|SYSTEMROOT)$/;
+export function cleanEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && ENV_ALLOW.test(k)) env[k] = v;
+  return { ...env, ...extra };
 }
 
 /**
@@ -422,9 +445,9 @@ export async function withCleanClone<T>(gitBin: string, url: string, sha: string
   await mkdir(home);
   await mkdir(dir);
   await writeFile(global, "");
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const k of Object.keys(env)) if (CREDENTIALS.includes(k) || /^GIT_/.test(k)) delete env[k];
-  Object.assign(env, {
+  // An allowlist, not process.env minus a denylist: a credential, a GIT_* (trace, config, replace), SSH_ASKPASS or any
+  // other inherited variable is never carried in; only darnit's own hardening, set here, reaches git.
+  const env = cleanEnv({
     HOME: home, XDG_CONFIG_HOME: home, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: global, GIT_NO_REPLACE_OBJECTS: "1",
     GIT_LITERAL_PATHSPECS: "1", GIT_TERMINAL_PROMPT: "0",
     GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: `http.${GITHUB}.extraheader`, GIT_CONFIG_VALUE_0: authHeader(token),

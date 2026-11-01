@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { access, chmod, cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -367,14 +367,17 @@ describe("fix --publish", () => {
     const plan = await cliPlan(dir);
     const api = await localApi(branch);
     const ws = await fresh(bare);
+    // Hermetic: an empty HOME and GH_CONFIG_DIR, so even a real gh on PATH has no credential to read.
+    const emptyHome = await temp("darnit-home-");
     let run;
     try {
       // No token in the environment, so `gh auth token` is reached; the shipped gh must never run.
-      run = await cli(ws, { NODE_OPTIONS: `--import ${api.preload}`, PATH: `${prefix.replace("WS", ws)}${process.env.PATH}` }, "fix", "--publish", plan, "--repo", "o/r");
+      run = await cli(ws, { HOME: emptyHome, GH_CONFIG_DIR: emptyHome, NODE_OPTIONS: `--import ${api.preload}`, PATH: `${prefix.replace("WS", ws)}${process.env.PATH}` }, "fix", "--publish", plan, "--repo", "o/r");
     } finally {
       api.close();
     }
     expect(await readFile(marker, "utf8").catch(() => "")).toBe("");
+    expect(api.posts).toEqual([]);
     expect(run.code).toBe(2);
   });
 
@@ -387,6 +390,99 @@ describe("fix --publish", () => {
     expect(await onPath("git", ":.:node_modules/.bin")).toBeUndefined();
     expect(await onPath("git", join(lab, "d"))).toBeUndefined();
     expect(await onPath("git", `${join(lab, "d")}:${join(lab, "bin")}`)).toBe(join(lab, "bin", "git"));
+  });
+
+  // trustedProgram, directly: a git the job must not run resolves (through links, `..`, a trailing slash, a symlinked
+  // GITHUB_WORKSPACE) to a real path inside a folder the job controls. A folder outside the temp root and cwd, so only
+  // the GITHUB_WORKSPACE check can catch it.
+  async function shippedAt(): Promise<{ root: string; ws: string; binGit: string }> {
+    const root = await mkdtemp(join(homedir(), "darnit-tp-"));
+    tempDirs.push(root);
+    const ws = join(root, "ws");
+    await mkdir(join(ws, "bin"), { recursive: true });
+    await writeFile(join(ws, "bin", "git"), "#!/bin/sh\necho PWNED\n");
+    await chmod(join(ws, "bin", "git"), 0o755);
+    return { root, ws, binGit: join(ws, "bin") };
+  }
+
+  it("trustedProgram refuses a git whose real path is in GITHUB_WORKSPACE named through a symlink", async () => {
+    const { root, ws, binGit } = await shippedAt();
+    const link = join(root, "link");
+    await symlink(ws, link);
+    vi.stubEnv("GITHUB_WORKSPACE", link);
+    vi.stubEnv("PATH", `${binGit}:/usr/bin`);
+    await expect(trustedProgram("git")).rejects.toThrow("a folder this job controls");
+  });
+
+  it("trustedProgram refuses a git in GITHUB_WORKSPACE given with a trailing slash, and reached through a symlinked PATH entry", async () => {
+    const { root, ws, binGit } = await shippedAt();
+    vi.stubEnv("GITHUB_WORKSPACE", `${ws}/`);
+    vi.stubEnv("PATH", `${binGit}:/usr/bin`);
+    await expect(trustedProgram("git")).rejects.toThrow("a folder this job controls");
+    const linkBin = join(root, "lnbin");
+    await symlink(binGit, linkBin);
+    vi.stubEnv("PATH", `${linkBin}:/usr/bin`);
+    await expect(trustedProgram("git")).rejects.toThrow("a folder this job controls");
+  });
+
+  it("trustedProgram refuses a git under the temp root", async () => {
+    const lab = await temp("darnit-tp-tmp-");
+    await mkdir(join(lab, "bin"));
+    await writeFile(join(lab, "bin", "git"), "#!/bin/sh\n");
+    await chmod(join(lab, "bin", "git"), 0o755);
+    vi.stubEnv("GITHUB_WORKSPACE", "");
+    vi.stubEnv("PATH", `${join(lab, "bin")}:/usr/bin`);
+    await expect(trustedProgram("git")).rejects.toThrow("a folder this job controls");
+  });
+
+  // End to end through the CLI: a workspace outside the temp root, named by GITHUB_WORKSPACE through a symlink.
+  it("the CLI never runs a git in a GITHUB_WORKSPACE named through a symlink", async () => {
+    const { dir, bare, branch } = await origin();
+    const marker = join(await temp("darnit-lab-"), "MARKER");
+    await shipTools(dir, branch, marker, [["git", "git"], ["git", "node_modules/.bin/git"]]);
+    const plan = await cliPlan(dir);
+    const home = await mkdtemp(join(homedir(), "darnit-ws-"));
+    tempDirs.push(home);
+    const ws = join(home, "repo");
+    await exec("git", ["clone", "-q", bare, ws]);
+    await shipTools(ws, branch, marker, [["git", "git"], ["git", "node_modules/.bin/git"]]).catch(() => undefined);
+    const link = join(home, "link");
+    await symlink(ws, link);
+    const api = await localApi(branch);
+    let run;
+    try {
+      run = await cli(await temp("darnit-cwd-"), { GITHUB_TOKEN: TOKEN, GITHUB_WORKSPACE: link, NODE_OPTIONS: `--import ${api.preload}`, PATH: `${link}/node_modules/.bin:${link}:${process.env.PATH}` }, "fix", "--publish", plan, "--repo", "o/r");
+    } finally {
+      api.close();
+    }
+    expect(await readFile(marker, "utf8").catch(() => "")).toBe("");
+    expect(run.code).toBe(2);
+    expect(run.stderr).toMatch(/under .*, a folder this job controls/);
+  });
+
+  it("runs the git version check and the clone with no trace or credential in the environment", async () => {
+    const { dir, bare, branch } = await origin();
+    const plan = await cliPlan(dir);
+    const trace = join(await temp("darnit-lab-"), "trace.log");
+    const api = await localApi(branch);
+    let run;
+    try {
+      // A trace that would log env variables, aimed at both the version check and the clone, named as a job could via GITHUB_ENV.
+      run = await cli(await fresh(bare), {
+        GITHUB_TOKEN: TOKEN,
+        NODE_OPTIONS: `--import ${api.preload}`,
+        GIT_TRACE2_EVENT: trace,
+        GIT_TRACE2_ENV_VARS: "GITHUB_TOKEN",
+        GIT_TRACE: trace,
+      }, "fix", "--publish", plan, "--repo", "o/r");
+    } finally {
+      api.close();
+    }
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain("pull request opened");
+    const written = await readFile(trace, "utf8").catch(() => "");
+    expect(written).toBe("");
+    expect(written).not.toContain(TOKEN);
   });
 
   it("outside Actions reads the remote tip only from the ref named exactly HEAD, not a refs/*/HEAD an attacker pushed", async () => {

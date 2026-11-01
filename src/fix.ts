@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { constants } from "node:fs";
-import { cp, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { constants, type Stats } from "node:fs";
+import { cp, type FileHandle, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parse } from "@ast-grep/napi";
@@ -40,6 +40,8 @@ export type TestOutcome = TestRun & {
   attributed?: "change" | "baseline";
   /** A build that already failed before the change says nothing about it: the change is kept and this is reported instead. */
   notChecked?: boolean;
+  /** A file darnit edits that the run removed, put something in place of or gave another name: the check failed, and the files went back. */
+  removed?: string;
 };
 
 /** A check that failed because of the change, or (for tests) failed at all. A build that was already broken is not one. */
@@ -153,15 +155,108 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
   return { groups: [...byId.values()], coverage, namesElsewhere: values.length + mentions.length > 0 };
 }
 
+/** A file's bytes and mode, and its inode and number of names, to tell a second name the tests gave it from one it had. */
+type Entry = { bytes: Buffer; mode: number; ino: number; nlink: number };
+type Snapshot = Map<string, Entry>;
+
+/** Whether `info` is a regular file with no name but its own, or no names but those it had in `before`. */
+const own = (info: Stats, before: Entry) => info.isFile() && (info.nlink === 1 || (info.ino === before.ino && info.nlink <= before.nlink));
+
 // Bytes, not text: a file that is not UTF-8 must come back as it was.
-async function snapshotOf(root: string, files: readonly string[]): Promise<Map<string, Buffer>> {
-  const snap = new Map<string, Buffer>();
-  for (const f of files) snap.set(f, await readFile(join(root, f)));
+async function snapshotOf(root: string, files: readonly string[]): Promise<Snapshot> {
+  const snap: Snapshot = new Map();
+  for (const f of files) {
+    // Nonblocking, so a pipe in its place cannot hold the open.
+    const file = await open(join(root, f), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const info = await file.stat();
+      if (!info.isFile()) throw new Refusal(`${shown(f)} is not a regular file`);
+      snap.set(f, { bytes: await file.readFile(), mode: info.mode & 0o7777, ino: info.ino, nlink: info.nlink });
+    } finally {
+      await file.close();
+    }
+  }
   return snap;
 }
 
-async function restore(root: string, snap: Map<string, Buffer>): Promise<void> {
-  for (const [f, bytes] of snap) await writeFile(join(root, f), bytes);
+/** How many times restore removes what keeps appearing in a file's place before it refuses. */
+const TRIES = 3;
+
+/**
+ * Writes each file back with its bytes and mode, going through every file, then refuses with the first it could not put
+ * back. A file that is still its own is written in place, so its folder need not be writable. Anything else in its place,
+ * a link, a hard link, a folder, is removed and the file created anew where nothing has appeared since, so nothing is
+ * written through it. The folders above are checked right before writing; Node cannot hold them open while it writes.
+ */
+async function restore(root: string, snap: Snapshot): Promise<void> {
+  let refusal: Refusal | undefined;
+  for (const [f, before] of snap) {
+    await putBack(root, f, before).catch((err: unknown) => {
+      const code = (err as NodeJS.ErrnoException).code ?? String(err);
+      const why = code === "EACCES" || code === "EPERM" ? "permission denied" : code;
+      refusal ??= err instanceof Refusal ? err : new Refusal(`darnit could not put ${shown(f)} back (${why}); restore it with git`);
+    });
+  }
+  if (refusal) throw refusal;
+}
+
+async function putBack(root: string, f: string, before: Entry): Promise<void> {
+  await realFolders(root, f);
+  const path = join(root, f);
+  // Nonblocking, so a pipe in its place cannot hold the open.
+  let file = await open(path, constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => undefined);
+  if (file && !own(await file.stat(), before)) file = await file.close().then(() => undefined);
+  file ??= await created(path, f, before.mode);
+  try {
+    await file.truncate();
+    await file.writeFile(before.bytes);
+    await file.chmod(before.mode);
+  } finally {
+    await file.close();
+  }
+}
+
+async function created(path: string, f: string, mode: number): Promise<FileHandle> {
+  for (let tries = 1; ; tries++) {
+    await rm(path, { recursive: true, force: true });
+    try {
+      // With O_EXCL, open never follows a link: one in the name is EEXIST.
+      return await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, mode);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (tries === TRIES) throw new Refusal(`a new ${shown(f)} appeared each time darnit removed what was there to put it back, so darnit wrote nothing there; a process the tests started may still be running`);
+    }
+  }
+}
+
+/** Makes each folder above `f` a real folder again; one that became a link out of the repository is refused. */
+async function realFolders(root: string, f: string): Promise<void> {
+  let dir = root;
+  for (const part of dirname(f).split(sep).filter((p) => p !== ".")) {
+    dir = join(dir, part);
+    const info = await lstat(dir).catch(() => undefined);
+    if (info?.isDirectory()) continue;
+    if (info?.isSymbolicLink() && !within(await realpath(root), await resolved(dir))) {
+      throw new Refusal(`${shown(relative(root, dir))} became a link out of the repository, so ${shown(f)} was not put back; nothing was written through it`);
+    }
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir);
+  }
+}
+
+/**
+ * The first file in `snap` that is no longer a regular file in real folders: removed, a link or folder in its place,
+ * or a name it did not have before.
+ */
+async function replaced(root: string, snap: Snapshot): Promise<string | undefined> {
+  for (const [f, before] of snap) {
+    const parts = f.split(sep);
+    for (let i = 1; i <= parts.length; i++) {
+      const info = await lstat(join(root, ...parts.slice(0, i))).catch(() => undefined);
+      if (!(i < parts.length ? info?.isDirectory() : info && own(info, before))) return f;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -195,7 +290,7 @@ export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> 
   const changed: string[] = [];
   // A rewritten file that lost or changed a comment goes back on its own too, and its call sites to a human.
   const lost: string[] = [];
-  for (const [f, bytes] of before) {
+  for (const [f, { bytes }] of before) {
     const after = await readFile(join(dir, f));
     if (after.equals(bytes)) continue;
     if (keepsComments(f, bytes.toString("utf8"), after.toString("utf8"))) changed.push(f);
@@ -265,13 +360,20 @@ function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = 
  * Runs a check; on failure puts the files back and runs it again to say whether the change was the cause.
  * A run that timed out checked nothing, so its files go back with no verdict, and no second run when it was the first.
  */
-async function testAndAttribute(root: string, command: string, snap: Map<string, Buffer>, kind: TestOutcome["kind"]): Promise<TestOutcome> {
+async function testAndAttribute(root: string, command: string, snap: Snapshot, kind: TestOutcome["kind"]): Promise<TestOutcome> {
   const outcome: TestOutcome = { ...(await runTests(root, command)), kind };
+  if (await tampered(root, snap, outcome)) return outcome;
   if (!outcome.passed) {
-    const changed = await snapshotOf(root, [...snap.keys()]);
+    // A link or pipe that appears after the check is caught by the read, which neither follows nor waits on it.
+    const changed = await snapshotOf(root, [...snap.keys()]).catch(async (err: unknown) => {
+      if (await tampered(root, snap, outcome)) return undefined;
+      throw err;
+    });
+    if (!changed) return outcome;
     await restore(root, snap);
     if (outcome.timedOut) return outcome;
     const again = await runTests(root, command);
+    if (await tampered(root, snap, outcome)) return outcome;
     if (again.timedOut) return { ...outcome, timedOut: true };
     outcome.attributed = again.passed ? "change" : "baseline";
     // A build that fails without the change too (missing dependencies, secrets, an unrelated error)
@@ -284,6 +386,15 @@ async function testAndAttribute(root: string, command: string, snap: Map<string,
   return outcome;
 }
 
+/** Whether the run removed a file darnit edits, put something in its place or gave it another name; if so the check failed, and the files go back. */
+async function tampered(root: string, snap: Snapshot, outcome: TestOutcome): Promise<boolean> {
+  const gone = await replaced(root, snap);
+  if (gone === undefined) return false;
+  await restore(root, snap);
+  Object.assign(outcome, { passed: false, removed: gone });
+  return true;
+}
+
 type Commands = { build?: string | undefined; tests?: string | undefined };
 
 const COMPILED = /\.(m?[jt]sx?|c[jt]s)$/;
@@ -292,7 +403,7 @@ const COMPILED = /\.(m?[jt]sx?|c[jt]s)$/;
  * The build check first, then the tests; stops at the first failure, which has already put the files back.
  * The build only runs when JavaScript or TypeScript changed: it says nothing about a Python fix.
  */
-async function runChecks(root: string, commands: Commands, snap: Map<string, Buffer>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
+async function runChecks(root: string, commands: Commands, snap: Snapshot): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
   // Builds and tests can write tracked files (a committed dist/, generated types). Put back anything
   // they touched that was clean before, so the tree only differs by the rewrite.
   const dirtyBefore = new Set(await g.modified(root));
@@ -458,7 +569,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
 }
 
 /** Runs the checks on one rewritten group, as --pr and --prepare both do. A failure, which has put the files back, goes on the record. */
-async function checkGroup(root: string, commands: Commands, snap: Map<string, Buffer>, result: RecordResult) {
+async function checkGroup(root: string, commands: Commands, snap: Snapshot, result: RecordResult) {
   const { build, tests } = await runChecks(root, commands, snap);
   if (failed(build)) result.pr = { state: "build-failed", build: build! };
   else if (failed(tests)) result.pr = { state: "tests-failed", tests: tests! };
@@ -471,6 +582,12 @@ const HOLDS: Record<g.Credential, string> = {
   url: "a URL with a user name or password, where a token can sit",
 };
 
+/** Whether `path` is `parent` or inside it. */
+const within = (parent: string, path: string) => {
+  const inside = relative(parent, path);
+  return inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside);
+};
+
 /** `path` with every link resolved, as far as it exists. */
 async function resolved(path: string): Promise<string> {
   return (await realpath(path).catch(() => undefined)) ?? join(await resolved(dirname(path)), basename(path));
@@ -478,8 +595,7 @@ async function resolved(path: string): Promise<string> {
 
 /** Refuses a plan folder inside the repository or one planFolder refuses, then removes an earlier plan. */
 async function startPlan(root: string, dir: string): Promise<void> {
-  const inside = relative(await realpath(await g.topLevel(root)), await resolved(dir));
-  if (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)) {
+  if (within(await realpath(await g.topLevel(root)), await resolved(dir))) {
     throw new Refusal(`${dir} is inside the repository, where its code can change the plan and git sees it as a change; give --prepare a folder outside it`);
   }
   await planFolder(dir);
@@ -655,7 +771,7 @@ async function publish(opts: FixOptions): Promise<FixResult> {
   }
   // The two programs this job runs, each resolved once to an absolute real path outside any folder the job controls.
   const gitBin = (await g.trustedProgram("git"))!;
-  await g.ensureGitVersion(gitBin);
+  await g.ensureGitVersion(gitBin, g.cleanEnv());
   const token = await githubToken(() => g.trustedProgram("gh", false));
   if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
   const target = await defaultBranch(token, repo);
@@ -955,6 +1071,10 @@ function testLine(t: TestOutcome, fromPlan = false): string {
   // --publish runs no tests, so the rerun it can suggest is the verify job's.
   const rerun = (start: string) => `${start} ${fromPlan ? "--prepare " : ""}with --no-test`;
   if (t.passed) return `${t.kind}: ${t.command} passed`;
+  if (t.removed !== undefined) {
+    const f = shown(t.removed);
+    return `${t.kind}: ${t.command} removed ${f}, a file darnit edits, put something in its place or gave it another name; files put back, ${f} as a new file.${t.output ? `\n${t.output}` : ""}`;
+  }
   if (t.notChecked) return `${t.kind}: ${t.command} already fails without the change, so it could not check it; change kept`;
   if (t.timedOut) {
     return `${t.kind}: ${t.command} timed out after ${TIME_LIMIT_MINUTES} minutes; files put back, since a run that did not finish can't check the change. ${rerun("Rerun")} to apply it without the tests or the build check.${t.output ? `\n${t.output}` : ""}`;
@@ -1033,7 +1153,7 @@ function checkLines(result: FixResult, build: TestOutcome | undefined, tests: Te
 
 export function toJson(result: FixResult): object {
   const outcome = (t: TestOutcome | undefined) =>
-    t ? { kind: t.kind, command: t.command, passed: t.passed, attributed: t.attributed, notChecked: t.notChecked ?? false, timedOut: t.timedOut, output: t.output } : null;
+    t ? { kind: t.kind, command: t.command, passed: t.passed, attributed: t.attributed, notChecked: t.notChecked ?? false, timedOut: t.timedOut, removed: t.removed ?? null, output: t.output } : null;
   return {
     records: result.records.map((r) => ({
       id: r.record.id,
