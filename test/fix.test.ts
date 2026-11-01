@@ -2162,7 +2162,10 @@ describe("the repository's config names no program git runs in darnit's own call
     await git(bare, ["config", "receive.certNonceSeed", "seed"]);
     await git(c.dir, ["remote", "add", "origin", bare]);
     const branch = (await git(c.dir, ["symbolic-ref", "--short", "HEAD"])).trim();
-    await git(c.dir, ["push", "-q", "-u", "origin", branch], 60);
+    // The setup push goes through plain git, not darnit's pinned helper, so only the `fix --pr` push
+    // below exercises the pins; its own signing (push.gpgSign) is cleared before the real run.
+    await execFileP("git", ["push", "-q", "-u", "origin", branch], { cwd: c.dir }).catch(() => undefined);
+    await rm(c.marker, { force: true });
     vi.stubEnv("GITHUB_TOKEN", "test-token");
     vi.stubGlobal("fetch", (url: string, init?: RequestInit): Promise<Response> => {
       const body = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status }));
@@ -2238,53 +2241,68 @@ describe("the repository's config names no program git runs in darnit's own call
     expect(await ran(marker)).toBe(false);
   }, 60_000);
 
-  // push.recurseSubmodules would push a submodule from darnit's push, running its remote helper with
-  // darnit's push environment and the token in it.
-  it("does not push a submodule from its own push, even with push.recurseSubmodules set", async () => {
-    const subsrc = await mkdtemp(join(tmpdir(), "darnit-subsrc-"));
-    const subrem = await mkdtemp(join(tmpdir(), "darnit-subrem-"));
-    tempDirs.push(subsrc, subrem);
-    await git(subsrc, ["init", "-q"]);
-    await writeFile(join(subsrc, "s.txt"), "s\n");
-    await git(subsrc, ["add", "s.txt"]);
-    await git(subsrc, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s"]);
-    await git(subsrc, ["branch", "-M", "main"]);
-    await git(subrem, ["init", "-q", "--bare"]);
+  // push.recurseSubmodules (or submodule.recurse) would push a submodule from darnit's own push,
+  // running the submodule's remote helper with darnit's push environment and the token in it. The
+  // superproject is a real breach: its branch is ahead of origin by an unpushed submodule bump, and
+  // the submodule is on a branch named like darnit's with that commit unpushed, so darnit's `fix --pr`
+  // push genuinely needs the submodule. Everything but `fix --pr` is set up in plain git, so no pin
+  // of darnit's masks the setup.
+  const plain = async (cwd: string, args: string[]): Promise<string> => (await execFileP("git", args, { cwd })).stdout;
 
-    const { dir } = await setup(() => Promise.resolve());
+  async function submoduleProject(form: [string, string]): Promise<{ dir: string; seen: string }> {
+    const BR = "darnit/openai-max-tokens-to-max-completion-tokens";
+    const subrem = await mkdtemp(join(tmpdir(), "darnit-subrem-"));
+    const subsrc = await mkdtemp(join(tmpdir(), "darnit-subsrc-"));
+    tempDirs.push(subrem, subsrc);
     const seen = join(subrem, "seen");
     tempDirs.push(seen);
     const rp = join(subrem, "rp.sh");
-    await writeFile(rp, `#!/bin/sh\nenv | grep -i AUTHORIZATION > '${seen}'\nexec git-receive-pack "$@"\n`);
+    await writeFile(rp, `#!/bin/sh\nenv | grep -iE 'AUTHORIZATION|extraheader' > '${seen}'\nexec git-receive-pack "$@"\n`);
     await chmod(rp, 0o755);
-    await execFileP("git", ["-c", "protocol.file.allow=always", "submodule", "add", "-q", subsrc, "sub"], { cwd: dir });
-    await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "sub"]);
-    // The submodule tracks a bare whose receive-pack records its environment; leave it a commit ahead.
-    await git(join(dir, "sub"), ["remote", "set-url", "origin", subrem]);
-    await git(join(dir, "sub"), ["config", "remote.origin.receivepack", rp]);
-    await git(join(dir, "sub"), ["push", "-q", "-u", "origin", "main"], 60);
-    await appendFile(join(dir, "sub", "s.txt"), "s2\n");
-    await git(join(dir, "sub"), ["add", "s.txt"]);
-    await git(join(dir, "sub"), ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "s2"]);
-    await git(dir, ["add", "sub"]);
-    await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "bump"]);
-    await git(dir, ["config", "push.recurseSubmodules", "on-demand"]);
+    await plain(subrem, ["init", "-q", "--bare"]);
+    await plain(subsrc, ["init", "-q", "-b", BR]);
+    await writeFile(join(subsrc, "s.txt"), "s\n");
+    await plain(subsrc, ["add", "s.txt"]);
+    await plain(subsrc, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c0"]);
+    await plain(subsrc, ["remote", "add", "origin", subrem]);
+    await plain(subsrc, ["push", "-q", "-u", "origin", BR]);
 
-    const bare = await mkdtemp(join(tmpdir(), "darnit-origin-"));
-    tempDirs.push(bare);
-    await git(bare, ["init", "-q", "--bare"]);
-    await git(dir, ["remote", "add", "origin", bare]);
-    const branch = (await git(dir, ["symbolic-ref", "--short", "HEAD"])).trim();
-    await git(dir, ["push", "-q", "-u", "origin", branch], 60);
-    await rm(seen, { force: true }); // the setup push above already touched it
+    const dir = await repoFrom(BEFORE);
+    await plain(dir, ["-c", "protocol.file.allow=always", "submodule", "add", "-q", "-b", BR, subsrc, "sub"]);
+    await plain(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "add sub"]);
+    const outerrem = await mkdtemp(join(tmpdir(), "darnit-origin-"));
+    tempDirs.push(outerrem);
+    await plain(outerrem, ["init", "-q", "--bare"]);
+    await plain(dir, ["remote", "add", "origin", outerrem]);
+    const base = (await plain(dir, ["symbolic-ref", "--short", "HEAD"])).trim();
+    await plain(dir, ["push", "-q", "-u", "origin", base]); // origin has the base; the submodule's commit is on its remote
+    // Now make the submodule a commit ahead on BR, unpushed, and leave the superproject ahead of origin by that bump.
+    await plain(join(dir, "sub"), ["config", "remote.origin.receivepack", rp]);
+    await appendFile(join(dir, "sub", "s.txt"), "s1\n");
+    await plain(join(dir, "sub"), ["add", "s.txt"]);
+    await plain(join(dir, "sub"), ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c1"]);
+    await plain(dir, ["add", "sub"]);
+    await plain(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "bump"]);
+    await plain(dir, ["config", ...form]);
+    return { dir, seen };
+  }
+
+  it.each([
+    ["push.recurseSubmodules", "on-demand"],
+    ["push.recurseSubmodules", "check"],
+    ["submodule.recurse", "true"],
+  ] as [string, string][])("does not push a submodule from its own push, with %s=%s", async (...form) => {
+    const { dir, seen } = await submoduleProject(form);
     vi.stubEnv("GITHUB_ACTIONS", "true");
     vi.stubEnv("GITHUB_TOKEN", "test-token");
     vi.stubGlobal("fetch", (url: string): Promise<Response> => {
       const body = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status }));
-      if (url.endsWith("/repos/o/r")) return body({ default_branch: branch });
+      if (url.endsWith("/repos/o/r")) return body({ default_branch: "main" });
       if (url.includes("/pulls?")) return body([]);
       return body({ html_url: "https://github.com/o/r/pull/1" }, 201);
     });
+    // With the pin darnit's push completes and the submodule is never pushed; without it the push
+    // recurses (on-demand/recurse) into the submodule's token-carrying environment or aborts (check).
     await fix(dir, { pr: true, noTest: true, repo: "o/r", allowDirty: true });
     expect(await readFile(seen, "utf8").catch(() => "")).toBe("");
   }, 60_000);
@@ -2298,6 +2316,17 @@ describe("the repository's config names no program git runs in darnit's own call
     await chmod(join(fakeBin, "git"), 0o755);
     const dir = await repoFrom(BEFORE);
     const run = await darnitWith({ PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}` }, dir, "fix", "--no-test");
+    expect(run.code).toBe(2);
+    expect(run.stderr).toMatch(/needs git 2\.31/);
+  });
+
+  it("refuses init too against a git too old to read the environment config its pins rely on", async () => {
+    const fakeBin = await mkdtemp(join(tmpdir(), "darnit-oldgit-"));
+    tempDirs.push(fakeBin);
+    await writeFile(join(fakeBin, "git"), '#!/bin/sh\n[ "$1" = version ] && echo "git version 2.30.0" || exit 0\n');
+    await chmod(join(fakeBin, "git"), 0o755);
+    const dir = await repoFrom(BEFORE);
+    const run = await darnitWith({ PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}` }, dir, "init");
     expect(run.code).toBe(2);
     expect(run.stderr).toMatch(/needs git 2\.31/);
   });
