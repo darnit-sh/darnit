@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { Refusal } from "./refusal.js";
 
 const exec = promisify(execFile);
 const API = "https://api.github.com";
@@ -8,14 +9,26 @@ const TIMEOUT_MS = 30_000;
 
 export type Repo = { owner: string; repo: string };
 
+// GitHub tokens are printable ASCII. fetch quotes a header value it rejects in its error, so a token
+// with a line break inside would be printed.
+const checked = (token: string) => {
+  if (/[^\x21-\x7e]/.test(token)) throw new Refusal("the GitHub token holds a character other than printable ASCII (a space, control or zero-width character, or a letter outside ASCII); set it again without one");
+  return token || undefined;
+};
+
+/** GITHUB_TOKEN, else GH_TOKEN, trimmed. */
+export const envToken = () => checked(process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "");
+
 export async function githubToken(): Promise<string | undefined> {
-  const env = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
+  const env = envToken();
   if (env) return env;
+  let out: string;
   try {
-    return (await exec("gh", ["auth", "token"])).stdout.trim() || undefined;
+    out = (await exec("gh", ["auth", "token"])).stdout;
   } catch {
     return undefined;
   }
+  return checked(out.trim());
 }
 
 // Only characters GitHub allows in names, so a name can never change the API path.
@@ -41,6 +54,8 @@ const repoPath = ({ owner, repo }: Repo) => `/repos/${encodeURIComponent(owner)}
 
 async function api<T>(token: string, method: string, path: string, body?: object): Promise<T> {
   const signal = AbortSignal.timeout(TIMEOUT_MS);
+  // Should fetch or a server quote the token anyway, it never reaches darnit's message.
+  const hide = (text: string) => (token ? text.replaceAll(token, "***") : text);
   let res: Response;
   let text: string;
   try {
@@ -59,9 +74,11 @@ async function api<T>(token: string, method: string, path: string, body?: object
   } catch (err) {
     if (signal.aborted) throw new Error(`GitHub ${method} ${path} timed out after ${TIMEOUT_MS / 1000} seconds`, { cause: err });
     const { message, cause } = err as Error;
-    throw new Error(`GitHub ${method} ${path} failed: ${message}${cause instanceof Error ? ` (${cause.message})` : ""}`, { cause: err });
+    // No cause: fetch's error can hold the token, and printing an error prints its cause.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(hide(`GitHub ${method} ${path} failed: ${message}${cause instanceof Error ? ` (${cause.message})` : ""}`));
   }
-  if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${text.slice(0, 300)}`);
+  if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${hide(text).slice(0, 300)}`);
   return JSON.parse(text) as T;
 }
 

@@ -1,4 +1,7 @@
 import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { access, appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, sep } from "node:path";
@@ -128,6 +131,22 @@ describe("text from the repository in output", () => {
     const json = await darnit(dir, "fix", "--dry-run", "--no-test", "--json");
     expect(json.stdout).not.toMatch(HIDDEN);
     expect((JSON.parse(json.stdout) as { diff: string }).diff).toContain(`-export const r = c.chat.completions.create({ ${call} });`);
+  });
+
+  it("keeps only darnit's colors in fix's diff on a terminal", async () => {
+    const codes = "\u001b[8mhidden\u001b[0m \u001b[30;40mblack\u001b[38;2;0;0;0m \u001b[2Jwipe";
+    const dir = await repoWith({ "app.ts": `import OpenAI from "openai";\n// ${codes}\n${SDK_CALL.split("\n")[1]} // ${codes}\n` });
+    const tty = { NODE_OPTIONS: "--import=data:text/javascript,process.stdout.isTTY=true" };
+    const { stdout } = await darnitWith(tty, dir, "fix", "--dry-run", "--no-test");
+    expect(stdout).toContain("\u001b[36m@@ -1,3 +1,3 @@\u001b[m");
+    expect(stdout).toContain(" // [8mhidden[0m [30;40mblack[38;2;0;0;0m [2Jwipe\n");
+    expect(stdout).toContain("\u001b[31m-export const r = new OpenAI().chat.completions.create({ model: \"x\", messages: [], max_tokens: 5 }); // [8mhidden");
+    expect(stdout).toContain("\u001b[32m+export const r = new OpenAI().chat.completions.create({ model: \"x\", messages: [], max_completion_tokens: 5 }); // [8mhidden");
+    // eslint-disable-next-line no-control-regex
+    expect(stdout.replace(/\u001b\[(1|31|32|36|41)?m/g, "")).not.toContain("\u001b");
+    expect((await darnit(dir, "fix", "--dry-run", "--no-test")).stdout).not.toContain("\u001b");
+    const json = await darnitWith(tty, dir, "fix", "--dry-run", "--no-test", "--json");
+    expect((JSON.parse(json.stdout) as { diff: string }).diff).toContain(`+export const r = new OpenAI().chat.completions.create({ model: "x", messages: [], max_completion_tokens: 5 }); // ${codes}\n`);
   });
 
   it("gives fix --json the address and path as they are, and writes them out on screen", async () => {
@@ -1403,6 +1422,56 @@ console.log(config);`,
     expect(await run(true)).toBe("git config,git-credentials-1.config");
     expect(await run(!/persist-credentials: false/.test(workflow))).toBe("");
   });
+
+  it("refuses a token with a character outside printable ASCII inside before any request, and never prints it", async () => {
+    const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
+    const { dir } = await repoWithOrigin();
+    const tools = await mkdtemp(join(tmpdir(), "darnit-tools-"));
+    tempDirs.push(tools);
+    // The API is a local server here, never GitHub.
+    const asked: (string | undefined)[] = [];
+    const server = createServer((req, res) => {
+      asked.push(req.headers.authorization);
+      res.writeHead(500).end();
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    const preload = join(tools, "local-api.mjs");
+    await writeFile(preload, `const f = globalThis.fetch;\nglobalThis.fetch = (url, init) => f(String(url).replace(/^https:\\/\\/api\\.github\\.com\\//, ${JSON.stringify(api)}), init);\n`);
+    const ghOut = join(tools, "gh-out");
+    await writeFile(join(tools, "gh"), `#!/bin/sh\ncat '${ghOut}'\n`, { mode: 0o755 });
+    const run = async (env: NodeJS.ProcessEnv, gh = "") => {
+      await writeFile(ghOut, gh);
+      const out = await darnitWith(
+        { GITHUB_TOKEN: "", GH_TOKEN: "", PATH: `${tools}${delimiter}${process.env.PATH}`, NODE_OPTIONS: `--import ${preload}`, ...env },
+        dir,
+        ...["fix", "--pr", "--no-test", "--repo", "o/r"],
+      );
+      for (const f of await readdir(dir, { recursive: true })) {
+        expect(await readFile(join(dir, f), "latin1").catch(() => ""), f).not.toContain(token.slice(0, 12));
+      }
+      return out;
+    };
+    const refused = { code: 2, stdout: "", stderr: "darnit: the GitHub token holds a character other than printable ASCII (a space, control or zero-width character, or a letter outside ASCII); set it again without one\n" };
+    try {
+      for (const inner of ["\n", "\r", " ", "\t", "\u200b", "\u00e9"]) {
+        const bad = `${token}${inner}X`;
+        expect(await run({ GITHUB_TOKEN: bad }), JSON.stringify(inner)).toEqual(refused);
+        expect(await run({ GH_TOKEN: ` ${bad}\n` }), JSON.stringify(inner)).toEqual(refused);
+      }
+      for (const inner of ["\n", "\r", "\0", " ", "\u200b"]) expect(await run({}, `${token}${inner}X\n`), JSON.stringify(inner)).toEqual(refused);
+      expect(asked).toEqual([]);
+      expect((await git(dir, ["branch", "--list", "darnit/*"])).trim()).toBe("");
+      expect((await git(dir, ["status", "--porcelain"])).trim()).toBe("");
+      // A token with only whitespace around it is trimmed and sent as before.
+      const sent = await run({}, `  ${token}\n`);
+      expect(sent.stderr).toContain("darnit: GitHub GET /repos/o/r failed: 500");
+      expect(asked).toEqual([`Bearer ${token}`]);
+    } finally {
+      server.close();
+    }
+  }, 120_000);
 });
 
 describe("fix --prepare", () => {
@@ -1880,10 +1949,49 @@ describe("prBody", () => {
 });
 
 describe("forTerminal", () => {
-  it("keeps colors and line breaks, drops C0 control characters and writes out C1 ones", () => {
+  it("keeps line breaks, drops C0 control characters and color codes, and writes out C1 ones", () => {
     const text = "\u001b[31mred\u001b[0m\tok\n\u001b]52;c;Zm9v\u0007clip\u001b[2Jwipe\rover\u009b1Ahide\u0000\u007f";
-    expect(forTerminal(text, true, {})).toBe("\u001b[31mred\u001b[0m\tok\n]52;c;Zm9vclip[2Jwipeover\\u009b1Ahide\\u007f");
     expect(forTerminal(text, false, {})).toBe("[31mred[0m\tok\n]52;c;Zm9vclip[2Jwipeover\\u009b1Ahide\\u007f");
+    expect(forTerminal(text, true, {})).toBe(forTerminal(text, false, {}));
+  });
+
+  it("colors a diff the way git does, with no color codes from its text", () => {
+    const codes = "\u001b[8mhidden\u001b[0m \u001b[30;40m\u001b[38;2;0;0;0m\u001b[2J";
+    const diff = [
+      "diff --git a/x.ts b/x.ts",
+      "index 1..2 100644",
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      `@@ -1,3 +1,3 @@ f(${codes})`,
+      ` same ${codes}`,
+      `-old ${codes}`,
+      "-- removed",
+      `+new ${codes} \t `,
+      "+++ added",
+      "\\ No newline at end of file",
+      "",
+    ].join("\n");
+    const plain = "[8mhidden[0m [30;40m[38;2;0;0;0m[2J";
+    expect(forTerminal(diff, true, {}).split("\n")).toEqual([
+      "\u001b[1mdiff --git a/x.ts b/x.ts\u001b[m",
+      "\u001b[1mindex 1..2 100644\u001b[m",
+      "\u001b[1m--- a/x.ts\u001b[m",
+      "\u001b[1m+++ b/x.ts\u001b[m",
+      `\u001b[36m@@ -1,3 +1,3 @@\u001b[m f(${plain})`,
+      ` same ${plain}`,
+      `\u001b[31m-old ${plain}\u001b[m`,
+      "\u001b[31m-- removed\u001b[m",
+      `\u001b[32m+new ${plain}\u001b[m\u001b[41m \t \u001b[m`,
+      "\u001b[32m+++ added\u001b[m",
+      "\\ No newline at end of file",
+      "",
+    ]);
+    expect(forTerminal(diff, false, {})).toBe(diff.replaceAll("\u001b", ""));
+  });
+
+  it("colors a hostile diff quickly", async () => {
+    const diff = `diff --git a/x b/x\n@@ -1 +1 @@\n+${" ".repeat(200_000)}x\n+${"\t".repeat(200_000)}\n${"+ \n-\n".repeat(100_000)}`;
+    expect(await cpuTime(() => forTerminal(diff, true, {}), 3, 300)).toBeLessThan(300);
   });
 
   it("writes out every direction-changing, zero-width and line-separating character, and leaves ordinary Unicode alone", () => {
