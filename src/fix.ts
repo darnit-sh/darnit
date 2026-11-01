@@ -1,19 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { constants, type Stats } from "node:fs";
+import { cp, type FileHandle, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parse } from "@ast-grep/napi";
 import { checkReport, notCheckedNotes, scan, title, type Coverage, type Hit } from "./check.js";
 import * as g from "./git.js";
-import { escapedPieces, escapeHidden, shown, vendorName } from "./detect.js";
-import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug } from "./github.js";
+import { cleanEnv, escapedPieces, escapeHidden, shown, vendorName } from "./detect.js";
+import { createPr, defaultBranch, findOpenPr, githubToken, parseRemote, parseSlug, type Repo } from "./github.js";
 import { applyRules, hasRules } from "./packs/apply.js";
-import { pathProblem, PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanOutcome } from "./plan.js";
+import { CAPS, parsePlan, pathProblem, PLAN_FILE, PLAN_VERSION, serializePlan, type Plan, type PlanGroup, type PlanOutcome } from "./plan.js";
 import { loadRecords } from "./records/load.js";
 import { grammarFor } from "./scan/astgrep.js";
 import type { ChangeRecord } from "./records/schema.js";
 import { Refusal } from "./refusal.js";
-import { detectBuildCommand, detectTestCommand, hasPytestSetup, runTests, type TestRun, TIME_LIMIT_MINUTES, unreadSettings } from "./tests.js";
+import { detectBuildCommand, detectTestCommand, hasPytestSetup, kept, runTests, type TestRun, TIME_LIMIT_MINUTES, unreadSettings } from "./tests.js";
 import { atLeast, npmVersionFor, pypiVersions, type Found } from "./versions.js";
 
 export type FixOptions = {
@@ -28,6 +29,8 @@ export type FixOptions = {
   version?: string;
   /** Verify each change and write the plan to this folder, instead of committing it. */
   prepare?: string;
+  /** Open the pull requests the plan in this folder holds, making each change again instead of running anything. */
+  publish?: string;
 };
 
 export type TestOutcome = TestRun & {
@@ -37,6 +40,8 @@ export type TestOutcome = TestRun & {
   attributed?: "change" | "baseline";
   /** A build that already failed before the change says nothing about it: the change is kept and this is reported instead. */
   notChecked?: boolean;
+  /** A file darnit edits that the run removed, put something in place of or gave another name: the check failed, and the files went back. */
+  removed?: string;
 };
 
 /** A check that failed because of the change, or (for tests) failed at all. A build that was already broken is not one. */
@@ -46,6 +51,8 @@ export type PrResult =
   | { state: "opened"; url: string; build?: TestOutcome | undefined; tests?: TestOutcome | undefined }
   | { state: "exists"; url: string }
   | { state: "skipped"; reason: string }
+  /** --publish: the plan does not match what darnit makes of this commit, so it was changed or the rewrite is not deterministic. */
+  | { state: "mismatch"; reason: string }
   | { state: "tests-failed"; tests: TestOutcome }
   | { state: "build-failed"; build: TestOutcome }
   | { state: "prepared"; build?: TestOutcome | undefined; tests?: TestOutcome | undefined };
@@ -78,6 +85,8 @@ export type FixResult = {
   pr: boolean;
   /** Where --prepare wrote the plan. */
   plan?: string;
+  /** --publish: build and test results come from the plan. */
+  fromPlan?: boolean;
   build?: TestOutcome | undefined;
   tests?: TestOutcome | undefined;
   testsSkipped: boolean;
@@ -146,15 +155,108 @@ async function groupHits(root: string, only: string[] | undefined): Promise<{ gr
   return { groups: [...byId.values()], coverage, namesElsewhere: values.length + mentions.length > 0 };
 }
 
+/** A file's bytes and mode, and its inode and number of names, to tell a second name the tests gave it from one it had. */
+type Entry = { bytes: Buffer; mode: number; ino: number; nlink: number };
+type Snapshot = Map<string, Entry>;
+
+/** Whether `info` is a regular file with no name but its own, or no names but those it had in `before`. */
+const own = (info: Stats, before: Entry) => info.isFile() && (info.nlink === 1 || (info.ino === before.ino && info.nlink <= before.nlink));
+
 // Bytes, not text: a file that is not UTF-8 must come back as it was.
-async function snapshotOf(root: string, files: readonly string[]): Promise<Map<string, Buffer>> {
-  const snap = new Map<string, Buffer>();
-  for (const f of files) snap.set(f, await readFile(join(root, f)));
+async function snapshotOf(root: string, files: readonly string[]): Promise<Snapshot> {
+  const snap: Snapshot = new Map();
+  for (const f of files) {
+    // Nonblocking, so a pipe in its place cannot hold the open.
+    const file = await open(join(root, f), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const info = await file.stat();
+      if (!info.isFile()) throw new Refusal(`${shown(f)} is not a regular file`);
+      snap.set(f, { bytes: await file.readFile(), mode: info.mode & 0o7777, ino: info.ino, nlink: info.nlink });
+    } finally {
+      await file.close();
+    }
+  }
   return snap;
 }
 
-async function restore(root: string, snap: Map<string, Buffer>): Promise<void> {
-  for (const [f, bytes] of snap) await writeFile(join(root, f), bytes);
+/** How many times restore removes what keeps appearing in a file's place before it refuses. */
+const TRIES = 3;
+
+/**
+ * Writes each file back with its bytes and mode, going through every file, then refuses with the first it could not put
+ * back. A file that is still its own is written in place, so its folder need not be writable. Anything else in its place,
+ * a link, a hard link, a folder, is removed and the file created anew where nothing has appeared since, so nothing is
+ * written through it. The folders above are checked right before writing; Node cannot hold them open while it writes.
+ */
+async function restore(root: string, snap: Snapshot): Promise<void> {
+  let refusal: Refusal | undefined;
+  for (const [f, before] of snap) {
+    await putBack(root, f, before).catch((err: unknown) => {
+      const code = (err as NodeJS.ErrnoException).code ?? String(err);
+      const why = code === "EACCES" || code === "EPERM" ? "permission denied" : code;
+      refusal ??= err instanceof Refusal ? err : new Refusal(`darnit could not put ${shown(f)} back (${why}); restore it with git`);
+    });
+  }
+  if (refusal) throw refusal;
+}
+
+async function putBack(root: string, f: string, before: Entry): Promise<void> {
+  await realFolders(root, f);
+  const path = join(root, f);
+  // Nonblocking, so a pipe in its place cannot hold the open.
+  let file = await open(path, constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => undefined);
+  if (file && !own(await file.stat(), before)) file = await file.close().then(() => undefined);
+  file ??= await created(path, f, before.mode);
+  try {
+    await file.truncate();
+    await file.writeFile(before.bytes);
+    await file.chmod(before.mode);
+  } finally {
+    await file.close();
+  }
+}
+
+async function created(path: string, f: string, mode: number): Promise<FileHandle> {
+  for (let tries = 1; ; tries++) {
+    await rm(path, { recursive: true, force: true });
+    try {
+      // With O_EXCL, open never follows a link: one in the name is EEXIST.
+      return await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, mode);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (tries === TRIES) throw new Refusal(`a new ${shown(f)} appeared each time darnit removed what was there to put it back, so darnit wrote nothing there; a process the tests started may still be running`);
+    }
+  }
+}
+
+/** Makes each folder above `f` a real folder again; one that became a link out of the repository is refused. */
+async function realFolders(root: string, f: string): Promise<void> {
+  let dir = root;
+  for (const part of dirname(f).split(sep).filter((p) => p !== ".")) {
+    dir = join(dir, part);
+    const info = await lstat(dir).catch(() => undefined);
+    if (info?.isDirectory()) continue;
+    if (info?.isSymbolicLink() && !within(await realpath(root), await resolved(dir))) {
+      throw new Refusal(`${shown(relative(root, dir))} became a link out of the repository, so ${shown(f)} was not put back; nothing was written through it`);
+    }
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir);
+  }
+}
+
+/**
+ * The first file in `snap` that is no longer a regular file in real folders: removed, a link or folder in its place,
+ * or a name it did not have before.
+ */
+async function replaced(root: string, snap: Snapshot): Promise<string | undefined> {
+  for (const [f, before] of snap) {
+    const parts = f.split(sep);
+    for (let i = 1; i <= parts.length; i++) {
+      const info = await lstat(join(root, ...parts.slice(0, i))).catch(() => undefined);
+      if (!(i < parts.length ? info?.isDirectory() : info && own(info, before))) return f;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -188,7 +290,7 @@ export async function applyAndVerify(dir: string, grp: Group): Promise<Outcome> 
   const changed: string[] = [];
   // A rewritten file that lost or changed a comment goes back on its own too, and its call sites to a human.
   const lost: string[] = [];
-  for (const [f, bytes] of before) {
+  for (const [f, { bytes }] of before) {
     const after = await readFile(join(dir, f));
     if (after.equals(bytes)) continue;
     if (keepsComments(f, bytes.toString("utf8"), after.toString("utf8"))) changed.push(f);
@@ -258,13 +360,20 @@ function settle(result: RecordResult, outcome: Outcome, held: readonly Site[] = 
  * Runs a check; on failure puts the files back and runs it again to say whether the change was the cause.
  * A run that timed out checked nothing, so its files go back with no verdict, and no second run when it was the first.
  */
-async function testAndAttribute(root: string, command: string, snap: Map<string, Buffer>, kind: TestOutcome["kind"]): Promise<TestOutcome> {
+async function testAndAttribute(root: string, command: string, snap: Snapshot, kind: TestOutcome["kind"]): Promise<TestOutcome> {
   const outcome: TestOutcome = { ...(await runTests(root, command)), kind };
+  if (await tampered(root, snap, outcome)) return outcome;
   if (!outcome.passed) {
-    const changed = await snapshotOf(root, [...snap.keys()]);
+    // A link or pipe that appears after the check is caught by the read, which neither follows nor waits on it.
+    const changed = await snapshotOf(root, [...snap.keys()]).catch(async (err: unknown) => {
+      if (await tampered(root, snap, outcome)) return undefined;
+      throw err;
+    });
+    if (!changed) return outcome;
     await restore(root, snap);
     if (outcome.timedOut) return outcome;
     const again = await runTests(root, command);
+    if (await tampered(root, snap, outcome)) return outcome;
     if (again.timedOut) return { ...outcome, timedOut: true };
     outcome.attributed = again.passed ? "change" : "baseline";
     // A build that fails without the change too (missing dependencies, secrets, an unrelated error)
@@ -277,6 +386,15 @@ async function testAndAttribute(root: string, command: string, snap: Map<string,
   return outcome;
 }
 
+/** Whether the run removed a file darnit edits, put something in its place or gave it another name; if so the check failed, and the files go back. */
+async function tampered(root: string, snap: Snapshot, outcome: TestOutcome): Promise<boolean> {
+  const gone = await replaced(root, snap);
+  if (gone === undefined) return false;
+  await restore(root, snap);
+  Object.assign(outcome, { passed: false, removed: gone });
+  return true;
+}
+
 type Commands = { build?: string | undefined; tests?: string | undefined };
 
 const COMPILED = /\.(m?[jt]sx?|c[jt]s)$/;
@@ -285,7 +403,7 @@ const COMPILED = /\.(m?[jt]sx?|c[jt]s)$/;
  * The build check first, then the tests; stops at the first failure, which has already put the files back.
  * The build only runs when JavaScript or TypeScript changed: it says nothing about a Python fix.
  */
-async function runChecks(root: string, commands: Commands, snap: Map<string, Buffer>): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
+async function runChecks(root: string, commands: Commands, snap: Snapshot): Promise<{ build?: TestOutcome; tests?: TestOutcome }> {
   // Builds and tests can write tracked files (a committed dist/, generated types). Put back anything
   // they touched that was clean before, so the tree only differs by the rewrite.
   const dirtyBefore = new Set(await g.modified(root));
@@ -300,7 +418,62 @@ async function runChecks(root: string, commands: Commands, snap: Map<string, Buf
   }
 }
 
+/** Scans `root` and sorts each record's call sites into those darnit will rewrite and those it won't, with the reason. */
+async function classified(root: string, only: string[] | undefined): Promise<{ records: RecordResult[]; applicable: Group[]; coverage: Coverage; namesElsewhere: boolean }> {
+  const { groups, coverage, namesElsewhere } = await groupHits(root, only);
+  const records: RecordResult[] = [];
+  const applicable: Group[] = [];
+  for (const grp of groups) {
+    const reviewed = grp.record.status === "reviewed";
+    const mechanical = grp.record.classification === "mechanical";
+    const clean = grp.files.length > 0;
+    const ready = reviewed && mechanical && clean && (await hasRules(grp.packDir));
+    const gate = ready ? await versionGate(root, grp) : { unconfirmed: [] };
+    const applied = ready && !gate.blocked;
+    const reason =
+      grp.record.status === "candidate"
+        ? "unreviewed change record"
+        : !mechanical
+          ? "migration not yet automated; see the record notes"
+          : !reviewed
+            ? "checked by a parser, not yet read by a person"
+            : !clean
+              ? heldReason(grp.held ?? [])
+              : !ready
+                ? "no rewrite rules yet"
+                : gate.blocked;
+    records.push({
+      record: grp.record,
+      title: title(grp.record),
+      files: [...new Set([...grp.files, ...(grp.held ?? []).map((h) => h.file)])],
+      sites: grp.sites + (grp.held?.length ?? 0),
+      applied,
+      ...(applied ? {} : { reason }),
+      // Held sites are known before any rewrite; list them even when nothing else is applied.
+      ...(!clean && grp.held?.length ? { remaining: grp.held } : {}),
+      ...(applied && gate.unconfirmed.length > 0 ? { unconfirmed: gate.unconfirmed } : {}),
+    });
+    if (applied) applicable.push(grp);
+  }
+  return { records, applicable, coverage, namesElsewhere };
+}
+
 export async function fix(root: string, opts: FixOptions = {}): Promise<FixResult> {
+  if (opts.publish !== undefined) {
+    const clash = (
+      [
+        [opts.prepare !== undefined, "--prepare", "--prepare writes the plan in one job and --publish reads it in another"],
+        [opts.pr, "--pr", "--publish opens the pull requests itself"],
+        [opts.dryRun, "--dry-run", "--publish pushes"],
+        [opts.only, "--only", "--publish opens what the plan holds; pass --only to --prepare"],
+        [opts.test !== undefined || opts.noTest, opts.noTest ? "--no-test" : "--test", "--publish runs no build or tests; the plan holds their results"],
+      ] as const
+    ).find(([on]) => on);
+    if (clash) throw new Refusal(`--publish and ${clash[1]} can't be combined: ${clash[2]}`);
+    // --publish ignores this folder's git state: it clones the commit fresh and works only there, and
+    // runs no bare-name git here (it checks the version of the absolute git it resolved).
+    return publish(opts);
+  }
   await g.ensureGitVersion();
   if (opts.prepare !== undefined) {
     if (opts.pr) throw new Refusal("--prepare and --pr can't be combined: --prepare runs the repository's code, so it never pushes");
@@ -336,41 +509,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     await startPlan(root, opts.prepare);
   }
 
-  const { groups, coverage, namesElsewhere } = await groupHits(root, opts.only);
-  const records: RecordResult[] = [];
-  const applicable: Group[] = [];
-  for (const grp of groups) {
-    const reviewed = grp.record.status === "reviewed";
-    const mechanical = grp.record.classification === "mechanical";
-    const clean = grp.files.length > 0;
-    const ready = reviewed && mechanical && clean && (await hasRules(grp.packDir));
-    const gate = ready ? await versionGate(root, grp) : { unconfirmed: [] };
-    const applied = ready && !gate.blocked;
-    const reason =
-      grp.record.status === "candidate"
-        ? "unreviewed change record"
-        : !mechanical
-          ? "migration not yet automated; see the record notes"
-          : !reviewed
-            ? "checked by a parser, not yet read by a person"
-            : !clean
-              ? heldReason(grp.held ?? [])
-              : !ready
-                ? "no rewrite rules yet"
-                : gate.blocked;
-    records.push({
-      record: grp.record,
-      title: title(grp.record),
-      files: [...new Set([...grp.files, ...(grp.held ?? []).map((h) => h.file)])],
-      sites: grp.sites + (grp.held?.length ?? 0),
-      applied,
-      ...(applied ? {} : { reason }),
-      // Held sites are known before any rewrite; list them even when nothing else is applied.
-      ...(!clean && grp.held?.length ? { remaining: grp.held } : {}),
-      ...(applied && gate.unconfirmed.length > 0 ? { unconfirmed: gate.unconfirmed } : {}),
-    });
-    if (applied) applicable.push(grp);
-  }
+  const { records, applicable, coverage, namesElsewhere } = await classified(root, opts.only);
   const resultOf = (grp: Group) => records.find((r) => r.record.id === grp.record.id)!;
   const pr = opts.pr === true || opts.prepare !== undefined;
   const base: FixResult = { records, dryRun, pr, testsSkipped: opts.noTest ?? false, diff: "", reverted: false, coverage, namesElsewhere };
@@ -391,6 +530,14 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     }
   }
 
+  if (pr && !opts.allowDirty && !(await g.isClean(root))) {
+    throw new Refusal("uncommitted changes in the working tree; commit or stash them, or pass --allow-dirty");
+  }
+  // Only files git can put back are edited; --allow-dirty tolerates edits elsewhere, never in these.
+  const wanted = [...new Set(applicable.flatMap((grp) => grp.files))];
+  const why = g.uncommittedReasons(await g.uncommitted(root, wanted), "darnit needs to edit");
+  if (why.length > 0) throw new Refusal(`${why.join("; ")}, or preview with --dry-run`);
+
   const commands: Commands = opts.noTest ? {} : { build: await detectBuildCommand(root), tests: opts.test ?? (await detectTestCommand(root)) };
   const unread = opts.noTest ? undefined : await unreadSettings(root);
   const skipped = unread && `${unread} could not be read`;
@@ -402,13 +549,6 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
     else if (skipped) base.testsNote = `${skipped}; pass the command with --test`;
     else if (noPython) base.testsNote = noPython;
   }
-  if (pr && !opts.allowDirty && !(await g.isClean(root))) {
-    throw new Refusal("uncommitted changes in the working tree; commit or stash them, or pass --allow-dirty");
-  }
-  // Only files git can put back are edited; --allow-dirty tolerates edits elsewhere, never in these.
-  const wanted = [...new Set(applicable.flatMap((grp) => grp.files))];
-  const why = g.uncommittedReasons(await g.uncommitted(root, wanted), "darnit needs to edit");
-  if (why.length > 0) throw new Refusal(`${why.join("; ")}, or preview with --dry-run`);
   if (opts.prepare !== undefined) return prepare(root, applicable, base, commands, opts.prepare, opts.version);
   if (opts.pr) return pullRequests(root, applicable, base, commands, opts);
 
@@ -429,7 +569,7 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
 }
 
 /** Runs the checks on one rewritten group, as --pr and --prepare both do. A failure, which has put the files back, goes on the record. */
-async function checkGroup(root: string, commands: Commands, snap: Map<string, Buffer>, result: RecordResult) {
+async function checkGroup(root: string, commands: Commands, snap: Snapshot, result: RecordResult) {
   const { build, tests } = await runChecks(root, commands, snap);
   if (failed(build)) result.pr = { state: "build-failed", build: build! };
   else if (failed(tests)) result.pr = { state: "tests-failed", tests: tests! };
@@ -442,6 +582,12 @@ const HOLDS: Record<g.Credential, string> = {
   url: "a URL with a user name or password, where a token can sit",
 };
 
+/** Whether `path` is `parent` or inside it. */
+const within = (parent: string, path: string) => {
+  const inside = relative(parent, path);
+  return inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside);
+};
+
 /** `path` with every link resolved, as far as it exists. */
 async function resolved(path: string): Promise<string> {
   return (await realpath(path).catch(() => undefined)) ?? join(await resolved(dirname(path)), basename(path));
@@ -449,8 +595,7 @@ async function resolved(path: string): Promise<string> {
 
 /** Refuses a plan folder inside the repository or one planFolder refuses, then removes an earlier plan. */
 async function startPlan(root: string, dir: string): Promise<void> {
-  const inside = relative(await realpath(await g.topLevel(root)), await resolved(dir));
-  if (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)) {
+  if (within(await realpath(await g.topLevel(root)), await resolved(dir))) {
     throw new Refusal(`${dir} is inside the repository, where its code can change the plan and git sees it as a change; give --prepare a folder outside it`);
   }
   await planFolder(dir);
@@ -522,7 +667,176 @@ async function prepare(root: string, groups: Group[], base: FixResult, commands:
   return { ...base, reverted: anyFailed, plan: join(dir, PLAN_FILE) };
 }
 
-// One branch, one test run and one pull request per change. The working tree is
+/** The plan in `dir`, read as data and checked against darnit's records. Refuses the folder unless it holds exactly a plain plan.json. */
+async function readPlanFolder(dir: string): Promise<Plan> {
+  const info = await lstat(dir).catch(() => undefined);
+  const why = !info ? "does not exist" : info.isSymbolicLink() ? "is a symbolic link" : !info.isDirectory() ? "is not a folder" : undefined;
+  if (why) throw new Refusal(`${dir} ${why}; give --publish the folder --prepare wrote`);
+  const entries = await readdir(dir);
+  if (entries.length !== 1 || entries[0] !== PLAN_FILE) throw new Refusal(`${dir} must hold ${PLAN_FILE} and nothing else; give --publish the folder --prepare wrote`);
+  const file = join(dir, PLAN_FILE);
+  // No link followed and no pipe waited on.
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => undefined);
+  let text: string;
+  try {
+    const stat = await handle?.stat();
+    if (!handle || !stat?.isFile()) throw new Refusal(`${file} is not a plain file; nothing published`);
+    if (stat.size > CAPS.plan) throw new Refusal(`${file} is over the cap of ${CAPS.plan} bytes; nothing published`);
+    text = await handle.readFile("utf8");
+  } finally {
+    await handle?.close();
+  }
+  try {
+    return parsePlan(text, new Set((await loadRecords()).map((l) => l.record.id)));
+  } catch (err) {
+    throw new Refusal(`${file}: ${(err as Error).message}\nnothing published`);
+  }
+}
+
+/** The repository from --repo or GITHUB_REPOSITORY, strictly validated. */
+function publishRepo(opts: FixOptions): Repo {
+  const repo = opts.repo ? parseSlug(opts.repo) : parseSlug(process.env.GITHUB_REPOSITORY?.trim() ?? "");
+  if (!repo) throw new Refusal("could not tell which GitHub repository this is; pass --repo owner/name or set GITHUB_REPOSITORY");
+  return repo;
+}
+
+// github.com, where the token's http header is scoped. A test stands a local bare remote in for it; nothing a user sets does.
+const CANONICAL = (repo: Repo) => `https://github.com/${repo.owner}/${repo.repo}.git`;
+const originUrl = (repo: Repo) => (process.env.VITEST && process.env.DARNIT_TEST_ORIGIN?.trim()) || CANONICAL(repo);
+
+const MISMATCH = "the plan's patch is not darnit's rewrite of this commit";
+const MISMATCH_MEANS = "The plan was changed after the verify job wrote it, or the rewrite is not deterministic; either way this run is not all good.";
+
+/** A plan group's build and test results and notes, their text kept as darnit keeps test output. */
+function reported(group: PlanGroup): PrEvidence {
+  const outcome = (o: PlanOutcome | null, kind: TestOutcome["kind"]): TestOutcome | undefined =>
+    o
+      ? { kind, command: kept(o.command), passed: o.passed, output: kept(o.output), timedOut: o.timedOut, ...(o.attributed ? { attributed: o.attributed } : {}), ...(o.notChecked ? { notChecked: true } : {}) }
+      : undefined;
+  return {
+    build: outcome(group.build, "build"),
+    tests: outcome(group.tests, "tests"),
+    buildNote: group.buildNote === null ? undefined : kept(group.buildNote),
+    testsNote: group.testsNote === null ? undefined : kept(group.testsNote),
+  };
+}
+
+/**
+ * Opens the pull requests a plan holds, reading none of the workspace's git state: darnit clones the plan's commit fresh
+ * from github.com, with no config of the machine or the repository, recomputes its own rewrite there, and pushes only
+ * what matches the plan byte for byte. The plan is data; nothing in it is applied or run.
+ */
+async function publish(opts: FixOptions): Promise<FixResult> {
+  const plan = await readPlanFolder(opts.publish!);
+  const version = opts.version ?? "dev";
+  const repo = publishRepo(opts);
+  const server = process.env.GITHUB_SERVER_URL?.trim().replace(/\/+$/, "");
+  if (server && server.toLowerCase() !== "https://github.com") {
+    throw new Refusal(`GITHUB_SERVER_URL is ${process.env.GITHUB_SERVER_URL!.trim()}, not https://github.com; --publish sends its token only to github.com, so it does not run on another GitHub host`);
+  }
+  // The plan's commit must be the one this job is meant to publish, not any commit the remote happens to serve by id
+  // (github.com serves every commit in a fork network). In Actions that is GITHUB_SHA; otherwise the default branch's tip.
+  const actions = process.env.GITHUB_ACTIONS === "true";
+  if (actions) {
+    const sha = process.env.GITHUB_SHA?.trim();
+    if (!sha) throw new Refusal("GITHUB_SHA is not set; in GitHub Actions --publish checks the plan's commit against it");
+    if (sha !== plan.base) throw new Refusal(`the plan was made on commit ${plan.base}, but GITHUB_SHA is ${sha}; nothing published. Run --publish on the commit the plan was made on`);
+  }
+  const known = new Map((await loadRecords()).map((l) => [l.record.id, l.record]));
+  // What the plan alone settles, with no repository to read: another darnit version, or a build or test the plan says failed.
+  const otherVersion = plan.darnit !== version && `the plan was written by darnit ${JSON.stringify(plan.darnit)} and this is darnit ${version}; run both jobs with the same version`;
+  const fromPlan = (group: PlanGroup): PrResult | undefined => {
+    const { build, tests } = reported(group);
+    if (otherVersion) return { state: "mismatch", reason: otherVersion };
+    if (failed(build)) return { state: "build-failed", build: build! };
+    if (failed(tests)) return { state: "tests-failed", tests: tests! };
+    return undefined;
+  };
+  const result = (group: PlanGroup, records: RecordResult[]): RecordResult => {
+    let r = records.find((x) => x.record.id === group.id);
+    if (!r) records.push((r = { record: known.get(group.id)!, title: title(known.get(group.id)!), files: [], sites: 0, applied: false, reason: MISMATCH }));
+    return r;
+  };
+  const done = (records: RecordResult[], coverage: Coverage, namesElsewhere: boolean): FixResult =>
+    withFailures({ records, dryRun: false, pr: true, testsSkipped: false, diff: "", reverted: false, coverage, namesElsewhere, fromPlan: true });
+
+  // No change can open: report from the plan with no token, clone or request to GitHub.
+  if (plan.groups.every((group) => fromPlan(group))) {
+    const records = plan.groups.map((group) => {
+      const r = result(group, []);
+      r.pr = fromPlan(group)!;
+      return r;
+    });
+    return done(records, { files: 0, records: 0 }, false);
+  }
+  // The two programs this job runs, each resolved once to an absolute real path outside any folder the job controls.
+  const gitBin = (await g.trustedProgram("git"))!;
+  await g.ensureGitVersion(gitBin, cleanEnv());
+  const token = await githubToken(() => g.trustedProgram("gh", false));
+  if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
+  const target = await defaultBranch(token, repo);
+  const url = originUrl(repo);
+  // Outside Actions, before anything is fetched: the plan's commit must be the remote default branch's tip.
+  const verifyTip = actions
+    ? undefined
+    : async (run: g.CloneGit) => {
+        // Only the line whose ref is exactly HEAD; the pattern also matches refs/*/HEAD, which an attacker controls.
+        const head = (await run(["ls-remote", url, "HEAD"], true)).split("\n").map((l) => l.split("\t")).find(([, ref]) => ref === "HEAD")?.[0] ?? "";
+        if (head !== plan.base) throw new Refusal(`outside GitHub Actions --publish only publishes the default branch's tip; the remote's is ${head || "unknown"}, but the plan was made on ${plan.base}; nothing published`);
+      };
+  return g.withCleanClone(
+    gitBin,
+    url,
+    plan.base,
+    token,
+    async (run, dir) => {
+      const { records, applicable, coverage, namesElsewhere } = await classified(dir, plan.groups.map((p) => p.id));
+      const byId = new Map(applicable.map((grp) => [grp.record.id, grp]));
+      for (const group of plan.groups) {
+        const r = result(group, records);
+        const grp = byId.get(group.id);
+        const decided = fromPlan(group);
+        if (decided) r.pr = decided;
+        else if (!grp) r.pr = { state: "mismatch", reason: MISMATCH };
+        else await openOne(run, dir, url, token, repo, target, plan.base, group, grp, r, version);
+      }
+      return done(records, coverage, namesElsewhere);
+    },
+    verifyTip,
+  );
+}
+
+// One branch, one pull request. The clone is thrown away after, so no file is restored and no branch switched back.
+async function openOne(run: g.CloneGit, dir: string, url: string, token: string, repo: Repo, target: string, sha: string, group: PlanGroup, grp: Group, result: RecordResult, version: string) {
+  const branch = `darnit/${grp.record.vendor}-${grp.record.id.split(":")[2]}`;
+  const existing = await findOpenPr(token, repo, branch);
+  if (existing) return void (result.pr = { state: "exists", url: existing });
+  if ((await run(["ls-remote", "--heads", url, branch], true)).trim() !== "") {
+    return void (result.pr = { state: "skipped", reason: `branch ${branch} already exists; delete it or open the pull request from it yourself` });
+  }
+  // Discards any earlier group's edits and starts this branch at the fetched commit.
+  await run(["checkout", "-q", "-f", "-B", branch, sha]);
+  const changed = settle(result, await applyAndVerify(dir, grp), grp.held);
+  // Darnit changed nothing, or something other than the plan's exact bytes: the plan is not this commit's rewrite.
+  if (changed.length === 0 || (await run(g.diffArgs(changed))) !== group.patch) {
+    return void (result.pr = { state: "mismatch", reason: MISMATCH });
+  }
+  const evidence: PrEvidence = { ...reported(group), reported: true, remaining: result.remaining, unconfirmed: result.unconfirmed };
+  const body = prBody(grp.record, changed, version, evidence);
+  if (body.length > PR_BODY_LIMIT) {
+    return void (result.pr = { state: "skipped", reason: `its description would be ${body.length} characters, over GitHub's limit of ${PR_BODY_LIMIT}; nothing pushed` });
+  }
+  await run(["add", "--", ...changed]);
+  await run(["-c", "user.name=darnit", "-c", "user.email=darnit@users.noreply.github.com", "commit", "-q", "-m", result.title, "-m", `Source: ${grp.record.sources[0]!.url}`]);
+  await run(["push", "-q", url, `refs/heads/${branch}:refs/heads/${branch}`], true);
+  const prUrl = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
+  result.pr = { state: "opened", url: prUrl, build: evidence.build, tests: evidence.tests };
+}
+
+/** `base`, marked reverted when a change's build or tests failed. */
+const withFailures = (base: FixResult): FixResult => ({ ...base, reverted: base.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed") });
+
+// One branch, one check and one pull request per change. The working tree is
 // left exactly as it was found, on the branch it was found on.
 async function pullRequests(root: string, groups: Group[], base: FixResult, commands: Commands, opts: FixOptions): Promise<FixResult> {
   const repo = opts.repo ? parseSlug(opts.repo) : parseRemote(await g.remoteUrl(root).catch(() => ""));
@@ -531,7 +845,6 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
   if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
   const target = await defaultBranch(token, repo);
   const home = await g.position(root);
-  let anyFailed = false;
 
   for (const grp of groups) {
     const result = base.records.find((r) => r.record.id === grp.record.id)!;
@@ -554,17 +867,8 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       const changed = settle(result, await applyAndVerify(root, grp), grp.held);
       if (changed.length === 0) continue;
       const { build, tests, passed } = await checkGroup(root, commands, snap, result);
-      if (!passed) {
-        anyFailed = true;
-        continue;
-      }
-      const body = prBody(grp.record, changed, opts.version ?? "dev", {
-        build,
-        tests,
-        remaining: result.remaining,
-        ...notRunNotes(changed, base),
-        unconfirmed: result.unconfirmed,
-      });
+      if (!passed) continue;
+      const body = prBody(grp.record, changed, opts.version ?? "dev", { build, tests, ...notRunNotes(changed, base), remaining: result.remaining, unconfirmed: result.unconfirmed });
       // GitHub refuses a longer description, and by then the branch would already be pushed.
       if (body.length > PR_BODY_LIMIT) {
         await restore(root, snap);
@@ -587,7 +891,7 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       if (!opened) await g.deleteBranch(root, branch).catch(() => undefined);
     }
   }
-  return { ...base, reverted: anyFailed };
+  return withFailures(base);
 }
 
 const longestBacktickRun = (s: string) => Math.max(0, ...(s.match(/`+/g) ?? []).map((r) => r.length));
@@ -703,10 +1007,12 @@ export type PrEvidence = {
   testsNote?: string | undefined;
   buildNote?: string | undefined;
   unconfirmed?: readonly string[] | undefined;
+  /** The build and test results come from the plan the verify job wrote. */
+  reported?: boolean;
 };
 
 export function prBody(record: ChangeRecord, files: readonly string[], version: string, evidence: PrEvidence = {}): string {
-  const { build, tests, remaining = [], testsNote, buildNote, unconfirmed = [] } = evidence;
+  const { build, tests, remaining = [], testsNote, buildNote, unconfirmed = [], reported = false } = evidence;
   const source = record.sources[0]!;
   // Test output from the repository goes in as it is; this writes out any character that could reorder or hide it.
   return escapeHidden([
@@ -720,6 +1026,7 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
     ...files.map((f) => `- ${code(f)}`),
     "",
     "## Verified",
+    ...(reported ? ["Build and test results were reported by the verify job. This job ran none of the repository's code: darnit made the change again on the same commit and checked it is the one verified.", ""] : []),
     ...(build
       ? [
           build.notChecked
@@ -727,9 +1034,9 @@ export function prBody(record: ChangeRecord, files: readonly string[], version: 
             : `- [${build.passed ? "x" : " "}] ${code(build.command)} ${build.passed ? "passed" : "failed"}`,
         ]
       : buildNote
-        ? [`- [ ] build not checked: ${buildNote}`]
+        ? [`- [ ] build not checked: ${prose(buildNote)}`]
         : []),
-    tests ? `- [${tests.passed ? "x" : " "}] ${code(tests.command)} ${tests.passed ? "passed" : "failed"}` : `- [ ] ${testsNote ? `tests not run: ${testsNote}` : "no test command found in this repository"}`,
+    tests ? `- [${tests.passed ? "x" : " "}] ${code(tests.command)} ${tests.passed ? "passed" : "failed"}` : `- [ ] ${testsNote ? `tests not run: ${prose(testsNote)}` : "no test command found in this repository"}`,
     ...(tests?.output ? ["", "<details><summary>test output</summary>", "", fence(tests.output), tests.output, fence(tests.output), "", "</details>"] : []),
     "",
     ...(remaining.length > 0
@@ -757,14 +1064,20 @@ function recordUrl(id: string): string {
 
 export function exitCodeFor(result: FixResult): 0 | 1 {
   if (failed(result.build) || failed(result.tests)) return 1;
-  return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed") ? 1 : 0;
+  return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed" || r.pr?.state === "mismatch") ? 1 : 0;
 }
 
-function testLine(t: TestOutcome): string {
+function testLine(t: TestOutcome, fromPlan = false): string {
+  // --publish runs no tests, so the rerun it can suggest is the verify job's.
+  const rerun = (start: string) => `${start} ${fromPlan ? "--prepare " : ""}with --no-test`;
   if (t.passed) return `${t.kind}: ${t.command} passed`;
+  if (t.removed !== undefined) {
+    const f = shown(t.removed);
+    return `${t.kind}: ${t.command} removed ${f}, a file darnit edits, put something in its place or gave it another name; files put back, ${f} as a new file.${t.output ? `\n${t.output}` : ""}`;
+  }
   if (t.notChecked) return `${t.kind}: ${t.command} already fails without the change, so it could not check it; change kept`;
   if (t.timedOut) {
-    return `${t.kind}: ${t.command} timed out after ${TIME_LIMIT_MINUTES} minutes; files put back, since a run that did not finish can't check the change. Rerun with --no-test to apply it without the tests or the build check.${t.output ? `\n${t.output}` : ""}`;
+    return `${t.kind}: ${t.command} timed out after ${TIME_LIMIT_MINUTES} minutes; files put back, since a run that did not finish can't check the change. ${rerun("Rerun")} to apply it without the tests or the build check.${t.output ? `\n${t.output}` : ""}`;
   }
   const why =
     t.kind === "build"
@@ -773,7 +1086,7 @@ function testLine(t: TestOutcome): string {
         : "It already fails without the change."
       : t.attributed === "change"
         ? "The change broke your tests."
-        : "They already fail without the change. Fix them first, or rerun with --no-test to apply it without the tests or the build check.";
+        : `They already fail without the change. Fix them first, or ${rerun("rerun")} to apply it without the tests or the build check.`;
   return `${t.kind}: ${t.command} failed; files put back. ${why}${t.output ? `\n${t.output}` : ""}`;
 }
 
@@ -781,7 +1094,10 @@ export function renderSummary(result: FixResult): string {
   const lines: string[] = [];
   for (const r of result.records) {
     const where = `${r.files.length} file${r.files.length === 1 ? "" : "s"}`;
-    if (!r.applied) lines.push(`- ${r.title}: found in ${where}, not rewritten: ${shown(r.reason ?? "")}`);
+    if (r.pr?.state === "mismatch") lines.push(`✗ ${r.title}: nothing pushed, ${r.pr.reason}\n  ${MISMATCH_MEANS}`);
+    // A check the plan reports as failed stands whether or not this run rewrote the change.
+    else if (r.pr?.state === "build-failed" || r.pr?.state === "tests-failed") lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests, result.fromPlan)}`);
+    else if (!r.applied) lines.push(`- ${r.title}: ${r.files.length > 0 ? `found in ${where}, ` : ""}not rewritten: ${shown(r.reason ?? "")}`);
     else if (!r.pr && result.reverted) lines.push(`✗ ${r.title}: rewritten, then put back`);
     else if (!r.pr) lines.push(`✓ ${r.title}: ${r.remaining ? `${r.sites - count(r.remaining)} of ${r.sites} call sites rewritten` : where}`);
     else if (r.pr.state === "opened") {
@@ -794,8 +1110,7 @@ export function renderSummary(result: FixResult): string {
       for (const line of checkLines(result, r.pr.build, r.pr.tests)) lines.push(`  ${line}`);
     }
     else if (r.pr.state === "exists") lines.push(`= ${r.title}: pull request already open ${r.pr.url}`);
-    else if (r.pr.state === "skipped") lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
-    else lines.push(`✗ ${r.title}: nothing pushed\n  ${testLine(r.pr.state === "build-failed" ? r.pr.build : r.pr.tests)}`);
+    else lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;
     if (!putBack || !r.applied) for (const s of r.remaining ?? []) lines.push(`  needs a human: ${shown(s.file)}${s.line ? `:${s.line}` : ""}${s.note ? ` (${shown(s.note)})` : ""}`);
@@ -838,7 +1153,7 @@ function checkLines(result: FixResult, build: TestOutcome | undefined, tests: Te
 
 export function toJson(result: FixResult): object {
   const outcome = (t: TestOutcome | undefined) =>
-    t ? { kind: t.kind, command: t.command, passed: t.passed, attributed: t.attributed, notChecked: t.notChecked ?? false, timedOut: t.timedOut, output: t.output } : null;
+    t ? { kind: t.kind, command: t.command, passed: t.passed, attributed: t.attributed, notChecked: t.notChecked ?? false, timedOut: t.timedOut, removed: t.removed ?? null, output: t.output } : null;
   return {
     records: result.records.map((r) => ({
       id: r.record.id,

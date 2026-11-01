@@ -148,12 +148,16 @@ export async function runTests(root: string, command: string, timeoutMs = TIME_L
     child.stderr.setEncoding("utf8").on("data", keep);
     child.on("close", (code) => {
       clearTimeout(timer);
-      // Masked before and after the codes come out: removing one can cut a token or join one.
-      const plain = redact(output).replace(ESCAPES, "");
-      const text = cut ? redact(plain).slice(CUT_MARGIN) : redact(plain);
-      // Written out before the cut, so escaping can't make what is kept longer than TAIL_CHARS.
-      const tail = escapeHidden(text).trimEnd().split("\n").slice(-TAIL_LINES).join("\n").slice(-TAIL_CHARS);
-      resolve({ command, passed: code === 0 && !timedOut, output: tail, timedOut });
+      resolve({ command, passed: code === 0 && !timedOut, output: kept(output, cut), timedOut });
     });
   });
+}
+
+/** Output as darnit keeps it: credentials masked, escape codes out, hidden characters written out, its end only. `cut` when its start was dropped. */
+export function kept(output: string, cut = false): string {
+  // Masked before and after the codes come out: removing one can cut a token or join one.
+  const plain = redact(output).replace(ESCAPES, "");
+  const text = cut ? redact(plain).slice(CUT_MARGIN) : redact(plain);
+  // Written out before the cut, so escaping can't make what is kept longer than TAIL_CHARS.
+  return escapeHidden(text).trimEnd().split("\n").slice(-TAIL_LINES).join("\n").slice(-TAIL_CHARS);
 }
