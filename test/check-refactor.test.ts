@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 const script = resolve("scripts/check-refactor.sh");
 const tempDirs: string[] = [];
@@ -34,20 +34,42 @@ const pkg = (files = ["dist"], test = "vitest run") =>
 
 type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean };
 
+const gitIn =
+  (dir: string) =>
+  (...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
+const writeIn = async (dir: string, f: string, text: string) => {
+  await mkdir(dirname(join(dir, f)), { recursive: true });
+  await writeFile(join(dir, f), text);
+};
+
+// Built once; each repo clones it, which costs half of building it again.
+let baseRepo: Promise<string> | undefined;
+afterAll(async () => {
+  if (baseRepo) await rm(await baseRepo, { recursive: true, force: true });
+});
+
 /**
  * A repo whose head commit applies `edits` to a base holding `baseFiles`, each file holding its own path, and
  * package.json. Base's last commit applies `landed`, and `revert` in `edits` reverts that commit. `index` adds a
  * file to git without writing it to disk, so a name that differs only in case means the same on any disk.
  */
 async function repo(edits: Edit[], landed: Edit[] = []) {
+  baseRepo ??= (async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-rule-base-"));
+    const git = gitIn(dir);
+    git("init", "-q");
+    for (const f of baseFiles) await writeIn(dir, f, `${f}\n`);
+    await writeIn(dir, "package.json", pkg());
+    git("add", ".");
+    git("commit", "-q", "-m", "base");
+    return dir;
+  })();
   const dir = await mkdtemp(join(tmpdir(), "darnit-rule-"));
   tempDirs.push(dir);
-  const git = (...args: string[]) =>
-    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
-  const write = async (f: string, text: string) => {
-    await mkdir(dirname(join(dir, f)), { recursive: true });
-    await writeFile(join(dir, f), text);
-  };
+  const git = gitIn(dir);
+  git("clone", "-q", "--shared", await baseRepo, ".");
+  const write = (f: string, text: string) => writeIn(dir, f, text);
   const apply = async (es: Edit[]) => {
     for (const e of es) {
       if (e.write) await write(e.write, e.text ?? "changed\n");
@@ -68,11 +90,6 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
       git("update-index", "--add", "--cacheinfo", `100644,${blob},${e.index}`);
     }
   };
-  git("init", "-q");
-  for (const f of baseFiles) await write(f, `${f}\n`);
-  await write("package.json", pkg());
-  git("add", ".");
-  git("commit", "-q", "-m", "base");
   if (landed.length) {
     await apply(landed);
     git("commit", "-q", "-m", "landed");
@@ -125,7 +142,16 @@ async function rule(
   env: Record<string, string> = {},
   landed: Edit[] = [],
 ) {
-  const { dir, base, head } = await repo(edits, landed);
+  return check(await repo(edits, landed), title, body, env);
+}
+
+/** Runs the rule on a repo from `repo`, which it leaves as it was, so cases that differ only in title can share one. */
+async function check(
+  { dir, base, head }: Awaited<ReturnType<typeof repo>>,
+  title: string,
+  body: string | ((base: string, parent: string) => string) = "",
+  env: Record<string, string> = {},
+) {
   if (typeof body === "function") body = body(base, execFileSync("git", ["rev-parse", `${base}~1`], { cwd: dir, encoding: "utf8" }).trim());
   const output = await scratch("output");
   const summary = await scratch("summary");
@@ -291,16 +317,17 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("lets only build change what ships, and counts an unreadable package.json as changed", async () => {
-    for (const type of ["test", "docs", "chore", "ci"]) {
-      for (const edit of [
-        { write: "package.json", text: pkg(["dist", "test"]) },
-        { write: "package.json", text: pkg().replace('"files":["dist"],', "") },
-        { write: "package.json" },
-        { write: "package.json", text: "null\n" },
-        { write: "package.json", text: "[]\n" },
-        { remove: "package.json" },
-      ]) {
-        const r = await rule(`${type}: x`, [edit], "Proof: none, ships the tests as well\n");
+    for (const edit of [
+      { write: "package.json", text: pkg(["dist", "test"]) },
+      { write: "package.json", text: pkg().replace('"files":["dist"],', "") },
+      { write: "package.json" },
+      { write: "package.json", text: "null\n" },
+      { write: "package.json", text: "[]\n" },
+      { remove: "package.json" },
+    ]) {
+      const changed = await repo([edit]);
+      for (const type of ["test", "docs", "chore", "ci"]) {
+        const r = await check(changed, `${type}: x`, "Proof: none, ships the tests as well\n");
         expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
         expect(r.out).toMatch(/- package.json ("files"|\((removed or )?unreadable\))/);
       }
@@ -414,8 +441,7 @@ describe("the rule picked by the title's type", () => {
 
   it("fails a revert that names a commit outside base's history, a merge, or one that does not revert cleanly", async () => {
     const { dir, base } = await repo([], [{ write: "src/a.ts" }]);
-    const git = (...args: string[]) =>
-      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
+    const git = gitIn(dir);
     const check = (from: string, head: string, named: string) =>
       spawnSync("sh", [script, from, head], {
         cwd: dir,
