@@ -87,18 +87,22 @@ sources() {
       if (t === undefined || t === named(at) || [...a.values()].some(([was, w]) => named(was) === named(at) && target(w) === t)) return;
       say(`${JSON.stringify(v)} (an alias to ${show([t])})`);
     });
-    // Each entry is the registry tarball of its own name and version, at a node_modules path npm installs to.
+    // Each entry is the registry tarball of its own name and a plain version, byte for byte and as npm parses it,
+    // at a node_modules path npm installs to.
     const name = "(@[^/\\\\]+/)?[^/\\\\]+";
     const place = new RegExp(`^node_modules/${name}(/node_modules/${name})*$`);
+    const semver = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
     for (const f of ["package-lock.json", "npm-shrinkwrap.json"])
       changed(f, entries, (say, at, e, a, was, loc) => {
-        if (loc !== undefined && (!place.test(loc) || loc.split("/").some((s) => s === "." || s === ".."))) return say("location outside node_modules");
+        if (loc !== undefined && !place.test(loc)) return say("location outside node_modules");
         if (Object.hasOwn(obj(e), "link")) return say("link");
         const { resolved, integrity, version, name: alias } = obj(e);
         const here = loc === undefined ? at.at(-1) : loc.slice(loc.lastIndexOf("node_modules/") + 13);
         if (alias !== undefined && alias !== here && alias !== obj(was).name) return say(`name ${JSON.stringify(alias)}`);
+        if (typeof version !== "string" || !semver.test(version)) return say(`version ${JSON.stringify(version) ?? "(none)"}`);
         const pkg = typeof alias === "string" ? alias : here;
-        if (resolved !== `https://registry.npmjs.org/${pkg}/-/${pkg.split("/").pop()}-${version}.tgz`) return say(`resolved ${JSON.stringify(resolved) ?? "(none)"}`);
+        const path = `/${pkg}/-/${pkg.split("/").pop()}-${version}.tgz`;
+        if (resolved !== `https://registry.npmjs.org${path}` || new URL(resolved).pathname !== path) return say(`resolved ${JSON.stringify(resolved) ?? "(none)"}`);
         if (typeof integrity !== "string" || !integrity) say("integrity (none)");
       });
   ' "$mb" "$head" "$deps" || echo "dependency sources (unreadable)"

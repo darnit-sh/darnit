@@ -309,6 +309,8 @@ describe("the rule picked by the title's type", () => {
       [{ version: "5.0.6" }, "resolved (none)"],
       [entry("p6", "5.0.6", { integrity: undefined }), "integrity (none)"],
       [entry("p7", "5.0.6", { integrity: "" }), "integrity (none)"],
+      [entry("p8", "1.0.0", { resolved: "http://registry.npmjs.org/p8/-/p8-1.0.0.tgz" }), 'resolved "http://registry.npmjs.org/p8/-/p8-1.0.0.tgz"'],
+      [entry("p9", "1.0.0", { resolved: "https://example.test/p9/-/p9-1.0.0.tgz" }), 'resolved "https://example.test/p9/-/p9-1.0.0.tgz"'],
     ] as const;
     const r = await rule("chore(deps): bump", [{ write: "package-lock.json", text: lock(Object.fromEntries(bad.map(([e], i) => [`node_modules/p${i}`, e]))) }]);
     expect(r.status).toBe(1);
@@ -358,72 +360,129 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("fails a lock or alias that installs another package under a name the suite runs", async () => {
-    const swaps: [string, string, string][] = [
-      ["package.json", withDeps({ devDependencies: { vitest: "npm:evil-vitest@1" } }), 'devDependencies.vitest "npm:evil-vitest@1" (an alias to evil-vitest)'],
-      ["package.json", withDeps({ overrides: { a: { vitest: "npm:@evil/vitest" } } }), 'overrides.a.vitest "npm:@evil/vitest" (an alias to @evil/vitest)'],
-      ["package.json", withDeps({ dependencies: { "a\nb": "file:x" } }), 'dependencies.a\\nb "file:x"'],
-      ["package.json", '{"dependencies":{"constructor":"1.0.0","vitest":"file:x"}}', 'dependencies.vitest "file:x"'],
-      ["package-lock.json", lock({ "node_modules/vitest": entry("vitest", "1.0.0", { resolved: "https://registry.npmjs.org/evil-vitest/-/evil-vitest-1.0.0.tgz" }) }), "node_modules/vitest resolved"],
-      ["package-lock.json", lock({ "node_modules/@x/y": entry("@x/y", "1.0.0", { resolved: "https://registry.npmjs.org/@x/z/-/z-1.0.0.tgz" }) }), "node_modules/@x/y resolved"],
-      ["package-lock.json", lock({ "node_modules/vitest": entry("vitest", "1.0.0", { resolved: "https://registry.npmjs.org/vitest/-/vitest-2.0.0.tgz" }) }), "node_modules/vitest resolved"],
-      ["package-lock.json", lock({ "node_modules/vitest": entry("evil-vitest", "1.0.0", { name: "evil-vitest" }) }), "node_modules/vitest name \"evil-vitest\""],
-      ["package-lock.json", lock({ "node_modules/vitest": { link: true, resolved: "https://registry.npmjs.org/../../fake", integrity: "x" } }), "node_modules/vitest link"],
-      ["package-lock.json", lock({ fake: entry("vitest", "5.0.5") }), "fake location"],
-      ["package-lock.json", lock({ "x/node_modules/vitest": entry("vitest", "5.0.5") }), "x/node_modules/vitest location"],
-      ["package-lock.json", lock({ "node_modules/../fake": entry("fake", "5.0.5") }), "node_modules/../fake location"],
-      ["package-lock.json", lock({ "node_modules/vitest/node_modules/..": entry("vitest", "5.0.5") }), "node_modules/vitest/node_modules/.. location"],
-      ["package-lock.json", lock({ constructor: {}, "node_modules/vitest": entry("vitest", "1.0.0", { resolved: "https://example.test/v.tgz" }) }), "node_modules/vitest resolved"],
-      ["package-lock.json", '{"lockfileVersion":3,"packages":{"__proto__":{"resolved":"https://example.test/v.tgz"}}}', "__proto__ location outside node_modules"],
-      ["npm-shrinkwrap.json", '{"lockfileVersion":1,"dependencies":{"__proto__":{"resolved":"https://example.test/v.tgz"}}}', '__proto__ resolved "https://example.test/v.tgz"'],
-      ["npm-shrinkwrap.json", JSON.stringify({ lockfileVersion: 1, dependencies: { constructor: {}, vitest: entry("vitest", "1.0.0", { resolved: "https://example.test/v.tgz" }) } }), "vitest resolved"],
-    ];
-    for (const [f, text, why] of swaps) {
-      const r = await rule("chore(deps): bump", [{ write: f, text }]);
-      expect(r.status, text).toBe(1);
-      expect(r.summary, text).toContain(`- ${f} ${why}`);
+    const tarball = (name: string, version: string) => `https://registry.npmjs.org/${name}/-/${name}-${version}.tgz`;
+    const evil = "1/../../../evil/-/evil-1.0.0";
+    const own = JSON.parse('{"__proto__":{"resolved":"https://example.test/v.tgz"}}') as Record<string, object>;
+    const r = await rule("chore(deps): bump chai", [
+      {
+        write: "package.json",
+        text: withDeps({
+          dependencies: { constructor: "1.0.0", vitest: "file:x", "a\nb": "file:x" },
+          devDependencies: { vitest: "latest", e: "npm:evil-vitest@1" },
+          overrides: { a: { vitest: "npm:@evil/vitest" } },
+        }),
+      },
+      {
+        write: "package-lock.json",
+        text: lock({
+          constructor: {},
+          ...own,
+          // The version carries a path: npm fetches /evil/-/evil-1.0.0.tgz for both.
+          "node_modules/vitest": entry("vitest", "5.0.6", { version: evil, resolved: tarball("vitest", evil), dependencies: { chai: "*" } }),
+          "node_modules/chai": entry("chai", "1.0.0", { version: evil, resolved: tarball("chai", evil) }),
+          "node_modules/v1": entry("v1", "1.0.0", { resolved: "https://registry.npmjs.org/evil-vitest/-/evil-vitest-1.0.0.tgz" }),
+          "node_modules/@x/y": entry("@x/y", "1.0.0", { resolved: "https://registry.npmjs.org/@x/z/-/z-1.0.0.tgz" }),
+          "node_modules/v2": entry("v2", "1.0.0", { resolved: tarball("v2", "2.0.0") }),
+          "node_modules/v3": entry("evil-vitest", "1.0.0", { name: "evil-vitest" }),
+          "node_modules/v4": { link: true, resolved: "https://registry.npmjs.org/../../fake", integrity: "x" },
+          "node_modules/v5": entry("v5", "1.0.0", { version: "1.0.0/x", resolved: tarball("v5", "1.0.0/x") }),
+          "node_modules/v6": entry("v6", "1.0.0", { version: "latest", resolved: tarball("v6", "latest") }),
+          "node_modules/v7": entry("v7", "1.0.0", { version: undefined }),
+          "node_modules/%2e%2e": entry("%2e%2e", "1.0.0"),
+          "node_modules/a#b": entry("a#b", "1.0.0"),
+          "node_modules/vitest/node_modules/..": entry("..", "1.0.0"),
+          fake: entry("vitest", "5.0.5"),
+          "x/node_modules/vitest": entry("vitest", "5.0.5"),
+          "node_modules/../fake": entry("fake", "5.0.5"),
+        }),
+      },
+      {
+        write: "npm-shrinkwrap.json",
+        text: JSON.stringify({ lockfileVersion: 1, dependencies: { ...own, constructor: {}, vitest: entry("vitest", "1.0.0", { resolved: "https://example.test/v.tgz" }) } }),
+      },
+    ]);
+    expect(r.status).toBe(1);
+    for (const line of [
+      'package.json dependencies.vitest "file:x"',
+      'package.json dependencies.a\\nb "file:x"',
+      'package.json devDependencies.e "npm:evil-vitest@1" (an alias to evil-vitest)',
+      'package.json overrides.a.vitest "npm:@evil/vitest" (an alias to @evil/vitest)',
+      `package-lock.json node_modules/vitest version ${JSON.stringify(evil)}`,
+      `package-lock.json node_modules/chai version ${JSON.stringify(evil)}`,
+      "package-lock.json node_modules/v1 resolved",
+      "package-lock.json node_modules/@x/y resolved",
+      "package-lock.json node_modules/v2 resolved",
+      'package-lock.json node_modules/v3 name "evil-vitest"',
+      "package-lock.json node_modules/v4 link",
+      'package-lock.json node_modules/v5 version "1.0.0/x"',
+      'package-lock.json node_modules/v6 version "latest"',
+      "package-lock.json node_modules/v7 version (none)",
+      "package-lock.json node_modules/%2e%2e resolved",
+      "package-lock.json node_modules/a#b resolved",
+      "package-lock.json node_modules/vitest/node_modules/.. resolved",
+      "package-lock.json fake location outside node_modules",
+      "package-lock.json x/node_modules/vitest location outside node_modules",
+      "package-lock.json node_modules/../fake location outside node_modules",
+      "package-lock.json constructor location outside node_modules",
+      "package-lock.json __proto__ location outside node_modules",
+      "npm-shrinkwrap.json __proto__ version (none)",
+      'npm-shrinkwrap.json vitest resolved "https://example.test/v.tgz"',
+    ]) {
+      expect(r.summary).toContain(`- ${line}`);
     }
+    expect(r.summary).not.toContain("devDependencies.vitest");
   });
 
   it("counts any dependency or lock change as a suite change for docs, test and ci", async () => {
-    const reason = "Proof: none, moves the test runner to its next patch\n";
-    const edits: Edit[] = [
-      { write: "package.json", text: withDeps({ devDependencies: { vitest: "^5.0.6" } }) },
-      { write: "package.json", text: withDeps({ dependencies: {} }) },
-      { write: "package.json", text: withDeps({ optionalDependencies: { a: "1.0.0" } }) },
-      { write: "package.json", text: withDeps({ peerDependencies: { a: "1.0.0" } }) },
-      { write: "package.json", text: withDeps({ overrides: { a: "1.0.0" } }) },
-      { write: "package.json", text: withDeps({ workspaces: ["fake"] }) },
-      { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) },
-      { remove: "package-lock.json" },
-      { write: "npm-shrinkwrap.json", text: lock() },
-    ];
+    const fields = withDeps({ devDependencies: { vitest: "^5.0.6" }, dependencies: {}, optionalDependencies: { a: "1.0.0" }, peerDependencies: { a: "1.0.0" }, overrides: { a: "1.0.0" }, workspaces: ["fake"] });
+    const changed = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "overrides", "workspaces"].map((f) => `- package.json "${f}"`);
     for (const type of ["docs", "test", "ci"]) {
-      for (const edit of edits) {
-        const r = await rule(`${type}: x`, [edit]);
-        expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
-        expect(r.out).toMatch(/- (package\.json "\w+"|package-lock\.json|npm-shrinkwrap\.json)\n/);
-      }
+      const r = await rule(`${type}: x`, [{ write: "package.json", text: fields }, { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) }, { write: "npm-shrinkwrap.json", text: lock() }]);
+      expect(r.status, type).toBe(1);
+      for (const line of [...changed, "- package-lock.json", "- npm-shrinkwrap.json"]) expect(r.out, `${type} ${line}`).toContain(`${line}\n`);
+      const removed = await rule(`${type}: x`, [{ remove: "package-lock.json" }]);
+      expect(removed.status, type).toBe(1);
+      expect(removed.out).toContain("- package-lock.json\n");
     }
-    for (const type of ["test", "ci"]) {
-      const r = await rule(`${type}: x`, [edits[0]!, edits[6]!], reason);
-      expect(r.status, type).toBe(0);
-      expect(r.summary).toContain('- package.json "devDependencies"\n- package-lock.json');
-    }
-    expect((await rule("docs: x", [edits[0]!], reason)).status).toBe(1);
     const unchanged = withDeps({}).replace('"zod":"4.6.6"', '"zod": "4.6.6"');
     expect((await rule("docs: x", [{ write: "package.json", text: unchanged }])).status).toBe(0);
   });
 
-  it("reads a large lock file in budget and still names the one bad entry", async () => {
+  it("lets test and ci change dependencies with a reason, and not docs", async () => {
+    const reason = "Proof: none, moves the test runner to its next patch\n";
+    const edits: Edit[] = [
+      { write: "package.json", text: withDeps({ devDependencies: { vitest: "^5.0.6" } }) },
+      { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) },
+    ];
+    for (const type of ["test", "ci"]) {
+      const r = await rule(`${type}: x`, edits, reason);
+      expect(r.status, type).toBe(0);
+      expect(r.summary).toContain('- package.json "devDependencies"\n- package-lock.json');
+    }
+    expect((await rule("docs: x", edits, reason)).status).toBe(1);
+  });
+
+  it("reads a large lock file in a CPU budget and still names the one bad entry", async () => {
     const many = Object.fromEntries(Array.from({ length: 50_000 }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")]));
     many["node_modules/p49999"] = entry("p49999", "1.0.0", { integrity: undefined });
-    const start = Date.now();
-    const r = await rule("chore(deps): x", [{ write: "package-lock.json", text: lock(many) }]);
-    expect(Date.now() - start).toBeLessThan(10_000);
-    expect(r.status).toBe(1);
-    expect(r.summary).toContain("- package-lock.json node_modules/p49999 integrity (none)");
-    expect(r.summary).not.toContain("node_modules/p49998");
-  }, 30_000);
+    const { dir, base, head } = await repo([{ write: "package-lock.json", text: lock(many) }]);
+    const summary = await scratch("summary");
+    // The check runs in a child shell, so its CPU time is the shell's own count of its children's.
+    const run = spawnSync("sh", ["-c", 'sh "$@"; s=$?; times; exit $s', "sh", script, base, head], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, TITLE: "chore(deps): x", GITHUB_STEP_SUMMARY: summary },
+    });
+    const [user, system] = run.stdout.trim().split("\n").at(-1)!.split(/\s+/).map((t) => {
+      const [, m, sec] = /^(\d+)m([\d.]+)s$/.exec(t)!;
+      return (Number(m) * 60 + Number(sec)) * 1000;
+    });
+    expect(user! + system!).toBeLessThan(3000);
+    expect(run.status).toBe(1);
+    const text = await readFile(summary, "utf8");
+    expect(text).toContain("- package-lock.json node_modules/p49999 integrity (none)");
+    expect(text).not.toContain("node_modules/p49998");
+  });
 
   it("fails a test change that changes what the suite proves", async () => {
     for (const edit of suiteEdits) {
