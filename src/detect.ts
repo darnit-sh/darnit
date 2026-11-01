@@ -14,7 +14,9 @@ export async function onPath(name: string, path = process.env.PATH ?? ""): Promi
     if (!dir || !isAbsolute(dir)) continue;
     for (const n of names) {
       const p = join(dir, n);
-      if (await access(p, constants.X_OK).then(() => true, () => false)) return p;
+      // An executable regular file: a directory named `git` has X_OK too, so it is skipped rather than run.
+      const ok = (await stat(p).then((s) => s.isFile(), () => false)) && (await access(p, constants.X_OK).then(() => true, () => false));
+      if (ok) return p;
     }
   }
   return undefined;

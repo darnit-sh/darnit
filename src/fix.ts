@@ -359,9 +359,11 @@ export async function fix(root: string, opts: FixOptions = {}): Promise<FixResul
       ] as const
     ).find(([on]) => on);
     if (clash) throw new Refusal(`--publish and ${clash[1]} can't be combined: ${clash[2]}`);
-    // --publish ignores this folder's git state: it clones the commit fresh and works only there.
+    // --publish ignores this folder's git state: it clones the commit fresh and works only there, and
+    // runs no bare-name git here (it checks the version of the absolute git it resolved).
     return publish(opts);
   }
+  await g.ensureGitVersion();
   if (opts.prepare !== undefined) {
     if (opts.pr) throw new Refusal("--prepare and --pr can't be combined: --prepare runs the repository's code, so it never pushes");
     if (opts.dryRun) throw new Refusal("--prepare and --dry-run can't be combined: --prepare writes a plan");
@@ -651,7 +653,10 @@ async function publish(opts: FixOptions): Promise<FixResult> {
     });
     return done(records, { files: 0, records: 0 }, false);
   }
-  const token = await githubToken();
+  // The two programs this job runs, each resolved once to an absolute real path outside any folder the job controls.
+  const gitBin = (await g.trustedProgram("git"))!;
+  await g.ensureGitVersion(gitBin);
+  const token = await githubToken(() => g.trustedProgram("gh", false));
   if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
   const target = await defaultBranch(token, repo);
   const url = originUrl(repo);
@@ -659,10 +664,12 @@ async function publish(opts: FixOptions): Promise<FixResult> {
   const verifyTip = actions
     ? undefined
     : async (run: g.CloneGit) => {
-        const head = (await run(["ls-remote", url, "HEAD"], true)).split(/\s/)[0] ?? "";
+        // Only the line whose ref is exactly HEAD; the pattern also matches refs/*/HEAD, which an attacker controls.
+        const head = (await run(["ls-remote", url, "HEAD"], true)).split("\n").map((l) => l.split("\t")).find(([, ref]) => ref === "HEAD")?.[0] ?? "";
         if (head !== plan.base) throw new Refusal(`outside GitHub Actions --publish only publishes the default branch's tip; the remote's is ${head || "unknown"}, but the plan was made on ${plan.base}; nothing published`);
       };
   return g.withCleanClone(
+    gitBin,
     url,
     plan.base,
     token,

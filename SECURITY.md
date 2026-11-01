@@ -59,6 +59,32 @@ for example `http.curloptResolve` pointing github.com at another address with
 `http.sslVerify false`. The README workflow cannot prevent either. On code you do not trust, run
 `check` only.
 
+darnit needs git 2.31 or newer, the first version that reads the config below from its environment;
+on an older git it refuses to run rather than silently skip the pins.
+
+A repository's own config (`.git/config` and the files it includes) can name programs git would
+otherwise run inside darnit's own git calls, even under `--no-test`. In its own calls darnit turns
+these off: no hooks (`core.hooksPath`), no `core.fsmonitor`, no gpg signing of a commit or on push
+(`commit.gpgSign`, `push.gpgSign`, so `gpg.program` and `gpg.ssh.program` never run), no external
+diff or textconv (`diff.external`, a `diff.<driver>.command` or `.textconv`), and no clean/smudge/
+process filter (`filter.<driver>.*`). Filters are keyed by driver name, so darnit reads the names git
+would use and turns each off in the child's environment, where a name holding `=` (which a
+command-line `-c filter.<name>.clean=` would split) stays intact; a repository that configures more
+filter drivers than darnit will handle, whose filter config cannot be read whole, or that names a
+driver with bytes that are not valid UTF-8 (which darnit cannot carry back through the environment),
+is refused rather than run. A status or diff does not descend into a submodule
+(`--ignore-submodules=all`), and darnit never pushes a submodule from its own push
+(`push.recurseSubmodules=no`, which also overrides a repository's `submodule.recurse=true`), so a
+submodule's own filters and remote helper never run and the token never reaches them; darnit passes no
+`--recurse-submodules` and checks out no submodule path. A pager (`core.pager`, `pager.*`) never starts because darnit captures git's
+output rather than writing to a terminal. darnit's own commit therefore does not run the repository's
+commit hooks; they are repository code, and `fix --pr` runs the repository's tests separately. This
+does not cover config that only matters on a call that reaches origin, which darnit makes only to push
+or query its own remote: `core.sshCommand`, a credential helper or `core.askPass`, `core.gitProxy`,
+`remote.<name>.uploadpack`/`receivepack`/`vcs`, `protocol.ext.allow`, and an http header or URL that
+carries a credential. Those are the token-handling surface above; on code you do not trust, run
+`check` only.
+
 `fix --prepare` runs the repository's code, and its plan is uploaded for another job to read, so its
 job must hold no secrets at all: no token or other secret in its environment or git config, and no
 `id-token: write`. darnit refuses to start when it finds one in these places only: `GITHUB_TOKEN` or
@@ -75,13 +101,17 @@ secret in any of them can reach the plan through test output.
 git hooks. It reads none of the folder it is run from, so a reused self-hosted workspace cannot steer
 it. Instead it makes its own clone: in a new temporary folder it fetches only the plan's commit from
 `https://github.com/<owner>/<repo>.git`, recomputes each rewrite there, and pushes to that same URL.
-git is run by its absolute path (resolved from an absolute `PATH` entry, never by bare name, so a
-`git` the commit ships cannot be run) with the process started outside the work tree and the work
-tree named by `-C`, under `GIT_CONFIG_NOSYSTEM`, an empty global config, `HOME` and
-`XDG_CONFIG_HOME` in an empty folder, `GIT_NO_REPLACE_OBJECTS`, every other `GIT_*` variable
-dropped, and no hooks, fsmonitor, filters, signing or submodule push; the token reaches git only as
-an http header scoped to github.com. `gh auth token`, used only when no token is set, is resolved
-and run the same way. It trusts darnit's own install (its code, records and rewrite rules) and,
+git and `gh` are the only programs this job runs. Each is resolved once to an absolute real path
+(`realpath`) from an absolute `PATH` entry, never by bare name, and refused when that path is a
+directory, is not an executable file, or lies under a folder this job controls (the current folder,
+`GITHUB_WORKSPACE`, or the temp root), so a `git` or `gh` the commit ships or the checkout holds
+cannot be run. git runs with the process started outside the work tree and the work tree named by
+`-C`, and with an environment built as `process.env` minus the credential variables and every
+`GIT_*` variable (never through the bare-`git` call that reading git's own local-env-var list would
+need), plus `GIT_CONFIG_NOSYSTEM`, an empty global config, `HOME` and `XDG_CONFIG_HOME` in an empty
+folder, `GIT_NO_REPLACE_OBJECTS`, and pins that turn off hooks, fsmonitor, filters, signing and
+submodule push; the token reaches git only as an http header scoped to github.com. `gh auth token`
+is run only when no token is set. It trusts darnit's own install (its code, records and rewrite rules) and,
 through that header, that github.com serves the real commit and accepts the push. It does not trust
 the workspace, the machine's user or system git config, or the plan: it applies nothing from the
 plan, makes each change again and compares it with the plan's patch byte for byte, and treats the
@@ -90,7 +120,8 @@ not; the pull request then holds darnit's own change only on top of the publishe
 the verify job reported the results. That commit must be the one the job is meant to publish, not any
 commit the remote serves by id (github.com serves every commit in a fork network): in GitHub Actions
 it must equal `GITHUB_SHA`; outside Actions it must be the tip of the repository's default branch on
-the remote, checked before anything is fetched. `--publish` does not run when `GITHUB_SERVER_URL`
+the remote, read only from the ref named exactly `HEAD` in `git ls-remote <url> HEAD` before anything
+is fetched. `--publish` does not run when `GITHUB_SERVER_URL`
 names a GitHub host other than github.com, where the token's header would not apply.
 
 ## How we handle a report

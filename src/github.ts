@@ -21,11 +21,15 @@ const checked = (token: string) => {
 /** GITHUB_TOKEN, else GH_TOKEN, trimmed. */
 export const envToken = () => checked(process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "");
 
-export async function githubToken(): Promise<string | undefined> {
+/**
+ * The token from the environment, else from `gh auth token`. gh is resolved to an absolute path and run from a neutral
+ * folder, so a scanned repository cannot ship the gh that runs here. `resolveGh` returns that path (undefined when gh is
+ * not on PATH); --publish passes a resolver that also refuses a gh under a folder the job controls.
+ */
+export async function githubToken(resolveGh: () => Promise<string | undefined> = () => onPath("gh")): Promise<string | undefined> {
   const env = envToken();
   if (env) return env;
-  // gh is resolved to an absolute path and run from a neutral folder, so a scanned repository cannot ship the gh that runs here.
-  const gh = await onPath("gh");
+  const gh = await resolveGh();
   if (!gh) return undefined;
   let out: string;
   try {

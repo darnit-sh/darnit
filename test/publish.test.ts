@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { exitCodeFor, fix, type FixOptions, prose, renderSummary } from "../src/fix.js";
-import { git, patch, withCleanClone } from "../src/git.js";
+import { git, patch, trustedProgram, withCleanClone } from "../src/git.js";
+import { onPath } from "../src/detect.js";
 import { serializePlan, type Plan } from "../src/plan.js";
 import { loadRecords } from "../src/records/load.js";
 
@@ -283,7 +284,8 @@ describe("fix --publish", () => {
     await git(poisonedHome, ["config", "-f", join(poisonedHome, ".gitconfig"), "user.name", "poison"]);
     vi.stubEnv("HOME", poisonedHome);
     const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${TOKEN}`).toString("base64")}`;
-    await withCleanClone(bare, base, TOKEN, async (run) => {
+    const gitBin = (await trustedProgram("git"))!;
+    await withCleanClone(gitBin, bare, base, TOKEN, async (run) => {
       expect((await run(["config", "--get-urlmatch", "http.extraheader", "https://github.com/"])).trim()).toBe(header);
       // The header is for github.com alone, and the machine's config is unread.
       await expect(run(["config", "--get-urlmatch", "http.extraheader", "https://evil.example/"])).rejects.toBeDefined();
@@ -310,6 +312,98 @@ describe("fix --publish", () => {
     const result = await publish(await fresh(bare), plan);
     expect(result.records.map((r) => r.pr?.state)).toEqual(["opened", "opened"]);
     await expect(access(marker)).rejects.toThrow();
+  });
+
+  // Ships a program at each `at` that logs its name, args and darnit's token-bearing env, then runs the real git.
+  async function shipTools(dir: string, branch: string, marker: string, at: [string, string][]): Promise<void> {
+    const realGit = (await trustedProgram("git"))!;
+    for (const [tool, path] of at) {
+      await mkdir(join(dir, path, ".."), { recursive: true });
+      await writeFile(join(dir, path), `#!/bin/sh\n{ echo "${tool.toUpperCase()} ran $*"; env | grep -E 'GITHUB_TOKEN|GIT_CONFIG_VALUE'; } >> '${marker}'\nexec ${tool === "git" ? realGit : "true"} "$@"\n`);
+      await chmod(join(dir, path), 0o755);
+    }
+    await git(dir, ["add", "-f", "."]);
+    await commit(dir, "ship tools");
+    await git(dir, ["push", "-q", "origin", branch], 60);
+  }
+
+  // The real breach: the CLI, a separate process, resolves git before repoLocalVars/childEnv once ran a bare git here.
+  it.each([
+    ["an empty entry", ":"],
+    ["a dot entry", ".:"],
+    ["a relative node_modules/.bin entry", "node_modules/.bin:"],
+    ["an absolute workspace node_modules/.bin entry", "WS/node_modules/.bin:"],
+  ])("the CLI never runs a git the workspace ships, with PATH holding %s", async (_, prefix) => {
+    const { dir, bare, branch } = await origin();
+    const marker = join(await temp("darnit-lab-"), "MARKER");
+    await shipTools(dir, branch, marker, [["git", "git"], ["git", "node_modules/.bin/git"]]);
+    const plan = await cliPlan(dir);
+    const api = await localApi(branch);
+    const ws = await fresh(bare);
+    let run;
+    try {
+      run = await cli(ws, { GITHUB_TOKEN: TOKEN, NODE_OPTIONS: `--import ${api.preload}`, PATH: `${prefix.replace("WS", ws)}${process.env.PATH}` }, "fix", "--publish", plan, "--repo", "o/r");
+    } finally {
+      api.close();
+    }
+    // The shipped git never ran (no marker), and darnit either published with the real git or refused, never in between.
+    expect(await readFile(marker, "utf8").catch(() => "")).toBe("");
+    expect([0, 2]).toContain(run.code);
+    if (run.code === 0) {
+      expect(run.stdout).toContain("pull request opened");
+      expect(await branches(bare)).toEqual([BRANCHES[0]]);
+    } else {
+      expect(run.stderr).toMatch(/under .*, a folder this job controls/);
+    }
+  });
+
+  it.each([
+    ["a relative node_modules/.bin entry", "node_modules/.bin:"],
+    ["an absolute workspace node_modules/.bin entry", "WS/node_modules/.bin:"],
+  ])("the CLI never runs a gh the workspace ships when it needs a token, with PATH holding %s", async (_, prefix) => {
+    const { dir, bare, branch } = await origin();
+    const marker = join(await temp("darnit-lab-"), "MARKER");
+    await shipTools(dir, branch, marker, [["gh", "gh"], ["gh", "node_modules/.bin/gh"]]);
+    const plan = await cliPlan(dir);
+    const api = await localApi(branch);
+    const ws = await fresh(bare);
+    let run;
+    try {
+      // No token in the environment, so `gh auth token` is reached; the shipped gh must never run.
+      run = await cli(ws, { NODE_OPTIONS: `--import ${api.preload}`, PATH: `${prefix.replace("WS", ws)}${process.env.PATH}` }, "fix", "--publish", plan, "--repo", "o/r");
+    } finally {
+      api.close();
+    }
+    expect(await readFile(marker, "utf8").catch(() => "")).toBe("");
+    expect(run.code).toBe(2);
+  });
+
+  it("onPath skips relative, empty and directory entries and finds an absolute executable file", async () => {
+    const lab = await temp("darnit-onpath-");
+    await mkdir(join(lab, "d", "git"), { recursive: true }); // a directory named git
+    await mkdir(join(lab, "bin"));
+    await writeFile(join(lab, "bin", "git"), "#!/bin/sh\n");
+    await chmod(join(lab, "bin", "git"), 0o755);
+    expect(await onPath("git", ":.:node_modules/.bin")).toBeUndefined();
+    expect(await onPath("git", join(lab, "d"))).toBeUndefined();
+    expect(await onPath("git", `${join(lab, "d")}:${join(lab, "bin")}`)).toBe(join(lab, "bin", "git"));
+  });
+
+  it("outside Actions reads the remote tip only from the ref named exactly HEAD, not a refs/*/HEAD an attacker pushed", async () => {
+    const { dir, bare, branch } = await origin();
+    await writeFile(join(dir, "evil.js"), "steal()\n");
+    await git(dir, ["add", "evil.js"]);
+    await commit(dir, "fork commit");
+    const fork = (await git(dir, ["rev-parse", "HEAD"])).trim();
+    const plan = await prepare(dir, { noTest: true });
+    expect((await readPlan(plan)).base).toBe(fork);
+    // The fork reaches the remote only under a ref whose tail is HEAD, and the real HEAD is unborn.
+    await git(dir, ["push", "-q", "origin", `${fork}:refs/pull/9/HEAD`], 60);
+    await git(bare, ["symbolic-ref", "HEAD", "refs/heads/nope"]);
+    const posts = stubGitHub(branch);
+    await expect(publish(await fresh(bare), plan)).rejects.toThrow("the remote's is unknown, but the plan was made on");
+    expect(posts).toEqual([]);
+    expect(await branches(bare)).toEqual([]);
   });
 
   it("drops every GIT_* variable, so ambient git config, a redirect or a trace cannot reach the clone", async () => {
