@@ -152,5 +152,13 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "gpt-4o-audio-preview-2024-10-01": {
+        "model": "gpt-audio-1.5",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }
