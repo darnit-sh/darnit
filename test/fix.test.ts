@@ -2033,6 +2033,7 @@ console.log(config);`,
       ["stage another file", () => "echo x >> README.md && git add README.md"],
       ["stage it executable", () => "git config core.fileMode false && git update-index --chmod=+x sdk.js"],
       ["tag HEAD and ask git to push tags along", () => "git -c user.name=x -c user.email=x@y tag -a v9.9.9 -m evil HEAD && git config push.followTags true"],
+      ["set a push option for the server", () => "git config push.pushOption evil"],
     ];
     for (const [what, command] of exact) {
       it(`pushes darnit's exact change when the tests ${what}`, async () => {
@@ -2041,6 +2042,9 @@ console.log(config);`,
         await writeFile(join(outside, "gpg"), `#!/bin/sh\necho gpg >> "$(dirname "$0")/ran"\nexit 1\n`, { mode: 0o755 });
         await writeFile(join(outside, "filter"), `#!/bin/sh\necho "filter $GIT_INDEX_FILE" >> "$(dirname "$0")/ran"\nsed s/5/6/\n`, { mode: 0o755 });
         await git(bare, ["config", "receive.certNonceSeed", "x"]);
+        // The origin takes push options, and its hook logs any it receives.
+        await git(bare, ["config", "receive.advertisePushOptions", "true"]);
+        await writeFile(join(bare, "hooks", "pre-receive"), `#!/bin/sh\necho "options: \${GIT_PUSH_OPTION_COUNT:-0} $GIT_PUSH_OPTION_0" >> '${join(outside, "options")}'\n`, { mode: 0o755 });
         const base = (await git(dir, ["rev-parse", "HEAD"])).trim();
         try {
           const result = await fix(dir, { pr: true, repo: "o/r", test: command(outside) });
@@ -2052,6 +2056,7 @@ console.log(config);`,
           expect(blob.stdout).toEqual(Buffer.from(REWRITTEN));
           expect(await git(bare, ["cat-file", "commit", SDK_BRANCH])).not.toContain("gpgsig");
           expect(await readFile(join(outside, "ran"), "utf8").catch(() => "")).not.toMatch(/gpg|darnit-commit/);
+          expect((await readFile(join(outside, "options"), "utf8")).trim()).toBe("options: 0");
           expect(await readFile(join(dir, "sdk.js"), "utf8")).toBe(SDK_CALL);
           expect((await git(dir, ["branch", "--list", SDK_BRANCH])).trim()).toBe("");
           expect((await git(bare, ["for-each-ref", "--format=%(refname)"])).split("\n").filter(Boolean).sort()).toEqual([`refs/heads/${branch}`, `refs/heads/${SDK_BRANCH}`].sort());

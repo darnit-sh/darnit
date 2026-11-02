@@ -331,9 +331,9 @@ function originAuth(site: string): [string, string][] {
 
 export const push = (root: string, branch: string, site = GITHUB) => git(root, ["push", "-q", "-u", "origin", branch], 60, site);
 
-/** Pushes `ref` (`<commit>:refs/heads/<branch>`) to origin, alone and unsigned whatever the config says. */
+/** Pushes `ref` (`<commit>:refs/heads/<branch>`) to origin, alone, unsigned and with no push options, whatever the config says. */
 const pushRef = (root: string, ref: string, site: string, env: NodeJS.ProcessEnv) =>
-  git(root, ["push", "-q", "--no-signed", "--no-follow-tags", "origin", ref], 60, site, { env });
+  git(root, ["-c", "push.pushOption=", "push", "-q", "--no-signed", "--no-follow-tags", "origin", ref], 60, site, { env });
 
 /** HEAD's commit, the git folder, the top level and `root`'s path under it: where darnit's commit starts, read before any of the repository's code runs. */
 export type Start = { commit: string; gitDir: string; top: string; prefix: string };
