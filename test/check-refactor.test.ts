@@ -104,20 +104,44 @@ const withDeps = (deps: object) => `${JSON.stringify({ ...JSON.parse(pkg()), ...
 
 type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean };
 
+const gitIn =
+  (dir: string) =>
+  (...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
+const writeIn = async (dir: string, f: string, text: string) => {
+  await mkdir(dirname(join(dir, f)), { recursive: true });
+  await writeFile(join(dir, f), text);
+};
+
+// Built once; each repo clones it, which costs half of building it again.
+let baseRepo: Promise<string> | undefined;
+afterAll(async () => {
+  if (baseRepo) await rm(await baseRepo, { recursive: true, force: true });
+});
+
 /**
  * A repo whose head commit applies `edits` to a base holding `baseFiles`, each file holding its own path, and
  * package.json. Base's last commit applies `landed`, and `revert` in `edits` reverts that commit. `index` adds a
  * file to git without writing it to disk, so a name that differs only in case means the same on any disk.
  */
 async function repo(edits: Edit[], landed: Edit[] = []) {
+  baseRepo ??= (async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-rule-base-"));
+    const git = gitIn(dir);
+    git("init", "-q");
+    for (const f of baseFiles) await writeIn(dir, f, `${f}\n`);
+    await writeIn(dir, "package.json", pkg());
+    await writeIn(dir, "package-lock.json", lock());
+    git("add", ".");
+    git("commit", "-q", "-m", "base");
+    return dir;
+  })();
   const dir = await mkdtemp(join(tmpdir(), "darnit-rule-"));
   tempDirs.push(dir);
-  const git = (...args: string[]) =>
-    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
-  const write = async (f: string, text: string) => {
-    await mkdir(dirname(join(dir, f)), { recursive: true });
-    await writeFile(join(dir, f), text);
-  };
+  const git = gitIn(dir);
+  git("clone", "-q", "--shared", await baseRepo, ".");
+  for (const [f, text] of Object.entries(guard)) await writeIn(dir, `.git/guard/${f}`, text);
+  const write = (f: string, text: string) => writeIn(dir, f, text);
   const apply = async (es: Edit[]) => {
     for (const e of es) {
       if (e.write) await write(e.write, e.text ?? "changed\n");
@@ -138,13 +162,6 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
       git("update-index", "--add", "--cacheinfo", `100644,${blob},${e.index}`);
     }
   };
-  git("init", "-q");
-  for (const [f, text] of Object.entries(guard)) await write(`.git/guard/${f}`, text);
-  for (const f of baseFiles) await write(f, `${f}\n`);
-  await write("package.json", pkg());
-  await write("package-lock.json", lock());
-  git("add", ".");
-  git("commit", "-q", "-m", "base");
   if (landed.length) {
     await apply(landed);
     git("commit", "-q", "-m", "landed");
@@ -197,7 +214,16 @@ async function rule(
   env: Record<string, string> = {},
   landed: Edit[] = [],
 ) {
-  const { dir, base, head } = await repo(edits, landed);
+  return check(await repo(edits, landed), title, body, env);
+}
+
+/** Runs the rule on a repo from `repo`, which it leaves as it was, so cases that differ only in title can share one. */
+async function check(
+  { dir, base, head }: Awaited<ReturnType<typeof repo>>,
+  title: string,
+  body: string | ((base: string, parent: string) => string) = "",
+  env: Record<string, string> = {},
+) {
   if (typeof body === "function") body = body(base, execFileSync("git", ["rev-parse", `${base}~1`], { cwd: dir, encoding: "utf8" }).trim());
   const output = await scratch("output");
   const summary = await scratch("summary");
@@ -319,9 +345,9 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("fails any type that adds or changes a dependency npm would fetch from outside the registry", async () => {
-    const fake = withDeps({ devDependencies: { vitest: "file:./fake-vitest" } });
+    const fake = await repo([{ write: "package.json", text: withDeps({ devDependencies: { vitest: "file:./fake-vitest" } }) }]);
     for (const type of ["docs", "test", "chore", "ci", "build", "fix", "feat", "refactor", "perf", "revert"]) {
-      const r = await rule(`${type}: x`, [{ write: "package.json", text: fake }], "Proof: none, swaps the test runner\n");
+      const r = await check(fake, `${type}: x`, "Proof: none, swaps the test runner\n");
       expect(r.status, type).toBe(1);
       expect(r.summary, type).toContain('- package.json devDependencies.vitest "file:./fake-vitest"');
     }
@@ -549,11 +575,13 @@ describe("the rule picked by the title's type", () => {
   it("counts any dependency or lock change as a suite change for docs, test and ci", async () => {
     const fields = withDeps({ devDependencies: { vitest: "^5.0.6" }, dependencies: {}, optionalDependencies: { a: "1.0.0" }, peerDependencies: { a: "1.0.0" }, overrides: { a: "1.0.0" }, workspaces: ["fake"] });
     const changed = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "overrides", "workspaces"].map((f) => `- package.json "${f}"`);
+    const all = await repo([{ write: "package.json", text: fields }, { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) }, { write: "npm-shrinkwrap.json", text: lock() }]);
+    const noLock = await repo([{ remove: "package-lock.json" }]);
     for (const type of ["docs", "test", "ci"]) {
-      const r = await rule(`${type}: x`, [{ write: "package.json", text: fields }, { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) }, { write: "npm-shrinkwrap.json", text: lock() }]);
+      const r = await check(all, `${type}: x`);
       expect(r.status, type).toBe(1);
       for (const line of [...changed, "- package-lock.json", "- npm-shrinkwrap.json"]) expect(r.out, `${type} ${line}`).toContain(`${line}\n`);
-      const removed = await rule(`${type}: x`, [{ remove: "package-lock.json" }]);
+      const removed = await check(noLock, `${type}: x`);
       expect(removed.status, type).toBe(1);
       expect(removed.out).toContain("- package-lock.json\n");
     }
@@ -563,16 +591,16 @@ describe("the rule picked by the title's type", () => {
 
   it("lets test and ci change dependencies with a reason, and not docs", async () => {
     const reason = "Proof: none, moves the test runner to its next patch\n";
-    const edits: Edit[] = [
+    const edits = await repo([
       { write: "package.json", text: withDeps({ devDependencies: { vitest: "^5.0.6" } }) },
       { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) },
-    ];
+    ]);
     for (const type of ["test", "ci"]) {
-      const r = await rule(`${type}: x`, edits, reason);
+      const r = await check(edits, `${type}: x`, reason);
       expect(r.status, type).toBe(0);
       expect(r.summary).toContain('- package.json "devDependencies"\n- package-lock.json');
     }
-    expect((await rule("docs: x", edits, reason)).status).toBe(1);
+    expect((await check(edits, "docs: x", reason)).status).toBe(1);
   });
 
   it("reads a large lock file in a CPU budget, and asks the registry only for the entry this change alters", async () => {
@@ -610,8 +638,9 @@ describe("the rule picked by the title's type", () => {
       "node_modules/tsx": real("node_modules/tsx", { bin: { ...(tsx.bin as object), vitest: "dist/esm/api/index.mjs" }, hasInstallScript: true, os: ["aix"], cpu: ["ppc64"], inBundle: true }),
       "node_modules/esbuild": real("node_modules/esbuild", { hasInstallScript: undefined, integrity: tsx.integrity, dev: false }),
     });
+    const altered = await repo([{ write: "package-lock.json", text: swapped }], [{ write: "package-lock.json", text: lock(older) }]);
     for (const title of ["chore(deps): bump tsx", "fix: tidy"]) {
-      const r = await rule(title, [{ write: "package-lock.json", text: swapped }], "", {}, [{ write: "package-lock.json", text: lock(older) }]);
+      const r = await check(altered, title);
       expect(r.status, title).toBe(1);
       for (const line of [
         'node_modules/vitest bin {}, published {"vitest":"vitest.mjs"}',
@@ -636,9 +665,10 @@ describe("the rule picked by the title's type", () => {
   it("passes bumps whose lock entries are what npm writes from what the registry published", async () => {
     const older = Object.fromEntries(Object.entries(published).map(([loc, p]) => [loc, entry(p.manifest.name, "0.0.1", loc.endsWith("/typescript") ? { name: p.manifest.name } : {})]));
     const bumped = lock(Object.fromEntries(Object.keys(published).map((loc) => [loc, real(loc)])));
+    const bumps = await repo([{ write: "package-lock.json", text: bumped }], [{ write: "package-lock.json", text: lock(older) }]);
     for (const title of ["chore(deps-dev): bump the tooling group with 9 updates", "build(deps): bump esbuild"]) {
       asked.length = 0;
-      const r = await rule(title, [{ write: "package-lock.json", text: bumped }], "", {}, [{ write: "package-lock.json", text: lock(older) }]);
+      const r = await check(bumps, title);
       expect(r, title).toMatchObject({ status: 0 });
       expect(r.out).toContain("**Passed:**");
       expect(asked.sort()).toEqual(Object.values(published).map((p) => `/${escaped(p.manifest.name)}/${p.manifest.version}`).sort());
@@ -691,13 +721,13 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("fails docs, chore, ci and build changes that change what the suite proves", async () => {
-    const cases = ["docs", "chore", "ci", "build"].flatMap((type) =>
-      [0, 6, 14, 18, suiteEdits.length - 2].map((i) => [type, suiteEdits[i]!] as const),
-    );
-    for (const [type, edit] of cases) {
-      const r = await rule(`${type}: x`, [edit]);
-      expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
-      expect(r.out).toContain("**Failed:**");
+    for (const edit of [0, 6, 14, 18, suiteEdits.length - 2].map((i) => suiteEdits[i]!)) {
+      const changed = await repo([edit]);
+      for (const type of ["docs", "chore", "ci", "build"]) {
+        const r = await check(changed, `${type}: x`);
+        expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
+        expect(r.out).toContain("**Failed:**");
+      }
     }
     const r = await rule("test: x", [{ write: "package.json", text: pkg(undefined, "vitest run -x") }]);
     expect(r.out).toContain('- package.json script "test"');
@@ -731,16 +761,17 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("lets only build change what ships, and counts an unreadable package.json as changed", async () => {
-    for (const type of ["test", "docs", "chore", "ci"]) {
-      for (const edit of [
-        { write: "package.json", text: pkg(["dist", "test"]) },
-        { write: "package.json", text: pkg().replace('"files":["dist"],', "") },
-        { write: "package.json" },
-        { write: "package.json", text: "null\n" },
-        { write: "package.json", text: "[]\n" },
-        { remove: "package.json" },
-      ]) {
-        const r = await rule(`${type}: x`, [edit], "Proof: none, ships the tests as well\n");
+    for (const edit of [
+      { write: "package.json", text: pkg(["dist", "test"]) },
+      { write: "package.json", text: pkg().replace('"files":["dist"],', "") },
+      { write: "package.json" },
+      { write: "package.json", text: "null\n" },
+      { write: "package.json", text: "[]\n" },
+      { remove: "package.json" },
+    ]) {
+      const changed = await repo([edit]);
+      for (const type of ["test", "docs", "chore", "ci"]) {
+        const r = await check(changed, `${type}: x`, "Proof: none, ships the tests as well\n");
         expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
         expect(r.out).toMatch(/- package.json ("files"|\((removed or )?unreadable\))/);
       }
@@ -854,8 +885,7 @@ describe("the rule picked by the title's type", () => {
 
   it("fails a revert that names a commit outside base's history, a merge, or one that does not revert cleanly", async () => {
     const { dir, base } = await repo([], [{ write: "src/a.ts" }]);
-    const git = (...args: string[]) =>
-      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
+    const git = gitIn(dir);
     const check = (from: string, head: string, named: string) =>
       spawnSync("sh", [script, from, head], {
         cwd: dir,
