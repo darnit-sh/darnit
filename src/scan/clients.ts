@@ -351,21 +351,6 @@ export function vendorClass(root: SgNode, grammar: Grammar, callee: string, v: V
   return [...pkgs].some((p) => v.packages.includes(p));
 }
 
-/**
- * Whether `receiver` (`self.m_chat` in `self.m_chat.completions.create`) could hold the SDK's namespace: false only when
- * every assignment the call sees (and there are few enough to trace) is from something other than a member named `namespace`.
- */
-export function couldBeNamespace(root: SgNode, grammar: Grammar, call: SgNode, receiver: string, namespace: string): boolean {
-  const seen = visibleAssignments(indexOf(root, grammar), receiver, call);
-  return (
-    seen.length === 0 ||
-    seen.some((a) => {
-      const value = unwrap(a.value);
-      return value !== undefined && (value.is("member_expression") || value.is("attribute")) && (value.field("property") ?? value.field("attribute"))?.text() === namespace;
-    })
-  );
-}
-
 /** The client expression an SDK call hangs off: `x` in `x.beta.chat.completions.create`. */
 function clientNode(callee: SgNode, symbol: string): SgNode | undefined {
   let node: SgNode | null = callee;

@@ -359,33 +359,26 @@ describe("check judges each client by the vendor of the record", () => {
   });
 });
 
-describe("check matches SDK names on a dot boundary", () => {
+describe("check matches JavaScript package names whole", () => {
   const of = (hits: Hit[], id: string) => [...new Set(locations(hits.filter((h) => h.record.id.includes(id))))].sort();
 
-  const chat = (callee: string, py = false) => `${callee}(${py ? 'model="x", max_tokens=5' : '{ model: "x", messages: [], max_tokens: 5 }'})`;
-
-  it("leaves out a method on a look-alike name when every assignment the call sees is from something else", async () => {
-    const dir = await scratch({
-      "a.js": 'import OpenAI from "openai";\nimport { load } from "pictures";\nconst client = new OpenAI();\nconst myimages = load();\nmyimages.generate({ model: "dall-e-3" });\nclient.images.generate({ model: "dall-e-3" });\n',
-      "b.py": 'from openai import OpenAI\nfrom pictures import load\n\nclient = OpenAI()\nmy_images = load()\nmy_images.generate(model="dall-e-3")\nx_images = load().pictures\nx_images.generate(model="dall-e-3")\nclient.images.generate(model="dall-e-3")\n',
-      "c.ts": `import OpenAI from "openai";\nimport { load } from "chats";\nconst client = new OpenAI();\nclient.mychat = load();\n${chat("client.mychat.completions.create")};\nclass S {\n  my_chat = load();\n  run() {\n    return ${chat("this.my_chat.completions.create")};\n  }\n}\nclient?.chat\n  .completions.create({ model: "x", messages: [], max_tokens: 5 });\nexport { S };\n`,
-    });
-    const { hits } = await checkReport(dir);
-    expect(of(hits, "dall-e")).toEqual(["a.js:6", "b.py:9"]);
-    expect(of(hits, "max-tokens")).toEqual(["c.ts:13"]);
-  });
-
-  it("reports a method on a name assigned from the namespace member, or with no assignment the call sees", async () => {
-    const dir = await scratch({
-      "field.py": `from openai import OpenAI\n\nclass Svc:\n    def __init__(self):\n        self.m_chat = OpenAI().chat\n    def run(self):\n        return ${chat("self.m_chat.completions.create", true)}\n`,
-      "name.py": `from openai import OpenAI\nfrom chats import load\n\nopenai_chat = OpenAI().chat\nif load:\n    openai_chat = load()\n${chat("openai_chat.completions.create", true)}\n`,
-      "param.py": `from openai import OpenAI\n\ndef run(m_chat):\n    return ${chat("m_chat.completions.create", true)}\n\nrun(OpenAI().chat)\n`,
-      "imported.py": `from .clients import m_chat\n\n${chat("m_chat.completions.create", true)}\n`,
-      "prop.py": `from openai import OpenAI\n\nclass Svc:\n    @property\n    def m_chat(self):\n        return OpenAI().chat\n    def run(self):\n        return ${chat("self.m_chat.completions.create", true)}\n`,
-      "private.ts": `import OpenAI from "openai";\nclass Svc {\n  #chat = new OpenAI().chat;\n  run() {\n    return ${chat("this.#chat.completions.create")};\n  }\n}\nconst $chat = new OpenAI().chat;\n${chat("$chat.completions.create")};\n${chat("client.mychat.completions.create")};\nexport { Svc };\n`,
-    });
-    const { hits } = await checkReport(dir);
-    expect(of(hits, "max-tokens")).toEqual(["field.py:7", "imported.py:3", "name.py:7", "param.py:4", "private.ts:10", "private.ts:5", "private.ts:9", "prop.py:8"]);
+  // What main reports for each: a call name is matched by its ending, whatever the name holds.
+  const C = 'model="x", max_tokens=5';
+  const J = '{ model: "x", messages: [], max_tokens: 5 }';
+  it.each([
+    ["param.py", `from openai import OpenAI\n\ndef run(m_chat):\n    return m_chat.completions.create(${C})\n\nrun(OpenAI().chat)\n`, ["4:49 max-tokens"]],
+    ["imported.py", `from .clients import m_chat\n\nm_chat.completions.create(${C})\n`, ["3:38 max-tokens"]],
+    ["prop.py", `from openai import OpenAI\n\nclass Svc:\n    @property\n    def m_chat(self):\n        return OpenAI().chat\n    def run(self):\n        return self.m_chat.completions.create(${C})\n`, ["8:58 max-tokens"]],
+    ["field.py", `from openai import OpenAI\n\nclass Svc:\n    def __init__(self):\n        self.m_chat = OpenAI().chat\n    def run(self):\n        return self.m_chat.completions.create(${C})\n`, ["7:58 max-tokens"]],
+    ["images.py", 'from openai import OpenAI\n\nopenai_images = OpenAI().images\nopenai_images.generate(model="dall-e-2")\n', ["4:24 dall-e"]],
+    ["injected.py", `class Svc:\n    def __init__(self, chat):\n        self._chat = chat\n    def run(self):\n        return self._chat.completions.create(${C})\n`, ["5:57 max-tokens"]],
+    ["injected.ts", `export class Svc {\n  #chat;\n  constructor(chat: unknown) {\n    this.#chat = chat;\n  }\n  run() {\n    return this.#chat.completions.create(${J});\n  }\n}\n`, ["7:70 max-tokens"]],
+    ["either.py", `from openai import OpenAI\n\ndef run(y):\n    m_chat = y or OpenAI().chat\n    return m_chat.completions.create(${C})\n`, ["5:49 max-tokens"]],
+    ["lookalike.ts", `import OpenAI from "openai";\nconst client = new OpenAI();\nclient.mychat.completions.create(${J});\nmyimages.generate({ model: "dall-e-2", n: 1 });\n`, ["3:62 max-tokens", "4:21 dall-e"]],
+  ])("reports a call on a name that only ends like a namespace, as before: %s", async (name, text, expected) => {
+    const { hits } = await checkReport(await scratch({ [name]: text }));
+    const found = hits.filter((h) => /max-tokens|dall-e/.test(h.record.id)).map((h) => `${h.line}:${h.column} ${h.record.id.includes("dall-e") ? "dall-e" : "max-tokens"}`);
+    expect([...new Set(found)].sort()).toEqual(expected);
   });
 
   it("reads a dot in a JavaScript package name as part of the name, and in a Python import as a submodule", async () => {
@@ -398,10 +391,11 @@ describe("check matches SDK names on a dot boundary", () => {
       "sub.py": 'import groq.sub\n\nc = groq.sub.Groq()\nc.chat.completions.create(model="x", max_tokens=5)\n',
       "scoped.js": 'import Cerebras from "@cerebras/cerebras_cloud_sdk";\nconst c = new Cerebras();\nc.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
       "rt.js": ['const OpenAI = require("openai");', 'const { OpenAIRealtimeWS } = require("openai.fake");', `OpenAIRealtimeWS.create(new OpenAI(), { model: "${old}" });`, ""].join("\n"),
+      "scope.ts": ['import OpenAI from "openai";', 'import { OpenAIRealtimeWS } from "@scope/openai-x";', `await OpenAIRealtimeWS.create(new OpenAI(), { model: "${old}" });`, ""].join("\n"),
     });
     const { hits, coverage, values } = await checkReport(dir);
     expect(of(hits, "shut-down")).toEqual([]);
-    expect(values.map((v) => `${v.file}:${v.line}`)).toEqual(expect.arrayContaining(["rt.js:3", "rt.ts:4"]));
+    expect(values.map((v) => `${v.file}:${v.line}`)).toEqual(expect.arrayContaining(["rt.js:3", "rt.ts:4", "scope.ts:3"]));
     expect(of(hits, "max-tokens")).toEqual(["groq.js:3", "required.js:3"]);
     expect(coverage.foreignAt).toEqual(["router.py:4", "scoped.js:3", "sub.py:4"]);
   });
@@ -1603,18 +1597,6 @@ describe("check on a repository built to slow it down", () => {
     let hits: Hit[] = [];
     expect(await cpuTime(async () => (hits = await check(dir)), 3, budget)).toBeLessThan(budget);
     expect(maxTokens(hits)).toHaveLength(count);
-  });
-
-  // A name assigned too often to trace counts as the SDK's namespace, so its calls are reported.
-  it.each([
-    ["a thousand calls on a look-alike name set a thousand times", times(1000, () => "x_images = load()\n"), 1000, 1000],
-    ["three thousand calls on a look-alike name set 40 times", times(40, () => "x_images = load()\n"), 3000, 0],
-  ])("finishes quickly on %s", { timeout: 60_000 }, async (_, sets, calls, count) => {
-    const dir = await scratch({ "app.py": `from pictures import load\n${sets}${times(calls, () => 'x_images.generate(model="dall-e-2")\n')}` });
-    let hits: Hit[] = [];
-    // Under a second on a laptop.
-    expect(await cpuTime(async () => (hits = await check(dir)), 3, 4000)).toBeLessThan(4000);
-    expect(new Set(hits.filter((h) => h.record.id.includes("dall-e")).map((h) => h.line)).size).toBe(count);
   });
 
   it("checks thousands of realtime class calls, and as many on a look-alike class, within a CPU budget", { timeout: 60_000 }, async () => {
