@@ -13,7 +13,7 @@ import { parseArgs } from "node:util";
 // that does not match repos.tsv, or a repo that --base compares and this branch does not. Facts only are stored (paths,
 // lines, model names, record ids, a short hash of the matched code), never their code.
 
-type Report = {
+export type Report = {
   scanned: { files: number; records: number; otherFiles?: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[]; skipped?: { path: string; reason: string }[] };
   hits: { id: string; file: string; line: number; column: number; text: string; localAddresses?: string[] }[];
   possiblyAffected: { id: string; file: string; line: number; column: number; text: string; model: string; localAddresses?: string[] }[];
@@ -45,9 +45,9 @@ export function lines(exit: number, r: Report): string {
 const git = (cwd: string, ...a: string[]) =>
   spawnSync("git", a, { cwd, encoding: "utf8", timeout: 60_000, maxBuffer: 1 << 30, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" } });
 
-type Row = { repo: string; sha: string; slice: boolean; file: string };
+export type Row = { repo: string; sha: string; slice: boolean; file: string };
 
-function parseRows(text: string, where: string): Row[] {
+export function parseRows(text: string, where: string): Row[] {
   return text.trimEnd().split("\n").slice(1).map((line, i) => {
     const [repo = "", sha = "", slice = "", shape = ""] = line.split("\t");
     if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !/^[0-9a-f]{40}$/.test(sha) || !/^(yes|no)$/.test(slice) || !shape)
@@ -82,19 +82,65 @@ function baseRows(base: string): Row[] {
   return parseRows(show.stdout, `repos.tsv at ${base}`);
 }
 
+const quiet = (dir: string, ...a: string[]) => {
+  const run = git(dir, ...a);
+  return run.status === 0 ? run.stdout.trim() : undefined;
+};
+// --ignored: a file their .gitignore hides is still scanned, so it must not be there either.
+const pinned = (dir: string, sha: string) =>
+  existsSync(join(dir, ".git")) && quiet(dir, "rev-parse", "HEAD") === sha && quiet(dir, "status", "--porcelain", "--ignored") === "";
+
+/** Where clones are cached unless --dir says otherwise. */
+export const CLONES = join(homedir(), ".cache", "darnit-golden");
+
+/** The clone of `repo` under `root` at its pinned SHA with no changes, fetched again unless the cached copy is exactly that (and, with `recheck`, still fetches). */
+export function clone(root: string, repo: string, sha: string, recheck = false): string | undefined {
+  const dir = join(root, repo.replace("/", "_"));
+  const fetch = ["fetch", "-q", "--depth", "1", `https://github.com/${repo}.git`, sha];
+  if (pinned(dir, sha) && (!recheck || git(dir, ...fetch).status === 0)) return dir;
+  console.log(`fetching ${repo} at ${sha}`);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    let why = "";
+    for (const step of [["init", "-q"], fetch, ["-c", "advice.detachedHead=false", "checkout", "-q", "FETCH_HEAD"]]) {
+      const run = git(dir, ...step);
+      if (run.status !== 0) {
+        why = (run.stderr || run.error?.message || `git ${step.join(" ")} failed`).trim();
+        break;
+      }
+    }
+    if (!why && pinned(dir, sha)) return dir;
+    console.log(`fetch ${repo} attempt ${attempt} failed: ${why || "checkout is not the pinned SHA with no changes"}`);
+  }
+}
+
+/** The built CLI's `check --json` on `dir`: its exit code and report, or why darnit failed there. */
+export function runCheck(dir: string, repo: string): { exit: number; report: Report } | { error: string } {
+  const run = spawnSync(process.execPath, [resolve("dist/cli.js"), "check", "--json"], { cwd: dir, encoding: "utf8", maxBuffer: 1 << 30, env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" } });
+  if (run.status !== 0 && run.status !== 1) return { error: `darnit exited ${run.status ?? run.signal} on ${repo}: ${run.stderr || run.error?.message || ""}`.trim() };
+  if (run.stderr) return { error: `darnit wrote to stderr on ${repo}: ${run.stderr.trim()}` };
+  try {
+    const report = JSON.parse(run.stdout) as Report;
+    if (!report.scanned || ![report.hits, report.possiblyAffected, report.mentions].every(Array.isArray)) throw new Error("hits, possiblyAffected or mentions is missing");
+    return { exit: run.status, report };
+  } catch (err) {
+    return { error: `darnit output on ${repo} is not a check report: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
 function main() {
   const { values: args } = parseArgs({
     options: {
       update: { type: "boolean", default: false },
       all: { type: "boolean", default: false },
       recheck: { type: "boolean", default: false },
-      dir: { type: "string", default: join(homedir(), ".cache", "darnit-golden") },
+      dir: { type: "string", default: CLONES },
       out: { type: "string", default: join(tmpdir(), "darnit-golden-update") },
       base: { type: "string" },
     },
   });
   const GOLDEN = resolve("test/golden");
-  const CLI = resolve("dist/cli.js");
   const ci = !!process.env.GITHUB_ACTIONS;
   const errors: string[] = [];
   const fail = (message: string) => {
@@ -118,37 +164,6 @@ function main() {
     console.log(`${ci ? "::warning::" : "warning: "}${notes.at(-1)}`);
   }
 
-  const quiet = (dir: string, ...a: string[]) => {
-    const run = git(dir, ...a);
-    return run.status === 0 ? run.stdout.trim() : undefined;
-  };
-  // --ignored: a file their .gitignore hides is still scanned, so it must not be there either.
-  const pinned = (dir: string, sha: string) =>
-    existsSync(join(dir, ".git")) && quiet(dir, "rev-parse", "HEAD") === sha && quiet(dir, "status", "--porcelain", "--ignored") === "";
-
-  /** The clone at its pinned SHA with no changes, fetched again unless the cached copy is exactly that. */
-  const clone = (repo: string, sha: string): string | undefined => {
-    const dir = join(args.dir, repo.replace("/", "_"));
-    const fetch = ["fetch", "-q", "--depth", "1", `https://github.com/${repo}.git`, sha];
-    if (pinned(dir, sha) && (!args.recheck || git(dir, ...fetch).status === 0)) return dir;
-    console.log(`fetching ${repo} at ${sha}`);
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      rmSync(dir, { recursive: true, force: true });
-      mkdirSync(dir, { recursive: true });
-      let why = "";
-      for (const step of [["init", "-q"], fetch, ["-c", "advice.detachedHead=false", "checkout", "-q", "FETCH_HEAD"]]) {
-        const run = git(dir, ...step);
-        if (run.status !== 0) {
-          why = (run.stderr || run.error?.message || `git ${step.join(" ")} failed`).trim();
-          break;
-        }
-      }
-      if (!why && pinned(dir, sha)) return dir;
-      console.log(`fetch ${repo} attempt ${attempt} failed: ${why || "checkout is not the pinned SHA with no changes"}`);
-    }
-    fail(`could not fetch ${repo} at ${sha}, not caused by this PR unless it changed repos.tsv. Rerun; if it keeps failing, the repo or commit is gone: replace it in repos.tsv`);
-  };
-
   const known = new Set(rows.map((r) => r.file));
   for (const f of readdirSync(GOLDEN)) if (f.endsWith(".txt") && !known.has(f)) fail(`test/golden/${f} is for a repo not in repos.tsv`);
 
@@ -157,24 +172,17 @@ function main() {
   let added = 0;
   let removed = 0;
   for (const { repo, sha, file } of picked) {
-    const dir = clone(repo, sha);
-    if (!dir) continue;
-    const run = spawnSync(process.execPath, [CLI, "check", "--json"], { cwd: dir, encoding: "utf8", maxBuffer: 1 << 30, env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" } });
-    if (run.status !== 0 && run.status !== 1) {
-      fail(`darnit exited ${run.status ?? run.signal} on ${repo}: ${run.stderr || run.error?.message || ""}`.trim());
+    const dir = clone(args.dir, repo, sha, args.recheck);
+    if (!dir) {
+      fail(`could not fetch ${repo} at ${sha}, not caused by this PR unless it changed repos.tsv. Rerun; if it keeps failing, the repo or commit is gone: replace it in repos.tsv`);
       continue;
     }
-    if (run.stderr) {
-      fail(`darnit wrote to stderr on ${repo}: ${run.stderr.trim()}`);
+    const run = runCheck(dir, repo);
+    if ("error" in run) {
+      fail(run.error);
       continue;
     }
-    let actual: string;
-    try {
-      actual = lines(run.status, JSON.parse(run.stdout) as Report);
-    } catch (err) {
-      fail(`darnit output on ${repo} is not a check report: ${err instanceof Error ? err.message : String(err)}`);
-      continue;
-    }
+    const actual = lines(run.exit, run.report);
     compared++;
     const stored = join(GOLDEN, file);
     if (args.update) writeFileSync(stored, actual);

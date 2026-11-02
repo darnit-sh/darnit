@@ -16,7 +16,7 @@ export type ModelValueHit = Hit & { model: string };
 /** Any other exact mention of a model name from a record, in any text file: counted, never failing the check. */
 export type MentionHit = { file: string; line: number; model: string; record: ChangeRecord };
 
-const recordNames = (r: ChangeRecord) => Object.values(r.detection.astGrepPatterns).flatMap((p) => modelNames(p));
+export const recordNames = (r: ChangeRecord) => Object.values(r.detection.astGrepPatterns).flatMap((p) => modelNames(p));
 
 /** Vendors listed in darnit.yml, when the file exists and lists any; otherwise no restriction. */
 async function configuredVendors(root: string): Promise<Set<string> | undefined> {

@@ -33,7 +33,8 @@
     "corpus:backfill": "tsx scripts/backfill-removals.ts",
     "accounting": "tsx scripts/accounting.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:fixtures",
-    "golden": "npm run build && tsx scripts/golden.ts"
+    "golden": "npm run build && tsx scripts/golden.ts",
+    "answer-key": "npm run build && tsx scripts/answer-key.ts"
   },
   "dependencies": {
     "@ast-grep/cli": "0.51.0",
