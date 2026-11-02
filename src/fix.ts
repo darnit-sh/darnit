@@ -888,6 +888,13 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       result.pr = { state: "skipped", reason: `branch ${branch} already exists; delete it or open the pull request from it yourself` };
       continue;
     }
+    // A file that was not a regular file with one name before anything ran: darnit could not tell its own change from another.
+    const odd = grp.files.find((f) => !before.get(f));
+    if (odd !== undefined) {
+      const info = await lstat(join(root, odd)).catch(() => undefined);
+      result.pr = { state: "refused", reason: `${odd} ${info?.isFile() && info.nlink > 1 ? "has another name (a hard link)" : "is not a regular file"}` };
+      continue;
+    }
     // An earlier change's build or tests can write this one's files; each is rewritten only from what was committed.
     const earlier = await changedSince(root, new Map(grp.files.map((f) => [f, before.get(f)])));
     if (earlier !== undefined) {

@@ -1995,6 +1995,21 @@ console.log(config);`,
       });
     }
 
+    it("says a file has another name, not that tests changed it, when it starts with a hard link", async () => {
+      const { dir, bare, outside, posts, close } = await setup();
+      await link(join(dir, "sdk.js"), join(outside, "linked.js"));
+      try {
+        const result = await fix(dir, { pr: true, repo: "o/r", test: "true" });
+        expect(toJson(result)).toMatchObject({ records: [{ pr: { state: "refused", reason: "sdk.js has another name (a hard link)" } }] });
+        expect(renderSummary(result)).toContain("sdk.js has another name (a hard link); no pull request was opened");
+        expect(exitCodeFor(result)).toBe(1);
+        expect(posts).toEqual([]);
+        expect(await pushed(bare)).toBe("");
+      } finally {
+        close();
+      }
+    });
+
     it("writes out control characters in the file it names", async () => {
       const { dir, close } = await setup({ "a\u001b[8mb.js": SDK_CALL });
       try {
