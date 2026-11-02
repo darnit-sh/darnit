@@ -3,7 +3,7 @@ import python from "@ast-grep/lang-python";
 import { kind as kindId, Lang as NapiLang, parse, registerDynamicLanguage, type SgNode } from "@ast-grep/napi";
 import { escapeRegExp } from "../detect.js";
 import type { AstGrepPattern, Lang } from "../records/schema.js";
-import { clientOrigin, FUNCTIONS, holdsNamespace, isStatic, stringText, unwrap, urlOrigin, vendorClass, type VendorClients } from "./clients.js";
+import { clientOrigin, couldBeNamespace, FUNCTIONS, isStatic, stringText, unwrap, urlOrigin, vendorClass, type VendorClients } from "./clients.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
 export type Grammar = Parameters<typeof parse>[0];
@@ -65,14 +65,6 @@ const isCall = (n: SgNode) => n.is("call_expression") || n.is("call");
 
 /** Callee text as written, minus line breaks and optional chaining, so `chat?.completions\n .create` still matches. */
 const normalized = (callee: string) => callee.replace(/\s+/g, "").replace(/\?\./g, ".");
-
-/** Whether `callee` ends with `symbol` at a name boundary: `client.images.generate`, `self._images.generate` and `$images.generate`, never `myimages.generate`. */
-function endsWithSymbol(callee: string, symbol: string): boolean {
-  if (!callee.endsWith(symbol)) return false;
-  let i = callee.length - symbol.length;
-  while (i > 0 && "_#$".includes(callee[i - 1]!)) i--;
-  return i === 0 || callee[i - 1] === ".";
-}
 
 // Code inside a URL (an interpolation, a helper call) is not URL text.
 const OPAQUE = ["template_substitution", "interpolation", "call_expression", "call"];
@@ -342,11 +334,11 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
     if (!classes.has(name)) classes.set(name, vendorClass(root, grammar, callee, gate.vendor));
     return classes.get(name)!;
   };
-  // A method counts after a dot, or on a name the file assigns from the client's namespace (`m_chat = OpenAI().chat`).
+  // A method counts after a dot. Inside a name (`m_chat.completions.create`) it counts unless the file shows that name is something else.
   const isSymbol = (call: SgNode, callee: string, s: string) => {
     if (!callee.endsWith(s)) return false;
     const first = s.split(".")[0]!;
-    const named = endsWithSymbol(callee, s) || holdsNamespace(root, grammar, call, callee.slice(0, callee.length - s.length + first.length), first);
+    const named = callee === s || callee.endsWith(`.${s}`) || couldBeNamespace(root, grammar, call, callee.slice(0, callee.length - s.length + first.length), first);
     return named && (!isStatic(s) || isVendorClass(callee));
   };
   const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, source, found.flat(), symbols, endpoints.length > 0 ? endpointTest(root, grammar, endpoints) : undefined, isSymbol) : undefined;

@@ -362,42 +362,30 @@ describe("check judges each client by the vendor of the record", () => {
 describe("check matches SDK names on a dot boundary", () => {
   const of = (hits: Hit[], id: string) => [...new Set(locations(hits.filter((h) => h.record.id.includes(id))))].sort();
 
-  it("reports a record's method only when it is the whole callee or ends it after a dot", async () => {
+  const chat = (callee: string, py = false) => `${callee}(${py ? 'model="x", max_tokens=5' : '{ model: "x", messages: [], max_tokens: 5 }'})`;
+
+  it("leaves out a method on a look-alike name when every assignment the call sees is from something else", async () => {
     const dir = await scratch({
-      "a.js": 'import OpenAI from "openai";\nconst client = new OpenAI();\nmyimages.generate({ model: "dall-e-3" });\nclient.images.generate({ model: "dall-e-3" });\n',
-      "b.py": 'from openai import OpenAI\n\nclient = OpenAI()\nmyimages.generate(model="dall-e-3")\nclient.images.generate(model="dall-e-3")\n',
-      "c.ts":
-        'import OpenAI from "openai";\nconst client = new OpenAI();\nclient.myimages.generate({ model: "dall-e-3" });\nclient.notimages.generate({ model: "dall-e-3" });\nclient?.images\n  .generate({ model: "dall-e-3" });\n',
+      "a.js": 'import OpenAI from "openai";\nimport { load } from "pictures";\nconst client = new OpenAI();\nconst myimages = load();\nmyimages.generate({ model: "dall-e-3" });\nclient.images.generate({ model: "dall-e-3" });\n',
+      "b.py": 'from openai import OpenAI\nfrom pictures import load\n\nclient = OpenAI()\nmy_images = load()\nmy_images.generate(model="dall-e-3")\nx_images = load().pictures\nx_images.generate(model="dall-e-3")\nclient.images.generate(model="dall-e-3")\n',
+      "c.ts": `import OpenAI from "openai";\nimport { load } from "chats";\nconst client = new OpenAI();\nclient.mychat = load();\n${chat("client.mychat.completions.create")};\nclass S {\n  my_chat = load();\n  run() {\n    return ${chat("this.my_chat.completions.create")};\n  }\n}\nclient?.chat\n  .completions.create({ model: "x", messages: [], max_tokens: 5 });\nexport { S };\n`,
     });
     const { hits } = await checkReport(dir);
-    expect(of(hits, "dall-e")).toEqual(["a.js:4", "b.py:5", "c.ts:6"]);
+    expect(of(hits, "dall-e")).toEqual(["a.js:6", "b.py:9"]);
+    expect(of(hits, "max-tokens")).toEqual(["c.ts:13"]);
   });
 
-  it("reports a method on a private or prefixed field holding the client's namespace", async () => {
+  it("reports a method on a name assigned from the namespace member, or with no assignment the call sees", async () => {
     const dir = await scratch({
-      "a.py": 'from openai import OpenAI\n\nclass Svc:\n    def __init__(self):\n        self._images = OpenAI().images\n    def run(self):\n        return self._images.generate(model="dall-e-2")\n',
-      "b.ts": 'import OpenAI from "openai";\nclass Svc {\n  #images = new OpenAI().images;\n  run() {\n    return this.#images.generate({ model: "dall-e-2", n: 1 });\n  }\n}\nexport { Svc };\n',
-      "c.js": 'import OpenAI from "openai";\nconst client = new OpenAI();\nconst $images = client.images;\n$images.generate({ model: "dall-e-2", n: 1 });\n',
-      "d.ts":
-        'import OpenAI from "openai";\nconst client = new OpenAI();\nclient._chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\nclient.mychat.completions.create({ model: "x", messages: [], max_tokens: 5 });\nclient.notchat.completions.create({ model: "x", messages: [], max_tokens: 5 });\nclient.my_chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "field.py": `from openai import OpenAI\n\nclass Svc:\n    def __init__(self):\n        self.m_chat = OpenAI().chat\n    def run(self):\n        return ${chat("self.m_chat.completions.create", true)}\n`,
+      "name.py": `from openai import OpenAI\nfrom chats import load\n\nopenai_chat = OpenAI().chat\nif load:\n    openai_chat = load()\n${chat("openai_chat.completions.create", true)}\n`,
+      "param.py": `from openai import OpenAI\n\ndef run(m_chat):\n    return ${chat("m_chat.completions.create", true)}\n\nrun(OpenAI().chat)\n`,
+      "imported.py": `from .clients import m_chat\n\n${chat("m_chat.completions.create", true)}\n`,
+      "prop.py": `from openai import OpenAI\n\nclass Svc:\n    @property\n    def m_chat(self):\n        return OpenAI().chat\n    def run(self):\n        return ${chat("self.m_chat.completions.create", true)}\n`,
+      "private.ts": `import OpenAI from "openai";\nclass Svc {\n  #chat = new OpenAI().chat;\n  run() {\n    return ${chat("this.#chat.completions.create")};\n  }\n}\nconst $chat = new OpenAI().chat;\n${chat("$chat.completions.create")};\n${chat("client.mychat.completions.create")};\nexport { Svc };\n`,
     });
     const { hits } = await checkReport(dir);
-    expect(of(hits, "dall-e")).toEqual(["a.py:7", "b.ts:5", "c.js:4"]);
-    expect(of(hits, "max-tokens")).toEqual(["d.ts:3"]);
-  });
-
-  it("reports a method on any name assigned from a client's namespace, and leaves out the same name assigned from anything else", async () => {
-    const dir = await scratch({
-      "a.py": 'from openai import OpenAI\n\nclass Svc:\n    def __init__(self):\n        self.m_chat = OpenAI().chat\n    def run(self):\n        return self.m_chat.completions.create(model="x", max_tokens=5)\n',
-      "b.py": 'from openai import OpenAI\n\nopenai_images = OpenAI().images\nopenai_images.generate(model="dall-e-2")\n',
-      "c.py": 'class Svc:\n    def run(self):\n        return self.__images.generate(model="dall-e-2")\n',
-      "d.py": 'from pictures import load\n\nmy_images = load()\nmy_images.generate(model="dall-e-2")\nx_images = load().pictures\nx_images.generate(model="dall-e-2")\n',
-      "e.ts":
-        'import OpenAI from "openai";\nconst client = new OpenAI();\nclient._mychat.completions.create({ model: "x", messages: [], max_tokens: 5 });\nmy$images.generate({ model: "dall-e-2", n: 1 });\nx_images.generate({ model: "dall-e-2", n: 1 });\n',
-    });
-    const { hits } = await checkReport(dir);
-    expect(of(hits, "dall-e")).toEqual(["b.py:4", "c.py:3"]);
-    expect(of(hits, "max-tokens")).toEqual(["a.py:7"]);
+    expect(of(hits, "max-tokens")).toEqual(["field.py:7", "imported.py:3", "name.py:7", "param.py:4", "private.ts:10", "private.ts:5", "private.ts:9", "prop.py:8"]);
   });
 
   it("reads a dot in a JavaScript package name as part of the name, and in a Python import as a submodule", async () => {
