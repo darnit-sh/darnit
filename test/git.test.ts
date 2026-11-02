@@ -74,8 +74,8 @@ describe("git treats the repo as untrusted", () => {
     try {
       await writeFile(join(dir, "a.ts"), "b\n");
       await g.isClean(dir);
-      await g.add(dir, ["a.ts"]);
-      await g.commit(dir, "change", "body");
+      await g.git(dir, ["add", "a.ts"]);
+      await g.git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "change"]);
     } finally {
       if (token === undefined) delete process.env.GITHUB_TOKEN;
       else process.env.GITHUB_TOKEN = token;
@@ -93,8 +93,8 @@ describe("git treats the repo as untrusted", () => {
     }
     await writeFile(join(dir, "a.ts"), "b\n");
     await g.isClean(dir); // status
-    await g.add(dir, ["a.ts"]);
-    await g.commit(dir, "c", "b"); // re-stages through clean
+    await g.git(dir, ["add", "--", "a.ts"]);
+    await g.git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c"]); // re-stages through clean
     await g.diff(dir, ["a.ts"]);
     await writeFile(join(dir, "a.ts"), "c\n");
     await g.discard(dir, ["a.ts"]); // checkout writes through smudge
@@ -108,7 +108,7 @@ describe("git treats the repo as untrusted", () => {
     await g.git(dir, ["config", "filter.a=b.clean", `touch '${mark}'; cat`]);
     await g.git(dir, ["config", "filter.a=b.required", "true"]);
     await writeFile(join(dir, "a.ts"), "b\n");
-    await g.add(dir, ["a.ts"]);
+    await g.git(dir, ["add", "--", "a.ts"]);
     expect(await access(mark).then(() => true, () => false)).toBe(false);
   });
 
@@ -127,7 +127,7 @@ describe("git treats the repo as untrusted", () => {
       // A driver name with a raw 0xff byte: git stores and reads it, but it is not valid UTF-8.
       await writeFile(join(dir, ".gitattributes"), Buffer.concat([Buffer.from("*.ts filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]));
       await appendFile(join(dir, ".git", "config"), Buffer.concat([Buffer.from('[filter "x'), Buffer.from([0xff]), Buffer.from(`y"]\n\tclean = ${run}\n\tsmudge = ${run}\n\trequired = true\n`)]));
-      for (const op of [() => g.isClean(dir), () => g.diff(dir, ["a.ts"]), () => g.add(dir, ["a.ts"])]) {
+      for (const op of [() => g.isClean(dir), () => g.diff(dir, ["a.ts"]), () => g.git(dir, ["add", "--", "a.ts"])]) {
         await writeFile(join(dir, "a.ts"), `b${Math.random()}\n`); // unstaged and stat-dirty, so a live filter would run
         await expect(op()).rejects.toThrow(/not valid UTF-8/);
       }
@@ -147,7 +147,7 @@ describe("git treats the repo as untrusted", () => {
       await g.git(dir, ["config", "filter.p.clean", `touch '${mark}'; cat`]);
       await g.git(dir, ["config", "filter.p.required", "true"]);
       await writeFile(join(dir, "a.ts"), "b\n");
-      await g.add(dir, ["a.ts"]);
+      await g.git(dir, ["add", "--", "a.ts"]);
       expect(await access(mark).then(() => true, () => false)).toBe(false);
     } finally {
       vi.unstubAllEnvs();
@@ -232,6 +232,9 @@ describe("git works on the folder it was given", () => {
     const where = { GIT_CONFIG_GLOBAL: "global", GIT_CONFIG_SYSTEM: "system", HOME: ".gitconfig", XDG_CONFIG_HOME: "git/config" };
     for (const [name, file] of Object.entries(where)) {
       await writeFile(join(home, file), `[darnit]\n\tprobe = ${name}\n`);
+      // The test setup points git away from the user's config files; each is set here alone.
+      vi.stubEnv("GIT_CONFIG_GLOBAL", undefined);
+      vi.stubEnv("GIT_CONFIG_NOSYSTEM", undefined);
       vi.stubEnv(name, name.startsWith("GIT_") ? join(home, file) : home);
       expect((await g.git(dir, ["config", "--get", "darnit.probe"])).trim()).toBe(name);
       vi.unstubAllEnvs();
@@ -413,8 +416,7 @@ describe("push", () => {
     expect(await readFile(join(dir, ".git/config"), "utf8")).not.toContain(header);
     await g.git(dir, ["config", `http.${url}.extraheader`, `AUTHORIZATION: ${header}`]);
     await writeFile(join(dir, "a.ts"), "b\n");
-    await g.add(dir, ["a.ts"]);
-    await g.commit(dir, "b", "b");
+    await g.git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "b"]);
     await g.push(dir, branch, url);
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
@@ -511,6 +513,32 @@ describe("push", () => {
     await g.push(dir, branch, url);
     expect(await g.git(remote, ["rev-parse", branch])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   }, 20_000);
+});
+
+describe("stage and pushStaged", () => {
+  it("push a commit of the start with the staged bytes alone, and refuse one that would change anything else", async () => {
+    const dir = await repoWith({ "a.ts": "a\n", "b.ts": "b\n" });
+    const bare = await mkdtemp(join(tmpdir(), "darnit-bare-"));
+    tempDirs.push(bare);
+    await g.git(bare, ["init", "-q", "--bare"]);
+    await g.git(dir, ["remote", "add", "origin", bare]);
+    const at = await g.start(dir);
+    const file = async (mode: number, text: string) => {
+      const staged = await g.stage(at, [{ path: "a.ts", mode, bytes: Buffer.from(text), was: Buffer.from("a\n") }]);
+      if ("unlike" in staged) throw new Error(staged.unlike);
+      return staged;
+    };
+    // Bytes that change nothing.
+    await expect(g.pushStaged(at, await file(0o100644, "a\n"), ["m"], "x")).rejects.toThrow("the commit darnit built for x changes more than its rewrite; nothing pushed");
+    expect(await g.git(bare, ["branch", "--list"])).toBe("");
+    // The bytes before, or their mode, not as committed.
+    for (const [mode, was] of [[0o100644, "other\n"], [0o100755, "a\n"]] as const) {
+      expect(await g.stage(at, [{ path: "a.ts", mode, bytes: Buffer.from("c\n"), was: Buffer.from(was) }])).toEqual({ unlike: "a.ts" });
+    }
+    await g.pushStaged(at, await file(0o100644, "c\n"), ["m", "body"], "x");
+    expect(await g.git(bare, ["diff-tree", "-r", "--name-only", at.commit, "x"])).toBe("a.ts\n");
+    expect(await g.git(bare, ["log", "-1", "--format=%P%n%B", "x"])).toBe(`${at.commit}\nm\n\nbody\n\n`);
+  });
 });
 
 describe("uncommitted where git composes file names, as on macOS", () => {
