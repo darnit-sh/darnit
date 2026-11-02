@@ -152,5 +152,13 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "gpt-4o-realtime-preview-2024-10-01": {
+        "model": "gpt-realtime-1.5",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }
