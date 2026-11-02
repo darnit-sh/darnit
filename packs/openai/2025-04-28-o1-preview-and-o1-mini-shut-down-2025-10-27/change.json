@@ -152,5 +152,13 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "o1-mini": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }
