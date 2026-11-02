@@ -1,7 +1,11 @@
 import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
-import { firstFive } from "./detect.js";
+import { cleanEnv, firstFive, onPath } from "./detect.js";
 import { envToken } from "./github.js";
+import { Refusal } from "./refusal.js";
 
 const exec = promisify(execFile);
 
@@ -30,16 +34,20 @@ const UNTRUSTED_REPO = [
 // darnit turns off the programs a repository's config names by passing git config in the child's
 // environment, which git reads only from this version on; an older git would ignore it and run them.
 const MIN_GIT: [number, number] = [2, 31];
-let gitChecked: Promise<void> | undefined;
-/** Refuses the run on a git too old to read the environment config darnit's pins rely on. Call before any git. */
-export function ensureGitVersion(): Promise<void> {
-  return (gitChecked ??= exec("git", ["version"]).then(({ stdout }) => {
+const gitChecked = new Map<string, Promise<void>>();
+/** Refuses the run on a git too old to read the environment config darnit's pins rely on. `gitBin` defaults to bare `git` for calls in darnit's own job; --publish passes the absolute path it resolved, with `env` the clone's clean environment so no trace or token-bearing variable reaches this call either. */
+export function ensureGitVersion(gitBin = "git", env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const checked = gitChecked.get(gitBin);
+  if (checked) return checked;
+  const run = exec(gitBin, ["version"], { env }).then(({ stdout }) => {
     const m = /^git version (\d+)\.(\d+)/.exec(stdout.trim());
     const [maj, min] = [Number(m?.[1]), Number(m?.[2])];
     if (!m || maj < MIN_GIT[0] || (maj === MIN_GIT[0] && min < MIN_GIT[1])) {
       throw new Error(`darnit needs git ${MIN_GIT.join(".")} or newer to run git safely against a repository; this is ${stdout.trim() || "an unknown version"}`);
     }
-  }));
+  });
+  gitChecked.set(gitBin, run);
+  return run;
 }
 
 // The git commands darnit runs that apply a clean, smudge or process filter to content: `add` and
@@ -343,12 +351,15 @@ const ENV_CONFIG = /^GIT_CONFIG_(?:COUNT|PARAMETERS|KEY_\d+|VALUE_\d+)$/;
 export async function savedCredential(root: string): Promise<Credential | undefined> {
   const env = { ...(await childEnv()), ...Object.fromEntries(Object.entries(process.env).filter(([k]) => ENV_CONFIG.test(k))) };
   const { stdout } = await exec("git", [...UNTRUSTED_REPO, "config", "--list", "-z"], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
-  const entries = stdout.split("\0").filter(Boolean).map((e) => {
+  return credentialIn(entriesOf(stdout));
+}
+
+/** `git config --list -z` output as key and value pairs. */
+const entriesOf = (stdout: string) =>
+  stdout.split("\0").filter(Boolean).map((e) => {
     const i = e.indexOf("\n");
     return i < 0 ? ([e, ""] as const) : ([e.slice(0, i), e.slice(i + 1)] as const);
   });
-  return credentialIn(entries);
-}
 
 export const topLevel = async (root: string) => (await git(root, ["rev-parse", "--show-toplevel"])).trim();
 
@@ -357,14 +368,105 @@ export const head = async (root: string) => (await git(root, ["rev-parse", "--ve
 // Settings the repository can set that change a diff's bytes; pinned so two checkouts produce the same patch.
 const PINNED_DIFF = ["core.quotePath=false", "diff.suppressBlankEmpty=false", "diff.orderFile=/dev/null"];
 
+/** The pinned `git diff --binary --full-index` of `files` against HEAD, so two checkouts of the same commit print the same bytes. */
+export const diffArgs = (files: readonly string[]) => [
+  ...PINNED_DIFF.flatMap((c) => ["-c", c]),
+  "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--relative",
+  "--src-prefix=a/", "--dst-prefix=b/", "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers", "--indent-heuristic",
+  "HEAD", "--", ...files,
+];
+
 /** `files` (relative to `root`) against HEAD as `git diff --binary` prints them, with paths relative to `root`. */
-export const patch = (root: string, files: readonly string[]) =>
-  git(root, [
-    ...PINNED_DIFF.flatMap((c) => ["-c", c]),
-    "--no-pager", "diff", "--binary", "--full-index", "--no-color", "--relative",
-    "--src-prefix=a/", "--dst-prefix=b/", "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers", "--indent-heuristic",
-    "HEAD", "--", ...files,
-  ]);
+export const patch = (root: string, files: readonly string[]) => git(root, diffArgs(files));
+
+/** How git prints the token: an http auth header for github.com, never on disk or in an argument. */
+const authHeader = (token: string) => `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+
+// Pins on every clone command: no hooks, fsmonitor, gpg signing or submodule push. Filters need no pin here because the
+// fresh clone carries no config that names one, so a filter driver is never defined.
+const CLONE_PINS = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "push.recurseSubmodules=no"];
+
+/** A git command in the publish clone; `network` for the fetch and push to github.com, which git's own low-speed limit bounds. */
+export type CloneGit = (args: string[], network?: boolean) => Promise<string>;
+
+/** The real path of `dir`, resolved as far as it exists, so a symlink or `..` in it cannot hide what it points at. */
+const realDir = (dir: string) => realpath(resolve(dir)).catch(() => resolve(dir));
+
+/** Whether `child` is `parent` or inside it, comparing real paths and, where a file system ignores case, case-insensitively. */
+function under(child: string, parent: string): boolean {
+  const rel = (a: string, b: string) => relative(a, b);
+  const inside = (p: string, c: string) => {
+    const r = rel(p, c);
+    return r === "" || (!r.startsWith(`..${sep}`) && r !== ".." && !isAbsolute(r));
+  };
+  return inside(parent, child) || inside(parent.toLowerCase(), child.toLowerCase());
+}
+
+/**
+ * The absolute real path of `name` for a job that holds the token: from an absolute PATH entry, resolved through every
+ * link, and refused when it lies in a folder a repository or this run controls (the current folder, GITHUB_WORKSPACE, the
+ * temp root), compared by real path so a symlink, `..` or case difference cannot slip past. So a `git` or `gh` the
+ * repository ships or the checkout folder holds is never run by a bare name or relative lookup. Returns undefined only
+ * when `required` is false and the program is simply not on PATH.
+ */
+export async function trustedProgram(name: string, required = true): Promise<string | undefined> {
+  const found = await onPath(name);
+  if (!found) {
+    if (required) throw new Refusal(`${name} was not found in an absolute PATH entry; --publish runs ${name} by its absolute path`);
+    return undefined;
+  }
+  const real = await realpath(found).catch(() => resolve(found));
+  const owned = await Promise.all([process.cwd(), process.env.GITHUB_WORKSPACE?.trim(), tmpdir()].filter((p): p is string => !!p).map(realDir));
+  const bad = owned.find((o) => under(real, o));
+  if (bad) throw new Refusal(`${name} resolves to ${real}, under ${bad}, a folder this job controls; refusing to run it`);
+  return real;
+}
+
+
+/**
+ * Runs `body` against a fresh, shallow clone of `sha` fetched from `url` (github.com) with the already-resolved absolute
+ * `gitBin`, reading no config, replace object, hook, filter or object store from the machine or any repository: the env is
+ * process.env minus the credential variables and every GIT_* variable (never through childEnv/repoLocalVars, which would
+ * run git by a bare name in this folder), plus GIT_CONFIG_NOSYSTEM, an empty global config, HOME and XDG_CONFIG_HOME in an
+ * empty folder, and GIT_NO_REPLACE_OBJECTS. The token reaches git only as an http header scoped to github.com. The folder
+ * is removed afterwards.
+ */
+export async function withCleanClone<T>(gitBin: string, url: string, sha: string, token: string, body: (run: CloneGit, dir: string) => Promise<T>, beforeFetch?: (run: CloneGit) => Promise<void>): Promise<T> {
+  const tmp = await mkdtemp(join(tmpdir(), "darnit-publish-"));
+  const [home, dir, global] = [join(tmp, "home"), join(tmp, "repo"), join(tmp, "global.config")];
+  await mkdir(home);
+  await mkdir(dir);
+  await writeFile(global, "");
+  // An allowlist, not process.env minus a denylist: a credential, a GIT_* (trace, config, replace), SSH_ASKPASS or any
+  // other inherited variable is never carried in; only darnit's own hardening, set here, reaches git.
+  const env = cleanEnv({
+    HOME: home, XDG_CONFIG_HOME: home, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: global, GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_LITERAL_PATHSPECS: "1", GIT_TERMINAL_PROMPT: "0",
+    GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: `http.${GITHUB}.extraheader`, GIT_CONFIG_VALUE_0: authHeader(token),
+  });
+  const stall = 60;
+  // cwd is the temp parent, never the work tree, and the repo is named with -C: nothing the commit ships is on the lookup path.
+  const run: CloneGit = async (args, network = false) => {
+    const netEnv = network ? { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) } : {};
+    try {
+      const { stdout } = await exec(gitBin, ["-C", dir, ...CLONE_PINS, ...args], { cwd: tmp, env: { ...env, ...netEnv }, maxBuffer: 64 * 1024 * 1024, timeout: network ? stall * 4 * 1000 : 0 });
+      return stdout;
+    } catch (err) {
+      const { killed, stderr } = err as { killed?: boolean; stderr?: string };
+      if (network && (killed || stderr?.includes("Operation too slow"))) throw new Error(`git ${args[0] ?? ""} to origin timed out`, { cause: err });
+      throw err;
+    }
+  };
+  try {
+    await run(["init", "-q"]);
+    if (beforeFetch) await beforeFetch(run);
+    await run(["fetch", "-q", "--depth=1", "--no-tags", url, sha], true);
+    await run(["checkout", "-q", "--detach", "FETCH_HEAD"]);
+    return await body(run, dir);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
 
 /** Diff between two dirs under cwd, no repo needed. git exits 1 when they differ, which is not an error here. */
 export async function diffDirs(cwd: string, before: string, after: string): Promise<string> {

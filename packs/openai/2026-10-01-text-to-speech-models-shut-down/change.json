@@ -200,5 +200,25 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "tts-1": {
+        "model": "gpt-realtime-2.1-mini",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "tts-1-hd": {
+        "model": "gpt-realtime-2.1-mini",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4o-mini-tts-2025-03-20": {
+        "model": "gpt-realtime-2.1-mini",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4o-mini-tts-2025-12-15": {
+        "model": "gpt-realtime-2.1-mini",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }
