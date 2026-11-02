@@ -31,7 +31,7 @@ describe("docs match the CLI", () => {
     const seen: string[] = [];
     const wrong: string[] = [];
     for (const piece of code(await read(file))) {
-      for (const [line, rest] of piece.matchAll(/(?:^\s*(?:\$ )?|npx (?:-y |--yes )?)darnit(?:@[\w.-]+)?((?: +[\w-]+)+)/gm)) {
+      for (const [line, rest] of piece.matchAll(/(?:^\s*(?:\$ )?|npx (?:-y |--yes )?|\/\.bin\/)darnit(?:@[\w.-]+)?((?: +[\w-]+)+)/gm)) {
         seen.push(line);
         const words = rest!.trim().split(/ +/);
         const command = words[0]!.startsWith("-") ? "" : words[0]!;
@@ -47,8 +47,10 @@ describe("docs match the CLI", () => {
   // Started inside the checkout, npx would run a darnit or an .npmrc setting from the repository (scripts/e2e.ts).
   it("the README workflow examples start npx outside the checkout, like the workflow init writes", async () => {
     const runs = (await read("README.md")).match(/^ *- run: .*npx .*$/gm);
-    expect(runs).toHaveLength(2);
-    for (const run of runs!) expect(run).toMatch(/- run: cd "\$\{RUNNER_TEMP:\?\}" && npx darnit (?:check|fix --pr) "\$\{GITHUB_WORKSPACE:\?\}"$/);
+    expect(runs).toHaveLength(3);
+    for (const run of runs!) {
+      expect(run).toMatch(/- run: cd "\$\{RUNNER_TEMP:\?\}" && npx darnit(?:@\S+)? (?:check|fix --pr|fix --prepare "\$\{RUNNER_TEMP:\?\}\/plan") "\$\{GITHUB_WORKSPACE:\?\}"$/);
+    }
   });
 
   it("the README says what init --force does in the words of its --help", async () => {
@@ -59,7 +61,8 @@ describe("docs match the CLI", () => {
   });
 
   it("the README shows the workflow init writes, and its fix --pr job also removes setup-node's problem matchers before darnit runs", async () => {
-    const [check, pr] = [...(await read("README.md")).matchAll(/^```yaml\n([^]*?)^```$/gm)].map((m) => m[1]!);
+    const blocks = [...(await read("README.md")).matchAll(/^```yaml\n([^]*?)^```$/gm)].map((m) => m[1]!);
+    const [check, pr] = [blocks[0], blocks.find((b) => /fix --pr\b/.test(b))];
     expect(check).toBe(WORKFLOW.replace(/npx darnit@\S+/, "npx darnit"));
     type Step = { uses?: string; run?: string };
     const steps = (parse(check!) as { jobs: { check: { steps: Step[] } } }).jobs.check.steps;
