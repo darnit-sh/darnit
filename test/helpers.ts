@@ -64,7 +64,7 @@ export function annotations(output: string, owners: string[]): string[] {
 export function matchersAtDarnit(steps: { uses?: string; run?: string }[]): string[] {
   const active = new Set<string>();
   for (const { uses, run = "" } of steps) {
-    if (/\bnpx darnit\b/.test(run)) return [...active];
+    if (/(?:\bnpx |\/\.bin\/)darnit\b/.test(run)) return [...active];
     if (uses?.startsWith("actions/setup-node@")) {
       if (uses !== "actions/setup-node@v7") throw new Error(`the matchers are those of setup-node@v7, not ${uses}`);
       for (const owner of Object.keys(SETUP_NODE_MATCHERS)) active.add(owner);
