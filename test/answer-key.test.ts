@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { answerKey, exitCode, misses, RULES, summary } from "../scripts/answer-key.js";
 import type { Report } from "../scripts/golden.js";
-import { checkReport, mentionsToJson, recordNames, toJson } from "../src/check.js";
+import { checkReport, mentionsToJson, toJson } from "../src/check.js";
 import { loadRecords } from "../src/records/load.js";
+import { recordModels } from "../src/records/schema.js";
 
 const root = mkdtempSync(join(tmpdir(), "darnit-answer-key-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -18,7 +19,7 @@ writeFileSync(
   ["We moved off gpt-4 last year.", "gpt-4-0613 is old too.", "Not my_gpt-4 though.", "Ask the ada team.", `${"x ".repeat(2600)}o1 here`, 'Use "ada" here.', "engine: davinci", ""].join("\n"),
 );
 
-const ids = new Set((await loadRecords()).flatMap((l) => recordNames(l.record)));
+const ids = new Set((await loadRecords()).flatMap((l) => recordModels(l.record)));
 const { hits, values, mentions, coverage } = await checkReport(root);
 const report = (): Report => ({ scanned: coverage, hits: toJson(hits) as Report["hits"], possiblyAffected: toJson(values) as Report["possiblyAffected"], mentions: mentionsToJson(mentions) });
 

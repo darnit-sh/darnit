@@ -2,9 +2,9 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { recordNames } from "../src/check.js";
 import { listFiles, readText } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
+import { recordModels } from "../src/records/schema.js";
 import { isBinary, isCodeFile, LONG_LINE } from "../src/scan/mentions.js";
 import { NAMED } from "../src/scan/values.js";
 import { CLONES, clone, esc, parseRows, runCheck, type Report } from "./golden.js";
@@ -174,7 +174,7 @@ async function main() {
   const ci = !!process.env.GITHUB_ACTIONS;
   const rows = parseRows(readFileSync(resolve("test/golden/repos.tsv"), "utf8"), "repos.tsv");
   const records = (await loadRecords()).map((l) => l.record);
-  const ids = new Set(records.flatMap(recordNames));
+  const ids = new Set(records.flatMap(recordModels));
   const total: Tally = { mentions: 0, agreed: 0, explained: {}, unexplained: [] };
   const errors: string[] = [];
   for (const { repo, sha } of rows) {
