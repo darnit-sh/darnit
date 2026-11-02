@@ -7,7 +7,7 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, syml
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { givenTarball, integrity, notUser, userEnv } from "./e2e-env.js";
+import { fromLine, givenTarball, installedIntegrity, notUser, tarballIn, userEnv, withTarball } from "./e2e-env.js";
 
 // No run may reach the npm registry.
 process.env.DARNIT_NO_UPDATE_CHECK = "1";
@@ -152,32 +152,24 @@ if (JSON.stringify(folders) !== JSON.stringify(Object.keys(EXPECT).sort())) {
 
 let given: ReturnType<typeof givenTarball>;
 try {
-  // npm run starts this in the package folder; a relative path means the folder npm was run from.
-  given = givenTarball(process.argv.slice(2), process.env.INIT_CWD || process.cwd());
+  given = givenTarball(process.argv.slice(2));
 } catch (e) {
   console.error(`e2e: ${(e as Error).message}`);
   process.exit(2);
-}
-if (given && integrity(given.tarball) !== given.integrity) {
-  console.error(`e2e: ${given.tarball} has integrity ${integrity(given.tarball)}, expected ${given.integrity}`);
-  process.exit(1);
 }
 
 const work = mkdtempSync(join(tmpdir(), "darnit-e2e-"));
 let failures = 0;
 try {
-  if (!given) must("npm", ["pack", "--silent", "--pack-destination", work], ROOT);
-  const tarball = given?.tarball ?? join(work, readdirSync(work).find((f) => f.endsWith(".tgz"))!);
+  // Only this copy is installed or run from here on, so the file that ran is the file that was checked.
+  const { tarball, integrity } = tarballIn(work, given, (dest) => must("npm", ["pack", "--silent", "--pack-destination", dest], ROOT));
   const install = join(work, "install");
   mkdirSync(install);
   must("npm", ["init", "-y"], install);
   must("npm", ["install", "--silent", tarball], install);
-  // The integrity npm installed, so the file that ran is the file that was checked.
-  const lock = JSON.parse(readFileSync(join(install, "package-lock.json"), "utf8")) as { packages: Record<string, { integrity?: string }> };
-  const installed = lock.packages["node_modules/darnit"]?.integrity;
-  if (given && installed !== given.integrity) throw new Error(`npm installed ${tarball} with integrity ${installed}, expected ${given.integrity}`);
+  const installed = installedIntegrity(install, integrity);
   const darnit = join(install, "node_modules", ".bin", "darnit");
-  console.log(`darnit ${must(darnit, ["--version"], install).trim()} from ${tarball}, integrity ${installed}\n`);
+  console.log(`${fromLine(must(darnit, ["--version"], install).trim(), given?.tarball ?? tarball, installed)}\n`);
   // A mistyped flag is darnit failing (2), never "call sites found" (1), which would turn a scheduled run red.
   const usage = run(darnit, ["check", "--no-such-flag"], install);
   if (usage.exit !== 2) {
@@ -255,7 +247,7 @@ try {
   cpSync(join(SCENARIOS, "16-hostile-repo"), hostile, { recursive: true });
   must(darnit, ["init"], hostile);
   const line = /^\s*- run: (.*npx darnit@\S+.*)$/m.exec(readFileSync(join(hostile, ".github", "workflows", "darnit.yml"), "utf8"))![1]!;
-  const packed = (cmd: string) => cmd.replace(/darnit@\S+/, `--package='${tarball.replaceAll("'", "'\\''")}' darnit`);
+  const packed = (cmd: string) => withTarball(cmd, tarball);
   const runnerTemp = join(work, "runner-temp");
   const npmCache = join(work, "npm-cache");
   mkdirSync(runnerTemp);
