@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { answerKey, exitCode, misses, RULES, summary } from "../scripts/answer-key.js";
+import { answerKey, applyKnown, exitCode, misses, parseKnown, RULES, summary, tally } from "../scripts/answer-key.js";
 import type { Report } from "../scripts/golden.js";
 import { checkReport, mentionsToJson, toJson } from "../src/check.js";
 import { loadRecords } from "../src/records/load.js";
@@ -28,10 +28,13 @@ describe("answer key for model-name mentions", () => {
     const t = await answerKey(root, report(), ids);
     expect(t.unexplained).toEqual([]);
     // The call site line holds gpt-4 inside gpt-4-32k too.
-    expect(t.explained).toEqual({ "call site": 2, "longer id": 1, "longer name": 1, "letters only": 1, "long line": 1, "code name": 1 });
+    expect(t.explained).toEqual({ "call site": 2, "longer id": 1, "letters only": 1, "long line": 1, "code name": 1 });
     expect(Object.keys(RULES).every((r) => r in t.explained)).toBe(true);
     expect(t.agreed).toBe(5);
-    expect(summary(t)).toBe("mentions 12, agreed 5, explained 7 (call site 2, longer id 1, longer name 1, letters only 1, long line 1, code name 1), unexplained 0");
+    // my_gpt-4 is part of a longer word: not a mention at all.
+    expect(summary(t)).toBe(
+      "mentions 11 = agreed 5 + explained by a rule 6 (call site 2, longer id 1, letters only 1, long line 1, code name 1) + known 0 + unexplained 0\nnot a mention, part of a longer word: 1",
+    );
     expect(exitCode(t)).toBe(0);
   });
 
@@ -59,6 +62,36 @@ describe("answer key for model-name mentions", () => {
     const t = await answerKey(root, r, ids);
     expect(t.unexplained).toEqual([]);
     expect(t.mentions).toBe(4);
+  });
+
+  it("counts a listed difference as known, and fails on a listed one no longer seen or an unlisted one", () => {
+    const miss = (line: number) => ({ file: "a.js", line, id: "o1", side: "search" as const });
+    const known = parseKnown("repo\tfile\tline\tid\tside\treason\na/b\ta.js\t1\to1\tsearch\to1 is a variable in minified code; darnit is right\n");
+    const t = { ...tally(), mentions: 1, unexplained: [miss(1)] };
+    expect(applyKnown("a/b", t, known)).toEqual([]);
+    expect([t.known, t.unexplained.length, exitCode(t)]).toEqual([1, 0, 0]);
+    expect(summary(t)).toContain("+ known 1 + unexplained 0");
+
+    const moved = { ...tally(), mentions: 1, unexplained: [miss(2)] };
+    const stale = applyKnown("a/b", moved, known);
+    expect(stale).toEqual(["a/b a.js:1 o1 only in search is in test/answer-key/known.tsv but no longer differs: remove that line"]);
+    expect(misses(moved)).toEqual(["a.js:2 o1 only in search"]);
+    expect(exitCode(moved, stale)).toBe(1);
+    expect(exitCode({ ...moved, unexplained: [] }, stale)).toBe(1);
+    // Listed for another repository: still unexplained here.
+    const other = { ...tally(), unexplained: [miss(1)] };
+    expect(applyKnown("c/d", other, known)).toEqual([]);
+    expect(exitCode(other)).toBe(1);
+  });
+
+  it("rejects a known line with a missing reason, a bad side or a repeat, and reads the stored list", () => {
+    const head = "repo\tfile\tline\tid\tside\treason\n";
+    expect(() => parseKnown(`${head}a/b\ta.js\t1\to1\tsearch\t \n`)).toThrow("line 2");
+    expect(() => parseKnown(`${head}a/b\ta.js\t1\to1\tboth\twhy not\n`)).toThrow("line 2");
+    expect(() => parseKnown(`${head}a/b\ta.js\t1\to1\tsearch\twhy\na/b\ta.js\t1\to1\tsearch\twhy\n`)).toThrow("repeats");
+    const stored = parseKnown(readFileSync("test/answer-key/known.tsv", "utf8"));
+    const repos = readFileSync("test/golden/repos.tsv", "utf8").split("\n").map((l) => l.split("\t")[0]);
+    expect(stored.every((k) => repos.includes(k.repo))).toBe(true);
   });
 
   it("reads a crafted file full of ids in linear time", async () => {

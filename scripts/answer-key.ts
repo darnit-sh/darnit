@@ -11,21 +11,25 @@ import { CLONES, clone, esc, parseRows, runCheck, type Report } from "./golden.j
 
 // Checks the model names darnit reports on the pinned golden repositories against a plain fixed-string search for
 // every model id in the records, over the same files. A line only one side has must fit a rule below, or it fails.
+// A difference darnit is right about but no rule can tell is listed in test/answer-key/known.tsv with its reason.
 // Usage: npm run answer-key [-- --dir <clones>]
 
-/** Why the plain search finds an id on a line darnit does not report, tried in this order on each place it is found. */
+/** Why darnit leaves out a line the plain search finds, as a person reading the report sees it; tried in this order. */
 export const RULES = {
-  "call site": "the line is in a call site darnit reports, whose code holds the id",
-  "longer id": "inside a longer id darnit reports on the line, counted once as the longer",
-  "longer name": "inside a longer name that is not an id, such as gpt-4o-custom or my_gpt-4",
-  "letters only": "an id of letters only, such as ada, outside quotes and not the whole value of a model or engine setting",
-  "long line": `an id such as o1 on a line over ${LONG_LINE} characters, outside quotes and not a setting value`,
-  "code name": "an id such as o1 in code, with no comment or string open where it sits",
+  "call site": "the line is reported as a call, not as a model mention",
+  "longer id": "the line is reported once, under the longer id, such as gpt-4-0613 and not also gpt-4",
+  "letters only": "a letters-only id such as ada is not reported in prose, only in quotes or as a model or engine setting",
+  "long line": `an id such as o1 on a line over ${LONG_LINE} characters, as in minified code, is not reported unless quoted or a setting`,
+  "code name": "an id such as o1 used as a name in code is not reported, only in comments, strings and settings",
 } as const;
 export type Rule = keyof typeof RULES;
+/** An id inside a longer word, such as gpt-4 in gpt-4o or my_gpt-4: a plain search matches it, but it is not a mention. */
+const WORD = "part of a longer word";
 
 export type Miss = { file: string; line: number; id: string; side: "darnit" | "search" };
-export type Tally = { mentions: number; agreed: number; explained: Partial<Record<Rule, number>>; unexplained: Miss[] };
+export type Known = Miss & { repo: string; reason: string };
+export type Tally = { mentions: number; agreed: number; explained: Partial<Record<Rule, number>>; known: number; unexplained: Miss[]; wordParts: number };
+export const tally = (): Tally => ({ mentions: 0, agreed: 0, explained: {}, known: 0, unexplained: [], wordParts: 0 });
 
 const NAME_BEFORE = /[\p{L}\p{M}\p{N}_.-]$/u;
 const NAME_AFTER = /^[\p{L}\p{M}\p{N}_-]/u;
@@ -86,12 +90,12 @@ function rules(file: string, text: string, newlines: readonly number[], reported
     return ['"""', "'''", "`"].every((d) => even(d, s)) && (opened === 0 || marks("*/")[below(marks("*/"), s) - 1]! > marks("/*")[opened - 1]!);
   };
   /** The rule that explains the id at s, on `line`, or undefined. */
-  return (line: number, id: string, s: number): Rule | undefined => {
+  return (line: number, id: string, s: number): Rule | typeof WORD | undefined => {
     const e = s + id.length;
     const touching = NAME_BEFORE.test(text.slice(Math.max(0, s - 2), s)) || NAME_AFTER.test(text.slice(e, e + 2)) || (text[e] === "." && ALNUM.test(text.slice(e + 1, e + 3)));
     if (touching) {
       const longer = [...reported(line)].some((r) => r.length > id.length && indexes(r, id).some((k) => text.startsWith(r, s - k)));
-      return longer ? "longer id" : "longer name";
+      return longer ? "longer id" : WORD;
     }
     if (!IDENTIFIER.test(id) || quoted(text, s, e) || setting(text, s, e)) return undefined;
     const lineStart = line === 1 ? 0 : newlines[line - 2]! + 1;
@@ -114,7 +118,7 @@ export async function answerKey(root: string, report: Report, ids: ReadonlySet<s
     const lines = darnit.get(m.file) ?? darnit.set(m.file, new Map()).get(m.file)!;
     (lines.get(m.line) ?? lines.set(m.line, new Set()).get(m.line)!).add(m.model);
   }
-  const t: Tally = { mentions: 0, agreed: 0, explained: {}, unexplained: [] };
+  const t = tally();
   const seen = new Set<string>();
   const sitesIn = new Map<string, { from: number; to: number; text: string }[]>();
   for (const h of report.hits) (sitesIn.get(h.file) ?? sitesIn.set(h.file, []).get(h.file)!).push({ from: h.line, to: h.line + indexes(h.text, "\n").length, text: h.text });
@@ -133,15 +137,17 @@ export async function answerKey(root: string, report: Report, ids: ReadonlySet<s
         (byLine.get(line) ?? byLine.set(line, []).get(line)!).push(at);
       }
       for (const [line, starts] of byLine) {
-        t.mentions++;
         seen.add(key(file, line, id));
-        if (reported.get(line)?.has(id)) {
-          t.agreed++;
+        const site = sites.some((h) => h.from <= line && line <= h.to && h.text.includes(id));
+        const why = reported.get(line)?.has(id) ? [] : site ? ["call site" as const] : starts.map((s) => explain(line, id, s));
+        if (why.length > 0 && why.every((w) => w === WORD)) {
+          t.wordParts++;
           continue;
         }
-        const site = sites.some((h) => h.from <= line && line <= h.to && h.text.includes(id));
-        const why = site ? ["call site" as const] : starts.map((s) => explain(line, id, s));
-        if (why.every((w) => w !== undefined)) t.explained[why[0]!] = (t.explained[why[0]!] ?? 0) + 1;
+        t.mentions++;
+        const rule = why.find((w) => w !== WORD);
+        if (why.length === 0) t.agreed++;
+        else if (rule && !why.includes(undefined)) t.explained[rule] = (t.explained[rule] ?? 0) + 1;
         else t.unexplained.push({ file, line, id, side: "search" });
       }
     }
@@ -156,11 +162,42 @@ export async function answerKey(root: string, report: Report, ids: ReadonlySet<s
   return t;
 }
 
-/** One line of counts, rules in table order. */
+/** The counts: mentions as the sum of how each was settled, rules in table order, then word parts on their own line. */
 export function summary(t: Tally): string {
   const rules = (Object.keys(RULES) as Rule[]).filter((r) => t.explained[r]).map((r) => `${r} ${t.explained[r]}`);
   const explained = Object.values(t.explained).reduce((a, b) => a + b, 0);
-  return `mentions ${t.mentions}, agreed ${t.agreed}, explained ${explained}${rules.length > 0 ? ` (${rules.join(", ")})` : ""}, unexplained ${t.unexplained.length}`;
+  return [
+    `mentions ${t.mentions} = agreed ${t.agreed} + explained by a rule ${explained}${rules.length > 0 ? ` (${rules.join(", ")})` : ""} + known ${t.known} + unexplained ${t.unexplained.length}`,
+    `not a mention, ${WORD}: ${t.wordParts}`,
+  ].join("\n");
+}
+
+const KNOWN = "test/answer-key/known.tsv";
+
+/** Lines of known.tsv after its header: repository, file, line, id, side and why darnit is right. */
+export function parseKnown(text: string): Known[] {
+  const out: Known[] = [];
+  for (const [i, row] of text.trimEnd().split("\n").slice(1).entries()) {
+    const [repo = "", file = "", line = "", id = "", side = "", reason = ""] = row.split("\t");
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !file || !/^[1-9]\d*$/.test(line) || !id || (side !== "darnit" && side !== "search") || !reason.trim())
+      throw new Error(`${KNOWN} line ${i + 2} is not repository, file, line, id, darnit or search, reason: ${row}`);
+    const k = { repo, file, line: Number(line), id, side, reason } as const;
+    if (out.some((o) => same(o, k) && o.repo === repo)) throw new Error(`${KNOWN} line ${i + 2} repeats an earlier line`);
+    out.push(k);
+  }
+  return out;
+}
+
+const same = (a: Miss, b: Miss) => a.file === b.file && a.line === b.line && a.id === b.id && a.side === b.side;
+
+/** Counts each unexplained line `known` lists for `repo` as known; returns an error for each listed line no longer seen. */
+export function applyKnown(repo: string, t: Tally, known: readonly Known[]): string[] {
+  const listed = known.filter((k) => k.repo === repo);
+  const stale = listed.filter((k) => !t.unexplained.some((u) => same(u, k)));
+  const left = t.unexplained.filter((u) => !listed.some((k) => same(u, k)));
+  t.known += t.unexplained.length - left.length;
+  t.unexplained = left;
+  return stale.map((k) => `${repo} ${esc(k.file)}:${k.line} ${k.id} only in ${k.side} is in ${KNOWN} but no longer differs: remove that line`);
 }
 
 /** Each line only one side has with no rule for it. */
@@ -175,8 +212,10 @@ async function main() {
   const rows = parseRows(readFileSync(resolve("test/golden/repos.tsv"), "utf8"), "repos.tsv");
   const records = (await loadRecords()).map((l) => l.record);
   const ids = new Set(records.flatMap(recordModels));
-  const total: Tally = { mentions: 0, agreed: 0, explained: {}, unexplained: [] };
-  const errors: string[] = [];
+  const total = tally();
+  const known = parseKnown(readFileSync(resolve(KNOWN), "utf8"));
+  const errors = known.filter((k) => !rows.some((r) => r.repo === k.repo)).map((k) => `${KNOWN} lists ${k.repo}, which is not in repos.tsv`);
+  let compared = 0;
   for (const { repo, sha } of rows) {
     const dir = clone(args.dir, repo, sha);
     const run = dir ? runCheck(dir, repo) : { error: `could not fetch ${repo} at ${sha}` };
@@ -185,14 +224,18 @@ async function main() {
       console.log(`${ci ? "::error::" : "error: "}${errors.at(-1)}`);
       continue;
     }
+    compared++;
     const t = await answerKey(dir!, run.report, ids);
-    console.log([`${repo}: ${summary(t)}`, ...misses(t).map((m) => `  unexplained ${m}`)].join("\n"));
+    errors.push(...applyKnown(repo, t, known));
+    console.log([`${repo}: ${summary(t).replace("\n", "; ")}`, ...misses(t).map((m) => `  unexplained ${m}`)].join("\n"));
     total.mentions += t.mentions;
     total.agreed += t.agreed;
+    total.known += t.known;
+    total.wordParts += t.wordParts;
     for (const [r, n] of Object.entries(t.explained) as [Rule, number][]) total.explained[r] = (total.explained[r] ?? 0) + n;
     total.unexplained.push(...t.unexplained.map((u) => ({ ...u, file: `${repo}/${u.file}` })));
   }
-  const text = [`Total over ${rows.length - errors.length} of ${rows.length} repositories: ${summary(total)}`, ...errors.map((e) => `- ${e}`)].join("\n");
+  const text = [`Total over ${compared} of ${rows.length} repositories:`, summary(total), ...errors.map((e) => `- ${e}`)].join("\n");
   console.log(text);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n${misses(total).map((m) => `- ${m}`).join("\n")}\n`);
   process.exitCode = exitCode(total, errors);
