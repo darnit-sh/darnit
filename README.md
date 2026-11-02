@@ -384,13 +384,15 @@ jobs:
         with:
           name: darnit-plan
           path: ${{ runner.temp }}/plan
+      # One chain: when any part fails, nothing after it runs, whatever the shell's options.
       - run: |
-          cd "${RUNNER_TEMP:?}"
-          mkdir darnit && cd darnit
-          echo '{}' > package.json
-          npm pack darnit@0.2.0-rc.1
-          test "sha512-$(openssl dgst -sha512 -binary darnit-0.2.0-rc.1.tgz | base64 -w0)" = "${INTEGRITY:?}"
-          npm install ./darnit-0.2.0-rc.1.tgz
+          cd "${RUNNER_TEMP:?}" &&
+            mkdir darnit &&
+            cd darnit &&
+            echo '{}' > package.json &&
+            npm pack darnit@0.2.0-rc.1 &&
+            test "sha512-$(openssl dgst -sha512 -binary darnit-0.2.0-rc.1.tgz | base64 -w0)" = "${INTEGRITY:?}" &&
+            npm install ./darnit-0.2.0-rc.1.tgz
         env:
           NPM_CONFIG_USERCONFIG: /dev/null
           NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-cache

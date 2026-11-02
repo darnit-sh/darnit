@@ -65,15 +65,20 @@ describe("the README's two-job fix workflow", () => {
 
   it("installs the publishing darnit by exact version into a new folder and stops unless its checksum is the one written in the workflow", () => {
     const step = install()!;
-    expect(step.run!.trimEnd().split("\n")).toEqual([
+    // One && chain, so a failed check, or a darnit folder already there, stops what follows without bash -e.
+    expect(step.run!.trimEnd().split(/ &&\n */)).toEqual([
       'cd "${RUNNER_TEMP:?}"',
-      "mkdir darnit && cd darnit",
+      "mkdir darnit",
+      "cd darnit",
       // Its own package.json, so npm looks for no .npmrc in the folders above.
       "echo '{}' > package.json",
       `npm pack darnit@${version}`,
       `test "sha512-$(openssl dgst -sha512 -binary darnit-${version}.tgz | base64 -w0)" = "\${INTEGRITY:?}"`,
       `npm install ./darnit-${version}.tgz`,
     ]);
+    // Nothing that lets the step go on past a failure or runs it under another shell.
+    expect(Object.keys(step).sort()).toEqual(["env", "run"]);
+    expect(workflow()).not.toHaveProperty("defaults");
     // The expected checksum is written in the workflow, never read from npm or the plan; empty, the step stops.
     expect(typeof step.env?.INTEGRITY).toBe("string");
     expect(step.env!.INTEGRITY).not.toMatch(/\$/);
