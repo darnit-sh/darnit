@@ -89,6 +89,8 @@ describe("the README's two-job fix workflow", () => {
   it("removes setup-node's problem matchers before darnit runs in each job", () => {
     const { prepare, publish } = jobs();
     expect(matchersAtDarnit(prepare.steps)).toEqual([]);
-    expect(matchersAtDarnit(publish.steps)).toEqual([]);
+    // matchersAtDarnit finds darnit by `npx darnit`; the publish job runs it from node_modules/.bin.
+    const fromBin = publish.steps.map((s) => (s.run ? { ...s, run: s.run.replace(/\S*\/\.bin\/darnit\b/, "npx darnit") } : s));
+    expect(matchersAtDarnit(fromBin)).toEqual([]);
   });
 });
