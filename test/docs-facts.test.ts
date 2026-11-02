@@ -11,8 +11,8 @@ import { MAX_FILE_BYTES } from "../src/detect.js";
 import { exitCodeFor, type FixResult } from "../src/fix.js";
 import { MIN_GIT } from "../src/git.js";
 import { init, pinned, WORKFLOW } from "../src/init.js";
+import { retiringModels } from "../src/corpus/readme.js";
 import { loadRecords } from "../src/records/load.js";
-import { modelNames } from "../src/scan/astgrep.js";
 import { LONG_LINE } from "../src/scan/mentions.js";
 import { TIME_LIMIT_MINUTES } from "../src/tests.js";
 import { BUDGET_MS } from "../src/update.js";
@@ -74,16 +74,16 @@ const loose = (at: RegExp, flags: string) => new RegExp(at.source.replaceAll(" "
 // The same pattern read from the workflow init writes.
 const workflow = (at: RegExp) => ({ in: ["README.md"] as Doc[], at, is: () => [at.exec(WORKFLOW)?.[1]] });
 
-// Each match's capture groups must read what `is` returns, from the code or config itself. One phrase per entry, so
-// deleting any phrase fails the test.
-const CHECKED: { in: Doc[]; at: RegExp; is: (m: RegExpExecArray) => unknown[] | Promise<unknown[]> }[] = [
+// Each match's capture groups must read what `is` returns, from the code or config itself, with runs of whitespace
+// counted as one space unless `raw`. One phrase per entry, so deleting any phrase fails the test.
+const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) => unknown[] | Promise<unknown[]> }[] = [
   { in: ["README.md"], at: /Needs Node (\S+) or newer/, is: async () => [/^>=(\d+(?:\.\d+)*)$/.exec((await pkg()).engines.node)?.[1]] },
   { in: ["README.md", "SECURITY.md"], at: /git (\S+) or newer/, is: () => [MIN_GIT.join(".")] },
   { in: ["README.md", "RELEASING.md"], at: /Node ((?:\d+, )*\d+ and \d+)/, is: async () => [await nodes()] },
   {
     in: ["README.md"],
     at: /OpenAI: (\d+) retiring models/,
-    is: async () => [new Set((await loadRecords()).flatMap(({ record }) => Object.values(record.detection.astGrepPatterns).flatMap(modelNames))).size],
+    is: async () => [retiringModels((await loadRecords()).map((l) => l.record))],
   },
   { in: ["README.md"], at: /line over (\S+) characters/, is: () => [LONG_LINE.toLocaleString("en-US")] },
   { in: ["README.md"], at: /files over (\S+) MB/, is: () => [MAX_FILE_BYTES / 1024 / 1024] },
@@ -107,7 +107,7 @@ const CHECKED: { in: Doc[]; at: RegExp; is: (m: RegExpExecArray) => unknown[] | 
     at: /`anthropic\.messages\.create\(\{ max_tokens: (\d+) \}\)`/,
     is: async () => [/anthropic\.messages\.create\(\{[^}]*max_tokens: (\d+)/.exec(await read("test/samples/readme/chat.ts"))?.[1]],
   },
-  { in: ["README.md"], at: /^## darnit\.yml\n\n```yaml\n([^]*?)```$/, is: async () => [await config()] },
+  { in: ["README.md"], at: /^## darnit\.yml\n\n```yaml\n([^]*?)```$/, raw: true, is: async () => [await config()] },
   workflow(/cron: "([^"]+)"/),
   workflow(/node-version: (\d+)/),
   workflow(/uses: actions\/checkout@(v\d+)/),
@@ -152,9 +152,9 @@ const UNCHECKED: { in: Doc[]; at: RegExp; why: string }[] = [
 // block on the same copy. Every line the block shows must be printed, in that order.
 const SAMPLES: Record<Doc, string[]> = { "README.md": ["readme", "readme-models"], "SECURITY.md": [], "RELEASING.md": [] };
 
-// A number, with any unit or hyphen after it (20MB, 15-minute, 2020-10-05) and a v before it (v7), but not inside a
-// name such as gpt-4, o1 or TS2322.
-const NUMBER = /(?<![\w.]|\w-)v?\d+(?:[.,]\d+)*/g;
+// A number, with any unit or hyphen after it (20MB, 15-minute, 2020-10-05), a v before it (v7), and after a dot or
+// underscore that follows no letter or digit (.5, _20 MB_), but not inside a name such as gpt-4, gpt-4.1, o1 or TS2322.
+const NUMBER = /(?<![\p{L}\p{N}]|[\p{L}\p{N}_][.-])v?\d+(?:[.,]\d+)*/gu;
 
 const where = (text: string, file: string, at: number) => {
   const n = text.slice(0, at).split("\n").length;
@@ -192,12 +192,13 @@ describe("numbers in the docs match the code", () => {
     const covered: [number, number][] = [];
     const problems: string[] = [];
     for (const { at } of [...CHECKED, ...UNCHECKED]) if (/(?<!\\)\|/.test(at.source)) problems.push(`${at} holds more than one phrase`);
-    for (const { at, is } of CHECKED.filter((c) => c.in.includes(file))) {
+    for (const { at, raw, is } of CHECKED.filter((c) => c.in.includes(file))) {
+      const flat = (s: unknown) => (raw ? String(s) : String(s).replace(/\s+/g, " ").trim());
       const matches = [...text.matchAll(loose(at, "gmd"))];
       if (!matches.length) problems.push(`${file}: no longer says ${at}`);
       for (const m of matches) {
-        const said = m.slice(1).map((s) => s?.replace(/\s+/g, " ").trim());
-        const want = (await is(m)).map((v) => String(v).replace(/\s+/g, " ").trim());
+        const said = m.slice(1).map(flat);
+        const want = (await is(m)).map(flat);
         if (said.join(" | ") !== want.join(" | ")) problems.push(`${where(text, file, m.index)}: says ${said.join(", ")}, its source says ${want.join(", ")}`);
         covered.push(...m.indices!.slice(1).filter((s) => s !== undefined));
       }
@@ -216,7 +217,7 @@ describe("numbers in the docs match the code", () => {
   });
 
   it("finds every number, with or without a unit, but not inside names", () => {
-    const md = "Node 22.12, 5,000 and `darnit@0.2` (1,1); 15-minute, 20MB, 3000ms, 5,000-character, 2020-10-05, @v7, exit -1; gpt-4, gpt-4.1, o3-2025-04-16, o1, TS2322 and rc.N+1.";
-    expect([...md.matchAll(NUMBER)].map((m) => m[0])).toEqual(["22.12", "5,000", "0.2", "1,1", "15", "20", "3000", "5,000", "2020", "v7", "1", "1"]);
+    const md = "Node 22.12, 5,000 and `darnit@0.2` (1,1); 15-minute, 20MB, 3000ms, 5,000-character, 2020-10-05, @v7, exit -1, _20 MB_, .5 seconds; gpt-4, gpt-4.1, o3-2025-04-16, o1, TS2322 and rc.N+1.";
+    expect([...md.matchAll(NUMBER)].map((m) => m[0])).toEqual(["22.12", "5,000", "0.2", "1,1", "15", "20", "3000", "5,000", "2020", "v7", "1", "20", "5", "1"]);
   });
 });
