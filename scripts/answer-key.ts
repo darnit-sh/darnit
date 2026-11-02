@@ -5,18 +5,19 @@ import { parseArgs } from "node:util";
 import { listFiles, readText } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { recordModels } from "../src/records/schema.js";
-import { isBinary, isCodeFile, LONG_LINE } from "../src/scan/mentions.js";
+import { findMentions, isBinary, isCodeFile, LONG_LINE } from "../src/scan/mentions.js";
 import { NAMED } from "../src/scan/values.js";
 import { CLONES, clone, esc, parseRows, runCheck, type Report } from "./golden.js";
 
 // Checks the model names darnit reports on the pinned golden repositories against a plain fixed-string search for
-// every model id in the records, over the same files. A line only one side has must fit a rule below, or it fails.
+// every model id in the records, over the same files. A line darnit reports must hold a match the search reads as a
+// mention, and a mention only the search finds must fit a rule below; anything else fails.
 // A difference darnit is right about but no rule can tell is listed in test/answer-key/known.tsv with its reason.
 // Usage: npm run answer-key [-- --dir <clones>]
 
 /** Why darnit leaves out a line the plain search finds, as a person reading the report sees it; tried in this order. */
 export const RULES = {
-  "call site": "the line is reported as a call, not as a model mention",
+  "call site": "a model named in the code of a reported call is listed with that call, not again as a mention",
   "longer id": "the line is reported once, under the longer id, such as gpt-4-0613 and not also gpt-4",
   "letters only": "a letters-only id such as ada is not reported in prose, only in quotes or as a model or engine setting",
   "long line": `an id such as o1 on a line over ${LONG_LINE} characters, as in minified code, is not reported unless quoted or a setting`,
@@ -89,7 +90,7 @@ function rules(file: string, text: string, newlines: readonly number[], reported
     const opened = below(marks("/*"), s);
     return ['"""', "'''", "`"].every((d) => even(d, s)) && (opened === 0 || marks("*/")[below(marks("*/"), s) - 1]! > marks("/*")[opened - 1]!);
   };
-  /** The rule that explains the id at s, on `line`, or undefined. */
+  /** What makes the id at s, on `line`, not a mention, or undefined when it is one. */
   return (line: number, id: string, s: number): Rule | typeof WORD | undefined => {
     const e = s + id.length;
     const touching = NAME_BEFORE.test(text.slice(Math.max(0, s - 2), s)) || NAME_AFTER.test(text.slice(e, e + 2)) || (text[e] === "." && ALNUM.test(text.slice(e + 1, e + 3)));
@@ -108,8 +109,9 @@ function rules(file: string, text: string, newlines: readonly number[], reported
 
 const key = (file: string, line: number, id: string) => JSON.stringify([file, line, id]);
 
-/** darnit's model-name findings in `report` joined with a plain search for `ids` over the same files under `root`. */
-export async function answerKey(root: string, report: Report, ids: ReadonlySet<string>): Promise<Tally> {
+/** darnit's model-name findings in `report` joined with a plain search for the ids in `models` (record id to its model ids) over the same files under `root`. */
+export async function answerKey(root: string, report: Report, models: ReadonlyMap<string, ReadonlySet<string>>): Promise<Tally> {
+  const ids = new Set([...models.values()].flatMap((m) => [...m]));
   const left = [...(report.scanned.tooLarge ?? []), ...(report.scanned.skipped ?? []).map((k) => k.path)];
   const notChecked = (file: string) => left.some((p) => p === "." || file === p || file.startsWith(`${p}/`));
   const darnit = new Map<string, Map<number, Set<string>>>();
@@ -120,8 +122,8 @@ export async function answerKey(root: string, report: Report, ids: ReadonlySet<s
   }
   const t = tally();
   const seen = new Set<string>();
-  const sitesIn = new Map<string, { from: number; to: number; text: string }[]>();
-  for (const h of report.hits) (sitesIn.get(h.file) ?? sitesIn.set(h.file, []).get(h.file)!).push({ from: h.line, to: h.line + indexes(h.text, "\n").length, text: h.text });
+  // As darnit does: a mention its reader finds in a call's code, among the models of the record behind the call, is listed with the call.
+  const inCalls = new Set(report.hits.flatMap((h) => findMentions(h.text, models.get(h.id) ?? new Set(), h.file).map((m) => key(h.file, h.line + m.line - 1, m.model))));
   for (const file of await listFiles(root)) {
     if (notChecked(file)) continue;
     const text = await readText(join(root, file));
@@ -129,7 +131,6 @@ export async function answerKey(root: string, report: Report, ids: ReadonlySet<s
     const reported = darnit.get(file) ?? new Map<number, Set<string>>();
     const newlines = indexes(text, "\n");
     const explain = rules(file, text, newlines, (line) => reported.get(line) ?? new Set());
-    const sites = sitesIn.get(file) ?? [];
     for (const id of ids) {
       const byLine = new Map<number, number[]>();
       for (const at of indexes(text, id)) {
@@ -138,16 +139,21 @@ export async function answerKey(root: string, report: Report, ids: ReadonlySet<s
       }
       for (const [line, starts] of byLine) {
         seen.add(key(file, line, id));
-        const site = sites.some((h) => h.from <= line && line <= h.to && h.text.includes(id));
-        const why = reported.get(line)?.has(id) ? [] : site ? ["call site" as const] : starts.map((s) => explain(line, id, s));
-        if (why.length > 0 && why.every((w) => w === WORD)) {
+        const why = starts.map((s) => explain(line, id, s));
+        const mention = why.includes(undefined);
+        if (reported.get(line)?.has(id)) {
+          t.mentions++;
+          if (mention) t.agreed++;
+          else t.unexplained.push({ file, line, id, side: "darnit" });
+          continue;
+        }
+        const rule = inCalls.has(key(file, line, id)) ? "call site" : why.find((w) => w !== WORD);
+        if (rule === undefined && !mention) {
           t.wordParts++;
           continue;
         }
         t.mentions++;
-        const rule = why.find((w) => w !== WORD);
-        if (why.length === 0) t.agreed++;
-        else if (rule && !why.includes(undefined)) t.explained[rule] = (t.explained[rule] ?? 0) + 1;
+        if (rule && (rule === "call site" || !mention)) t.explained[rule] = (t.explained[rule] ?? 0) + 1;
         else t.unexplained.push({ file, line, id, side: "search" });
       }
     }
@@ -211,7 +217,7 @@ async function main() {
   const ci = !!process.env.GITHUB_ACTIONS;
   const rows = parseRows(readFileSync(resolve("test/golden/repos.tsv"), "utf8"), "repos.tsv");
   const records = (await loadRecords()).map((l) => l.record);
-  const ids = new Set(records.flatMap(recordModels));
+  const models = new Map(records.map((r) => [r.id, new Set(recordModels(r))]));
   const total = tally();
   const known = parseKnown(readFileSync(resolve(KNOWN), "utf8"));
   const errors = known.filter((k) => !rows.some((r) => r.repo === k.repo)).map((k) => `${KNOWN} lists ${k.repo}, which is not in repos.tsv`);
@@ -225,7 +231,7 @@ async function main() {
       continue;
     }
     compared++;
-    const t = await answerKey(dir!, run.report, ids);
+    const t = await answerKey(dir!, run.report, models);
     errors.push(...applyKnown(repo, t, known));
     console.log([`${repo}: ${summary(t).replace("\n", "; ")}`, ...misses(t).map((m) => `  unexplained ${m}`)].join("\n"));
     total.mentions += t.mentions;

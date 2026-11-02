@@ -19,7 +19,7 @@ writeFileSync(
   ["We moved off gpt-4 last year.", "gpt-4-0613 is old too.", "Not my_gpt-4 though.", "Ask the ada team.", `${"x ".repeat(2600)}o1 here`, 'Use "ada" here.', "engine: davinci", ""].join("\n"),
 );
 
-const ids = new Set((await loadRecords()).flatMap((l) => recordModels(l.record)));
+const ids = new Map((await loadRecords()).map((l) => [l.record.id, new Set(recordModels(l.record))]));
 const { hits, values, mentions, coverage } = await checkReport(root);
 const report = (): Report => ({ scanned: coverage, hits: toJson(hits) as Report["hits"], possiblyAffected: toJson(values) as Report["possiblyAffected"], mentions: mentionsToJson(mentions) });
 
@@ -27,13 +27,12 @@ describe("answer key for model-name mentions", () => {
   it("agrees with darnit on the fixture, with each line only the search finds explained by its rule", async () => {
     const t = await answerKey(root, report(), ids);
     expect(t.unexplained).toEqual([]);
-    // The call site line holds gpt-4 inside gpt-4-32k too.
-    expect(t.explained).toEqual({ "call site": 2, "longer id": 1, "letters only": 1, "long line": 1, "code name": 1 });
+    expect(t.explained).toEqual({ "call site": 1, "longer id": 1, "letters only": 1, "long line": 1, "code name": 1 });
     expect(Object.keys(RULES).every((r) => r in t.explained)).toBe(true);
     expect(t.agreed).toBe(5);
-    // my_gpt-4 is part of a longer word: not a mention at all.
+    // my_gpt-4, and gpt-4 inside gpt-4-32k on the call site line, are parts of longer words: not mentions at all.
     expect(summary(t)).toBe(
-      "mentions 11 = agreed 5 + explained by a rule 6 (call site 2, longer id 1, letters only 1, long line 1, code name 1) + known 0 + unexplained 0\nnot a mention, part of a longer word: 1",
+      "mentions 10 = agreed 5 + explained by a rule 5 (call site 1, longer id 1, letters only 1, long line 1, code name 1) + known 0 + unexplained 0\nnot a mention, part of a longer word: 2",
     );
     expect(exitCode(t)).toBe(0);
   });
@@ -61,7 +60,43 @@ describe("answer key for model-name mentions", () => {
     r.mentions.push({ id: "x", file: "notes.md", line: 3, model: "gpt-4-32k" });
     const t = await answerKey(root, r, ids);
     expect(t.unexplained).toEqual([]);
-    expect(t.mentions).toBe(4);
+    expect(t.mentions).toBe(3);
+  });
+
+  it("fails on a line darnit reports where the search reads no match as a mention", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "darnit-answer-key-alarms-"));
+    try {
+      writeFileSync(join(dir, "probe.md"), ["We use gpt-4o now.", "Deployment my_gpt-4 is ours.", "Ask the ada team.", 'Ask "ada" here.', ""].join("\n"));
+      writeFileSync(join(dir, "probe.py"), "x = o1 + 1\n");
+      // What a darnit without its word, letters-only and code-name skips would report.
+      const at = (file: string, line: number, model: string) => ({ id: "x", file, line, model });
+      const mentions = [at("probe.md", 1, "gpt-4"), at("probe.md", 2, "gpt-4"), at("probe.md", 3, "ada"), at("probe.md", 4, "ada"), at("probe.py", 1, "o1")];
+      const t = await answerKey(dir, { scanned: { files: 1, records: 0 }, hits: [], possiblyAffected: [], mentions }, ids);
+      expect(misses(t).sort()).toEqual(["probe.md:1 gpt-4 only in darnit", "probe.md:2 gpt-4 only in darnit", "probe.md:3 ada only in darnit", "probe.py:1 o1 only in darnit"]);
+      expect([t.agreed, t.mentions, exitCode(t)]).toEqual([1, 5, 1]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("explains a call site line only for the models darnit finds in that call's code", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "darnit-answer-key-call-"));
+    try {
+      writeFileSync(join(dir, "app.py"), 'from openai import OpenAI\nclient = OpenAI()\nclient.chat.completions.create(model="gpt-4-32k", messages=[])  # see gpt-4 docs\n');
+      const found = await checkReport(dir);
+      const r: Report = { scanned: found.coverage, hits: toJson(found.hits) as Report["hits"], possiblyAffected: [], mentions: mentionsToJson(found.mentions) };
+      expect((await answerKey(dir, r, ids)).explained).toEqual({ "call site": 1 });
+      // Dropped from the report, the gpt-4 in the comment is not in the call's code, so the call site rule cannot explain it.
+      const t = await answerKey(dir, { ...r, mentions: [] }, ids);
+      expect(misses(t)).toEqual(["app.py:3 gpt-4 only in search"]);
+      expect(t.explained).toEqual({ "call site": 1 });
+      // Nor when the call's code holds gpt-4, as the record behind this call does not name it.
+      const wide = { ...r.hits[0]!, text: 'create(model="gpt-4-32k", messages=[])  # see gpt-4 docs' };
+      expect(ids.get(wide.id)?.has("gpt-4")).toBe(false);
+      expect(misses(await answerKey(dir, { ...r, hits: [wide], mentions: [] }, ids))).toEqual(["app.py:3 gpt-4 only in search"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("counts a listed difference as known, and fails on a listed one no longer seen or an unlisted one", () => {
