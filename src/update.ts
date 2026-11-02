@@ -6,7 +6,7 @@ import { atLeast } from "./versions.js";
 const REGISTRY = "https://registry.npmjs.org/-/package/darnit/dist-tags";
 const RELEASE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const MAX_BYTES = 4096;
-export const BUDGET_MS = 1500;
+const BUDGET_MS = 1500;
 
 type Get = (url: string, signal: AbortSignal) => Promise<{ status: number; body: Readable }>;
 type Options = { env: NodeJS.ProcessEnv; json?: boolean | undefined; get?: Get };

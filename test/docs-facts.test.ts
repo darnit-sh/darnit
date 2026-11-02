@@ -9,16 +9,15 @@ import { parse } from "yaml";
 import { exitCodeForCheck, type Hit } from "../src/check.js";
 import { MAX_FILE_BYTES } from "../src/detect.js";
 import { exitCodeFor, type FixResult } from "../src/fix.js";
-import { MIN_GIT } from "../src/git.js";
 import { init, pinned, WORKFLOW } from "../src/init.js";
 import { loadRecords } from "../src/records/load.js";
 import { modelNames } from "../src/scan/astgrep.js";
-import { LONG_LINE } from "../src/scan/mentions.js";
 import { TIME_LIMIT_MINUTES } from "../src/tests.js";
-import { BUDGET_MS } from "../src/update.js";
 import { atLeast } from "../src/versions.js";
 
 const read = (file: string) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
+// A constant's value as its declaration in a source file reads; undefined once the declaration changes shape.
+const declared = async (file: string, at: RegExp) => at.exec(await read(file))?.slice(1);
 const pkg = async () => JSON.parse(await read("package.json")) as { version: string; engines: { node: string } };
 const cached = <T>(f: () => Promise<T>) => {
   let p: Promise<T> | undefined;
@@ -78,17 +77,17 @@ const workflow = (at: RegExp) => ({ in: ["README.md"] as Doc[], at, is: () => [a
 // counted as one space unless `raw`. One phrase per entry, so deleting any phrase fails the test.
 const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) => unknown[] | Promise<unknown[]> }[] = [
   { in: ["README.md"], at: /Needs Node (\S+) or newer/, is: async () => [/^>=(\d+(?:\.\d+)*)$/.exec((await pkg()).engines.node)?.[1]] },
-  { in: ["README.md", "SECURITY.md"], at: /git (\S+) or newer/, is: () => [MIN_GIT.join(".")] },
+  { in: ["README.md", "SECURITY.md"], at: /git (\S+) or newer/, is: async () => [(await declared("src/git.ts", /^const MIN_GIT: \[number, number\] = \[(\d+), (\d+)\];$/m))?.join(".")] },
   { in: ["README.md", "RELEASING.md"], at: /Node ((?:\d+, )*\d+ and \d+)/, is: async () => [await nodes()] },
   {
     in: ["README.md"],
     at: /OpenAI: (\d+) retiring models/,
     is: async () => [new Set((await loadRecords()).flatMap(({ record }) => Object.values(record.detection.astGrepPatterns).flatMap(modelNames))).size],
   },
-  { in: ["README.md"], at: /line over (\S+) characters/, is: () => [LONG_LINE.toLocaleString("en-US")] },
+  { in: ["README.md"], at: /line over (\S+) characters/, is: async () => [Number((await declared("src/scan/mentions.ts", /^const LONG_LINE = (\d+);$/m))?.[0]).toLocaleString("en-US")] },
   { in: ["README.md"], at: /files over (\S+) MB/, is: () => [MAX_FILE_BYTES / 1024 / 1024] },
   { in: ["README.md"], at: /takes over (\d+) minutes is stopped/, is: () => [TIME_LIMIT_MINUTES] },
-  { in: ["README.md"], at: /waits at most (\S+) seconds/, is: () => [BUDGET_MS / 1000] },
+  { in: ["README.md"], at: /waits at most (\S+) seconds/, is: async () => [Number((await declared("src/update.ts", /^const BUDGET_MS = (\d+);$/m))?.[0]) / 1000] },
   { in: ["README.md"], at: /^\| (\d+) \| nothing affected, or only unreviewed changes \|$/, is: () => [exitCodeForCheck([hit("candidate")])] },
   { in: ["README.md"], at: /^\| (\d+) \| affected call sites found for a reviewed or parser-verified change \|$/, is: () => [exitCodeForCheck([hit("reviewed")])] },
   { in: ["README.md"], at: /^\| (\d+) \| darnit itself failed, including on one file it failed to scan, or/, is: async () => [await refused()] },
