@@ -7,7 +7,7 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, syml
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fromLine, givenTarball, installedIntegrity, notUser, tarballIn, userEnv, withTarball } from "./e2e-env.js";
+import { givenTarball, installTarball, notUser, userEnv } from "./e2e-env.js";
 
 // No run may reach the npm registry.
 process.env.DARNIT_NO_UPDATE_CHECK = "1";
@@ -161,15 +161,18 @@ try {
 const work = mkdtempSync(join(tmpdir(), "darnit-e2e-"));
 let failures = 0;
 try {
-  // Only this copy is installed or run from here on, so the file that ran is the file that was checked.
-  const { tarball, integrity } = tarballIn(work, given, (dest) => must("npm", ["pack", "--silent", "--pack-destination", dest], ROOT));
-  const install = join(work, "install");
-  mkdirSync(install);
-  must("npm", ["init", "-y"], install);
-  must("npm", ["install", "--silent", tarball], install);
-  const installed = installedIntegrity(install, integrity);
+  const { install, line: installed, packed } = installTarball(
+    work,
+    given,
+    (dest) => must("npm", ["pack", "--silent", "--pack-destination", dest], ROOT),
+    (tarball, dir) => {
+      must("npm", ["init", "-y"], dir);
+      must("npm", ["install", "--silent", tarball], dir);
+      return must(join(dir, "node_modules", ".bin", "darnit"), ["--version"], dir).trim();
+    },
+  );
   const darnit = join(install, "node_modules", ".bin", "darnit");
-  console.log(`${fromLine(must(darnit, ["--version"], install).trim(), given?.tarball ?? tarball, installed)}\n`);
+  console.log(`${installed}\n`);
   // A mistyped flag is darnit failing (2), never "call sites found" (1), which would turn a scheduled run red.
   const usage = run(darnit, ["check", "--no-such-flag"], install);
   if (usage.exit !== 2) {
@@ -247,7 +250,6 @@ try {
   cpSync(join(SCENARIOS, "16-hostile-repo"), hostile, { recursive: true });
   must(darnit, ["init"], hostile);
   const line = /^\s*- run: (.*npx darnit@\S+.*)$/m.exec(readFileSync(join(hostile, ".github", "workflows", "darnit.yml"), "utf8"))![1]!;
-  const packed = (cmd: string) => withTarball(cmd, tarball);
   const runnerTemp = join(work, "runner-temp");
   const npmCache = join(work, "npm-cache");
   mkdirSync(runnerTemp);

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -22,46 +22,40 @@ type Tarball = { tarball: string; integrity: string };
  * The tarball given as `--tarball <path> --integrity <sha512-...>`, or undefined to pack one. Throws on a usage error.
  * Under npm run the script starts in the package folder, so a relative path is taken from where npm was run.
  */
-export function givenTarball(args: string[], env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): Tarball | undefined {
+export function givenTarball(args: string[]): Tarball | undefined {
   const flag = { type: "string", multiple: true } as const;
   const { values } = parseArgs({ args, options: { tarball: flag, integrity: flag }, strict: true });
   if (!values.tarball && !values.integrity) return undefined;
   for (const k of ["tarball", "integrity"] as const) if ((values[k]?.length ?? 0) > 1) throw new Error(`--${k} is given more than once`);
   const [path, sri] = [values.tarball?.[0], values.integrity?.[0]];
   if (!path || !sri) throw new Error("--tarball and --integrity go together: give both or neither");
-  const tarball = resolve(env.INIT_CWD || cwd, path);
+  const tarball = resolve(process.env.INIT_CWD || process.cwd(), path);
   if (!statSync(tarball, { throwIfNoEntry: false })?.isFile()) throw new Error(`${tarball} is not a file`);
   if (!tarball.endsWith(".tgz")) throw new Error(`${tarball} is not a .tgz tarball`);
   return { tarball, integrity: sri };
 }
 
 /**
- * The tarball every scenario installs, in `work`: the one `pack` writes there, or a copy of the given one, checked
- * after copying so that changing the given file later changes nothing. Throws when the copy's integrity differs.
+ * Installs the tarball every scenario runs: the one `pack` writes into `work`, or a copy of the given one, checked
+ * after copying so that changing the given file later changes nothing. `install` installs a tarball into a folder
+ * and returns darnit's version; npm's lockfile there must show the checked integrity. Only that tarball is used
+ * after this: `packed` puts it in place of `darnit@<pin>` in a command, quoted so any path stays one word for sh.
  */
-export function tarballIn(work: string, given: Tarball | undefined, pack: (dest: string) => void): Tarball {
-  if (!given) {
-    pack(work);
-    const tarball = join(work, readdirSync(work).find((f) => f.endsWith(".tgz"))!);
-    return { tarball, integrity: integrity(tarball) };
-  }
-  const tarball = join(work, basename(given.tarball));
-  copyFileSync(given.tarball, tarball);
-  const got = integrity(tarball);
-  if (got !== given.integrity) throw new Error(`${given.tarball} has integrity ${got}, expected ${given.integrity}`);
-  return { tarball, integrity: got };
+export function installTarball(work: string, given: Tarball | undefined, pack: (dest: string) => void, install: (tarball: string, dir: string) => string) {
+  if (!given) pack(work);
+  const tarball = given ? join(work, basename(given.tarball)) : join(work, readdirSync(work).find((f) => f.endsWith(".tgz"))!);
+  if (given) copyFileSync(given.tarball, tarball);
+  const sri = integrity(tarball);
+  if (given && sri !== given.integrity) throw new Error(`${given.tarball} has integrity ${sri}, expected ${given.integrity}`);
+  const dir = join(work, "install");
+  mkdirSync(dir);
+  const version = install(tarball, dir);
+  const lock = JSON.parse(readFileSync(join(dir, "package-lock.json"), "utf8")) as { packages: Record<string, { integrity?: string }> };
+  const installed = lock.packages["node_modules/darnit"]?.integrity;
+  if (installed !== sri) throw new Error(`npm installed darnit with integrity ${installed}, expected ${sri}`);
+  return {
+    install: dir,
+    line: `darnit ${version} from ${given?.tarball ?? tarball}, integrity ${installed}`,
+    packed: (cmd: string) => cmd.replace(/darnit@\S+/, () => `--package='${tarball.replaceAll("'", "'\\''")}' darnit`),
+  };
 }
-
-/** The integrity npm recorded for the darnit it installed in `install`. Throws unless it is `want`. */
-export function installedIntegrity(install: string, want: string): string {
-  const lock = JSON.parse(readFileSync(join(install, "package-lock.json"), "utf8")) as { packages: Record<string, { integrity?: string }> };
-  const got = lock.packages["node_modules/darnit"]?.integrity;
-  if (got !== want) throw new Error(`npm installed darnit with integrity ${got}, expected ${want}`);
-  return got;
-}
-
-export const fromLine = (version: string, tarball: string, sri: string) => `darnit ${version} from ${tarball}, integrity ${sri}`;
-
-/** `cmd` with `darnit@<pin>` replaced by the tarball, quoted for sh, so any path stays one literal word. */
-export const withTarball = (cmd: string, tarball: string) =>
-  cmd.replace(/darnit@\S+/, () => `--package='${tarball.replaceAll("'", "'\\''")}' darnit`);

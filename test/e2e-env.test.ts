@@ -2,9 +2,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
-import { fromLine, givenTarball, installedIntegrity, integrity, notUser, tarballIn, userEnv, withTarball } from "../scripts/e2e-env.js";
+import { basename, join, relative, resolve } from "node:path";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { givenTarball, installTarball, integrity, notUser, userEnv } from "../scripts/e2e-env.js";
 
 describe("the environment end-to-end scenarios run with", () => {
   it("drops CI's npm script-shell setting in every spelling npm reads, and keeps the rest", () => {
@@ -19,6 +19,7 @@ describe("the environment end-to-end scenarios run with", () => {
 describe("the tarball end-to-end scenarios install", () => {
   const dir = mkdtempSync(join(tmpdir(), "darnit-e2e-tarball-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => vi.unstubAllEnvs());
   // A small package packed by npm itself, so its integrity is the one npm writes.
   const pkg = join(dir, "pkg");
   mkdirSync(pkg);
@@ -43,51 +44,70 @@ describe("the tarball end-to-end scenarios install", () => {
   });
 
   it("is packed here without flags, or given with both --tarball and --integrity as an absolute path", () => {
+    vi.stubEnv("INIT_CWD", "");
     expect(givenTarball([])).toBeUndefined();
-    expect(givenTarball(["--tarball", packed!.filename, "--integrity", "sha512-x"], {}, dir)).toEqual({ tarball, integrity: "sha512-x" });
     expect(givenTarball([`--tarball=${tarball}`, "--integrity=sha512-x"])).toEqual({ tarball, integrity: "sha512-x" });
+    expect(givenTarball(["--tarball", relative(process.cwd(), tarball), "--integrity", "sha512-x"])).toEqual({ tarball, integrity: "sha512-x" });
     // npm run starts the script in the package folder; the path is relative to where npm was run.
-    expect(givenTarball(["--tarball", packed!.filename, "--integrity", "sha512-x"], { INIT_CWD: dir }, "/")).toEqual({ tarball, integrity: "sha512-x" });
+    vi.stubEnv("INIT_CWD", dir);
+    expect(givenTarball(["--tarball", packed!.filename, "--integrity", "sha512-x"])).toEqual({ tarball, integrity: "sha512-x" });
   });
 
-  it("is copied into the work folder and checked there, so swapping the given file later changes nothing", () => {
-    const work = mkdtempSync(join(dir, "work-"));
-    const given = join(dir, "given.tgz");
-    writeFileSync(given, readFileSync(tarball));
+  // npm as the scenarios run it: `pack` writes a tarball, `install` records what it installed in the lockfile.
+  const npm = (lockSri?: string) => {
     const packs: string[] = [];
-    const got = tarballIn(work, { tarball: given, integrity: packed!.integrity }, (dest) => packs.push(dest));
-    expect(packs).toEqual([]);
-    expect(got).toEqual({ tarball: join(work, "given.tgz"), integrity: packed!.integrity });
+    const installs: string[] = [];
+    const pack = (dest: string) => {
+      packs.push(dest);
+      writeFileSync(join(dest, "darnit-1.0.0.tgz"), readFileSync(tarball));
+    };
+    const install = (t: string, d: string) => {
+      installs.push(t);
+      writeFileSync(join(d, "package-lock.json"), JSON.stringify({ packages: { "node_modules/darnit": { integrity: lockSri ?? integrity(t) } } }));
+      return "1.0.0";
+    };
+    return { packs, installs, pack, install };
+  };
+  const sh = (cmd: string) => spawnSync("sh", ["-c", cmd], { encoding: "utf8" }).stdout;
+
+  it("installs and runs only a checked copy of the given file, so swapping the file later changes nothing", () => {
+    const work = mkdtempSync(join(dir, "work-"));
+    // Quotes, $ patterns and a backslash must reach npx as one literal word.
+    const given = join(dir, `it's $$ $& $' $1 \\ "x".tgz`);
+    writeFileSync(given, readFileSync(tarball));
+    const copy = join(work, basename(given));
+    const { packs, installs, pack, install } = npm();
+    const got = installTarball(work, { tarball: given, integrity: packed!.integrity }, pack, install);
     writeFileSync(given, bytes);
-    expect(integrity(got.tarball)).toBe(packed!.integrity);
-    expect(() => tarballIn(mkdtempSync(join(dir, "work-")), { tarball: given, integrity: packed!.integrity }, () => {})).toThrow(
-      `${given} has integrity ${integrity(changed)}, expected ${packed!.integrity}`,
+    expect(packs).toEqual([]);
+    expect(installs).toEqual([copy]);
+    expect(got.install).toBe(join(work, "install"));
+    expect(got.line).toBe(`darnit 1.0.0 from ${given}, integrity ${packed!.integrity}`);
+    expect(sh(got.packed("printf '%s\\n' darnit@0.2.0 check"))).toBe(`--package=${copy}\ndarnit\ncheck\n`);
+    expect(integrity(copy)).toBe(packed!.integrity);
+  });
+
+  it("installs nothing when the given file's integrity differs, and fails when npm's lockfile shows another", () => {
+    const wrong = npm();
+    expect(() => installTarball(mkdtempSync(join(dir, "work-")), { tarball: changed, integrity: packed!.integrity }, wrong.pack, wrong.install)).toThrow(
+      `${changed} has integrity ${integrity(changed)}, expected ${packed!.integrity}`,
+    );
+    expect(wrong.installs).toEqual([]);
+    const other = npm(integrity(changed));
+    expect(() => installTarball(mkdtempSync(join(dir, "work-")), { tarball, integrity: packed!.integrity }, other.pack, other.install)).toThrow(
+      `npm installed darnit with integrity ${integrity(changed)}, expected ${packed!.integrity}`,
     );
   });
 
-  it("is packed into the work folder without flags", () => {
+  it("installs the tarball it packs into the work folder without flags", () => {
     const work = mkdtempSync(join(dir, "work-"));
-    const got = tarballIn(work, undefined, (dest) => writeFileSync(join(dest, "darnit-1.0.0.tgz"), readFileSync(tarball)));
-    expect(got).toEqual({ tarball: join(work, "darnit-1.0.0.tgz"), integrity: packed!.integrity });
-  });
-
-  it("is the file npm installed, by the integrity in the install's lockfile, and the printed line names it", () => {
-    const install = mkdtempSync(join(dir, "install-"));
-    const lock = (sri?: string) =>
-      writeFileSync(join(install, "package-lock.json"), JSON.stringify({ packages: { "node_modules/darnit": sri ? { integrity: sri } : {} } }));
-    lock(packed!.integrity);
-    expect(installedIntegrity(install, packed!.integrity)).toBe(packed!.integrity);
-    lock(integrity(changed));
-    expect(() => installedIntegrity(install, packed!.integrity)).toThrow(`with integrity ${integrity(changed)}, expected ${packed!.integrity}`);
-    lock();
-    expect(() => installedIntegrity(install, packed!.integrity)).toThrow("with integrity undefined");
-    expect(fromLine("1.0.0", tarball, packed!.integrity)).toBe(`darnit 1.0.0 from ${tarball}, integrity ${packed!.integrity}`);
-  });
-
-  it("stands in for darnit@<pin> in a workflow line as one literal word, whatever the path holds", () => {
-    const path = `/tmp/it's $$ $& $' $1 \\ "x".tgz`;
-    const r = spawnSync("sh", ["-c", withTarball("printf '%s\\n' darnit@0.2.0 check", path)], { encoding: "utf8" });
-    expect(r.stdout).toBe(`--package=${path}\ndarnit\ncheck\n`);
+    const { packs, installs, pack, install } = npm();
+    const got = installTarball(work, undefined, pack, install);
+    const own = join(work, "darnit-1.0.0.tgz");
+    expect(packs).toEqual([work]);
+    expect(installs).toEqual([own]);
+    expect(got.line).toBe(`darnit 1.0.0 from ${own}, integrity ${packed!.integrity}`);
+    expect(sh(got.packed("printf '%s\\n' darnit@0.2.0"))).toBe(`--package=${own}\ndarnit\n`);
   });
 
   it("exits 2 for one flag without the other, a missing file, a folder, a non-.tgz file or an unknown argument", () => {
