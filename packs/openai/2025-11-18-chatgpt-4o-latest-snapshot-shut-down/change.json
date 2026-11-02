@@ -152,5 +152,13 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "chatgpt-4o-latest": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }

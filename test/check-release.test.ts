@@ -36,10 +36,13 @@ describe("check-release.sh changelog links", () => {
     expect(r.err).not.toContain("is not on main");
   });
 
-  it("passes when every bullet ends with its link, one or two to a line, and over two lines", async () => {
+  it("passes when every bullet ends with its links, any number to a line, and over two lines", async () => {
     const r = await release(
       "0.2.0-rc.1",
-      changelog(`- One. (${pr(12)})\n- Two. (${pr(13)}, ${pr(14)})\n* Wrapped\n  over two lines. (${pr(15)})  `, "- Older, unlinked."),
+      changelog(
+        `- One. (${pr(12)})\n- Three. (${pr(13)}, ${pr(14)}, ${pr(16)})\n* Wrapped\n  over two lines. (${pr(15)})  `,
+        "- Older, unlinked.",
+      ),
     );
     expect(r.err).toSatisfy(passedChangelog);
   });

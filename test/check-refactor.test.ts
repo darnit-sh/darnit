@@ -1,14 +1,73 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const script = resolve("scripts/check-refactor.sh");
 const tempDirs: string[] = [];
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
+
+/**
+ * Lock entries and the manifests the registry published for them, trimmed to the fields npm reads: six from this
+ * repository's lock, and three odd shapes whose entries npm's own code wrote.
+ */
+type Published = { entry: Record<string, unknown>; manifest: Record<string, unknown> & { name: string; version: string } };
+const published = JSON.parse(readFileSync("test/fixtures/registry.json", "utf8")) as Record<string, Published>;
+const real = (loc: string, more: object = {}) => ({ ...published[loc]!.entry, ...more });
+
+/**
+ * A registry on 127.0.0.1 that serves the published manifests above, and for any other valid name a manifest
+ * that matches `entry`. A few names answer as a broken registry would.
+ */
+const asked: string[] = [];
+const server = createServer((req, res) => {
+  asked.push(req.url!);
+  const [, at = "", version = ""] = req.url!.split("/").map((p) => decodeURIComponent(p));
+  const known = Object.values(published).find((p) => p.manifest.name === at && p.manifest.version === version);
+  const send = (status: number, type: string, body: string) => res.writeHead(status, { "content-type": type }).end(body);
+  if (at === "not-json") return send(200, "text/html", "<html>");
+  if (at === "redirect") return res.writeHead(302, { location: "/vitest/5.0.5" }).end();
+  if (at === "huge") return send(200, "application/json", `{"pad":"${"x".repeat(2 ** 23)}"}`);
+  if (at === "other-answer") return send(200, "application/json", JSON.stringify({ name: "evil", version }));
+  if (known) return send(200, "application/json", JSON.stringify(known.manifest));
+  if (at === "missing" || !/^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i.test(at) || !version) return send(404, "application/json", "{}");
+  const tarball = `https://registry.npmjs.org/${at}/-/${at.split("/").pop()}-${version}.tgz`;
+  send(200, "application/json; charset=utf-8", JSON.stringify({ name: at, version, dist: { tarball, integrity: "sha512-fake" } }));
+});
+let registry = "";
+/** A name in a registry path, as the rule writes it: a scope keeps its @, and the rest is encoded. */
+const escaped = (name: string) => (name[0] === "@" ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name));
+beforeAll(async () => {
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  registry = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+});
+afterAll(() => new Promise<void>((done) => server.close(() => done())));
+
+/**
+ * The rule's scripts, copied into each repo under .git, so it runs them by a path inside the repo. timed.sh
+ * prints the CPU time of the rule's processes, as the shell counts its children's.
+ */
+const guard = {
+  "check-refactor.sh": readFileSync(script, "utf8"),
+  "pr-common.sh": readFileSync("scripts/pr-common.sh", "utf8"),
+  "timed.sh": 'sh "$(dirname "$0")/check-refactor.sh" "$@"\ns=$?\ntimes\nexit $s\n',
+};
+
+/** Runs one of the rule's scripts in `cwd` without blocking, so the registry above can answer it. */
+function sh(file: keyof typeof guard, base: string, head: string, cwd: string, env: NodeJS.ProcessEnv) {
+  return new Promise<{ status: number | null; stdout: string }>((done, fail) => {
+    const child = spawn("sh", [`.git/guard/${file}`, base, head], { cwd, env, stdio: ["ignore", "pipe", "ignore"] });
+    let stdout = "";
+    child.stdout.setEncoding("utf8").on("data", (d: string) => (stdout += d));
+    child.on("error", fail).on("close", (status) => done({ status, stdout }));
+  });
+}
 
 const baseFiles = [
   "src/a.ts",
@@ -31,6 +90,17 @@ const baseFiles = [
 
 const pkg = (files = ["dist"], test = "vitest run") =>
   `${JSON.stringify({ files, scripts: { test, check: "npm test" }, dependencies: { zod: "4.6.6" } })}\n`;
+
+const entry = (name: string, version = "4.6.6", more: object = {}) => ({
+  version,
+  resolved: `https://registry.npmjs.org/${name}/-/${name.split("/").pop()}-${version}.tgz`,
+  integrity: "sha512-fake",
+  ...more,
+});
+const lock = (packages: Record<string, object> = {}) =>
+  `${JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/zod": entry("zod"), ...packages } })}\n`;
+/** package.json with `deps` merged over base's dependency fields. */
+const withDeps = (deps: object) => `${JSON.stringify({ ...JSON.parse(pkg()), ...deps })}\n`;
 
 type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean };
 
@@ -69,8 +139,10 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
     }
   };
   git("init", "-q");
+  for (const [f, text] of Object.entries(guard)) await write(`.git/guard/${f}`, text);
   for (const f of baseFiles) await write(f, `${f}\n`);
   await write("package.json", pkg());
+  await write("package-lock.json", lock());
   git("add", ".");
   git("commit", "-q", "-m", "base");
   if (landed.length) {
@@ -129,10 +201,14 @@ async function rule(
   if (typeof body === "function") body = body(base, execFileSync("git", ["rev-parse", `${base}~1`], { cwd: dir, encoding: "utf8" }).trim());
   const output = await scratch("output");
   const summary = await scratch("summary");
-  const run = spawnSync("sh", [script, base, head], {
-    cwd: dir,
-    encoding: "utf8",
-    env: { ...process.env, TITLE: title, BODY: body, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary, ...env },
+  const run = await sh("check-refactor.sh", base, head, dir, {
+    ...process.env,
+    TITLE: title,
+    BODY: body,
+    GITHUB_OUTPUT: output,
+    GITHUB_STEP_SUMMARY: summary,
+    DARNIT_TEST_REGISTRY: registry,
+    ...env,
   });
   return {
     status: run.status,
@@ -229,7 +305,7 @@ describe("the rule picked by the title's type", () => {
     const bump = { write: "package.json", text: pkg().replace("4.6.6", "4.6.7") };
     for (const [title, edit] of [
       ["chore(deps): bump zod from 4.6.6 to 4.6.7 in the runtime group", bump],
-      ["chore(deps-dev): bump the tooling group with 2 updates", { write: "package-lock.json" }],
+      ["chore(deps-dev): bump the tooling group with 2 updates", { write: "package-lock.json", text: lock({ "node_modules/zod": entry("zod", "4.6.7") }) }],
       ["build(deps): bump yaml", bump],
       ["build: ship the docs", { write: "package.json", text: pkg(["dist", "docs"]) }],
       ["test: cover x", { write: "test/a.test.ts" }],
@@ -240,6 +316,370 @@ describe("the rule picked by the title's type", () => {
       expect(r, title).toMatchObject({ status: 0, baseTests: false });
       expect(r.out).toContain("**Passed:**");
     }
+  });
+
+  it("fails any type that adds or changes a dependency npm would fetch from outside the registry", async () => {
+    const fake = withDeps({ devDependencies: { vitest: "file:./fake-vitest" } });
+    for (const type of ["docs", "test", "chore", "ci", "build", "fix", "feat", "refactor", "perf", "revert"]) {
+      const r = await rule(`${type}: x`, [{ write: "package.json", text: fake }], "Proof: none, swaps the test runner\n");
+      expect(r.status, type).toBe(1);
+      expect(r.summary, type).toContain('- package.json devDependencies.vitest "file:./fake-vitest"');
+    }
+    const hostile = [
+      "file:fake",
+      "file:fake.tgz",
+      "file:../x",
+      "link:../x",
+      "portal:../x",
+      "git+https://example.test/v.git",
+      "git://example.test/v.git",
+      "github:evil/vitest",
+      "gitlab:evil/vitest",
+      "http://registry.npmjs.org/vitest/-/vitest-5.0.6.tgz",
+      "https://example.test/v.tgz",
+      "evil/vitest",
+      "evil/vitest#main",
+      "./fake",
+      "../fake",
+      ".",
+      "~/fake",
+      "/tmp/fake",
+      "fake.tgz",
+      " file:../x",
+      "npm:vitest@file:../x",
+      "npm:@evil/v@github:evil/vitest",
+      // npm 10 reads the dot in its tarball ending as any character.
+      "x.tar_gz",
+      "x.TAR-GZ",
+      "1.0.0 - x.tar_gz",
+      "$zod",
+      "latest!",
+    ];
+    const fields = ["dependencies", "optionalDependencies", "peerDependencies"];
+    const deps = Object.fromEntries(fields.map((f, n) => [f, Object.fromEntries(hostile.flatMap((spec, i) => (i % 3 === n ? [[`p${i}`, spec]] : [])))]));
+    const odd = { 1: "1", null: "null", list: '["^5.0.6"]' };
+    const r = await rule("fix: x", [{ write: "package.json", text: withDeps({ ...deps, devDependencies: { 1: 1, null: null, list: ["^5.0.6"] } }) }]);
+    expect(r.status).toBe(1);
+    hostile.forEach((spec, i) => expect(r.summary).toContain(`- package.json ${fields[i % 3]}.p${i} ${JSON.stringify(spec)}\n`));
+    for (const [k, v] of Object.entries(odd)) expect(r.summary).toContain(`- package.json devDependencies.${k} ${v}\n`);
+    const override = await rule("fix: x", [{ write: "package.json", text: withDeps({ overrides: { vitest: "git+https://example.test/v.git" } }) }]);
+    expect(override.status).toBe(1);
+    expect(override.summary).toContain('- package.json overrides.vitest "git+https://example.test/v.git"');
+    const tarball = await rule("chore(deps): bump vitest", [{ write: "package.json", text: withDeps({ devDependencies: { vitest: "vitest.tar_gz" }, overrides: { a: "x.tar_gz", b: { c: "x.TGZ" } } }) }]);
+    expect(tarball.status).toBe(1);
+    for (const line of ['devDependencies.vitest "vitest.tar_gz"', 'overrides.a "x.tar_gz"', 'overrides.b.c "x.TGZ"']) expect(tarball.summary).toContain(`- package.json ${line}\n`);
+    // npm reads an override key as name@spec, and uses that spec when the key has no "." value.
+    const typescript = { devDependencies: { typescript: "npm:@typescript/typescript6@^6.0.2" } };
+    const keys = await rule(
+      "chore(deps): bump vite",
+      [
+        {
+          write: "package.json",
+          text: withDeps({
+            ...typescript,
+            overrides: {
+              "vitest@file:./evil.tgz": {},
+              "zod@x.tar_gz": { vite: "7.0.0" },
+              esbuild: "$typescript",
+              "a@npm:evil@1": {},
+              m: "$missing",
+              zod: "$zod",
+              "@scope/b@^1": "1.0.0",
+            },
+          }),
+        },
+      ],
+      "",
+      {},
+      [{ write: "package.json", text: withDeps(typescript) }],
+    );
+    expect(keys.status).toBe(1);
+    for (const line of [
+      'overrides.vitest@file:./evil.tgz "file:./evil.tgz"',
+      'overrides.zod@x.tar_gz "x.tar_gz"',
+      'overrides.esbuild "$typescript" (an alias to @typescript/typescript6)',
+      'overrides.a@npm:evil@1 "npm:evil@1" (an alias to evil)',
+      'overrides.m "$missing"',
+    ]) {
+      expect(keys.summary, line).toContain(`- package.json ${line}\n`);
+    }
+    for (const held of ["overrides.zod ", "@scope/b", "x.tar_gz.vite"]) expect(keys.summary, held).not.toContain(held);
+    const nested = await rule("fix: x", [{ write: "package.json", text: withDeps({ overrides: { eslint: { ".": "^10.0.0", vitest: "evil/vitest" } } }) }]);
+    expect(nested.status).toBe(1);
+    expect(nested.summary).toContain('- package.json overrides.eslint.vitest "evil/vitest"');
+    expect(nested.summary).not.toContain("^10.0.0");
+  });
+
+  it("fails a lock entry this change adds or alters that is not a registry tarball with an integrity", async () => {
+    const bad = [
+      [entry("vitest", "5.0.6", { resolved: "https://example.test/vitest-5.0.6.tgz" }), 'resolved "https://example.test/vitest-5.0.6.tgz"'],
+      [entry("vitest", "5.0.6", { resolved: "https://registry.npmjs.org.example.test/vitest.tgz" }), "resolved"],
+      [entry("vitest", "5.0.6", { resolved: "http://registry.npmjs.org/vitest/-/vitest-5.0.6.tgz" }), "resolved"],
+      [entry("vitest", "5.0.6", { resolved: "file:../fake-vitest" }), 'resolved "file:../fake-vitest"'],
+      [{ resolved: "fake-vitest", link: true }, "version (none)"],
+      [{ version: "5.0.6" }, "resolved (none)"],
+      [entry("p6", "5.0.6", { integrity: undefined }), "integrity (none)"],
+      [entry("p7", "5.0.6", { integrity: "" }), 'integrity "", published "sha512-fake"'],
+      [entry("p8", "1.0.0", { resolved: "http://registry.npmjs.org/p8/-/p8-1.0.0.tgz" }), 'resolved "http://registry.npmjs.org/p8/-/p8-1.0.0.tgz"'],
+      [entry("p9", "1.0.0", { resolved: "https://example.test/p9/-/p9-1.0.0.tgz" }), 'resolved "https://example.test/p9/-/p9-1.0.0.tgz"'],
+    ] as const;
+    const r = await rule("chore(deps): bump", [{ write: "package-lock.json", text: lock(Object.fromEntries(bad.map(([e], i) => [`node_modules/p${i}`, e]))) }]);
+    expect(r.status).toBe(1);
+    bad.forEach(([, why], i) => expect(r.summary).toContain(`- package-lock.json node_modules/p${i} ${why}`));
+    const altered = await rule("fix: x", [{ write: "package-lock.json", text: lock({ "node_modules/zod": entry("zod", "4.6.6", { integrity: undefined }) }) }]);
+    expect(altered.summary).toContain("- package-lock.json node_modules/zod integrity (none)");
+    const v1 = JSON.stringify({ lockfileVersion: 1, dependencies: { a: { ...entry("a"), dependencies: { vitest: entry("vitest", "5.0.6", { resolved: "https://example.test/v.tgz" }) } } } });
+    const old = await rule("fix: x", [{ write: "npm-shrinkwrap.json", text: v1 }]);
+    expect(old.status).toBe(1);
+    expect(old.summary).toContain('- npm-shrinkwrap.json dependencies in the old format, without "packages"');
+    for (const text of ["changed\n", "[]\n"]) {
+      const r = await rule("chore(deps): x", [{ write: "package-lock.json", text }]);
+      expect(r.status, text).toBe(1);
+      expect(r.summary).toContain("- package-lock.json (unreadable)");
+    }
+    const broken = await rule("chore(deps): x", [{ write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest") }) }], "", { NODE_OPTIONS: "--require=/nonexistent" });
+    expect(broken.status).toBe(1);
+    expect(broken.summary).toContain("- dependency sources (unreadable)");
+  });
+
+  it("judges only what this change adds or alters, and keeps registry versions free for chore and build", async () => {
+    const landed = [
+      { write: "package.json", text: withDeps({ devDependencies: { vitest: "file:./old" } }) },
+      { write: "package-lock.json", text: lock({ "node_modules/old": { resolved: "old", link: true } }) },
+    ];
+    expect((await rule("fix: x", [{ write: "README.md" }], "", {}, landed)).status).toBe(0);
+    const bumped = [
+      { write: "package.json", text: withDeps({ dependencies: { zod: "4.6.7" }, devDependencies: { vitest: "file:./old" } }) },
+      { write: "package-lock.json", text: lock({ "node_modules/old": { resolved: "old", link: true }, "node_modules/zod": entry("zod", "4.6.7") }) },
+    ];
+    expect((await rule("fix: x", bumped, "", {}, landed)).status).toBe(0);
+    for (const [title, deps] of [
+      ["chore(deps-dev): bump vitest from 5.0.5 to 5.0.6", { devDependencies: { vitest: "^5.0.6" } }],
+      ["build(deps): add two", { dependencies: { zod: "npm:zod@4.6.7" }, devDependencies: { t: "latest", r: ">=1 <2" } }],
+      ["chore(deps): pin a transitive", { overrides: { vitest: { vite: "7.0.0" }, zod: "$zod" } }],
+    ] as const) {
+      const lockText = lock({ "node_modules/vitest": entry("vitest", "5.0.6"), "node_modules/@x/y": entry("@x/y", "1.0.0") });
+      const r = await rule(title, [{ write: "package.json", text: withDeps(deps) }, { write: "package-lock.json", text: lockText }]);
+      expect(r, title).toMatchObject({ status: 0, baseTests: false });
+      expect(r.out).toContain("**Passed:**");
+    }
+    const alias = (v: string) => [
+      { write: "package.json", text: withDeps({ devDependencies: { ts: `npm:@typescript/typescript6@^${v}` }, overrides: { a: { ts: `npm:@typescript/typescript6@${v}` } } }) },
+      { write: "package-lock.json", text: lock({ "node_modules/ts": entry("@typescript/typescript6", v, { name: "@typescript/typescript6" }) }) },
+    ];
+    expect((await rule("chore(deps): bump the typescript alias", alias("6.0.3"), "", {}, alias("6.0.2"))).status).toBe(0);
+  });
+
+  it("fails a lock or alias that installs another package under a name the suite runs", async () => {
+    const tarball = (name: string, version: string) => `https://registry.npmjs.org/${name}/-/${name}-${version}.tgz`;
+    const evil = "1/../../../evil/-/evil-1.0.0";
+    const own = JSON.parse('{"__proto__":{"resolved":"https://example.test/v.tgz"}}') as Record<string, object>;
+    const r = await rule("chore(deps): bump chai", [
+      {
+        write: "package.json",
+        text: withDeps({
+          dependencies: { constructor: "1.0.0", vitest: "file:x", "a\nb": "file:x" },
+          devDependencies: { vitest: "latest", e: "npm:evil-vitest@1" },
+          overrides: { a: { vitest: "npm:@evil/vitest" } },
+        }),
+      },
+      {
+        write: "package-lock.json",
+        text: lock({
+          constructor: {},
+          ...own,
+          // The version carries a path: npm fetches /evil/-/evil-1.0.0.tgz for both.
+          "node_modules/vitest": entry("vitest", "5.0.6", { version: evil, resolved: tarball("vitest", evil), dependencies: { chai: "*" } }),
+          "node_modules/chai": entry("chai", "1.0.0", { version: evil, resolved: tarball("chai", evil) }),
+          "node_modules/v1": entry("v1", "1.0.0", { resolved: "https://registry.npmjs.org/evil-vitest/-/evil-vitest-1.0.0.tgz" }),
+          "node_modules/@x/y": entry("@x/y", "1.0.0", { resolved: "https://registry.npmjs.org/@x/z/-/z-1.0.0.tgz" }),
+          "node_modules/v2": entry("v2", "1.0.0", { resolved: tarball("v2", "2.0.0") }),
+          "node_modules/v3": entry("evil-vitest", "1.0.0", { name: "evil-vitest" }),
+          "node_modules/v4": { link: true, resolved: "https://registry.npmjs.org/../../fake", integrity: "x" },
+          "node_modules/v8": entry("v8", "1.0.0", { link: true, resolved: "fake-vitest" }),
+          "node_modules/v5": entry("v5", "1.0.0", { version: "1.0.0/x", resolved: tarball("v5", "1.0.0/x") }),
+          "node_modules/v6": entry("v6", "1.0.0", { version: "latest", resolved: tarball("v6", "latest") }),
+          "node_modules/v7": entry("v7", "1.0.0", { version: undefined }),
+          "node_modules/%2e%2e": entry("%2e%2e", "1.0.0"),
+          "node_modules/a#b": entry("a#b", "1.0.0"),
+          "node_modules/vitest/node_modules/..": entry("..", "1.0.0"),
+          fake: entry("vitest", "5.0.5"),
+          "x/node_modules/vitest": entry("vitest", "5.0.5"),
+          "node_modules/../fake": entry("fake", "5.0.5"),
+        }),
+      },
+      {
+        write: "npm-shrinkwrap.json",
+        text: JSON.stringify({ lockfileVersion: 1, dependencies: { ...own, constructor: {}, vitest: entry("vitest", "1.0.0", { resolved: "https://example.test/v.tgz" }) } }),
+      },
+    ]);
+    expect(r.status).toBe(1);
+    for (const line of [
+      'package.json dependencies.vitest "file:x"',
+      'package.json dependencies.a\\nb "file:x"',
+      'package.json devDependencies.e "npm:evil-vitest@1" (an alias to evil-vitest)',
+      'package.json overrides.a.vitest "npm:@evil/vitest" (an alias to @evil/vitest)',
+      `package-lock.json node_modules/vitest version ${JSON.stringify(evil)}`,
+      `package-lock.json node_modules/chai version ${JSON.stringify(evil)}`,
+      "package-lock.json node_modules/v1 resolved",
+      "package-lock.json node_modules/@x/y resolved",
+      "package-lock.json node_modules/v2 resolved",
+      'package-lock.json node_modules/v3 name "evil-vitest"',
+      "package-lock.json node_modules/v4 version (none)",
+      'package-lock.json node_modules/v8 link true, published (none)',
+      'package-lock.json node_modules/v8 resolved "fake-vitest", published "https://registry.npmjs.org/v8/-/v8-1.0.0.tgz"',
+      'package-lock.json node_modules/v5 version "1.0.0/x"',
+      'package-lock.json node_modules/v6 version "latest"',
+      "package-lock.json node_modules/v7 version (none)",
+      "package-lock.json node_modules/%2e%2e not compared: the registry answered 404",
+      "package-lock.json node_modules/a#b not compared: the registry answered 404",
+      "package-lock.json node_modules/vitest/node_modules/.. not compared: the registry answered 404",
+      "package-lock.json fake location outside node_modules",
+      "package-lock.json x/node_modules/vitest location outside node_modules",
+      "package-lock.json node_modules/../fake location outside node_modules",
+      "package-lock.json constructor location outside node_modules",
+      "package-lock.json __proto__ location outside node_modules",
+      'npm-shrinkwrap.json dependencies in the old format, without "packages"',
+    ]) {
+      expect(r.summary).toContain(`- ${line}`);
+    }
+    expect(r.summary).not.toContain("devDependencies.vitest");
+  });
+
+  it("counts any dependency or lock change as a suite change for docs, test and ci", async () => {
+    const fields = withDeps({ devDependencies: { vitest: "^5.0.6" }, dependencies: {}, optionalDependencies: { a: "1.0.0" }, peerDependencies: { a: "1.0.0" }, overrides: { a: "1.0.0" }, workspaces: ["fake"] });
+    const changed = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "overrides", "workspaces"].map((f) => `- package.json "${f}"`);
+    for (const type of ["docs", "test", "ci"]) {
+      const r = await rule(`${type}: x`, [{ write: "package.json", text: fields }, { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) }, { write: "npm-shrinkwrap.json", text: lock() }]);
+      expect(r.status, type).toBe(1);
+      for (const line of [...changed, "- package-lock.json", "- npm-shrinkwrap.json"]) expect(r.out, `${type} ${line}`).toContain(`${line}\n`);
+      const removed = await rule(`${type}: x`, [{ remove: "package-lock.json" }]);
+      expect(removed.status, type).toBe(1);
+      expect(removed.out).toContain("- package-lock.json\n");
+    }
+    const unchanged = withDeps({}).replace('"zod":"4.6.6"', '"zod": "4.6.6"');
+    expect((await rule("docs: x", [{ write: "package.json", text: unchanged }])).status).toBe(0);
+  });
+
+  it("lets test and ci change dependencies with a reason, and not docs", async () => {
+    const reason = "Proof: none, moves the test runner to its next patch\n";
+    const edits: Edit[] = [
+      { write: "package.json", text: withDeps({ devDependencies: { vitest: "^5.0.6" } }) },
+      { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) },
+    ];
+    for (const type of ["test", "ci"]) {
+      const r = await rule(`${type}: x`, edits, reason);
+      expect(r.status, type).toBe(0);
+      expect(r.summary).toContain('- package.json "devDependencies"\n- package-lock.json');
+    }
+    expect((await rule("docs: x", edits, reason)).status).toBe(1);
+  });
+
+  it("reads a large lock file in a CPU budget, and asks the registry only for the entry this change alters", async () => {
+    const many = Object.fromEntries(Array.from({ length: 50_000 }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")]));
+    const altered = { ...many, "node_modules/p49999": entry("p49999", "1.0.0", { integrity: undefined }) };
+    const { dir, base, head } = await repo([{ write: "package-lock.json", text: lock(altered) }], [{ write: "package-lock.json", text: lock(many) }]);
+    const summary = await scratch("summary");
+    asked.length = 0;
+    const run = await sh("timed.sh", base, head, dir, {
+      ...process.env,
+      LC_ALL: "C",
+      TITLE: "chore(deps): x",
+      GITHUB_STEP_SUMMARY: summary,
+      DARNIT_TEST_REGISTRY: registry,
+    });
+    const [user, system] = run.stdout.trim().split("\n").at(-1)!.split(/\s+/).map((t) => {
+      const [, m, sec] = /^(\d+)m([\d.,]+)s$/.exec(t)!;
+      return (Number(m) * 60 + Number(sec!.replace(",", "."))) * 1000;
+    });
+    expect(user! + system!).toBeLessThan(3000);
+    expect(run.status).toBe(1);
+    expect(asked).toEqual(["/p49999/1.0.0"]);
+    const text = await readFile(summary, "utf8");
+    expect(text).toContain("- package-lock.json node_modules/p49999 integrity (none)");
+    expect(text).not.toContain("node_modules/p49998");
+  });
+
+  it("fails a lock entry that differs in any field from what the registry published", async () => {
+    // Base holds the same packages at an older version, so head's entries are all ones this change alters.
+    const older = Object.fromEntries(Object.entries(published).map(([loc, p]) => [loc, entry(p.manifest.name, "0.0.1", loc.endsWith("/typescript") ? { name: p.manifest.name } : {})]));
+    const tsx = published["node_modules/tsx"]!.entry;
+    const swapped = lock({
+      ...Object.fromEntries(Object.keys(published).map((loc) => [loc, real(loc)])),
+      "node_modules/vitest": real("node_modules/vitest", { bin: {}, dependencies: { ...(real("node_modules/vitest").dependencies as object), extra: "1.0.0" } }),
+      "node_modules/tsx": real("node_modules/tsx", { bin: { ...(tsx.bin as object), vitest: "dist/esm/api/index.mjs" }, hasInstallScript: true, os: ["aix"], cpu: ["ppc64"], inBundle: true }),
+      "node_modules/esbuild": real("node_modules/esbuild", { hasInstallScript: undefined, integrity: tsx.integrity, dev: false }),
+    });
+    for (const title of ["chore(deps): bump tsx", "fix: tidy"]) {
+      const r = await rule(title, [{ write: "package-lock.json", text: swapped }], "", {}, [{ write: "package-lock.json", text: lock(older) }]);
+      expect(r.status, title).toBe(1);
+      for (const line of [
+        'node_modules/vitest bin {}, published {"vitest":"vitest.mjs"}',
+        "node_modules/vitest dependencies",
+        'node_modules/tsx bin {"tsx":"dist/cli.mjs","vitest":"dist/esm/api/index.mjs"}, published {"tsx":"dist/cli.mjs"}',
+        "node_modules/tsx hasInstallScript true, published (none)",
+        'node_modules/tsx os ["aix"], published (none)',
+        'node_modules/tsx cpu ["ppc64"], published (none)',
+        "node_modules/tsx inBundle true, published (none)",
+        "node_modules/esbuild hasInstallScript (none), published true",
+        `node_modules/esbuild integrity ${JSON.stringify(tsx.integrity)}`,
+        "node_modules/esbuild dev false",
+      ]) {
+        expect(r.summary, `${title} ${line}`).toContain(`- package-lock.json ${line}`);
+      }
+      for (const loc of ["node_modules/@esbuild/linux-x64", "node_modules/@ast-grep/cli-linux-arm64-gnu", "node_modules/typescript"]) {
+        expect(r.summary, loc).not.toContain(`${loc} `);
+      }
+    }
+  });
+
+  it("passes bumps whose lock entries are what npm writes from what the registry published", async () => {
+    const older = Object.fromEntries(Object.entries(published).map(([loc, p]) => [loc, entry(p.manifest.name, "0.0.1", loc.endsWith("/typescript") ? { name: p.manifest.name } : {})]));
+    const bumped = lock(Object.fromEntries(Object.keys(published).map((loc) => [loc, real(loc)])));
+    for (const title of ["chore(deps-dev): bump the tooling group with 9 updates", "build(deps): bump esbuild"]) {
+      asked.length = 0;
+      const r = await rule(title, [{ write: "package-lock.json", text: bumped }], "", {}, [{ write: "package-lock.json", text: lock(older) }]);
+      expect(r, title).toMatchObject({ status: 0 });
+      expect(r.out).toContain("**Passed:**");
+      expect(asked.sort()).toEqual(Object.values(published).map((p) => `/${escaped(p.manifest.name)}/${p.manifest.version}`).sort());
+    }
+  });
+
+  it("fails closed when the registry cannot be asked, answers badly, or would be asked too often", async () => {
+    const broken = lock({
+      "node_modules/missing": entry("missing", "1.0.0"),
+      "node_modules/not-json": entry("not-json", "1.0.0"),
+      "node_modules/huge": entry("huge", "1.0.0"),
+      "node_modules/other-answer": entry("other-answer", "1.0.0"),
+      "node_modules/redirect": entry("redirect", "1.0.0"),
+    });
+    const r = await rule("chore(deps): x", [{ write: "package-lock.json", text: broken }]);
+    expect(r.status).toBe(1);
+    for (const line of [
+      "node_modules/missing not compared: the registry answered 404 application/json",
+      "node_modules/not-json not compared: the registry answered 200 text/html",
+      "node_modules/huge not compared: the registry answer is over 8 MiB",
+      "node_modules/other-answer not compared: the registry answered for another package than other-answer@1.0.0",
+      "node_modules/redirect not compared: the registry could not be reached (unexpected redirect)",
+    ]) {
+      expect(r.summary).toContain(`- package-lock.json ${line}`);
+    }
+    const one = [{ write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) }];
+    const closed = createServer();
+    await new Promise<void>((done) => closed.listen(0, "127.0.0.1", done));
+    const port = (closed.address() as AddressInfo).port;
+    await new Promise<void>((done) => closed.close(() => done()));
+    const away = await rule("chore(deps): x", one, "", { DARNIT_TEST_REGISTRY: `http://127.0.0.1:${port}` });
+    expect(away.status).toBe(1);
+    expect(away.summary).toContain("- package-lock.json node_modules/vitest not compared: the registry could not be reached (ECONNREFUSED)");
+    const elsewhere = await rule("chore(deps): x", one, "", { DARNIT_TEST_REGISTRY: "https://example.test" });
+    expect(elsewhere.summary).toContain("- package-lock.json node_modules/vitest not compared: DARNIT_TEST_REGISTRY is not http://127.0.0.1:<port>");
+    asked.length = 0;
+    const many = lock(Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")])));
+    const flood = await rule("chore(deps): x", [{ write: "package-lock.json", text: many }]);
+    expect(flood.status).toBe(1);
+    expect(flood.summary).toContain("- 501 lock entries to compare with the registry, over the 500 this check asks for; a person reviews this change");
+    expect(asked).toEqual([]);
   });
 
   it("fails a test change that changes what the suite proves", async () => {
@@ -308,7 +748,7 @@ describe("the rule picked by the title's type", () => {
     const bump = { write: "package.json", text: pkg().replace("4.6.6", "4.6.7") };
     const broken = await rule("docs: x", [bump], "", { NODE_OPTIONS: "--require=/nonexistent" });
     expect(broken.status).toBe(1);
-    expect(broken.out).toContain("- package.json (unreadable)");
+    expect(broken.out).toContain("- dependency sources (unreadable)");
   });
 
   it("lets only build add or change an ignore file that drops shipped files", async () => {
