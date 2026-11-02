@@ -267,21 +267,29 @@ function covered(p: AstGrepPattern, all: readonly AstGrepPattern[]): boolean {
 // The key of a pattern that also matches the key quoted; no record uses this name.
 const KEY = "DARNIT_KEY";
 
+/** A quoted value written as a template string with nothing in it, the same value in JavaScript: `model: \`gpt-4\``. None when it would read as code there. */
+function templateOf(context: string): string | undefined {
+  const js = JS_VALUE.exec(context);
+  return js && !/[`$\\]/.test(js[2]!) ? `\`${js[2]!.slice(1, -1)}\`` : undefined;
+}
+
 /**
  * A pattern whose value is one quoted string also matches that string as the last fallback:
  * `model: opts.model ?? "gpt-4"` (or `||`, or Python's `or`) sends gpt-4 whenever no model is passed.
  * A bare key also matches it quoted, as raw HTTP bodies write it: `{ "max_tokens": 5 }`, and Python's
  * `{"max_tokens": 5}` for `max_tokens=5`. Only when the file's `source` holds the quoted key, as that costs time.
+ * With `withTemplate`, a JavaScript value also matches as a template string with nothing in it.
  */
-function ruleFor(context: string, selector: string, source?: string) {
+function ruleFor(context: string, selector: string, source?: string, withTemplate = true) {
   const js = JS_VALUE.exec(context);
   const py = PY_VALUE.exec(context);
+  const template = withTemplate ? templateOf(context) : undefined;
   const fallbacks = js
-    ? [`({ ${js[1]}: $_ ?? ${js[2]} })`, `({ ${js[1]}: $_ || ${js[2]} })`]
+    ? [js[2]!, ...(template ? [template] : [])].flatMap((v) => [`({ ${js[1]}: $_ ?? ${v} })`, `({ ${js[1]}: $_ || ${v} })`])
     : py
       ? [`f(${py[1]}=$_ or ${py[2]})`]
       : [];
-  const forms = [context, ...fallbacks].map((c) => ({ context: c, selector }));
+  const forms = [context, ...(template ? [`({ ${js![1]}: ${template} })`] : []), ...fallbacks].map((c) => ({ context: c, selector }));
   const jsKey = selector === "pair" ? JS_KEY.exec(context)?.[1] : undefined;
   const pyKey = selector === "keyword_argument" ? PY_KEY.exec(context)?.[1] : undefined;
   const key = jsKey ?? pyKey;
@@ -325,7 +333,14 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
   const root = parsed();
   const symbols = gate?.symbols ?? [];
   const endpoints = gate?.endpoints ?? [];
-  const found = patterns.map(({ context, selector }) => root.findAll(ruleFor(context, selector, source)));
+  // A record writes a name in both quote styles, and both have the same template form: only the first matches it.
+  const templates = new Set<string>();
+  const found = patterns.map(({ context, selector }) => {
+    const template = `${selector}\0${JS_VALUE.exec(context)?.[1]}\0${templateOf(context)}`;
+    const fresh = !templates.has(template);
+    templates.add(template);
+    return root.findAll(ruleFor(context, selector, source, fresh));
+  });
   // A static call counts only on the vendor's own class, never a local or another package's of the same name.
   const classes = new Map<string, boolean>();
   const isVendorClass = (callee: string) => {
