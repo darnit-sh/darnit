@@ -55,6 +55,8 @@ export type PrResult =
   | { state: "mismatch"; reason: string }
   | { state: "tests-failed"; tests: TestOutcome }
   | { state: "build-failed"; build: TestOutcome }
+  /** The build or tests changed a file darnit rewrote. */
+  | { state: "refused"; reason: string }
   | { state: "prepared"; build?: TestOutcome | undefined; tests?: TestOutcome | undefined };
 
 /** A call site; one listed by file only, with no line, counts as the `sites` call sites in it. */
@@ -177,6 +179,31 @@ async function snapshotOf(root: string, files: readonly string[]): Promise<Snaps
     }
   }
   return snap;
+}
+
+type Kept = { bytes: Buffer; mode: number };
+
+/** A file's bytes and mode, read without following a link; undefined unless it is a regular file with one name. */
+async function regularFile(path: string): Promise<Kept | undefined> {
+  // Nonblocking, so a pipe in the file's place cannot hold the open.
+  const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)).catch(() => undefined);
+  if (!handle) return undefined;
+  try {
+    const [info, named] = [await handle.stat(), await lstat(path).catch(() => undefined)];
+    if (!named?.isFile() || named.nlink !== 1 || named.ino !== info.ino || named.dev !== info.dev) return undefined;
+    return { bytes: await handle.readFile(), mode: info.mode };
+  } finally {
+    await handle.close();
+  }
+}
+
+/** The first of `kept` that is no longer what darnit wrote: other bytes or mode, a link, or a second name. */
+async function changedSince(root: string, kept: Map<string, Kept | undefined>): Promise<string | undefined> {
+  for (const [f, own] of kept) {
+    const now = await regularFile(join(root, f));
+    if (!own || !now || now.mode !== own.mode || !now.bytes.equals(own.bytes)) return f;
+  }
+  return undefined;
 }
 
 /** How many times restore removes what keeps appearing in a file's place before it refuses. */
@@ -834,17 +861,20 @@ async function openOne(run: g.CloneGit, dir: string, url: string, token: string,
 }
 
 /** `base`, marked reverted when a change's build or tests failed. */
-const withFailures = (base: FixResult): FixResult => ({ ...base, reverted: base.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed") });
+const withFailures = (base: FixResult): FixResult => ({ ...base, reverted: base.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed" || r.pr?.state === "refused") });
 
-// One branch, one check and one pull request per change. The working tree is
-// left exactly as it was found, on the branch it was found on.
+// One branch, one test run and one pull request per change, each pushed as a commit darnit builds on the
+// commit the tree was at. The working tree is left as it was found.
 async function pullRequests(root: string, groups: Group[], base: FixResult, commands: Commands, opts: FixOptions): Promise<FixResult> {
   const repo = opts.repo ? parseSlug(opts.repo) : parseRemote(await g.remoteUrl(root).catch(() => ""));
   if (!repo) throw new Refusal("could not tell which GitHub repository this is; pass --repo owner/name");
   const token = await githubToken();
   if (!token) throw new Refusal("no GitHub token; set GITHUB_TOKEN or GH_TOKEN, or run: gh auth login");
   const target = await defaultBranch(token, repo);
-  const home = await g.position(root);
+  // What each change is committed on, and its files as committed there, read before any of the repository's code runs.
+  const at = await g.start(root);
+  const before = new Map<string, Kept | undefined>();
+  for (const f of new Set(groups.flatMap((grp) => grp.files))) before.set(f, await regularFile(join(root, f)));
 
   for (const grp of groups) {
     const result = base.records.find((r) => r.record.id === grp.record.id)!;
@@ -858,37 +888,58 @@ async function pullRequests(root: string, groups: Group[], base: FixResult, comm
       result.pr = { state: "skipped", reason: `branch ${branch} already exists; delete it or open the pull request from it yourself` };
       continue;
     }
-
+    // A file that was not a regular file with one name before anything ran: darnit could not tell its own change from another.
+    const odd = grp.files.find((f) => !before.get(f));
+    if (odd !== undefined) {
+      const info = await lstat(join(root, odd)).catch(() => undefined);
+      result.pr = { state: "refused", reason: `${odd} ${info?.isFile() && info.nlink > 1 ? "has another name (a hard link)" : "is not a regular file"}` };
+      continue;
+    }
+    // An earlier change's build or tests can write this one's files; each is rewritten only from what was committed.
+    const earlier = await changedSince(root, new Map(grp.files.map((f) => [f, before.get(f)])));
+    if (earlier !== undefined) {
+      result.pr = { state: "refused", reason: `the build or tests of an earlier change changed ${earlier} before darnit rewrote it` };
+      continue;
+    }
     const snap = await snapshotOf(root, grp.files);
-    await g.switchTo(root, branch, "create");
-    let committed = false;
-    let opened = false;
+    let staged: g.Staged | undefined;
     try {
       const changed = settle(result, await applyAndVerify(root, grp), grp.held);
       if (changed.length === 0) continue;
+      // The repository's build and tests run next and can write these files and git's settings; the commit is built
+      // from these bytes, staged now as git add stages them.
+      const kept = new Map<string, Kept | undefined>();
+      for (const f of changed) kept.set(f, await regularFile(join(root, f)));
+      if ([...kept.values()].every(Boolean)) {
+        const files = [...kept].map(([path, own]) => ({ path, mode: own!.mode, bytes: own!.bytes, was: before.get(path)!.bytes }));
+        const done = await g.stage(at, files);
+        if ("unlike" in done) {
+          result.pr = { state: "refused", reason: `git would not store ${done.unlike} as committed, so darnit cannot tell its own change from a change in how it is stored` };
+          continue;
+        }
+        staged = done;
+      }
       const { build, tests, passed } = await checkGroup(root, commands, snap, result);
       if (!passed) continue;
       const body = prBody(grp.record, changed, opts.version ?? "dev", { build, tests, ...notRunNotes(changed, base), remaining: result.remaining, unconfirmed: result.unconfirmed });
       // GitHub refuses a longer description, and by then the branch would already be pushed.
       if (body.length > PR_BODY_LIMIT) {
-        await restore(root, snap);
         result.pr = { state: "skipped", reason: `its description would be ${body.length} characters, over GitHub's limit of ${PR_BODY_LIMIT}; nothing pushed` };
         continue;
       }
-      await g.add(root, changed);
-      await g.commit(root, result.title, `Source: ${grp.record.sources[0]!.url}`);
-      committed = true;
-      await g.push(root, branch);
+      // The commit does not depend on this check; it says why nothing was pushed.
+      const moved = await changedSince(root, kept);
+      if (moved !== undefined) {
+        const ran = (["build", "tests"] as const).filter((k) => ({ build, tests })[k]);
+        result.pr = { state: "refused", reason: `${ran.length > 0 ? `the ${ran.join(" or ")}` : "something"} changed ${moved} after darnit rewrote it` };
+          continue;
+      }
+      await g.pushStaged(at, staged!, [result.title, `Source: ${grp.record.sources[0]!.url}`], branch);
       const url = await createPr(token, repo, { title: result.title, head: branch, base: target, body });
       result.pr = { state: "opened", url, build, tests };
-      opened = true;
-    } catch (err) {
-      // Once committed, the tree already matches the branch; restoring would only block the switch back.
-      if (!committed) await restore(root, snap);
-      throw err;
     } finally {
-      await g.switchTo(root, home.ref, home.detached ? "detach" : "existing");
-      if (!opened) await g.deleteBranch(root, branch).catch(() => undefined);
+      if (staged) await rm(staged.dir, { recursive: true, force: true });
+      await restore(root, snap);
     }
   }
   return withFailures(base);
@@ -1064,7 +1115,7 @@ function recordUrl(id: string): string {
 
 export function exitCodeFor(result: FixResult): 0 | 1 {
   if (failed(result.build) || failed(result.tests)) return 1;
-  return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed" || r.pr?.state === "mismatch") ? 1 : 0;
+  return result.records.some((r) => r.pr?.state === "tests-failed" || r.pr?.state === "build-failed" || r.pr?.state === "mismatch" || r.pr?.state === "refused") ? 1 : 0;
 }
 
 function testLine(t: TestOutcome, fromPlan = false): string {
@@ -1110,6 +1161,7 @@ export function renderSummary(result: FixResult): string {
       for (const line of checkLines(result, r.pr.build, r.pr.tests)) lines.push(`  ${line}`);
     }
     else if (r.pr.state === "exists") lines.push(`= ${r.title}: pull request already open ${r.pr.url}`);
+    else if (r.pr.state === "refused") lines.push(`✗ ${r.title}: ${shown(r.pr.reason)}; no pull request was opened`);
     else lines.push(`- ${r.title}: skipped, ${r.pr.reason}`);
     // Once put back, every call site is unfixed again, not only the ones the rules missed.
     const putBack = !r.pr && result.reverted;
