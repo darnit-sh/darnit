@@ -53,7 +53,8 @@ All must be true before tagging, for a candidate and again for the final version
 ```sh
 git switch -c release/X.Y.Z
 npm version X.Y.Z-rc.N --no-git-tag-version
-# commit package.json and package-lock.json
+# in README.md's two-job workflow, change every darnit version (each darnit@ and the tarball name) to X.Y.Z-rc.N
+# commit package.json, package-lock.json and README.md
 # open the pull request, wait for CI to pass, merge it
 git switch main && git pull
 git tag vX.Y.Z-rc.N
@@ -100,12 +101,13 @@ One line per angle, all on the candidate:
 
 ## Promote
 
-The final version is the verified candidate with only the version, the changelog and, for a new
-minor, the README changed:
+The final version is the verified candidate with only the version, the changelog and the README's
+version pins changed:
 
 ```sh
 git switch -c release/X.Y.Z-final
 npm version X.Y.Z --no-git-tag-version
+# in README.md's two-job workflow, change every darnit version (each darnit@ and the tarball name) to X.Y.Z
 # in CHANGELOG.md, add `## [X.Y.Z] - <release date>` under an empty `## [Unreleased]`, point
 #   the `[Unreleased]` link at `vX.Y.Z...HEAD` and add an `[X.Y.Z]` link from the previous release
 # for a new minor (X.Y.0) before 1.0, README.md's workflow examples become
