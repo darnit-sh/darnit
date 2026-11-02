@@ -127,6 +127,22 @@ parser are marked `(parser-verified, not read by a person)` and do fail the chec
 Calls made through another provider's look-alike client are left out, and the
 report names each one.
 
+Under each retiring model it finds, `check` prints the model OpenAI recommends
+instead, or in one line why the swap needs a person (a setting the new model
+also needs, several candidates, or none named); `--json` adds it to each finding
+as `replacement`, `{ model, source }` or `{ human, source }`.
+
+```
+$ npx darnit check
+openai 2026-06-11: o3-2025-04-16, gpt-5-2025-08-07, o3-pro-2025-06-10 and 3 more shut down on 2026-12-11 (parser-verified, not read by a person)
+  app.ts:3:50  model: "o3-2025-04-16"
+    use gpt-5.6-sol instead (OpenAI's recommendation)
+  app.ts:4:50  model: "gpt-5-pro-2025-10-06"
+    not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro
+  2 call sites in 1 file
+  https://developers.openai.com/api/docs/deprecations
+```
+
 A retired or retiring model name set as a value outside the call, such as
 `DEFAULT_MODEL = "gpt-4"`, `os.getenv("MODEL", "gpt-4")` or a `model="gpt-4"`
 default, is listed after the call sites under "Possibly affected", grouped by
@@ -232,6 +248,7 @@ could not check the change) and `timedOut`. A check that timed out has
 | `--dry-run` | show the diff, write nothing (works outside git too) |
 | `--pr` | one branch, one build and test run, and one pull request per change |
 | `--prepare <dir>` | verify each change as `--pr` does, then write `<dir>/plan.json` instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md) |
+| `--publish <dir>` | open the pull requests a plan from `--prepare` holds, from a fresh clone of the plan's commit; runs none of the repository's code, and outside GitHub Actions publishes only the default branch's tip (see SECURITY.md) |
 | `--only <id>` | just this change, by its id from `check --json` (repeatable) |
 | `--test <command>` | run this instead of the detected test command |
 | `--no-test` | skip tests and the build check |
@@ -365,7 +382,12 @@ on any difference. A rule that quietly changes nothing fails the build too.
 
 Records are written by hand from vendor announcements, except model shutdowns:
 those are read from OpenAI's deprecations page by a script, confirmed by a second,
-separate parser, and stay parser-verified until a person reviews them. New candidates also
+separate parser, and stay parser-verified until a person reviews them. Their replacements
+come from the same page's tables (`npm run replacements`), read from the tree a WHATWG HTML
+parser builds, so only tables a browser shows count. It fails on a deprecation table it cannot
+read strictly and on any table row naming a model it did not read from that row. Known limits:
+model names outside the page's tables, in lists or paragraphs, are not checked, and neither is a
+table hidden by a CSS class rather than an attribute. New candidates also
 come from the vendors' own API specs: once a week a workflow
 compares each spec in `vendors.yml` with the last saved copy (using
 [oasdiff](https://github.com/oasdiff/oasdiff)) and turns deprecated or removed

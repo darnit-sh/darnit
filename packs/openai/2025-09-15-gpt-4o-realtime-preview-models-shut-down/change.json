@@ -232,5 +232,33 @@
         }
       ]
     }
+  },
+  "fix": {
+    "models": {
+      "gpt-4o-realtime-preview": {
+        "model": "gpt-realtime-1.5",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4o-realtime-preview-2025-06-03": {
+        "model": "gpt-realtime-1.5",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4o-realtime-preview-2024-12-17": {
+        "model": "gpt-realtime-1.5",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4o-mini-realtime-preview": {
+        "model": "gpt-realtime-2.1-mini",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4o-audio-preview": {
+        "model": "gpt-audio-1.5",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-4o-mini-audio-preview": {
+        "model": "gpt-audio-1.5",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      }
+    }
   }
 }
