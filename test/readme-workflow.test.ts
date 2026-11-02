@@ -49,6 +49,12 @@ describe("the README's two-job fix workflow", () => {
     expect(download?.with).toEqual({ name: "darnit-plan", path: "${{ runner.temp }}/plan" });
   });
 
+  it("names the version in package.json everywhere it names a darnit version, comments included", () => {
+    workflow();
+    const named = [...block!.matchAll(/\bdarnit[@-](\d[\w.-]*?)(?=\.tgz\b|[\s`"])/g)].map((m) => m[1]);
+    expect(named).toEqual(Array(5).fill(version));
+  });
+
   it("never checks out, installs or runs the repository in the job that holds the write token", () => {
     const { publish } = jobs();
     expect(publish.permissions).toEqual({ contents: "write", "pull-requests": "write" });
