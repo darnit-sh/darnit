@@ -1,0 +1,43 @@
+{
+  "id": "openai:2026-11-02:post-audio-translations-deprecated",
+  "title": "POST /audio/translations is deprecated",
+  "status": "candidate",
+  "vendor": "openai",
+  "announcedAt": "2026-11-02",
+  "kind": "deprecation",
+  "surface": {
+    "endpoints": [
+      "/audio/translations"
+    ],
+    "sdkSymbols": [
+      "audio.translations.create"
+    ]
+  },
+  "classification": "semantic",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/openai/openai-openapi/main/openapi.yaml",
+      "quoteId": "POST /audio/translations: endpoint deprecated"
+    }
+  ],
+  "detection": {
+    "astGrepPatterns": {
+      "js": [
+        {
+          "context": "$C.audio.translations.create($$$ARGS)",
+          "selector": "call_expression"
+        }
+      ],
+      "py": [
+        {
+          "context": "$C.audio.translations.create($$$ARGS)",
+          "selector": "call"
+        }
+      ]
+    }
+  },
+  "notes": {
+    "migration": "POST /audio/translations is deprecated; callers need the replacement endpoint.",
+    "citationQuality": "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it."
+  }
+}
