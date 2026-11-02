@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { cleanEnv, firstFive, onPath } from "./detect.js";
 import { envToken } from "./github.js";
@@ -51,8 +51,9 @@ export function ensureGitVersion(gitBin = "git", env: NodeJS.ProcessEnv = proces
 }
 
 // The git commands darnit runs that apply a clean, smudge or process filter to content: `add` and
-// `commit` and `status` and `diff` on the index side, `checkout` (discard) and `switch` on the worktree side.
-const FILTERED = new Set(["add", "status", "commit", "diff", "checkout", "switch"]);
+// `commit` and `status` and `diff` on the index side, `write-tree` when it rechecks a file it wrote in the same second,
+// `checkout` (discard) and `switch` on the worktree side.
+const FILTERED = new Set(["add", "status", "commit", "diff", "write-tree", "checkout", "switch"]);
 // More filter drivers than darnit will turn off one by one; past this it refuses rather than run them.
 const FILTER_CAP = 256;
 const FILTER_VARS = [".clean", ".smudge", ".process"];
@@ -161,17 +162,17 @@ function command(args: string[]): { name: string; remote: boolean; at: number } 
  * config. Any other transport is stopped after four times as long, which can leave its ssh child
  * running. In GitHub Actions the call also gets the token for `site` (see originAuth).
  */
-export async function git(root: string, args: string[], stall?: number, site = GITHUB): Promise<string> {
+export async function git(root: string, args: string[], stall?: number, site = GITHUB, more: { env?: NodeJS.ProcessEnv | undefined } = {}): Promise<string> {
   const { name, remote, at } = command(args);
   if (!stall && remote) throw new Error(`git ${name} reaches origin, so it needs a stall limit`);
-  const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1" };
+  const env: NodeJS.ProcessEnv = { ...(await childEnv()), GIT_LITERAL_PATHSPECS: "1", ...more.env };
   const config: [string, string][] = [];
   let timeout = 0;
   if (stall) {
     Object.assign(env, { GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
     config.push(...originAuth(site));
     // A process timeout would cut a slow but healthy HTTPS push and leave its helper pushing.
-    const urls = (await git(root, ["remote", "get-url", "--all", ...(name === "push" ? ["--push"] : []), "origin"])).split("\n").filter(Boolean);
+    const urls = (await git(root, ["remote", "get-url", "--all", ...(name === "push" ? ["--push"] : []), "origin"], undefined, site, { env: more.env })).split("\n").filter(Boolean);
     if (!urls.every((u) => /^https?:\/\//i.test(u))) timeout = stall * 4 * 1000;
   }
   // Read the repository's filters before adding config of our own to the environment.
@@ -329,6 +330,94 @@ function originAuth(site: string): [string, string][] {
 }
 
 export const push = (root: string, branch: string, site = GITHUB) => git(root, ["push", "-q", "-u", "origin", branch], 60, site);
+
+/** Pushes `ref` (`<commit>:refs/heads/<branch>`) to origin, alone, unsigned and with no push options, whatever the config says. */
+const pushRef = (root: string, ref: string, site: string, env: NodeJS.ProcessEnv) =>
+  git(root, ["-c", "push.pushOption=", "push", "-q", "--no-signed", "--no-follow-tags", "origin", ref], 60, site, { env });
+
+/** HEAD's commit, the git folder, the top level and `root`'s path under it: where darnit's commit starts, read before any of the repository's code runs. */
+export type Start = { commit: string; gitDir: string; top: string; prefix: string };
+
+export async function start(root: string): Promise<Start> {
+  const args = ["rev-parse", "--absolute-git-dir", "--show-toplevel", "--show-prefix", "--verify", "HEAD^{commit}"];
+  const [gitDir = "", top = "", prefix = "", commit = ""] = (await git(root, args, undefined, GITHUB, { env: { GIT_NO_REPLACE_OBJECTS: "1" } })).split("\n");
+  return { commit, gitDir, top, prefix };
+}
+
+/** darnit's rewrite staged in an index and work tree of its own under `dir`, and what it changes from the start, as diff-tree prints it. */
+export type Staged = { dir: string; want: string[]; paths: string[] };
+
+/** git in `dir`'s index and work tree, on the repository and commit found at the start, with replace refs off. */
+const own = (at: Start, dir: string) => ({ GIT_NO_REPLACE_OBJECTS: "1", GIT_DIR: at.gitDir, GIT_WORK_TREE: join(dir, "tree"), GIT_INDEX_FILE: join(dir, "index") });
+
+/** Entries of a raw diff (-z, --no-renames), each as `<old mode> <new mode> <new blob>\0<path>`. */
+function raw(out: string): string[] {
+  const parts = out.split("\0");
+  const entries: string[] = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const [from, mode, , blob] = parts[i]!.slice(1).split(" ");
+    entries.push(`${from} ${mode} ${blob}\0${parts[i + 1]}`);
+  }
+  return entries;
+}
+
+/**
+ * Stages `files` (path from `root`, mode, darnit's bytes, the bytes before) as `git add` stages them: in an index read
+ * from the start commit and a work tree of darnit's own, so the line-ending and encoding conversion is the repository's,
+ * with attributes from that commit and no filter driver run. Before darnit's bytes, the bytes before are staged, and
+ * must change nothing: otherwise git would not store that file as committed, and its path is returned.
+ */
+export async function stage(at: Start, files: readonly { path: string; mode: number; bytes: Buffer; was: Buffer }[]): Promise<Staged | { unlike: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "darnit-commit-"));
+  const env = own(at, dir);
+  const run = (args: string[]) => git(env.GIT_WORK_TREE, args, undefined, GITHUB, { env });
+  const paths = files.map((f) => `${at.prefix}${f.path}`);
+  const add = async (pick: (f: (typeof files)[number]) => Buffer) => {
+    for (const [i, f] of files.entries()) {
+      const path = join(env.GIT_WORK_TREE, paths[i]!);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, pick(f));
+      await chmod(path, f.mode & 0o777);
+    }
+    await run(["add", "--", ...paths]);
+  };
+  try {
+    await mkdir(env.GIT_WORK_TREE);
+    await run(["read-tree", at.commit]);
+    await add((f) => f.was);
+    const [unlike] = (await run(["diff", "--cached", "--name-only", "-z", at.commit])).split("\0").filter(Boolean);
+    if (unlike !== undefined) {
+      await rm(dir, { recursive: true, force: true });
+      return { unlike: unlike.slice(at.prefix.length) };
+    }
+    await add((f) => f.bytes);
+    return { dir, paths, want: raw(await run(["diff", "--cached", "--raw", "-z", "--no-renames", "--no-abbrev", at.commit])) };
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true });
+    throw err;
+  }
+}
+
+/**
+ * Commits `staged` on the start commit and pushes it to origin as `branch`, by its id and alone. The work tree, the
+ * repository's index and HEAD, replace refs, hooks and signing play no part. Before pushing, refuses a commit that
+ * changes anything but what was staged, or leaves a staged path unchanged.
+ */
+export async function pushStaged(at: Start, staged: Staged, message: string[], branch: string, site = GITHUB): Promise<void> {
+  const env = own(at, staged.dir);
+  const run = async (args: string[]) => (await git(env.GIT_WORK_TREE, args, undefined, site, { env })).trim();
+  try {
+    const email = await run(["config", "user.email"]).catch(() => "");
+    const identity = email ? [] : ["-c", "user.name=darnit", "-c", "user.email=darnit@users.noreply.github.com"];
+    const commit = await run([...identity, "commit-tree", await run(["write-tree"]), "-p", at.commit, "--no-gpg-sign", ...message.flatMap((m) => ["-m", m])]);
+    const got = raw(await git(env.GIT_WORK_TREE, ["diff-tree", "-r", "-z", "--no-renames", at.commit, commit], undefined, site, { env }));
+    const exact = got.length === staged.paths.length && got.every((e, i) => e === staged.want[i]);
+    if (!exact) throw new Error(`the commit darnit built for ${branch} changes more than its rewrite; nothing pushed`);
+    await pushRef(env.GIT_WORK_TREE, `${commit}:refs/heads/${branch}`, site, env);
+  } finally {
+    await rm(staged.dir, { recursive: true, force: true });
+  }
+}
 
 export const diff = (root: string, files: readonly string[]) => git(root, ["--no-pager", "diff", "--color=never", "--", ...files]);
 
