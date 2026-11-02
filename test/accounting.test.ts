@@ -21,9 +21,8 @@ import {
 } from "../src/corpus/accounting.js";
 import { deriveCandidates } from "../src/corpus/candidates.js";
 import { changelog } from "../src/corpus/oasdiff.js";
-import { retiringModels } from "../src/corpus/readme.js";
 import { parseSpec, type Spec } from "../src/corpus/spec.js";
-import { loadRecords, PACKS_DIR } from "../src/records/load.js";
+import { loadRecords } from "../src/records/load.js";
 import { parseChangeRecord } from "../src/records/schema.js";
 import { cpuTime } from "./helpers.js";
 
@@ -604,7 +603,7 @@ describe("npm run corpus", () => {
         (err: { code?: number }) => err.code ?? 1,
       );
       const file = (name: string) => readFile(join(dir, "corpus", "openai", name), "utf8");
-      return { run, removals: await file("removals.json"), spec: await file("openapi.yaml"), readme: await readFile(join(dir, "README.md"), "utf8").catch(() => undefined) };
+      return { run, removals: await file("removals.json"), spec: await file("openapi.yaml") };
     } finally {
       server.close();
       await rm(dir, { recursive: true, force: true });
@@ -620,17 +619,6 @@ describe("npm run corpus", () => {
     const day = log[1]!.observedAt;
     expect(removalItems(log.slice(1)).map((i) => i.key)).toEqual([`${day} POST /speak request-property-enum-value-removed \`aube\` \`voice\``, `${day} api-schema-removed \`Gone\``]);
     expect(out.spec).toBe(after);
-  });
-
-  it("sets the README's counts of change records and retiring models from the packs, so a new record updates them", async () => {
-    const out = await refresh(async (dir) => {
-      await cp(PACKS_DIR, join(dir, "../../packs"), { recursive: true });
-      await writeFile(join(dir, "../../README.md"), "against 1 change records.\n| OpenAI: 1 retiring models listed |\nagainst 1 change records.\n");
-    });
-    const records = (await loadRecords()).map((l) => l.record);
-    expect(out.run).toBe(0);
-    expect(out.readme).toBe(`against ${records.length} change records.\n| OpenAI: ${retiringModels(records)} retiring models listed |\nagainst ${records.length} change records.\n`);
-    expect(retiringModels(records)).toBeGreaterThan(1);
   });
 
   it("keeps the old spec when the log cannot be read, so the removals are taken again next run", async () => {

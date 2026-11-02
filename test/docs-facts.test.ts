@@ -11,8 +11,8 @@ import { MAX_FILE_BYTES } from "../src/detect.js";
 import { exitCodeFor, type FixResult } from "../src/fix.js";
 import { MIN_GIT } from "../src/git.js";
 import { init, pinned, WORKFLOW } from "../src/init.js";
-import { retiringModels } from "../src/corpus/readme.js";
 import { loadRecords } from "../src/records/load.js";
+import { modelNames } from "../src/scan/astgrep.js";
 import { LONG_LINE } from "../src/scan/mentions.js";
 import { TIME_LIMIT_MINUTES } from "../src/tests.js";
 import { BUDGET_MS } from "../src/update.js";
@@ -83,7 +83,7 @@ const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) 
   {
     in: ["README.md"],
     at: /OpenAI: (\d+) retiring models/,
-    is: async () => [retiringModels((await loadRecords()).map((l) => l.record))],
+    is: async () => [new Set((await loadRecords()).flatMap(({ record }) => Object.values(record.detection.astGrepPatterns).flatMap(modelNames))).size],
   },
   { in: ["README.md"], at: /line over (\S+) characters/, is: () => [LONG_LINE.toLocaleString("en-US")] },
   { in: ["README.md"], at: /files over (\S+) MB/, is: () => [MAX_FILE_BYTES / 1024 / 1024] },

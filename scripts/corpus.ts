@@ -6,7 +6,6 @@ import { parse as parseYaml } from "yaml";
 import { appendRemovals, removalsFrom, type Removal } from "../src/corpus/accounting.js";
 import { deriveCandidates, writeCandidate, type VendorConfig } from "../src/corpus/candidates.js";
 import { changelog } from "../src/corpus/oasdiff.js";
-import { readmeCounts } from "../src/corpus/readme.js";
 import { prose } from "../src/fix.js";
 import { parseSpec, sha256 } from "../src/corpus/spec.js";
 import { loadRecords } from "../src/records/load.js";
@@ -15,9 +14,8 @@ import { loadRecords } from "../src/records/load.js";
 // candidate packs for anything users would have to change, and appends every removal to
 // corpus/<vendor>/removals.json so npm run accounting can hold each one to account. --dry-run reports
 // without writing. First run for a vendor only stores the baseline. The output is the
-// pull request body, so text that came from the spec goes through prose(). README.md's counts of
-// change records and retiring models are set from the packs. --root <dir> reads vendors.yml and
-// writes corpus/, packs/ and README.md under another folder.
+// pull request body, so text that came from the spec goes through prose(). --root <dir> reads
+// vendors.yml and writes corpus/ and packs/ under another folder.
 
 const at = process.argv.indexOf("--root");
 const ROOT = at > 0 ? resolve(process.argv[at + 1] ?? "") : fileURLToPath(new URL("../", import.meta.url));
@@ -76,9 +74,4 @@ for (const [vendor, config] of Object.entries(vendors)) {
     await writeFile(specPath, text);
     await writeFile(snapshotPath, `${JSON.stringify({ source: config.spec, sha256: sha, fetchedAt: today }, null, 2)}\n`);
   }
-}
-
-const readme = await readFile(join(ROOT, "README.md"), "utf8").catch(() => undefined);
-if (!dryRun && readme !== undefined) {
-  await writeFile(join(ROOT, "README.md"), readmeCounts(readme, (await loadRecords(join(ROOT, "packs"))).map((l) => l.record)));
 }
