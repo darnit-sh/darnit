@@ -13,7 +13,7 @@ import { compilePatterns, findMatches, grammarFor } from "../src/scan/astgrep.js
 import { SDK_CLASSES } from "../src/scan/clients.js";
 import { findModelValues, inside, isTestPath } from "../src/scan/values.js";
 import { findMentions } from "../src/scan/mentions.js";
-import { cpuTime } from "./helpers.js";
+import { cpuTime, slowdown } from "./helpers.js";
 
 vi.mock("@ast-grep/napi", async (importOriginal) => {
   const real = await importOriginal<typeof import("@ast-grep/napi")>();
@@ -1525,6 +1525,16 @@ describe("check parses each file once", () => {
   });
 });
 
+/** Hits in `text` checked as `name`, which must take under `bound` times the CPU time of checking plain code of its size and language. */
+async function quickly(name: string, text: string, bound = 5): Promise<Hit[]> {
+  const line = name.endsWith(".py") ? "a = f(b, c)\n" : "const a = f(b, c);\n";
+  const plain = await scratch({ [name]: line.repeat(Math.ceil(text.length / line.length)) });
+  const dir = await scratch({ [name]: text });
+  let hits: Hit[] = [];
+  expect(await slowdown(async () => ({ hits } = await checkReport(dir)), () => checkReport(plain), bound)).toBeLessThan(bound);
+  return hits;
+}
+
 describe("check on a repository built to slow it down", () => {
   const maxTokens = (hits: Hit[]) => locations(hits.filter((h) => h.record.id.includes("max-tokens")));
   const py = (client: string) => `${client}\nclient.chat.completions.create(model="x", max_tokens=5)\n`;
@@ -1534,27 +1544,22 @@ describe("check on a repository built to slow it down", () => {
     ["an import padded with thousands of spaces", "app.js", `import {${" ".repeat(3000)}OpenAI } from "openai";\nconst client = new OpenAI();\nclient.chat.completions.create({ max_tokens: 5 });\n`, 3],
     ["a function with thousands of blank lines", "app.py", py(`from groq import Groq\ndef setup():\n    client = Groq()${"\n".repeat(150_000)}    return client`), 150_004],
   ])("finishes quickly on %s", async (_, name, text, line) => {
-    const dir = await scratch({ [name]: text });
-    let hits: Hit[] = [];
-    expect(await cpuTime(async () => (hits = await check(dir)), 3, 2000)).toBeLessThan(2000);
-    expect(maxTokens(hits)).toEqual([`${name}:${line}`]);
+    expect(maxTokens(await quickly(name, text))).toEqual([`${name}:${line}`]);
   });
 
   const times = (n: number, line: (i: number) => string) => Array.from({ length: n }, (_, i) => line(i)).join("");
   const call = 'client.chat.completions.create(model="x", max_tokens=5)\n';
 
-  // Each takes 8 seconds or more when tracing reads every assignment for every call.
+  // Each takes 8 seconds or more when tracing reads every assignment for every call: hundreds of times plain code, and
+  // over 4 times for the clients, whose long strings make the file large for its code.
   it.each([
-    ["thousands of clients, each with its own call", "app.js", `import OpenAI from "openai";\n${times(3000, (i) => `const c${i} = new OpenAI({ organization: "${"x".repeat(200)}" });\nc${i}.chat.completions.create({ max_tokens: 5 });\n`)}`, 3000, 3000],
-    ["a thousand calls on a client set a thousand times", "app.py", `from openai import OpenAI\n${times(1000, () => "client = OpenAI()\n")}${times(1000, () => call)}`, 1000, 2000],
-    ["a thousand calls and a thousand functions setting the client", "app.py", `from openai import OpenAI\n${times(1000, (i) => `def f${i}():\n    client = OpenAI()\n`)}${times(1000, () => call)}`, 1000, 2000],
-    ["an assignment chained thousands of names long", "app.py", py(`from openai import OpenAI\n${times(4000, (i) => `a${i} = `)}1\nclient = OpenAI()`), 1, 2000],
-    ["calls on clients whose address is set in 50 nested blocks", "app.js", `import OpenAI from "openai";\n${times(50, (i) => `{\nconst baseURL = "http://localhost:${i}";\nvar client = new OpenAI({ baseURL });\n`)}${times(20, () => "client.chat.completions.create({ max_tokens: 5 });\n")}${"}\n".repeat(50)}`, 20, 2000],
-  ])("finishes quickly on %s", { timeout: 300_000 }, async (_, name, text, count, budget) => {
-    const dir = await scratch({ [name]: text });
-    let hits: Hit[] = [];
-    expect(await cpuTime(async () => (hits = await check(dir)), 3, budget)).toBeLessThan(budget);
-    expect(maxTokens(hits)).toHaveLength(count);
+    ["thousands of clients, each with its own call", "app.js", `import OpenAI from "openai";\n${times(3000, (i) => `const c${i} = new OpenAI({ organization: "${"x".repeat(200)}" });\nc${i}.chat.completions.create({ max_tokens: 5 });\n`)}`, 3000, 2],
+    ["a thousand calls on a client set a thousand times", "app.py", `from openai import OpenAI\n${times(1000, () => "client = OpenAI()\n")}${times(1000, () => call)}`, 1000, 5],
+    ["a thousand calls and a thousand functions setting the client", "app.py", `from openai import OpenAI\n${times(1000, (i) => `def f${i}():\n    client = OpenAI()\n`)}${times(1000, () => call)}`, 1000, 5],
+    ["an assignment chained thousands of names long", "app.py", py(`from openai import OpenAI\n${times(4000, (i) => `a${i} = `)}1\nclient = OpenAI()`), 1, 5],
+    ["calls on clients whose address is set in 50 nested blocks", "app.js", `import OpenAI from "openai";\n${times(50, (i) => `{\nconst baseURL = "http://localhost:${i}";\nvar client = new OpenAI({ baseURL });\n`)}${times(20, () => "client.chat.completions.create({ max_tokens: 5 });\n")}${"}\n".repeat(50)}`, 20, 5],
+  ])("finishes quickly on %s", { timeout: 300_000 }, async (_, name, text, count, bound) => {
+    expect(maxTokens(await quickly(name, text, bound))).toHaveLength(count);
   });
 
   it("checks thousands of realtime class calls, and as many on a look-alike class, within a CPU budget", { timeout: 60_000 }, async () => {
@@ -1563,11 +1568,7 @@ describe("check on a repository built to slow it down", () => {
       'import OpenAI from "openai";\nimport { OpenAIRealtimeWS } from "openai/realtime/ws";\nimport { OpenAIRealtimeWebSocket } from "other";\n',
       times(3000, (i) => `const c${i} = new OpenAI();\n${create("OpenAIRealtimeWS", `c${i}`)}${create("OpenAIRealtimeWebSocket", `c${i}`)}`),
     ].join("");
-    const dir = await scratch({ "app.ts": text });
-    let hits: Hit[] = [];
-    // About 0.9 seconds on a laptop.
-    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 5000)).toBeLessThan(5000);
-    expect(new Set(hits.map((h) => h.line)).size).toBe(3000);
+    expect(new Set((await quickly("app.ts", text)).map((h) => h.line)).size).toBe(3000);
   });
 
   it("checks a class name imported from thousands of packages, with as many calls, within a CPU budget", { timeout: 60_000 }, async () => {
@@ -1575,11 +1576,8 @@ describe("check on a repository built to slow it down", () => {
       times(16000, (i) => `import { OpenAIRealtimeWS } from "pkg${i}/realtime/ws";\n`),
       times(16000, () => 'OpenAIRealtimeWS.create(c, { model: "gpt-4o-realtime-preview-2024-10-01" });\n'),
     ].join("");
-    const dir = await scratch({ "app.ts": text });
-    let hits: Hit[] = [];
-    // About 2 seconds on a laptop; 16 when each call walked every import of the name.
-    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 8000)).toBeLessThan(8000);
-    expect(hits).toEqual([]);
+    // About as long as plain code; far longer when each call walked every import of the name.
+    expect(await quickly("app.ts", text, 3)).toEqual([]);
   });
 
   it("traces each call through the assignments it can see, not every one of the name in the file", async () => {
@@ -1600,10 +1598,7 @@ describe("check on a repository built to slow it down", () => {
     ["SDK calls nested 2000 deep", "app.py", `from openai import OpenAI\nclient = OpenAI()\nx = ${"client.chat.completions.create(max_tokens=5, x=".repeat(2000)}1${")".repeat(2000)}\n`, 2000],
     ["calls in functions nested 2000 deep", "app.js", `import OpenAI from "openai";\nconst client = new OpenAI();\n${times(2000, (i) => `function f${i}(a) {\n  client.chat.completions.create({ max_tokens: 5 });\n`)}${"}\n".repeat(2000)}`, 2000],
   ])("finishes quickly on %s", { timeout: 300_000 }, async (_, name, text, count) => {
-    const dir = await scratch({ [name]: text });
-    let hits: Hit[] = [];
-    expect(await cpuTime(async () => (hits = await check(dir)), 3, 5000)).toBeLessThan(5000);
-    expect(maxTokens(hits)).toHaveLength(count);
+    expect(maxTokens(await quickly(name, text))).toHaveLength(count);
   });
 
   const request = (args: string) => `requests.post("https://api.openai.com/v1/chat/completions", ${args})`;
@@ -1613,10 +1608,7 @@ describe("check on a repository built to slow it down", () => {
     ["a request body with thousands of quoted keys", `import requests\n${request(`json={${'"max_tokens": 5, '.repeat(2000)}}`)}\n`, 2000],
     ["a request inside calls nested 1500 deep", `import requests\nx = ${"f(max_tokens=5, ".repeat(1500)}${request("max_tokens=5")}${")".repeat(1500)}\n`, 1],
   ])("finishes quickly on %s", async (_, text, count) => {
-    const dir = await scratch({ "app.py": text });
-    let hits: Hit[] = [];
-    expect(await cpuTime(async () => (hits = await check(dir)), 3, 2000)).toBeLessThan(2000);
-    expect(maxTokens(hits)).toHaveLength(count);
+    expect(maxTokens(await quickly("app.py", text))).toHaveLength(count);
   });
 
   it.each([

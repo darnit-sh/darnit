@@ -24,7 +24,7 @@ import { changelog } from "../src/corpus/oasdiff.js";
 import { parseSpec, type Spec } from "../src/corpus/spec.js";
 import { loadRecords } from "../src/records/load.js";
 import { parseChangeRecord } from "../src/records/schema.js";
-import { cpuTime } from "./helpers.js";
+import { slowdown } from "./helpers.js";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const tsx = join(ROOT, "node_modules", ".bin", "tsx");
@@ -554,10 +554,10 @@ describe("npm run accounting", () => {
     const schemas: Record<string, unknown> = { All: { properties: Object.fromEntries(Array.from({ length: 140 }, (_, i) => [`s${i}`, { $ref: `#/components/schemas/S${i}` }])) } };
     for (let i = 0; i < 140; i++) schemas[`S${i}`] = { properties: { model: enumOf } };
     const spec = { paths: Object.fromEntries(paths.map((p) => [p, { post: body("All") }])), components: { schemas } };
-    const run = () => account({ vendor: "openai", spec, removals: [], records, notCovered: [] });
-    expect(run().covered.size).toBe(20020);
-    const ms = await cpuTime(run, 3, 1000);
-    expect(ms).toBeLessThan(1000);
+    const run = (these: typeof records) => () => account({ vendor: "openai", spec, removals: [], records: these, notCovered: [] });
+    expect(run(records)().covered.size).toBe(20020);
+    // About 4 times accounting with no records; over 13 when each value asked whether a record names each operation again.
+    expect(await slowdown(run(records), run([]), 6)).toBeLessThan(6);
   });
 
   it("accounts for a large spec within its time budget", async () => {
@@ -569,12 +569,15 @@ describe("npm run accounting", () => {
       properties.model = { type: "string", enum: ["a", "b"], "x-openai-enum-deprecations": { a: { message: "" } } };
       schemas[`S${i}`] = { properties };
     }
-    const paths: Record<string, unknown> = {};
-    for (let i = 0; i < 500; i++) paths[`/p${i}`] = { post: body(`S${i * 4}`) };
     const records = (await loadRecords()).map((l) => l.record);
-    const spec = { paths, components: { schemas } };
-    const ms = await cpuTime(() => account({ vendor: "openai", spec, removals: [], records, notCovered: [] }), 3, 1500);
-    expect(ms).toBeLessThan(1500);
+    const run = (n: number) => {
+      const paths: Record<string, unknown> = {};
+      for (let i = 0; i < n; i++) paths[`/p${i}`] = { post: body(`S${i * 4}`) };
+      const spec = { paths, components: { schemas } };
+      return () => account({ vendor: "openai", spec, removals: [], records, notCovered: [] });
+    };
+    // About twice what one operation costs; over 70 times when each operation read every schema again.
+    expect(await slowdown(run(500), run(1), 6)).toBeLessThan(6);
   });
 });
 

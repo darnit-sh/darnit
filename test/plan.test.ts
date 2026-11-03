@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { git, patch as gitPatch } from "../src/git.js";
 import { CAPS, parsePlan, serializePlan, type Plan } from "../src/plan.js";
 import { loadRecords } from "../src/records/load.js";
-import { cpuTime } from "./helpers.js";
+import { slowdown } from "./helpers.js";
 
 const ids = new Set((await loadRecords()).map((l) => l.record.id));
 const ID = [...ids][0]!;
@@ -130,22 +130,28 @@ describe("parsePlan", () => {
   });
 
   it("stays fast on the largest plan it accepts", async () => {
-    const files = Array.from({ length: CAPS.files }, (_, i) => `src/${"d".repeat(150)}/f${i}.js`);
     const one = (f: string) => PATCH.replaceAll("app.py", f).replace("-max_tokens=5\n", `-${"x".repeat(200)}\n`);
-    const patch = files.map(one).join("");
-    const groups = [...ids].map((id) => ({ ...valid().groups[0]!, id, files, patch }));
-    let plan = text({ ...valid(), groups });
-    while (Buffer.byteLength(plan) > CAPS.plan) plan = text({ ...valid(), groups: (groups.pop(), groups) });
+    const planOf = (n: number, count = ids.size) => {
+      const files = Array.from({ length: n }, (_, i) => `src/${"d".repeat(150)}/f${i}.js`);
+      const groups = [...ids].slice(0, count).map((id) => ({ ...valid().groups[0]!, id, files, patch: files.map(one).join("") }));
+      let plan = text({ ...valid(), groups });
+      while (Buffer.byteLength(plan) > CAPS.plan) plan = text({ ...valid(), groups: (groups.pop(), groups) });
+      return { plan, count: groups.length };
+    };
+    const { plan, count } = planOf(CAPS.files);
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan / 2);
-    expect(await cpuTime(() => parsePlan(plan, ids), 3, 200)).toBeLessThan(200);
+    // About three times what as many groups of an eighth of the files take: past eight, each file costs more the more there are.
+    const small = planOf(CAPS.files / 8, count).plan;
+    expect(await slowdown(() => parsePlan(plan, ids), () => parsePlan(small, ids), 8)).toBeLessThan(8);
   });
 
   it("stays fast on paths of thousands of parts", async () => {
-    const deep = Array(2048).fill("a").join("/");
-    const plan = text({ ...valid(), groups: [...ids].slice(0, 2).map((id) => ({ ...valid().groups[0]!, id, files: Array(CAPS.files).fill(deep) })) });
+    const planOf = (path: string) => text({ ...valid(), groups: [...ids].slice(0, 2).map((id) => ({ ...valid().groups[0]!, id, files: Array(CAPS.files).fill(path) })) });
+    const plan = planOf(Array(2048).fill("a").join("/"));
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan * 0.95);
-    const reject = () => expect(() => parsePlan(plan, ids)).toThrow(/patch is not a git diff/);
-    expect(await cpuTime(reject, 3, 200)).toBeLessThan(200);
+    const reject = (p: string) => () => expect(() => parsePlan(p, ids)).toThrow(/patch is not a git diff/);
+    // About what paths of one part as long cost.
+    expect(await slowdown(reject(plan), reject(planOf("a".repeat(4095))), 4)).toBeLessThan(4);
   });
 
   it("accepts git's own patches for names it quotes or ends with a tab, and for binary files", async () => {
