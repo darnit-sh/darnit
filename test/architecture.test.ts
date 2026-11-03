@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildGraph, cycles, readSources, type Graph, type Sources } from "./import-graph.js";
+import { buildGraph, cycles, importsOf, readSources, type ImportGraph, type Sources } from "./import-graph.js";
 
 /**
  * The module map: each group of files sits on a floor and imports only from lower floors. An island
@@ -76,8 +76,9 @@ function misplaced(sources: Sources): string[] {
 }
 
 /** Each import and cycle that breaks the module map, keyed as its allowlist line would name it. */
-function breaches(graph: Graph): Map<string, string> {
+function breaches({ graph, computed }: ImportGraph): Map<string, string> {
   const broken = new Map<string, string>();
+  for (const key of computed) broken.set(key, "an import() or require() of a computed path, which this test cannot place");
   for (const [file, targets] of graph) {
     const from = placeOf(file);
     for (const target of targets) {
@@ -132,6 +133,16 @@ const FORMS: [string, (spec: string) => string][] = [
   ["an export type from", (s) => `export type { X } from "${s}";`],
   ["a dynamic import()", (s) => `const m = await import("${s}");`],
   ["a dynamic import() of a plain template", (s) => `const m = await import(\`${s}\`);`],
+  ["an export star as a namespace", (s) => `export * as ns from "${s}";`],
+  ["an export type star as a namespace", (s) => `export type * as ns from "${s}";`],
+  ["an export star as default", (s) => `export * as default from "${s}";`],
+  ["an import equals require", (s) => `import x = require("${s}");`],
+  ["a require() call", (s) => `const m = require("${s}");`],
+  ["a createRequire alias", (s) => `const load = createRequire(import.meta.url);\nconst m = load("${s}");`],
+  ["a createRequire call", (s) => `const m = createRequire(import.meta.url)("${s}");`],
+  ["an import() type", (s) => `type M = typeof import("${s}");`],
+  ["a reference path", (s) => `/// <reference path="${s}" />`],
+  ["a module augmentation", (s) => `declare module "${s}" {}`],
 ];
 
 describe("an import against the module map fails", () => {
@@ -205,11 +216,23 @@ describe("an import across islands and scripts/ fails", () => {
   });
 
   it("an import it cannot follow", () => {
-    expect(withLine("src/refusal.ts", "const m = await import(`./${name}.js`);")).toEqual(["src/refusal.ts has an import() of a computed path, which this test cannot place"]);
-    expect(withLine("src/refusal.ts", "const m = await import(name);")).toEqual(["src/refusal.ts has an import() of a computed path, which this test cannot place"]);
+    const computed = (call: string) => `src/refusal.ts -> ${call}: an import() or require() of a computed path, which this test cannot place`;
+    expect(withLine("src/refusal.ts", "const m = await import(`./${name}.js`);")).toEqual([computed("import(`./${name}.js`)")]);
+    expect(withLine("src/refusal.ts", "const m = await import(name);")).toEqual([computed("import(name)")]);
+    expect(withLine("src/refusal.ts", "const m = require(name);")).toEqual([computed("require(name)")]);
+    expect(withLine("src/refusal.ts", "const load = createRequire(import.meta.url);\nload(dir + name);")).toEqual([computed("load(dir+name)")]);
+    expect(withLine("src/refusal.ts", "createRequire(import.meta.url)(name);")).toEqual([computed("createRequire(import.meta.url)(name)")]);
     expect(withLine("src/refusal.ts", `import "./missing.js";`)).toEqual([`src/refusal.ts imports "./missing.js", which is not a file under src/ or scripts/`]);
+    expect(withLine("src/refusal.ts", `import "./missing.json";`)).toEqual([`src/refusal.ts imports "./missing.json", which is not a file under src/ or scripts/`]);
   });
 
+  it("the computed require() in the rule applier, which the allowlist names", () => {
+    const apply = sources.get("src/packs/apply.ts")!;
+    expect(importsOf("src/packs/apply.ts", apply).computed).toEqual(["require(pkgPath)"]);
+    expect(check(new Map(sources).set("src/packs/apply.ts", apply.replace("require(pkgPath)", "JSON.parse(pkgPath)")), allowlist)).toEqual([
+      `${ALLOWLIST}: "src/packs/apply.ts -> require(pkgPath)" no longer breaks the module map; remove its line`,
+    ]);
+  });
 });
 
 describe("what does not count as an import", () => {
@@ -220,6 +243,11 @@ describe("what does not count as an import", () => {
       `const s = 'import { x } from "./check.js"';`,
       `import ts from "typescript";`,
       `import { join } from "node:path";`,
+      `const r = /import\\("\\.\\/check\\.js"\\)|require\\("\\.\\/check\\.js"\\)/;`,
+      "const t = `import(\"./check.js\")`;",
+      `const p = require.resolve("./check.js");`,
+      `const q = loader.require("./check.js");`,
+      `const { version } = createRequire(import.meta.url)("../package.json");`,
     ];
     expect(withLine("src/refusal.ts", lookAlikes.join("\n"))).toEqual([]);
   });

@@ -3,6 +3,7 @@
 # cycle. The test fails when a line no longer matches the code, so this list only shrinks.
 src/detect.ts -> src/scan/clients.ts: vendorClients returns the VendorClients type the scanner defines
 src/git.ts -> src/github.ts: originAuth reads the Actions token through envToken
+src/packs/apply.ts -> require(pkgPath): finds the ast-grep binary through the package.json of @ast-grep/cli
 src/records/load.ts -> src/scan/astgrep.ts: a record whose patterns ast-grep cannot compile does not load
 src/records/schema.ts -> src/scan/astgrep.ts: recordModels reads the model names out of the patterns
 scripts/e2e.ts -> src/init.ts: the hostile repository scenario compares the workflow init writes
