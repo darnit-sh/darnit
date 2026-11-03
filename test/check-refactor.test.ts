@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { format } from "prettier";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const script = resolve("scripts/check-refactor.sh");
@@ -1008,7 +1009,7 @@ describe("the style rule", () => {
   });
 
   it("fails a change that is not the formatter's output, and names each file that differs", async () => {
-    const flipped = await style([{ write: "src/a.ts", text: tidy }, { write: "test/a.test.ts", text: test.tidy.replace("<", "<=") }]);
+    const flipped = await style([{ write: "src/a.ts", text: tidy }, { write: "test/a.test.ts", text: test.tidy.replace("a < b", "a <= b") }]);
     expect(flipped.status).toBe(1);
     expect(flipped.out).toContain("**(b) failed:**");
     expect(flipped.out).toContain("- test/a.test.ts (differs from the formatter's output)\n");
@@ -1028,9 +1029,6 @@ describe("the style rule", () => {
       [{ move: ["src/a.ts", "src/c.ts"] }, "src/c.ts"],
       [{ write: "package.json", text: bumped }, "package.json"],
       [{ write: "package-lock.json", text: lock() + "\n" }, "package-lock.json"],
-      [{ write: ".prettierrc.json", text: '{ "printWidth": 80 }\n' }, ".prettierrc.json"],
-      [{ write: ".prettierignore", text: "*\n" }, ".prettierignore"],
-      [{ write: "prettier.config.js", text: "export default {};\n" }, "prettier.config.js"],
       [{ write: "test/golden/repo.txt" }, "test/golden/repo.txt"],
       [{ write: ".github/workflows/ci.yml" }, ".github/workflows/ci.yml"],
       [{ write: "README.md" }, "README.md"],
@@ -1042,6 +1040,106 @@ describe("the style rule", () => {
       expect(r.out).toContain("**(a) failed:**");
       expect(r.out).toContain(`- ${shown}\n`);
     }
+  });
+
+  it("fails a change that rewrites what a tagged template holds, whatever base's config says", async () => {
+    const md = "export const footer = md`* checked by darnit\n*    run it`;\n";
+    const rewritten = "export const footer = md`\n- checked by darnit\n- run it\n`;\n";
+    for (const config of [formatter.config, '{ "printWidth": 120 }\n']) {
+      const r = await style([{ write: "src/a.ts", text: rewritten }], [...landed(), { write: ".prettierrc.json", text: config }, { write: "src/a.ts", text: md }]);
+      expect(r.status, config).toBe(1);
+      expect(r.out).toContain("- src/a.ts (differs from the formatter's output)\n");
+    }
+    // npm run format reads the config as it is, so the config itself keeps templates as they are.
+    expect(await format(md, { ...(JSON.parse(formatter.config) as object), filepath: "src/a.ts" })).toBe(md);
+  });
+
+  // A parser plugin that turns `i < n` into `i <= n` before printing.
+  const plugin = `const { parsers } = require(${JSON.stringify(resolve("node_modules/prettier/plugins/typescript.js"))});
+module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (t) => t.replace("i < n", "i <= n") } } };
+`;
+  const plugged = '{ "printWidth": 120, "plugins": ["./scripts/fmt.cjs"] }\n';
+
+  it("lets only a ci change with a reason touch formatter config, wherever it lives", async () => {
+    const reason = "Proof: none, sets up the formatter for the next change\n";
+    const planted = await repo([{ write: "scripts/fmt.cjs", text: plugin }, { write: ".prettierrc.json", text: plugged }], landed());
+    for (const type of ["chore", "docs", "build", "test", "fix", "feat", "refactor", "perf", "style"]) {
+      const r = await check(planted, `${type}: x`, reason);
+      expect(r.status, type).toBe(1);
+      expect(r.out, type).toContain("- .prettierrc.json\n");
+    }
+    expect((await check(planted, "ci: x")).status).toBe(1);
+    const ci = await check(planted, "ci: x", reason);
+    expect(ci.status).toBe(0);
+    expect(ci.summary).toContain("- .prettierrc.json\n");
+    const key = withDeps({ devDependencies: { prettier: formatter.version }, prettier: { plugins: ["./scripts/fmt.cjs"] } });
+    for (const [edit, shown] of [
+      [{ write: "package.json", text: key }, 'package.json "prettier"'],
+      [{ write: "src/package.json", text: '{ "prettier": { "plugins": ["./fmt.cjs"] } }\n' }, 'src/package.json "prettier"'],
+      [{ write: ".editorconfig", text: "root = true\n" }, ".editorconfig"],
+      [{ write: ".prettierignore", text: "*\n" }, ".prettierignore"],
+      [{ write: "prettier.config.cjs", text: "module.exports = {};\n" }, "prettier.config.cjs"],
+      [{ write: "src/.prettierrc.yaml", text: "printWidth: 80\n" }, "src/.prettierrc.yaml"],
+      [{ write: "PACKAGE.YAML", text: "prettier: {}\n" }, "PACKAGE.YAML"],
+      [{ remove: ".prettierrc.json" }, ".prettierrc.json"],
+    ] as [Edit, string][]) {
+      const made = await repo([edit], landed());
+      for (const type of ["chore", "docs", "build"]) {
+        const r = await check(made, `${type}: x`);
+        expect(r.status, `${type} ${shown}`).toBe(1);
+        expect(r.out, `${type} ${shown}`).toContain(`- ${shown}\n`);
+      }
+    }
+    const fixture = await rule("test: x", [{ write: "test/e2e/s/package.json", text: '{ "name": "s" }\n' }], "", {}, landed());
+    expect(fixture.status).toBe(0);
+  });
+
+  it("formats only with plain layout options from base's root .prettierrc.json, read as JSON", async () => {
+    const loop = "for (let i = 0; i < n; i++) {}\n";
+    const smuggled = await style([{ write: "src/a.ts", text: loop.replace("i < n", "i <= n") }], [
+      ...landed(),
+      { write: "scripts/fmt.cjs", text: plugin },
+      { write: ".prettierrc.json", text: plugged },
+      { write: "src/a.ts", text: loop },
+    ]);
+    expect(smuggled.status).toBe(1);
+    expect(smuggled.out).toContain('- .prettierrc.json in base sets "plugins", not a plain layout option\n');
+    for (const [config, why] of [
+      ['{ "overrides": [] }', 'sets "overrides", not a plain layout option'],
+      ['{ "parser": "babel" }', 'sets "parser", not a plain layout option'],
+      ['{ "embeddedLanguageFormatting": "auto" }', 'sets "embeddedLanguageFormatting" to "auto", where only "off" keeps templates as they are'],
+      ['{ "printWidth": [120] }', 'sets "printWidth" to [120], not a plain value'],
+      ["[]", "is not a JSON object"],
+      ["printWidth: 120", "is not a JSON object"],
+    ] as [string, string][]) {
+      const r = await style([{ write: "src/a.ts", text: tidy }], [...landed(), { write: ".prettierrc.json", text: config }]);
+      expect(r.status, config).toBe(1);
+      expect(r.out, config).toContain(`- .prettierrc.json in base ${why}\n`);
+    }
+  });
+
+  it("refuses when base has any other formatter config prettier would read for a changed file", async () => {
+    const loaded = join(tmpdir(), `darnit-style-loaded-${process.pid}`);
+    tempDirs.push(loaded);
+    const js = `require("node:fs").writeFileSync(${JSON.stringify(loaded)}, "");\nmodule.exports = { printWidth: 120 };\n`;
+    for (const [extra, shown] of [
+      [[{ write: "src/.prettierrc", text: '{ "printWidth": 120 }\n' }], "src/.prettierrc"],
+      [[{ write: ".editorconfig", text: "root = true\n[*]\nindent_size = 2\n" }], ".editorconfig"],
+      [[{ write: "package.json", text: withDeps({ devDependencies: { prettier: formatter.version }, prettier: { printWidth: 120 } }) }], "package.json"],
+      [[{ write: "src/package.yaml", text: "name: a\n" }], "src/package.yaml"],
+      [[{ write: "src/package.json", text: "{\n" }], "src/package.json"],
+      [[{ remove: ".prettierrc.json" }, { write: "prettier.config.cjs", text: js }], "prettier.config.cjs"],
+    ] as [Edit[], string][]) {
+      const r = await style([{ write: "src/a.ts", text: tidy }], [...landed(), ...extra]);
+      expect(r.status, shown).toBe(1);
+      expect(r.out, shown).toContain(`- ${shown} in base: only base's root .prettierrc.json may set options\n`);
+    }
+    expect(await readFile(loaded).then(() => "loaded", () => "never loaded")).toBe("never loaded");
+    const none = await style([{ write: "src/a.ts", text: tidy }], [...landed().filter((e) => e.write !== ".prettierrc.json")]);
+    expect(none.out).toContain("- .prettierrc.json in base is missing\n");
+    // Config elsewhere, where prettier would not read it for the changed files, does not count.
+    const elsewhere = await style([{ write: "src/a.ts", text: tidy }], [...landed(), { write: "test/e2e/s/.editorconfig", text: "root = true\n" }]);
+    expect(elsewhere.status).toBe(0);
   });
 
   it("fails a change to a link, even when its target is the formatter's output", async () => {
