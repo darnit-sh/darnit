@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { givenTarball, installTarball, integrity, notUser, userEnv } from "../scripts/e2e-env.js";
 
@@ -71,11 +71,12 @@ describe("the tarball end-to-end scenarios install", () => {
   const sh = (cmd: string, env: NodeJS.ProcessEnv) => spawnSync("sh", ["-c", cmd], { encoding: "utf8", env: { ...process.env, ...env } }).stdout;
 
   it("installs and runs only a checked copy of the given file, so swapping the file later changes nothing", () => {
-    const work = mkdtempSync(join(dir, "work-"));
-    // Quotes, spaces, $ patterns and a backslash reach npx as one literal word, through the environment.
-    const given = join(dir, `it's $$ $& $' $1 \\ "x".tgz`);
+    // Quotes, spaces, $ patterns and a backslash in the path reach npx as one literal word, through the environment.
+    const odd = `it's $$ $& $' $1 \\ "x"`;
+    const work = mkdtempSync(join(dir, `${odd} work-`));
+    const given = join(dir, `${odd}.tgz`);
     writeFileSync(given, readFileSync(tarball));
-    const copy = join(work, basename(given));
+    const copy = join(work, "darnit.tgz");
     const { packs, installs, pack, install } = npm();
     const got = installTarball(work, { tarball: given, integrity: packed!.integrity }, pack, install);
     writeFileSync(given, bytes);
@@ -104,7 +105,7 @@ describe("the tarball end-to-end scenarios install", () => {
     const work = mkdtempSync(join(dir, "work-"));
     const { packs, installs, pack, install } = npm();
     const got = installTarball(work, undefined, pack, install);
-    const own = join(work, "darnit-1.0.0.tgz");
+    const own = join(work, "darnit.tgz");
     expect(packs).toEqual([work]);
     expect(installs).toEqual([own]);
     expect(got.line).toBe(`darnit 1.0.0 from ${own}, integrity ${packed!.integrity}`);

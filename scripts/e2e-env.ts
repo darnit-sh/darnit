@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 // CI sets npm's script-shell so that a change's .npmrc cannot replace its own npm runs. A user's shell does
@@ -36,16 +36,19 @@ export function givenTarball(args: string[]): Tarball | undefined {
 }
 
 /**
- * Installs the tarball every scenario runs: the one `pack` writes into `work`, or a copy of the given one, checked
- * after copying so that changing the given file later changes nothing. `install` installs a tarball into a folder
- * and returns darnit's version; npm's lockfile there must show the checked integrity. Only that tarball is used
- * after this: `packed` puts `$DARNIT_TARBALL` in place of `darnit@<pin>` in a command run with `env`, so the path
- * reaches npx as one word and never becomes shell text.
+ * Installs the tarball every scenario runs, as `darnit.tgz` in `work`: the one `pack` writes there, or a copy of the
+ * given one, checked after copying so that changing the given file later changes nothing. Neither the given path nor
+ * the name npm packs to reaches a command line. `install` installs a tarball into a folder and returns darnit's
+ * version; npm's lockfile there must show the checked integrity. Only that tarball is used after this: `packed` puts
+ * `$DARNIT_TARBALL` in place of `darnit@<pin>` in a command run with `env`, so the path never becomes shell text.
  */
 export function installTarball(work: string, given: Tarball | undefined, pack: (dest: string) => void, install: (tarball: string, dir: string) => string) {
-  if (!given) pack(work);
-  const tarball = given ? join(work, basename(given.tarball)) : join(work, readdirSync(work).find((f) => f.endsWith(".tgz"))!);
+  const tarball = join(work, "darnit.tgz");
   if (given) copyFileSync(given.tarball, tarball);
+  else {
+    pack(work);
+    renameSync(join(work, readdirSync(work).find((f) => f.endsWith(".tgz"))!), tarball);
+  }
   const sri = integrity(tarball);
   if (given && sri !== given.integrity) throw new Error(`${given.tarball} has integrity ${sri}, expected ${given.integrity}`);
   const dir = join(work, "install");
