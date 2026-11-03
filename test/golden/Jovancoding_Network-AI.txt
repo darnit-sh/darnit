@@ -6,6 +6,8 @@ P adapters/codex-adapter.ts:395:32 #349c54d8 code-davinci-002 openai:2023-07-06:
 P adapters/copilot-adapter.ts:69:34 #bb3310fd gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P test-adapters.ts:1755:46 #45af98e8 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P test-codex.ts:164:12 #62f7e3b6 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M BENCHMARKS.md:118 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M BENCHMARKS.md:144 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M CHANGELOG.md:1236 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M CHANGELOG.md:1237 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
 M adapters/codex-adapter.ts:4 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down

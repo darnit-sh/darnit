@@ -62,7 +62,10 @@ M umpleonline/scripts/ai/utils/umple_ai_provider_utils.js:33 gpt-5.2-codex opena
 M umpleonline/scripts/ai/utils/umple_ai_provider_utils.js:34 gpt-5.2-codex openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M umpleonline/scripts/ai/utils/umple_ai_provider_utils.js:51 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M umpleonline/scripts/ai/utils/umple_ai_provider_utils.js:173 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M umpleonline/scripts/ai/utils/umple_ai_provider_utils.js:173 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M umpleonline/scripts/ai/utils/umple_ai_provider_utils.js:180 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M umpleonline/scripts/ai/utils/umple_ai_provider_utils.js:180 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M umpleonline/scripts/ai/utils/umple_ai_provider_utils.js:180 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M umpleonline/scripts/openai-sdk/openai.bundle.js:5510 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
 M umpleonline/scripts/openai-sdk/openai.bundle.js:5524 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M umpleonline/scripts/openai-sdk/openai.bundle.js:5524 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down

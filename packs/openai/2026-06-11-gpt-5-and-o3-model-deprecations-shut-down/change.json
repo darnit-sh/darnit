@@ -1,6 +1,6 @@
 {
   "id": "openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down",
-  "title": "o3-2025-04-16, gpt-5-2025-08-07, o3-pro-2025-06-10 and 3 more shut down on 2026-12-11",
+  "title": "gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3, o3-pro and 6 more shut down on 2026-12-11",
   "status": "parser-verified",
   "vendor": "openai",
   "announcedAt": "2026-06-11",
@@ -120,7 +120,7 @@
     }
   ],
   "notes": {
-    "migration": "OpenAI removes these models from the API on 2026-12-11: gpt-5-2025-08-07, gpt-5-mini-2025-08-07, gpt-5-nano-2025-08-07, gpt-5-pro-2025-10-06, o3-2025-04-16, o3-pro-2025-06-10. Calls that name them fail after that date. Recommended replacements: gpt-5-2025-08-07 to gpt-5.6-sol; gpt-5-mini-2025-08-07 to gpt-5.6-terra; gpt-5-nano-2025-08-07 to gpt-5.6-luna; gpt-5-pro-2025-10-06 to gpt-5.6-sol (reasoning.mode: pro); o3-2025-04-16 to gpt-5.6-sol; o3-pro-2025-06-10 to gpt-5.6-sol (reasoning.mode: pro). A newer model can answer differently, so test the switch rather than only renaming.",
+    "migration": "OpenAI removes these models from the API on 2026-12-11: gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3, o3-pro, gpt-5-2025-08-07, gpt-5-mini-2025-08-07, gpt-5-nano-2025-08-07, gpt-5-pro-2025-10-06, o3-2025-04-16, o3-pro-2025-06-10. Calls that name them fail after that date. Recommended replacements: gpt-5 to gpt-5.6-sol; gpt-5-mini to gpt-5.6-terra; gpt-5-nano to gpt-5.6-luna; gpt-5-pro to gpt-5.6-sol (reasoning.mode: pro); o3 to gpt-5.6-sol; o3-pro to gpt-5.6-sol (reasoning.mode: pro); gpt-5-2025-08-07 to gpt-5.6-sol; gpt-5-mini-2025-08-07 to gpt-5.6-terra; gpt-5-nano-2025-08-07 to gpt-5.6-luna; gpt-5-pro-2025-10-06 to gpt-5.6-sol (reasoning.mode: pro); o3-2025-04-16 to gpt-5.6-sol; o3-pro-2025-06-10 to gpt-5.6-sol (reasoning.mode: pro). A newer model can answer differently, so test the switch rather than only renaming.",
     "edgeCases": [
       "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
       "A model key nested inside another option of the call, such as metadata, is reported too.",
@@ -132,6 +132,54 @@
   "detection": {
     "astGrepPatterns": {
       "js": [
+        {
+          "context": "({ model: \"gpt-5\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-5' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-5-mini\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-5-mini' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-5-nano\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-5-nano' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"gpt-5-pro\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'gpt-5-pro' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"o3\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'o3' })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: \"o3-pro\" })",
+          "selector": "pair"
+        },
+        {
+          "context": "({ model: 'o3-pro' })",
+          "selector": "pair"
+        },
         {
           "context": "({ model: \"gpt-5-2025-08-07\" })",
           "selector": "pair"
@@ -182,6 +230,54 @@
         }
       ],
       "py": [
+        {
+          "context": "f(model=\"gpt-5\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-5')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-5-mini\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-5-mini')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-5-nano\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-5-nano')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"gpt-5-pro\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='gpt-5-pro')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"o3\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='o3')",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model=\"o3-pro\")",
+          "selector": "keyword_argument"
+        },
+        {
+          "context": "f(model='o3-pro')",
+          "selector": "keyword_argument"
+        },
         {
           "context": "f(model=\"gpt-5-2025-08-07\")",
           "selector": "keyword_argument"
@@ -235,6 +331,30 @@
   },
   "fix": {
     "models": {
+      "gpt-5": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-5-mini": {
+        "model": "gpt-5.6-terra",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-5-nano": {
+        "model": "gpt-5.6-luna",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "gpt-5-pro": {
+        "human": "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o3": {
+        "model": "gpt-5.6-sol",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
+      "o3-pro": {
+        "human": "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro",
+        "source": "https://developers.openai.com/api/docs/deprecations"
+      },
       "gpt-5-2025-08-07": {
         "model": "gpt-5.6-sol",
         "source": "https://developers.openai.com/api/docs/deprecations"

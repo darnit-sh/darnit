@@ -80,7 +80,7 @@ Small on purpose. A change gets a rewrite only when the rewrite is proven.
 | OpenAI: `max_tokens` → `max_completion_tokens` on chat completions | reports | rewrites |
 | OpenAI: chat completions `functions` → `tools` | reports | reports only: code that reads the response needs changes a rule can't make safely |
 | OpenAI: `style` and `response_format` on image generation and edits, found by the weekly spec check | reports, marked unreviewed | no: waiting for review |
-| OpenAI: 143 retiring models listed on the deprecations page | reports, marked parser-verified | reports only: a newer model can answer differently |
+| OpenAI: 149 retiring models listed on the deprecations page | reports, marked parser-verified | reports only: a newer model can answer differently |
 
 | Vendor | Status |
 |---|---|
@@ -134,7 +134,7 @@ as `replacement`, `{ model, source }` or `{ human, source }`.
 
 ```
 $ npx darnit check
-openai 2026-06-11: o3-2025-04-16, gpt-5-2025-08-07, o3-pro-2025-06-10 and 3 more shut down on 2026-12-11 (parser-verified, not read by a person)
+openai 2026-06-11: gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3, o3-pro and 6 more shut down on 2026-12-11 (parser-verified, not read by a person)
   app.ts:3:50  model: "o3-2025-04-16"
     use gpt-5.6-sol instead (OpenAI's recommendation)
   app.ts:4:50  model: "gpt-5-pro-2025-10-06"
@@ -475,7 +475,10 @@ those are read from OpenAI's deprecations page by a script, confirmed by a secon
 separate parser, and stay parser-verified until a person reviews them. Their replacements
 come from the same page's tables (`npm run replacements`), read from the tree a WHATWG HTML
 parser builds, so only tables a browser shows count. It fails on a deprecation table it cannot
-read strictly and on any table row naming a model it did not read from that row. Known limits:
+read strictly and on any table row naming a model it did not read from that row. For each shutdown
+date in `corpus/openai/whole-rows.txt`, the record for that date also detects every model the page lists
+in that date's rows, aliases included: `--check` fails naming a missing one and `--write` adds it, writing
+nothing at all when the run finds any problem. Known limits:
 model names outside the page's tables, in lists or paragraphs, are not checked, and neither is a
 table hidden by a CSS class rather than an attribute. New candidates also
 come from the vendors' own API specs: once a week a workflow
