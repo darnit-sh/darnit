@@ -915,6 +915,40 @@ describe("model shutdowns", () => {
     expect(text).toContain("openai 2026-10-01: tts-1, tts-1-hd, gpt-4o-mini-tts-2025-03-20 and 1 more shut down on 2027-01-06");
   });
 
+  it("reports every audio translations call with the endpoint's removal date, whatever the model, not a look-alike's", async () => {
+    const dir = await scratch({
+      "app.ts": [
+        'import OpenAI from "openai";',
+        'import Groq from "groq-sdk";',
+        "const openai = new OpenAI();",
+        "const groq = new Groq();",
+        'export const a = await openai.audio.translations.create({ file, model: "whisper-1" });',
+        "export const b = await openai.audio.translations.create({ file, model });",
+        "export const c = await openai.audio.translations.create(options).withResponse();",
+        'export const d = await groq.audio.translations.create({ file, model: "whisper-large-v3" });',
+        'export const e = await openai.audio.transcriptions.create({ file, model: "gpt-transcribe" });',
+        "export const f = await openai.realtime.translations.clientSecrets.create({});",
+        "",
+      ].join("\n"),
+      "app.py": [
+        "from openai import OpenAI",
+        "client = OpenAI()",
+        "a = client.audio.translations.create(file=f, model=model)",
+        'b = client.audio.translations.with_raw_response.create(file=f, model="whisper-1")',
+        'with client.audio.translations.with_streaming_response.create(file=f, model="whisper-1") as c:',
+        "    pass",
+        "d = client.realtime.translations.client_secrets.create()",
+        "",
+      ].join("\n"),
+    });
+    const { hits, coverage } = await checkReport(dir);
+    const translations = hits.filter((h) => h.record.id === "openai:2026-08-26:audio-translations-deprecated");
+    expect(locations(translations).sort()).toEqual(["app.py:3", "app.py:4", "app.py:5", "app.ts:5", "app.ts:6", "app.ts:7"]);
+    expect(coverage.foreignAt).toContain("app.ts:8");
+    expect(exitCodeForCheck(translations)).toBe(1);
+    expect(render(translations, coverage)).toContain("openai 2026-08-26: POST /v1/audio/translations is removed on 2027-02-26");
+  });
+
   it("reports a retiring model in the calls that start a realtime session, not in a look-alike's", async () => {
     const old = "gpt-4o-realtime-preview-2024-10-01";
     const dir = await scratch({
