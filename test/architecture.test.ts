@@ -53,14 +53,14 @@ function breaks(from: Place, to: Place): string | undefined {
   return `${from.group} imports ${to.group} on its own floor ${from.floor}`;
 }
 
-/** Allowlist lines: `a -> b: reason` for an import, `cycle a b c: reason` for a cycle's files. */
+/** Allowlist lines: `a -> b: reason`, for an import the map forbids or one on a cycle. */
 function readAllowlist(text: string, problems: string[]): Set<string> {
   const allowed = new Set<string>();
   for (const line of text.split("\n").map((l) => l.trim())) {
     if (!line || line.startsWith("#")) continue;
-    const match = /^(cycle(?: \S+)+|\S+ -> \S+): \S/.exec(line);
+    const match = /^(\S+ -> \S+): \S/.exec(line);
     if (match) allowed.add(match[1]!);
-    else problems.push(`${ALLOWLIST}: "${line}" is not "a -> b: reason" or "cycle a b ...: reason"`);
+    else problems.push(`${ALLOWLIST}: "${line}" is not "a -> b: reason"`);
   }
   return allowed;
 }
@@ -75,7 +75,10 @@ function misplaced(sources: Sources): string[] {
   return problems;
 }
 
-/** Each import and cycle that breaks the module map, keyed as its allowlist line would name it. */
+/**
+ * Each import that breaks the module map, keyed as its allowlist line would name it. Every import between
+ * the files of a cycle is on that cycle, so a cycle passes only while each of its imports is listed.
+ */
 function breaches({ graph, computed }: ImportGraph): Map<string, string> {
   const broken = new Map<string, string>();
   for (const key of computed) broken.set(key, "an import() or require() of a computed path, which this test cannot place");
@@ -87,7 +90,12 @@ function breaches({ graph, computed }: ImportGraph): Map<string, string> {
       if (why) broken.set(`${file} -> ${target}`, why);
     }
   }
-  for (const set of cycles(graph)) broken.set(`cycle ${set.join(" ")}`, "a cycle, which the module map forbids anywhere");
+  for (const set of cycles(graph)) {
+    for (const [file, target] of set.flatMap((f) => [...graph.get(f)!].filter((t) => set.includes(t)).map((t) => [f, t]))) {
+      const key = `${file} -> ${target}`;
+      broken.set(key, [broken.get(key), `in the cycle of ${set.join(", ")}`].filter(Boolean).join("; "));
+    }
+  }
   return broken;
 }
 
@@ -96,7 +104,7 @@ function check(sources: Sources, allowlist: string): string[] {
   const problems = misplaced(sources);
   const allowed = readAllowlist(allowlist, problems);
   const broken = breaches(buildGraph(sources, problems));
-  for (const [key, why] of broken) if (!allowed.has(key)) problems.push(`${key}: ${why}`);
+  for (const [key, why] of [...broken].sort()) if (!allowed.has(key)) problems.push(`${key}: ${why}`);
   for (const key of allowed) if (!broken.has(key)) problems.push(`${ALLOWLIST}: "${key}" no longer breaks the module map; remove its line`);
   return problems;
 }
@@ -149,25 +157,31 @@ describe("an import against the module map fails", () => {
   for (const [file, spec, failure] of BREACHES)
     for (const [form, write] of FORMS)
       it(`${failure.split(":")[0]} as ${form}`, () => {
-        expect(withLine(file, write(spec))).toContain(failure);
+        expect(withLine(file, write(spec))).toContainEqual(expect.stringContaining(failure));
       });
 });
 
 describe("a cycle, a misplaced file or a stale allowlist line fails", () => {
   it("a new cycle between two floor-2 files", () => {
     expect(withLine("src/scan/values.ts", `import { findMentions } from "./mentions.js";`)).toEqual([
-      "cycle src/scan/mentions.ts src/scan/values.ts: a cycle, which the module map forbids anywhere",
+      "src/scan/mentions.ts -> src/scan/values.ts: in the cycle of src/scan/mentions.ts, src/scan/values.ts",
+      "src/scan/values.ts -> src/scan/mentions.ts: in the cycle of src/scan/mentions.ts, src/scan/values.ts",
     ]);
   });
 
   it("a file importing itself", () => {
-    expect(withLine("src/refusal.ts", `import "./refusal.js";`)).toEqual(["cycle src/refusal.ts: a cycle, which the module map forbids anywhere"]);
+    expect(withLine("src/refusal.ts", `import "./refusal.js";`)).toEqual(["src/refusal.ts -> src/refusal.ts: in the cycle of src/refusal.ts"]);
   });
 
   it("a cycle through an allowlisted import", () => {
     expect(withLine("src/github.ts", `import { git } from "./git.js";`)).toEqual([
-      "src/github.ts -> src/git.ts: github imports git on its own floor 2",
-      "cycle src/git.ts src/github.ts: a cycle, which the module map forbids anywhere",
+      "src/github.ts -> src/git.ts: github imports git on its own floor 2; in the cycle of src/git.ts, src/github.ts",
+    ]);
+  });
+
+  it("a new cycle among the files of an allowlisted cycle, through an import the map allows", () => {
+    expect(withLine("src/scan/clients.ts", `import { cleanEnv as _c } from "../detect.js";`)).toEqual([
+      "src/scan/clients.ts -> src/detect.ts: in the cycle of src/detect.ts, src/records/schema.ts, src/scan/astgrep.ts, src/scan/clients.ts",
     ]);
   });
 
@@ -184,14 +198,13 @@ describe("a cycle, a misplaced file or a stale allowlist line fails", () => {
   it("an allowlisted cycle that changed", () => {
     const smaller = new Map(sources).set("src/detect.ts", sources.get("src/detect.ts")!.replace(/^import type \{ VendorClients \}.*$/m, ""));
     expect(check(smaller, allowlist)).toEqual([
-      "cycle src/records/schema.ts src/scan/astgrep.ts src/scan/clients.ts: a cycle, which the module map forbids anywhere",
       `${ALLOWLIST}: "src/detect.ts -> src/scan/clients.ts" no longer breaks the module map; remove its line`,
-      `${ALLOWLIST}: "cycle src/detect.ts src/records/schema.ts src/scan/astgrep.ts src/scan/clients.ts" no longer breaks the module map; remove its line`,
+      `${ALLOWLIST}: "src/scan/astgrep.ts -> src/detect.ts" no longer breaks the module map; remove its line`,
     ]);
   });
 
   it("a malformed allowlist line", () => {
-    expect(check(sources, `${allowlist}\nsrc/git.ts -> src/github.ts\n`)).toEqual([`${ALLOWLIST}: "src/git.ts -> src/github.ts" is not "a -> b: reason" or "cycle a b ...: reason"`]);
+    expect(check(sources, `${allowlist}\nsrc/git.ts -> src/github.ts\n`)).toEqual([`${ALLOWLIST}: "src/git.ts -> src/github.ts" is not "a -> b: reason"`]);
   });
 });
 
