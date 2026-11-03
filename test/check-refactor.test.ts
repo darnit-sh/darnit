@@ -352,7 +352,7 @@ describe("the rule picked by the title's type", () => {
     for (const type of ["fix", "refactor", "docs", "ci"]) {
       const r = await check(lowered, `${type}: x`, "Proof: none, lowers the threshold\n");
       expect(r.status, type).toBe(1);
-      expect(r.summary, type).toContain("- src/** lines 80 to 79\n- src/a.ts: /* v8 ignore next */");
+      expect(r.summary, type).toContain("- src/** lines 80 to 79\n- src/a.ts: 1 ignore hints, base has 0: v8 ignore next");
     }
     const reason = await check(lowered, "ci: x", "Proof: none, moves a folder\nCoverage: the folder moves and keeps its tests\n");
     expect(reason.status).toBe(1);

@@ -132,14 +132,34 @@ describe("the coverage gate", () => {
     }
   });
 
-  it("fails an ignore comment added anywhere in src/, in each form the coverage plugin reads", async () => {
-    const hints = ["/* v8 ignore start */", "/* c8 ignore next 3 */", "// istanbul ignore else", "/* v8 ignore next -- @preserve */", "/* node:coverage ignore file */", "/* V8 Ignore Next */"];
-    for (const hint of hints) {
+  it("fails an ignore comment added anywhere in src/, in each form the coverage plugin reads, also split over lines", async () => {
+    const hints: [string, string][] = [
+      ["/* v8 ignore start */", "v8 ignore start"],
+      ["/* c8 ignore next 3 */", "c8 ignore next"],
+      ["// istanbul ignore else", "istanbul ignore else"],
+      ["/* v8 ignore next -- @preserve */", "v8 ignore next"],
+      ["/* node:coverage ignore next */", "node:coverage ignore next"],
+      ["/* node:coverage ignore file */", "node:coverage ignore file"],
+      ["/* V8 Ignore Next */", "V8 Ignore Next"],
+      ["/* v8\nignore file */", "v8 ignore file"],
+      ["/*\n  istanbul\n  ignore\n  next\n*/", "istanbul ignore next"],
+      ["/* c8 ignore\r\n\tif */", "c8 ignore if"],
+    ];
+    for (const [hint, shown] of hints) {
       const r = await gate({ "src/git.ts": `${hint}\n${baseFiles["src/git.ts"]}`, "src/new/a.ts": "" });
       expect(r.status, hint).toBe(1);
-      expect(r.out).toContain(`- src/git.ts: ${hint}`);
+      expect(r.out).toContain(`- src/git.ts: 2 ignore hints, base has 1: ${shown}, v8 ignore next`);
     }
-    expect((await gate({ "src/new/a.ts": "/* istanbul ignore if */\n" })).out).toContain("- src/new/a.ts: /* istanbul ignore if */");
+    expect((await gate({ "src/new/a.ts": "/* istanbul ignore if */\n" })).out).toContain("- src/new/a.ts: 1 ignore hints, base has 0: istanbul ignore if");
+  });
+
+  it("passes a hint that moves within its file or only changes its words, and one that is not a hint", async () => {
+    for (const text of ["/* v8 ignore next */\nexport const a = 1;\nexport const b = 2;\n", "export const a = 1;\n/* c8 ignore\nelse */\nexport const b = 2;\n"]) {
+      expect((await gate({ "src/git.ts": text })).status, text).toBe(0);
+    }
+    for (const text of ["// v8 ignored next\n", "// v8 ignore nextLine\n", "// v8\n\nlater ignore next\n", "// coverage ignore next\n", "/*\n * v8\n * ignore next\n */\n"]) {
+      expect((await gate({ "src/new/a.ts": text })).status, text).toBe(0);
+    }
   });
 
   it("lets only a ci change with a Coverage line a reader sees do any of that, and shows the reason", async () => {

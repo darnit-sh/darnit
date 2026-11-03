@@ -82,10 +82,20 @@ pins=$(node -e '
   }
 ' "$base" "$head") || pins="package.json or package-lock.json (unreadable)"
 
-# Every hint the plugin reads (istanbul, c8, v8 or node:coverage, then ignore), in any case, on an added line.
-ignores=$(git diff --no-renames -U0 "$base" "$head" -- src | awk '
-  /^\+\+\+ / { f = substr($0, 7); next }
-  /^\+/ && tolower($0) ~ /(istanbul|[cv]8|node:coverage)[ \t]+ignore/ { l = substr($0, 2); sub(/^[ \t]+/, "", l); print f ": " l }')
+# Ignore hints in each file this change adds or edits under src/, counted over its whole text on base and on head.
+# The pattern is the plugin's (ast-v8-to-istanbul), whose \s+ spans lines inside a block comment, in any case and
+# with start and stop, which it reads one line at a time, so it can only count more than the plugin honours.
+ignores=$(node -e '
+  const { execFileSync } = require("node:child_process");
+  const [base, head] = process.argv.slice(1);
+  const git = (...args) => execFileSync("git", args, { encoding: "utf8", stdio: "pipe", maxBuffer: 2 ** 28 });
+  const show = (rev, f) => { try { return git("show", `${rev}:${f}`); } catch { return ""; } };
+  const hint = /(?:istanbul|[cv]8|node:coverage)\s+ignore\s+(?:if|else|next|file|start|stop)(?=\W|$)/gi;
+  for (const f of git("diff", "--no-renames", "--name-only", "-z", "--diff-filter=AMT", base, head, "--", "src").split("\0").filter(Boolean)) {
+    const [was, now] = [base, head].map((rev) => show(rev, f).match(hint) ?? []);
+    if (now.length > was.length) console.log(`${f}: ${now.length} ignore hints, base has ${was.length}: ${now.map((h) => h.replace(/\s+/g, " ")).join(", ")}`);
+  }
+' "$base" "$head") || ignores="src/ (ignore hints unreadable)"
 
 found=$(printf '%s\n' "$lowered" "$configs" "$pins" "$ignores" | grep . || true)
 if [ -z "$found" ]; then
