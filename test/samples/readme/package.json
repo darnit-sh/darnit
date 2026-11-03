@@ -1,0 +1,10 @@
+{
+  "name": "readme-sample",
+  "private": true,
+  "scripts": {
+    "test": "node -e 0"
+  },
+  "dependencies": {
+    "openai": "^4.60.0"
+  }
+}
