@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { cellModels, modelDetection, modelFixtures, modelTitle, pageMismatches, readPage, recommended, replacementsFor, shutdownDate, wholeRows } from "../src/corpus/replacements.js";
+import { cellModels, modelDetection, modelFixtures, modelNotes, modelTitle, pageMismatches, readPage, recommended, replacementsFor, shutdownDate, wholeRows } from "../src/corpus/replacements.js";
 import { modelIds, parseSpec } from "../src/corpus/spec.js";
 import { loadRecords } from "../src/records/load.js";
 import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/records/schema.js";
@@ -598,6 +598,19 @@ describe("whole rows from the page", () => {
       "openai:2026-01-01:one: the page lists c in its rows, but another record detects them",
     ]);
     expect(wholeRows([], page, new Set(["2026-12-12"])).problems).toEqual(["no model row on the page shuts down on 2026-12-12; take it off the list"]);
+  });
+
+  it("writes a row with no replacement in plain words in the notes, never the page's dash, and reads it back as that row", () => {
+    const page = readPage(dated("Dec 11, 2026", ["a | a-1 || x-1", "b | b-1 || &mdash;"]));
+    const notes = modelNotes("OpenAI", ["a", "b", "a-1", "b-1"], "2026-12-11", page);
+    expect(notes).toBe(
+      "OpenAI removes these models from the API on 2026-12-11: a, b, a-1, b-1. Calls that name them fail after that date. Recommended replacements: a to x-1; b to no replacement named; a-1 to x-1; b-1 to no replacement named. A newer model can answer differently, so test the switch rather than only renaming.",
+    );
+    expect(notes).not.toMatch(/[\u2013\u2014]/);
+    const r = parseChangeRecord({ ...on("one", "2026-12-11", ["a", "b", "a-1", "b-1"]), notes: { migration: notes } }, "one.json");
+    expect(pageMismatches([r], page)).toEqual([]);
+    expect(pageMismatches([{ ...r, notes: { migration: notes.replace("b to no replacement named", "b to x-1") } }], page)).toEqual(["openai:2026-01-01:one: notes say b to x-1, the page says no replacement named"]);
+    expect(modelNotes("OpenAI", ["b", "b-1"], "2026-12-11", page)).toContain(". OpenAI names no replacement. A newer model");
   });
 
   it("builds detection and fixtures the way every shipped model record has them, and a title of at most 100 characters", async () => {

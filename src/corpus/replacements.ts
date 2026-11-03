@@ -43,8 +43,9 @@ export function cellModels(text: string): string[] | undefined {
   return ids && [name, ...ids];
 }
 
-// The page writes "no replacement" as an em dash.
+// The page writes "no replacement" as an em dash; notes darnit writes say it in words.
 const EM_DASH = "\u2014";
+const NONE = "no replacement named";
 // What a cell of a deprecation table may hold besides text, each with the attributes it may carry.
 const INLINE: Record<string, readonly string[]> = { code: [], a: ["href"], strong: [], em: [], br: [], sup: [] };
 const MAX_CELL = 10_000;
@@ -314,7 +315,8 @@ export function pageMismatches(records: readonly ChangeRecord[], page: Page): st
   for (const r of records) {
     const ids = recordModels(r);
     for (const [m, said] of recommended(r.notes?.migration ?? "")) {
-      const newest = page.replacements.get(m)?.[0];
+      const cell = page.replacements.get(m)?.[0];
+      const newest = cell === EM_DASH ? NONE : cell;
       if (!ids.includes(m)) out.push(`${r.id}: the notes name ${m}, which the record does not detect`);
       else if (newest !== said) out.push(`${r.id}: notes say ${m} to ${said}, the page says ${newest ?? "nothing"}`);
     }
@@ -372,7 +374,7 @@ export function modelTitle(ids: readonly string[], date: string): string {
 /** A model record's migration notes, naming each model and the replacement cell of its newest row. */
 export function modelNotes(vendor: string, ids: readonly string[], date: string, page: Page): string {
   const cells = ids.map((m) => page.replacements.get(m)?.[0] ?? EM_DASH);
-  const offers = cells.every((c) => c === EM_DASH) ? `${vendor} names no replacement` : `Recommended replacements: ${ids.map((m, i) => `${m} to ${cells[i]}`).join("; ")}`;
+  const offers = cells.every((c) => c === EM_DASH) ? `${vendor} names no replacement` : `Recommended replacements: ${ids.map((m, i) => `${m} to ${cells[i] === EM_DASH ? NONE : cells[i]}`).join("; ")}`;
   return `${vendor} removes these models from the API on ${date}: ${ids.join(", ")}. Calls that name them fail after that date. ${offers}${END}, so test the switch rather than only renaming.`;
 }
 
