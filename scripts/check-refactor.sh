@@ -7,6 +7,7 @@
 # The second form overwrites test/ and the fixtures in the working tree.
 set -eu
 . "$(dirname "$0")/pr-common.sh"
+if queued; then exit 0; fi
 
 if [ "${1:-}" = --base-tests ]; then
   base=$2

@@ -16,6 +16,7 @@ const workflow = async (name: string) =>
   parse(await readFile(`.github/workflows/${name}.yml`, "utf8")) as { jobs: Record<string, Job> };
 const step = (await workflow("pr")).jobs.title!.steps!.find((s) => s.run)!.run!;
 const checker = await readFile("scripts/check-pr.sh", "utf8");
+const common = await readFile("scripts/pr-common.sh", "utf8");
 
 /**
  * Runs the title job's step on a repo whose base holds `base` as scripts/check-pr.sh (none for null) and
@@ -30,6 +31,7 @@ async function titleJob(title: string, base: string | null, head: string) {
   git("init", "-q");
   await mkdir(join(dir, "scripts"));
   await writeFile(join(dir, "scripts/other.sh"), "");
+  await writeFile(join(dir, "scripts/pr-common.sh"), common);
   if (base !== null) await writeFile(join(dir, "scripts/check-pr.sh"), base);
   git("add", ".");
   git("commit", "-q", "-m", "ci: base");
