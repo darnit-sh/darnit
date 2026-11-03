@@ -869,6 +869,13 @@ describe("model shutdowns", () => {
     expect(rest.filter((r) => JSON.stringify(r.surface.sdkSymbols) !== JSON.stringify(first!.surface.sdkSymbols)).map((r) => r.id)).toEqual([]);
   });
 
+  it("says in every dated OpenAI record that Azure calls are reported too, though Azure sets its own dates", async () => {
+    const azure = "Azure OpenAI calls are reported too, though Azure names deployments its own way and sets its own retirement dates.";
+    const dated = (await loadRecords()).map((l) => l.record).filter((r) => r.vendor === "openai" && r.effectiveAt);
+    expect(dated.length).toBeGreaterThan(29);
+    expect(dated.filter((r) => !r.notes?.edgeCases?.includes(azure)).map((r) => r.id)).toEqual([]);
+  });
+
   it("lists every SDK class a record names, so its calls are checked against the class's import", async () => {
     const symbols = (await loadRecords()).flatMap((l) => l.record.surface.sdkSymbols ?? []);
     expect([...new Set(symbols.filter((s) => /^[A-Z]/.test(s)).map((s) => s.split(".")[0]))].filter((c) => !SDK_CLASSES.has(c!))).toEqual([]);
@@ -940,13 +947,29 @@ describe("model shutdowns", () => {
         "d = client.realtime.translations.client_secrets.create()",
         "",
       ].join("\n"),
+      "azure.py": [
+        "from openai import AzureOpenAI, OpenAI",
+        'a = OpenAI(base_url="https://x.openai.azure.com/openai/v1/").audio.translations.create(file=f, model=m)',
+        'b = AzureOpenAI(azure_endpoint="https://x.openai.azure.com").audio.translations.create(file=f, model=m)',
+        "",
+      ].join("\n"),
+      "azure.ts": [
+        'import OpenAI, { AzureOpenAI } from "openai";',
+        'const viaBase = new OpenAI({ baseURL: "https://x.openai.azure.com/openai/v1/" });',
+        'const az = new AzureOpenAI({ endpoint: "https://x.openai.azure.com" });',
+        "export const c = await viaBase.audio.translations.create({ file, model });",
+        "export const d = await az.audio.translations.create({ file, model });",
+        "",
+      ].join("\n"),
     });
     const { hits, coverage } = await checkReport(dir);
     const translations = hits.filter((h) => h.record.id === "openai:2026-08-26:audio-translations-deprecated");
-    expect(locations(translations).sort()).toEqual(["app.py:3", "app.py:4", "app.py:5", "app.ts:5", "app.ts:6", "app.ts:7"]);
+    expect(locations(translations).sort()).toEqual(["app.py:3", "app.py:4", "app.py:5", "app.ts:5", "app.ts:6", "app.ts:7", "azure.py:2", "azure.py:3", "azure.ts:4", "azure.ts:5"]);
     expect(coverage.foreignAt).toContain("app.ts:8");
     expect(exitCodeForCheck(translations)).toBe(0);
     expect(render(translations, coverage)).toContain("openai 2026-08-26: POST /v1/audio/translations is removed on 2027-02-26 (unreviewed change, detection only)");
+    // Azure calls are reported too, so the note says only OpenAI's API removes the endpoint on that date.
+    expect(translations[0]!.record.notes?.migration).toContain("on OpenAI's API fails after that date");
   });
 
   it("reports a retiring model in the calls that start a realtime session, not in a look-alike's", async () => {

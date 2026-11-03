@@ -28,11 +28,12 @@
     }
   ],
   "notes": {
-    "migration": "OpenAI removes POST /v1/audio/translations from the API on 2027-02-26, whatever the model. Every audio.translations.create call fails after that date. OpenAI recommends v1/realtime/translations, a realtime API that needs a separate integration rather than one request with a file, so moving needs a person and nothing is rewritten.",
+    "migration": "OpenAI removes POST /v1/audio/translations from its API on 2027-02-26, whatever the model. Every audio.translations.create call on OpenAI's API fails after that date. OpenAI recommends v1/realtime/translations, a realtime API that needs a separate integration rather than one request with a file, so moving needs a person and nothing is rewritten.",
     "edgeCases": [
-      "Found: every audio.translations.create call in JavaScript and Python, on a client such as client, this.client or AsyncOpenAI(), including with_raw_response and with_streaming_response in Python, whatever the model or however the options are built.",
+      "Found: audio.translations.create called on a client such as client, this.client or AsyncOpenAI(), in JavaScript and Python, including with_raw_response and with_streaming_response in Python, whatever the model or however the options are built.",
       "Not found: raw HTTP calls to /v1/audio/translations, a translations or audio object held in its own variable first, and calls made through other libraries such as LangChain.",
-      "The endpoint takes only whisper-1, so a call that names it is also reported by openai:2026-08-26:transcription-models-shut-down, which retires that model on the same date."
+      "The endpoint takes only whisper-1, so a call that names it is also reported by openai:2026-08-26:transcription-models-shut-down, which retires that model on the same date.",
+      "Azure OpenAI calls are reported too, though Azure names deployments its own way and sets its own retirement dates."
     ]
   },
   "detection": {
