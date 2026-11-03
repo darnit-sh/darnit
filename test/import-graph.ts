@@ -74,6 +74,32 @@ function directCall(name: ts.Node): ts.CallExpression | undefined {
 const plainImport = (node: ts.Node): boolean =>
   ts.isIdentifier(node) && node.text === "createRequire" && ts.isImportSpecifier(node.parent) && node.parent.propertyName === undefined;
 
+/** Declarations whose name is a key or a member, which only shares a loader's name. */
+const MEMBERS = [ts.isPropertyAssignment, ts.isPropertySignature, ts.isPropertyDeclaration, ts.isMethodDeclaration, ts.isMethodSignature, ts.isGetAccessor, ts.isSetAccessor, ts.isEnumMember];
+/** Objects whose require property is Node's own. */
+const NODE_OBJECTS = new Set(["module", "global", "globalThis"]);
+
+/** A string names a loader as an import, export or destructured name, or as an element access key. */
+function stringUse(node: ts.StringLiteral): boolean {
+  const up = node.parent;
+  return ts.isImportSpecifier(up) || ts.isExportSpecifier(up) || (ts.isBindingElement(up) && up.propertyName === node) || (ts.isElementAccessExpression(up) && up.argumentExpression === node);
+}
+
+/** A property named require is Node's when called or read from Node's own objects; createRequire always is. */
+function propertyUse(name: ts.Identifier, access: ts.PropertyAccessExpression): boolean {
+  const called = ts.isCallExpression(access.parent) && access.parent.expression === access;
+  return name.text === "createRequire" || called || (ts.isIdentifier(access.expression) && NODE_OBJECTS.has(access.expression.text));
+}
+
+/** Whether a node named require or createRequire uses the loader, as a value, rather than only sharing its name. */
+function usesLoader(node: ts.Node): boolean {
+  if (ts.isStringLiteral(node)) return stringUse(node);
+  if (!ts.isIdentifier(node) || plainImport(node) || MEMBERS.some((is) => is(node.parent) && node.parent.name === node)) return false;
+  for (let at = node.parent; !ts.isSourceFile(at); at = at.parent) if (ts.isTypeNode(at)) return false;
+  const up = node.parent;
+  return ts.isPropertyAccessExpression(up) && up.name === node ? propertyUse(node, up) : true;
+}
+
 /** Where a name is used: the call or property access it heads, or else the node that holds it. */
 function useSite(name: ts.Node): ts.Node {
   let site = name;
@@ -114,7 +140,7 @@ function readImports(file: string, text: string): Imports {
     const path = declaredPath(node) ?? importedPath(node);
     if (isLiteral(path)) paths.push(path.text);
     else if (path) found.computed.push(flat(node));
-    if ((ts.isIdentifier(node) || ts.isStringLiteral(node)) && LOADERS.has(node.text) && !plainImport(node)) readLoader(node, found, flat);
+    if ((ts.isIdentifier(node) || ts.isStringLiteral(node)) && LOADERS.has(node.text) && usesLoader(node)) readLoader(node, found, flat);
   }
   return found;
 }

@@ -29,6 +29,10 @@ describe("a require or createRequire the graph cannot follow fails", () => {
     ["require named by a declaration", `const require = make(import.meta.url);`, ["require=make(import.meta.url)"]],
     ["require passed along", `run(require);`, ["run(require)"]],
     ["require with a second argument", `require("./check.js", extra);`, [`require("./check.js",extra)`]],
+    ["module.require read, not called", `const r = module.require;\nr("./check.js");`, ["module.require"]],
+    ["createRequire read, not called", `const make = nodeModule.createRequire;`, ["nodeModule.createRequire"]],
+    ["require called on another object", `loader.require("./check.js");`, [`loader.require("./check.js")`]],
+    ["require destructured by a string key", `const { "require": r } = globalThis;`, [`"require":r`]],
   ];
   for (const [form, text, found] of forms)
     it(form, () => {
@@ -51,4 +55,22 @@ describe("a require or createRequire the graph follows", () => {
   it("only as code: comments, strings and regex literals that mention it are not uses", () => {
     expect(unfollowed(`// require("./a.js")\nconst s = "createRequire(x)";\nconst r = /require\\(/;`)).toEqual([]);
   });
+});
+
+describe("code that only shares the name of require or createRequire", () => {
+  const lines = [
+    `const opts = { require: true };`,
+    `const s = "require";`,
+    `interface Rule { require?: string[] }`,
+    `if (cfg.require) run();`,
+    `type K = "createRequire";`,
+    `let loader: typeof require;`,
+    `class Rules { require = false; createRequire(): void {} }`,
+    `enum Kind { require }`,
+    `const { mode = "require" } = opts;`,
+  ];
+  for (const line of lines)
+    it(line, () => {
+      expect(unfollowed(line)).toEqual([]);
+    });
 });
