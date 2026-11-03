@@ -8,6 +8,43 @@ if [ "$1" != "v$version" ]; then
   echo "::error::tag $1 does not match package.json version $version" >&2
   exit 1
 fi
+# Every bullet in the section being released ends with its pull request link. A candidate releases
+# [Unreleased]; the final version releases its own heading.
+case "$version" in
+  *-*) section=Unreleased ;;
+  *) section=$version ;;
+esac
+node -e '
+const [file, section] = process.argv.slice(1);
+let lines = [];
+try {
+  lines = require("fs").readFileSync(file, "utf8").split(/\r?\n/);
+} catch {}
+const start = lines.findIndex((l) => l.startsWith("## [" + section + "]"));
+if (start < 0) {
+  console.error("::error::" + file + " has no ## [" + section + "] section");
+  process.exit(1);
+}
+// A bullet runs on over the lines below it up to a blank line or a heading.
+const bullets = [];
+let open = false;
+for (const line of lines.slice(start + 1)) {
+  if (line.startsWith("## ")) break;
+  if (/^\s*[-*+]\s/.test(line)) open = bullets.push(line) > 0;
+  else if (!line.trim() || line.startsWith("#")) open = false;
+  else if (open) bullets[bullets.length - 1] += " " + line.trim();
+}
+const link = String.raw`\[#(\d+)\]\(https://github\.com/darnit-sh/darnit/pull/(\d+)\)`;
+const tail = new RegExp(String.raw`\((${link})(, ${link})*\)$`);
+let bad = 0;
+for (const b of bullets) {
+  const m = tail.exec(b.trimEnd());
+  if (m && [...m[0].matchAll(new RegExp(link, "g"))].every((l) => l[1] === l[2])) continue;
+  console.error("::error::" + file + " [" + section + "] has a line with no pull request link: " + b.trim().slice(0, 100));
+  bad = 1;
+}
+process.exit(bad);
+' CHANGELOG.md "$section" || exit 1
 if ! git merge-base --is-ancestor "$2" origin/main; then
   echo "::error::$2 is not on main" >&2
   exit 1
