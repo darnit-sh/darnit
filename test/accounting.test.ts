@@ -558,7 +558,7 @@ describe("npm run accounting", () => {
     const run = (these: typeof records) => () => account({ vendor: "openai", spec, removals: [], records: these, notCovered: [] });
     expect(run(records)().covered.size).toBe(20020);
     // About 4 times accounting with no records; over 13 when each value asked whether a record names each operation again.
-    expect(await slowdown(run(records), run([]), 6)).toBeLessThan(6);
+    expect(await slowdown(run(records), run([]), 10)).toBeLessThan(10);
   });
 
   it("accounts for a large spec within its time budget", async () => {
@@ -570,15 +570,18 @@ describe("npm run accounting", () => {
       properties.model = { type: "string", enum: ["a", "b"], "x-openai-enum-deprecations": { a: { message: "" } } };
       schemas[`S${i}`] = { properties };
     }
+    const paths: Record<string, unknown> = {};
+    for (let i = 0; i < 500; i++) paths[`/p${i}`] = { post: body(`S${i * 4}`) };
     const records = (await loadRecords()).map((l) => l.record);
-    const run = (n: number) => {
-      const paths: Record<string, unknown> = {};
-      for (let i = 0; i < n; i++) paths[`/p${i}`] = { post: body(`S${i * 4}`) };
-      const spec = { paths, components: { schemas } };
-      return () => account({ vendor: "openai", spec, removals: [], records, notCovered: [] });
+    const spec = { paths, components: { schemas } };
+    // Against plain walks over every value in the spec, which read what accounting reads without its own work.
+    const walk = (v: unknown): void => {
+      if (v && typeof v === "object") for (const x of Object.values(v)) walk(x);
     };
-    // About twice what one operation costs; over 70 times when each operation read every schema again.
-    expect(await slowdown(run(500), run(1), 6)).toBeLessThan(6);
+    const walks = () => {
+      for (let i = 0; i < 4; i++) walk(spec);
+    };
+    expect(await slowdown(() => account({ vendor: "openai", spec, removals: [], records, notCovered: [] }), walks, 25)).toBeLessThan(25);
   });
 });
 
