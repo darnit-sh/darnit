@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, resolve } from "node:path";
@@ -180,7 +180,8 @@ const summaryOf = (dir: string, files: Record<string, [number, number, number, n
 describe("a folder added to the thresholds", () => {
   async function added(head: object, files: Record<string, [number, number, number, number]>) {
     const r = await repo({ [file]: JSON.stringify(thresholds) }, withThresholds(head));
-    await writeFile(join(r.dir, "summary.json"), summaryOf(r.dir, files));
+    // vitest writes the path its working folder resolves to: on macOS the temp folder /var is a link to /private/var.
+    await writeFile(join(r.dir, "summary.json"), summaryOf(await realpath(r.dir), files));
     return run(r.dir, ["--new-keys", r.base, "summary.json"], "", "");
   }
   const measured: Record<string, [number, number, number, number]> = { "src/fix.ts": [10, 100, 10, 100], "src/recs/a.ts": [87, 100, 3, 4], "src/recs/b.ts": [0, 0, 0, 0] };
