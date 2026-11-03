@@ -1,7 +1,7 @@
 {
   "id": "openai:2026-08-26:audio-translations-deprecated",
   "title": "POST /v1/audio/translations is removed on 2027-02-26",
-  "status": "reviewed",
+  "status": "candidate",
   "vendor": "openai",
   "announcedAt": "2026-08-26",
   "effectiveAt": "2027-02-26",

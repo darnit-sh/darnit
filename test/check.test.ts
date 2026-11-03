@@ -945,8 +945,8 @@ describe("model shutdowns", () => {
     const translations = hits.filter((h) => h.record.id === "openai:2026-08-26:audio-translations-deprecated");
     expect(locations(translations).sort()).toEqual(["app.py:3", "app.py:4", "app.py:5", "app.ts:5", "app.ts:6", "app.ts:7"]);
     expect(coverage.foreignAt).toContain("app.ts:8");
-    expect(exitCodeForCheck(translations)).toBe(1);
-    expect(render(translations, coverage)).toContain("openai 2026-08-26: POST /v1/audio/translations is removed on 2027-02-26");
+    expect(exitCodeForCheck(translations)).toBe(0);
+    expect(render(translations, coverage)).toContain("openai 2026-08-26: POST /v1/audio/translations is removed on 2027-02-26 (unreviewed change, detection only)");
   });
 
   it("reports a retiring model in the calls that start a realtime session, not in a look-alike's", async () => {
