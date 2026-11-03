@@ -42,27 +42,6 @@ test | docs | chore | ci | build) ;;
   ;;
 esac
 
-# Lines this change adds to an allowlist under scripts/allow/, whose findings the unused and duplicate code checks
-# accept, and changes to what reads them; a line edited in place counts as added, and names match in any case.
-# Removing lines is always fine.
-grown=$(
-  git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' |
-    awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next } /^\+/ { print f ": " substr($0, 2) }'
-  paths | grep -ixE '"?(scripts/(allowlist|unseen)\.ts|knip\.json)"?' || true
-)
-if [ -n "$grown" ]; then
-  reason=
-  if [ "$type" = ci ]; then body_reason "Allowlist: " Allowlist; fi
-  if [ -z "$reason" ]; then
-    say "**Failed:** only a \`ci\` change with an \`Allowlist: <reason>\` line in the pull request body may add to an allowlist under scripts/allow/ or change what reads them (scripts/allowlist.ts, scripts/unseen.ts, knip.json). Added or changed:"
-    list "$grown"
-    exit 1
-  fi
-  echo "::warning::adds to an allowlist under scripts/allow/ or changes what reads them, allowed by an 'Allowlist:' line in the pull request body; the reason is in the job summary"
-  say "**Allowlist grown** under the Allowlist line in the pull request body. Reason given: \`$reason\`"
-  list "$grown"
-fi
-
 deps="dependencies devDependencies optionalDependencies peerDependencies overrides"
 # Each dependency spec in package.json that npm would fetch from somewhere other than the registry, and each
 # lock entry that is not what the registry published, among those this change adds or alters, so that npm test
@@ -254,6 +233,30 @@ ships() {
   paths | grep -iE '(^|/)\.npmignore"?$' || true
   paths | grep -iE '/\.gitignore"?$' | grep -viE '^"?test/' || true
 }
+
+# What lets a finding of the unused or duplicate code checks pass: a line added to an allowlist under scripts/allow/
+# (one edited in place counts as added), a change to what reads them or to knip or jscpd config, or an added line
+# with a tag knip skips an export for (@public, @beta, @alias) or a jscpd:ignore marker. Names match in any case.
+# Removing lines is always fine.
+grown=$(
+  git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" |
+    awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next }
+      /^\+/ && (tolower(f) ~ /^scripts\/allow\/.*\.tsv"?$/ || /@(public|beta|alias)([^A-Za-z0-9_]|$)/ || tolower($0) ~ /jscpd:ignore-(start|end)/) { print f ": " substr($0, 2) }'
+  paths | grep -ixE '"?(scripts/(allowlist|unseen)\.ts|\.?knip\.jsonc?|knip(\.config)?\.[cm]?[jt]s|\.jscpd\.json)"?' || true
+  package_json "knip jscpd"
+)
+if [ -n "$grown" ]; then
+  reason=
+  if [ "$type" = ci ]; then body_reason "Allowlist: " Allowlist; fi
+  if [ -z "$reason" ]; then
+    say "**Failed:** only a \`ci\` change with an \`Allowlist: <reason>\` line in the pull request body may add to an allowlist under scripts/allow/, change what reads them or knip and jscpd config, or add a knip tag or jscpd:ignore marker. Added or changed:"
+    list "$grown"
+    exit 1
+  fi
+  echo "::warning::adds to an allowlist or a way past the unused and duplicate code checks, allowed by an 'Allowlist:' line in the pull request body; the reason is in the job summary"
+  say "**Allowlist grown** under the Allowlist line in the pull request body. Reason given: \`$reason\`"
+  list "$grown"
+fi
 
 case $type in
 refactor | perf)

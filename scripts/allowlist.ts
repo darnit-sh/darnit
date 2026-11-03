@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
@@ -8,8 +7,9 @@ import { stillUnused } from "./unseen.js";
 
 // Runs knip (unused files, exports and dependencies) or jscpd (duplicated blocks) and compares what it finds with
 // scripts/allow/<kind>.tsv, one finding per line with the reason it stays. Fails on a finding the list lacks and on
-// a line whose finding is gone, so the list only shrinks. Neither tool reads git's ignore files or a config of the
-// checked folder's own besides knip.json, so a local run finds what CI finds.
+// a line whose finding is gone, so the list only shrinks. Neither tool reads git's ignore files, and jscpd gets an
+// empty config in place of a .jscpd.json, so a local run finds what CI finds. knip reads a "knip" key in package.json
+// whatever --config says, so the check refuses to run with one, or with a "jscpd" key.
 // Usage: tsx scripts/allowlist.ts unused|duplicates [--root <dir>]
 
 // Tests and data are left out of the duplicate search: tests repeat setup on purpose, so each reads on its own.
@@ -23,7 +23,7 @@ type Line = { line: number; finding: string };
 type Found = ReadonlyMap<string, string>;
 type KnipItem = { name?: unknown; namespace?: unknown } | KnipItem[];
 type KnipReport = { issues: ({ file: string } & Record<string, unknown>)[] };
-type Place = { name: string; start: number; end: number; startLoc: { position: number }; endLoc: { position: number } };
+type Place = { name: string; start: number; end: number };
 type CloneReport = { duplicates: { firstFile: Place; secondFile: Place }[] };
 
 /** The lines of an allowlist: `fields` tab separated fields that name a finding, then the reason it stays. */
@@ -81,25 +81,20 @@ export function knipFindings(report: KnipReport): string[] {
 }
 
 /**
- * Each clone jscpd reports, keyed by its two sides as `file#hash`, the hash of the duplicated text with its spacing
- * folded, so an edit elsewhere in either file keeps the key; the note gives the lines. A repeat of the same pair and
- * text is numbered, so a second copy is a finding of its own.
+ * Each clone jscpd reports, keyed by its two files and its place among the clones between them (`#1`, `#2`), so an
+ * edit to a listed block, or anywhere else in either file, keeps the key; a new clone between the same files is one
+ * more. The note gives the lines.
  */
 export function cloneFindings(report: CloneReport, root: string): Found {
-  const text = new Map<string, Buffer>();
-  const side = (p: Place) => {
-    if (!text.has(p.name)) text.set(p.name, readFileSync(p.name));
-    const bytes = text.get(p.name)!.subarray(p.startLoc.position, p.endLoc.position).toString("utf8").replace(/\s+/g, " ").trim();
-    return { id: `${relative(root, p.name)}#${createHash("sha256").update(bytes).digest("hex").slice(0, 12)}`, at: `${relative(root, p.name)}:${p.start}-${p.end}` };
-  };
-  const found = new Map<string, string>();
+  const pairs = new Map<string, string[]>();
   for (const d of report.duplicates) {
-    const pair = [side(d.firstFile), side(d.secondFile)].sort((a, b) => a.id.localeCompare(b.id) || a.at.localeCompare(b.at));
-    const key = pair.map((s) => s.id).join("\t");
-    let n = 1;
-    while (found.has(n === 1 ? key : `${key} #${n}`)) n++;
-    found.set(n === 1 ? key : `${key} #${n}`, `lines ${pair.map((s) => s.at).join(" and ")}`);
+    const sides = [d.firstFile, d.secondFile].map((p) => ({ file: relative(root, p.name), at: `${relative(root, p.name)}:${p.start}-${p.end}` }));
+    sides.sort((a, b) => a.file.localeCompare(b.file) || a.at.localeCompare(b.at, undefined, { numeric: true }));
+    const key = sides.map((s) => s.file).join("\t");
+    pairs.set(key, [...(pairs.get(key) ?? []), sides.map((s) => s.at).join(" and ")]);
   }
+  const found = new Map<string, string>();
+  for (const [key, places] of pairs) places.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).forEach((at, i) => found.set(`${key}\t#${i + 1}`, `lines ${at}`));
   return found;
 }
 
@@ -138,13 +133,16 @@ function duplicates(root: string): Found {
   }
 }
 
-const KINDS = { unused: { find: unused, fields: 3 }, duplicates: { find: duplicates, fields: 2 } };
+const KINDS = { unused: { find: unused, fields: 3 }, duplicates: { find: duplicates, fields: 3 } };
 
 /** The problems with `root`'s allowlist for `kind`, one message each. It is read only as a file at its own path. */
 export function check(kind: keyof typeof KINDS, root: string): string[] {
   const file = `scripts/allow/${kind}.tsv`;
   const at = join(root, file);
   if (realpathSync(at) !== join(realpathSync(root), file) || !lstatSync(at).isFile()) return [`${file} is reached through a link or is not a file; it is read only as a file at that path`];
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as object;
+  const keys = ["knip", "jscpd"].filter((k) => Object.hasOwn(pkg, k));
+  if (keys.length > 0) return keys.map((k) => `package.json has a "${k}" key, which would add to what knip.json and this check set; remove it`);
   return problems(file, readFileSync(at, "utf8"), KINDS[kind].fields, (lines) => KINDS[kind].find(root, lines));
 }
 

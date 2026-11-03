@@ -1024,8 +1024,27 @@ describe("lines added to an allowlist under scripts/allow/", () => {
     expect((await grow("test: x", [{ symlink: ["test/samples/loop/up", "../../.."] }], "")).status).toBe(0);
   });
 
+  it("fails a way past the checks under any type but ci with the Allowlist line, which cannot touch src/ either", async () => {
+    const withKey = (key: string) => `${JSON.stringify({ ...JSON.parse(pkg()), [key]: { ignore: ["src/orphan.ts"] } })}\n`;
+    const routes: [Edit[], string][] = [
+      [[{ write: "package.json", text: withKey("knip") }], '- package.json "knip"'],
+      [[{ write: "package.json", text: withKey("jscpd") }], '- package.json "jscpd"'],
+      [[{ write: "src/a.ts", text: "/** @public */\nexport const leftOver = 1;\n" }], "- src/a.ts: /** @public */"],
+      [[{ write: "src/a.ts", text: "// @beta\nexport const leftOver = 1;\n" }], "- src/a.ts: // @beta"],
+      [[{ write: "src/b.ts", text: "/* jscpd:ignore-start */\nconst copy = 1;\n/* JSCPD:ignore-end */\n" }], "- src/b.ts: /* jscpd:ignore-start */"],
+    ];
+    for (const [edits, line] of routes) {
+      const r = await grow("fix(scan): x", edits, "");
+      expect(r.status, line).toBe(1);
+      expect(r.out).toContain(line);
+      expect((await grow("ci: x", edits)).status, line).toBe(edits[0]!.write!.startsWith("src/") ? 1 : 0);
+    }
+    expect((await grow("ci: x", [{ write: "scripts/x.sh", text: "# jscpd:ignore-start\n" }])).status).toBe(0);
+    expect((await grow("fix(scan): x", [{ write: "src/a.ts", text: "// @publicity is not a tag\nexport const a = 1;\n" }], "")).status).toBe(0);
+  });
+
   it("counts a change to what reads the lists as an added line", async () => {
-    for (const file of ["scripts/allowlist.ts", "scripts/unseen.ts", "knip.json", "Knip.JSON"]) {
+    for (const file of ["scripts/allowlist.ts", "scripts/unseen.ts", "knip.json", "Knip.JSON", ".knip.jsonc", "knip.config.ts", ".jscpd.json"]) {
       const r = await grow("fix: x", [{ write: file }], "");
       expect(r.status, file).toBe(1);
       expect(r.out).toContain(`- ${file}\n`);
