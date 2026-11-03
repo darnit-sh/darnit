@@ -975,3 +975,49 @@ describe("the rule picked by the title's type", () => {
     expect(failed.stdout).toContain("(b) failed:** a pack fixture from base");
   });
 });
+
+describe("lines added to an allowlist under scripts/allow/", () => {
+  const LIST = "scripts/allow/unused.tsv";
+  const kept = "exports\tsrc/a.ts\told\tkept for now\ntypes\tsrc/a.ts\tT\tkept for now\n";
+  const landed: Edit[] = [{ write: LIST, text: kept }];
+  const added = `${kept}exports\tsrc/a.ts\tfresh\tkept too\n`;
+  const why = "Allowlist: the new export stays until the cleanup\n";
+  const grow = (title: string, edits: Edit[], body = why) => rule(title, edits, body, {}, landed);
+
+  it("fails a fix that adds a breach and its allowlist line, and a refactor that adds a line", async () => {
+    const fix = await grow("fix(scan): x", [{ write: "src/a.ts" }, { write: LIST, text: added }]);
+    expect(fix.status).toBe(1);
+    expect(fix.out).toContain("only a `ci` change with an `Allowlist: <reason>` line");
+    expect(fix.out).toContain("- scripts/allow/unused.tsv: exports\tsrc/a.ts\tfresh\tkept too");
+    expect((await grow("refactor: x", [{ write: LIST, text: added }])).status).toBe(1);
+  });
+
+  it("lets a ci change add a line only with an Allowlist line a reader sees, and shows the reason", async () => {
+    const edits: Edit[] = [{ write: LIST, text: added }];
+    const passed = await grow("ci: x", edits);
+    expect(passed.status).toBe(0);
+    expect(passed.summary).toContain("Reason given: `the new export stays until the cleanup`");
+    expect(passed.summary).toContain("- scripts/allow/unused.tsv: exports\tsrc/a.ts\tfresh\tkept too");
+    for (const body of ["", "```\nAllowlist: hidden in a code block\n```\n", "<!-- Allowlist: hidden in a comment -->\n", "Allowlist: short\n"]) {
+      expect((await grow("ci: x", edits, body)).status, body).toBe(1);
+    }
+  });
+
+  it("counts a line changed in place as added, in any file under scripts/allow/ and in any case", async () => {
+    const reason = kept.replace("old\tkept for now", "old\tkept for a while");
+    const swapped = kept.replace("\told\t", "\tother\t");
+    for (const text of [reason, swapped]) {
+      const r = await grow("ci: x", [{ write: LIST, text }], "");
+      expect(r.status, text).toBe(1);
+      expect(r.out).toContain(`- ${LIST}: ${text.split("\n")[0]}`);
+    }
+    expect((await grow("ci: x", [{ write: "scripts/Allow/Duplicates.TSV", text: "a\tb\twhy\n" }], "")).status).toBe(1);
+    expect((await grow("ci: x", [{ write: ".gitattributes", text: "*.tsv -diff\n" }, { write: LIST, text: added }], "")).status).toBe(1);
+  });
+
+  it("always lets a change remove lines", async () => {
+    for (const title of ["fix: x", "refactor: x", "ci: x"]) {
+      expect((await grow(title, [{ write: LIST, text: kept.split("\n")[0] + "\n" }], "")).status, title).toBe(0);
+    }
+  });
+});

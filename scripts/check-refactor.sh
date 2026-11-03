@@ -42,6 +42,23 @@ test | docs | chore | ci | build) ;;
   ;;
 esac
 
+# Lines this change adds to an allowlist under scripts/allow/, whose findings the unused and duplicate code checks
+# accept; a line edited in place counts as added, and names match in any case. Removing lines is always fine.
+grown=$(git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' |
+  awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next } /^\+/ { print f ": " substr($0, 2) }')
+if [ -n "$grown" ]; then
+  reason=
+  if [ "$type" = ci ]; then body_reason "Allowlist: " Allowlist; fi
+  if [ -z "$reason" ]; then
+    say "**Failed:** only a \`ci\` change with an \`Allowlist: <reason>\` line in the pull request body may add to an allowlist under scripts/allow/. Added or edited:"
+    list "$grown"
+    exit 1
+  fi
+  echo "::warning::adds to an allowlist under scripts/allow/, allowed by an 'Allowlist:' line in the pull request body; the reason is in the job summary"
+  say "**Allowlist grown** under the Allowlist line in the pull request body. Reason given: \`$reason\`"
+  list "$grown"
+fi
+
 deps="dependencies devDependencies optionalDependencies peerDependencies overrides"
 # Each dependency spec in package.json that npm would fetch from somewhere other than the registry, and each
 # lock entry that is not what the registry published, among those this change adds or alters, so that npm test
