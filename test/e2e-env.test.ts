@@ -68,11 +68,11 @@ describe("the tarball end-to-end scenarios install", () => {
     };
     return { packs, installs, pack, install };
   };
-  const sh = (cmd: string) => spawnSync("sh", ["-c", cmd], { encoding: "utf8" }).stdout;
+  const sh = (cmd: string, env: NodeJS.ProcessEnv) => spawnSync("sh", ["-c", cmd], { encoding: "utf8", env: { ...process.env, ...env } }).stdout;
 
   it("installs and runs only a checked copy of the given file, so swapping the file later changes nothing", () => {
     const work = mkdtempSync(join(dir, "work-"));
-    // Quotes, $ patterns and a backslash must reach npx as one literal word.
+    // Quotes, spaces, $ patterns and a backslash reach npx as one literal word, through the environment.
     const given = join(dir, `it's $$ $& $' $1 \\ "x".tgz`);
     writeFileSync(given, readFileSync(tarball));
     const copy = join(work, basename(given));
@@ -83,7 +83,8 @@ describe("the tarball end-to-end scenarios install", () => {
     expect(installs).toEqual([copy]);
     expect(got.install).toBe(join(work, "install"));
     expect(got.line).toBe(`darnit 1.0.0 from ${given}, integrity ${packed!.integrity}`);
-    expect(sh(got.packed("printf '%s\\n' darnit@0.2.0 check"))).toBe(`--package=${copy}\ndarnit\ncheck\n`);
+    expect(sh(got.packed("printf '%s\\n' darnit@0.2.0 check"), got.env)).toBe(`--package=${copy}\ndarnit\ncheck\n`);
+    expect(got.packed("npx darnit@0.2.0 check")).toBe('npx --package="$DARNIT_TARBALL" darnit check');
     expect(integrity(copy)).toBe(packed!.integrity);
   });
 
@@ -107,7 +108,7 @@ describe("the tarball end-to-end scenarios install", () => {
     expect(packs).toEqual([work]);
     expect(installs).toEqual([own]);
     expect(got.line).toBe(`darnit 1.0.0 from ${own}, integrity ${packed!.integrity}`);
-    expect(sh(got.packed("printf '%s\\n' darnit@0.2.0"))).toBe(`--package=${own}\ndarnit\n`);
+    expect(sh(got.packed("printf '%s\\n' darnit@0.2.0"), got.env)).toBe(`--package=${own}\ndarnit\n`);
   });
 
   it("exits 2 for one flag without the other, a missing file, a folder, a non-.tgz file or an unknown argument", () => {

@@ -161,7 +161,7 @@ try {
 const work = mkdtempSync(join(tmpdir(), "darnit-e2e-"));
 let failures = 0;
 try {
-  const { install, line: installed, packed } = installTarball(
+  const { install, line: installed, env: tarballEnv, packed } = installTarball(
     work,
     given,
     (dest) => must("npm", ["pack", "--silent", "--pack-destination", dest], ROOT),
@@ -259,6 +259,7 @@ try {
   symlinkSync(join(must("npm", ["config", "get", "cache"], install).trim(), "_cacache"), join(npmCache, "_cacache"));
   const actions = {
     ...USER_ENV,
+    ...tarballEnv,
     RUNNER_TEMP: runnerTemp,
     GITHUB_WORKSPACE: hostile,
     npm_config_cache: npmCache,

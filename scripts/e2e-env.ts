@@ -39,7 +39,8 @@ export function givenTarball(args: string[]): Tarball | undefined {
  * Installs the tarball every scenario runs: the one `pack` writes into `work`, or a copy of the given one, checked
  * after copying so that changing the given file later changes nothing. `install` installs a tarball into a folder
  * and returns darnit's version; npm's lockfile there must show the checked integrity. Only that tarball is used
- * after this: `packed` puts it in place of `darnit@<pin>` in a command, quoted so any path stays one word for sh.
+ * after this: `packed` puts `$DARNIT_TARBALL` in place of `darnit@<pin>` in a command run with `env`, so the path
+ * reaches npx as one word and never becomes shell text.
  */
 export function installTarball(work: string, given: Tarball | undefined, pack: (dest: string) => void, install: (tarball: string, dir: string) => string) {
   if (!given) pack(work);
@@ -56,6 +57,7 @@ export function installTarball(work: string, given: Tarball | undefined, pack: (
   return {
     install: dir,
     line: `darnit ${version} from ${given?.tarball ?? tarball}, integrity ${installed}`,
-    packed: (cmd: string) => cmd.replace(/darnit@\S+/, () => `--package='${tarball.replaceAll("'", "'\\''")}' darnit`),
+    env: { DARNIT_TARBALL: tarball },
+    packed: (cmd: string) => cmd.replace(/darnit@\S+/, () => '--package="$DARNIT_TARBALL" darnit'),
   };
 }
