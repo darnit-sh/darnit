@@ -1,8 +1,11 @@
 import { execFile } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { cellModels, pageMismatches, readPage, recommended, replacementsFor } from "../src/corpus/replacements.js";
+import { cellModels, modelDetection, modelFixtures, modelTitle, pageMismatches, readPage, recommended, replacementsFor, shutdownDate, wholeRows } from "../src/corpus/replacements.js";
 import { modelIds, parseSpec } from "../src/corpus/spec.js";
 import { loadRecords } from "../src/records/load.js";
 import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/records/schema.js";
@@ -541,6 +544,108 @@ describe("fix.models from the page", () => {
       "dall-e-3": { human: "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare", source: PAGE },
       "codex-mini-latest": { human: "not a plain swap: OpenAI recommends gpt-5-codex-mini, which its API spec does not list", source: PAGE },
     });
+  });
+});
+
+describe("whole rows from the page", () => {
+  const run = promisify(execFile);
+  const dated = (date: string, rows: string[]) => table(rows).replaceAll("<td>2026</td>", `<td>${date}</td>`);
+  const on = (slug: string, date: string, models: string[]) => parseChangeRecord({ ...shutdown(slug, models), effectiveAt: date, detection: modelDetection(models) }, `${slug}.json`);
+
+  it("reads each shutdown date the page writes, and no other text", () => {
+    // The page writes some ISO dates with non-breaking hyphens.
+    expect(["Dec 11, 2026", "December 11, 2026", "Sept 9, 2027", "2026-09-24", "2026\u201103\u201126", "Feb 29, 2028"].map(shutdownDate)).toEqual(["2026-12-11", "2026-12-11", "2027-09-09", "2026-09-24", "2026-03-26", "2028-02-29"]);
+    for (const no of ["Feb 29, 2027", "2026-13-01", "2026-3-26", "Ma 1, 2026", "Decembers 1, 2026", "11 Dec 2026", "Dec 11 2026", "", "Dec 11, 2026 and later", "0099-01-01"]) expect(shutdownDate(no), no).toBeUndefined();
+  });
+
+  it("reads every model row of the saved page with its shutdown date", async () => {
+    const rows = readPage(await FIXTURE).rows.filter((r) => r.models);
+    // "at earliest 2024-06-13" is no one date: its models count under an unread date, never under another row's.
+    expect(rows.filter((r) => !r.shutdown).map((r) => r.label)).toEqual(["table 36 row 2"]);
+    expect(rows.filter((r) => r.shutdown === "2026-12-11").map((r) => r.models)).toEqual([
+      ["gpt-5", "gpt-5-2025-08-07"],
+      ["gpt-5-mini", "gpt-5-mini-2025-08-07"],
+      ["gpt-5-nano", "gpt-5-nano-2025-08-07"],
+      ["gpt-5-pro", "gpt-5-pro-2025-10-06"],
+      ["o3", "o3-2025-04-16"],
+      ["o3-pro", "o3-pro-2025-06-10"],
+    ]);
+  });
+
+  it("gives the record of a row's date every model of its rows, and lists other dates' undetected models for later", () => {
+    const page = readPage(dated("Dec 11, 2026", ["a | a-1 || x-1", "b | b-1 || y-1"]) + dated("Jan 1, 2027", ["c | c-1 || x-1", "d-1 || x-1"]));
+    const records = [on("one", "2026-12-11", ["a-1", "b-1"]), on("two", "2027-01-01", ["c-1"])];
+    expect(wholeRows(records, page, new Set(["2026-12-11"]))).toEqual({
+      models: new Map([["openai:2026-01-01:one", ["a", "b", "a-1", "b-1"]]]),
+      problems: [],
+      later: new Map([["2027-01-01", ["c", "d-1"]]]),
+    });
+    // A record of another date detecting the row's models is not its record.
+    expect(wholeRows([on("one", "2026-12-12", ["a-1", "b-1"])], page, new Set(["2026-12-11"])).problems).toEqual([
+      "table 1 row 2 (a, a-1): no record shutting down on 2026-12-11 detects any of its models; darnit does not make that record yet",
+      "table 1 row 3 (b, b-1): no record shutting down on 2026-12-11 detects any of its models; darnit does not make that record yet",
+    ]);
+  });
+
+  it("fails a row two records share, a model another record detects, and a date no row has", () => {
+    const page = readPage(dated("Dec 11, 2026", ["a | a-1 | b-1 || x-1", "c | c-1 || x-1"]));
+    expect(wholeRows([on("one", "2026-12-11", ["a-1"]), on("two", "2026-12-11", ["b-1"])], page, new Set(["2026-12-11"])).problems).toEqual([
+      "table 1 row 2 (a, a-1, b-1): openai:2026-01-01:one and openai:2026-01-01:two each detect some of its models",
+      "table 1 row 3 (c, c-1): no record shutting down on 2026-12-11 detects any of its models; darnit does not make that record yet",
+    ]);
+    expect(wholeRows([on("one", "2026-12-11", ["c-1"]), on("two", "2026-01-01", ["c"])], page, new Set(["2026-12-11"])).problems).toEqual([
+      "table 1 row 2 (a, a-1, b-1): no record shutting down on 2026-12-11 detects any of its models; darnit does not make that record yet",
+      "openai:2026-01-01:one: the page lists c in its rows, but another record detects them",
+    ]);
+    expect(wholeRows([], page, new Set(["2026-12-12"])).problems).toEqual(["no model row on the page shuts down on 2026-12-12; take it off the list"]);
+  });
+
+  it("builds detection and fixtures the way every shipped model record has them, and a title of at most 100 characters", async () => {
+    const loaded = (await loadRecords()).filter((l) => recordModels(l.record).length > 0);
+    const differ = [];
+    for (const { record, packDir } of loaded) {
+      const ids = recordModels(record);
+      if (JSON.stringify(record.detection) !== JSON.stringify(modelDetection(ids))) differ.push(`${record.id} detection`);
+      for (const [rel, text] of Object.entries(modelFixtures(ids))) if ((await readFile(join(packDir, rel), "utf8")) !== text) differ.push(`${record.id} ${rel}`);
+    }
+    expect(differ).toEqual([]);
+    expect(loaded).toHaveLength(29);
+    expect(modelTitle(["a"], "2026-12-11")).toBe("a shut down on 2026-12-11");
+    expect(modelTitle(["a", "b", "c"], "2026-12-11")).toBe("a, b and c shut down on 2026-12-11");
+    expect(modelTitle(["a", "b", "c", "d", "e", "f", "g"], "2026-12-11")).toBe("a, b, c, d, e, f and 1 more shut down on 2026-12-11");
+    const long = Array.from({ length: 4 }, (_, i) => `${"m".repeat(98)}-${i}`);
+    expect(modelTitle(long, "2026-12-11")).toHaveLength(100);
+  });
+
+  it("fails --check naming an alias a record lost, and --write puts back the shipped record", { timeout: 60_000 }, async () => {
+    const root = fileURLToPath(new URL("../", import.meta.url));
+    const dir = await mkdtemp(join(tmpdir(), "darnit-replacements-"));
+    try {
+      // The run reads the saved spec and the row lists, as the shipped-records test above reads the spec.
+      for (const f of ["src", "scripts", "packs", join("corpus", "openai"), "package.json", "test/fixtures/deprecations.html"]) await cp(join(root, f), join(dir, f), { recursive: true });
+      await symlink(join(root, "node_modules"), join(dir, "node_modules"));
+      const record = join(dir, "packs/openai/2026-06-11-gpt-5-and-o3-model-deprecations-shut-down/change.json");
+      const shipped = await readFile(record, "utf8");
+      const script = (flag: string) =>
+        run(process.execPath, ["--import", "tsx", "scripts/replacements.ts", "--page", "test/fixtures/deprecations.html", flag], { cwd: dir }).then(
+          (r) => ({ code: 0, out: r.stdout }),
+          (e: { code: number; stdout: string }) => ({ code: e.code, out: e.stdout }),
+        );
+      expect((await script("--check")).code).toBe(0);
+      const raw = JSON.parse(shipped) as { detection: { astGrepPatterns: Record<string, { context: string }[]> }; fix: { models: Record<string, unknown> } };
+      for (const lang of ["js", "py"]) raw.detection.astGrepPatterns[lang] = raw.detection.astGrepPatterns[lang]!.filter((p) => !/["']o3["']/.test(p.context));
+      delete raw.fix.models.o3;
+      await writeFile(record, JSON.stringify(raw, null, 2));
+      const failed = await script("--check");
+      expect(failed.code).toBe(1);
+      expect(failed.out).toContain("2026-06-11-gpt-5-and-o3-model-deprecations-shut-down/change.json: does not detect o3, which the page lists in its 2026-12-11 rows");
+      expect(failed.out).not.toMatch(/does not detect (?!o3,)/);
+      expect((await script("--write")).code).toBe(0);
+      expect(await readFile(record, "utf8")).toBe(shipped);
+      expect((await script("--check")).code).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

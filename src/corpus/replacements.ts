@@ -116,8 +116,23 @@ function rowsOf(table: T.Element): { rows: T.Element[]; error?: string } {
   return { rows };
 }
 
-/** One row of a table on the page, folded, with the models darnit read from it and, for a fine-tuning row, its model. */
-export type Row = { label: string; folded: string; read: string[]; exempt?: string };
+/**
+ * One row of a table on the page, folded, with the models darnit read from it and, for a fine-tuning row, its model.
+ * A model row also has the models of its model cell and its shutdown date, when darnit reads the date.
+ */
+export type Row = { label: string; folded: string; read: string[]; exempt?: string; models?: string[]; shutdown?: string };
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+/** A shutdown date cell as YYYY-MM-DD: "Dec 11, 2026", "December 11, 2026" or "2026-12-11". Undefined for anything else. */
+export function shutdownDate(cell: string): string | undefined {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cell.replaceAll("\u2011", "-"));
+  const named = /^([A-Za-z]{3,9})\.? (\d{1,2}), (\d{4})$/.exec(cell);
+  const month = named ? MONTHS.findIndex((m) => m.startsWith(named[1]!.toLowerCase())) + 1 : 0;
+  const [y, m, d] = iso ? [iso[1], iso[2], iso[3]].map(Number) : named && month > 0 ? [Number(named[3]), month, Number(named[2])] : [];
+  if (y === undefined || m === undefined || d === undefined) return undefined;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d ? date.toISOString().slice(0, 10) : undefined;
+}
 
 /** A table of the page, folded, and why darnit does not read it as a person would, if it does not. */
 export type Table = { label: string; folded: string; error?: string };
@@ -148,14 +163,16 @@ export function readPage(html: string): Page {
     for (const [i, row] of texts.entries()) {
       let read: string[] = [];
       let exempt: string | undefined;
+      let models: string[] | undefined;
       if (i > 0 && to >= 2 && row.every((c) => c.length <= MAX_CELL && !UNSAFE.test(c))) {
-        const models = cellModels(row[1]!);
+        models = cellModels(row[1]!);
         for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), row[to]!]);
         // A row retiring fine-tuning on a model, not calls to it: exempt when that is a real model.
         exempt = models ? undefined : /^New fine-tuning training on ([a-z0-9._:-]+)$/.exec(row[1]!)?.[1];
         if (models || exempt) read = [...(models ?? []), ...offered(row[to]!)];
       }
-      rows.push({ label: `${label} row ${i + 1}`, folded: fold(text(trs[i]!)), read, ...(exempt ? { exempt } : {}) });
+      const shutdown = models && shutdownDate(row[0]!);
+      rows.push({ label: `${label} row ${i + 1}`, folded: fold(text(trs[i]!)), read, ...(exempt ? { exempt } : {}), ...(models ? { models } : {}), ...(shutdown ? { shutdown } : {}) });
     }
   }
   return { replacements, tables, rows };
@@ -303,4 +320,71 @@ export function pageMismatches(records: readonly ChangeRecord[], page: Page): st
     }
   }
   return out;
+}
+
+/**
+ * Every model of the page's rows on each of `dates`, for the record of that date that detects any of the row's
+ * models: each row's first model, then the rest in page order, then any the record detects that no row names.
+ * A row with no such record, or more than one, a model another record detects, and a date no row has are problems.
+ * Models of rows on other dates that no record detects are `later`, by shutdown date, for the next batches.
+ */
+export function wholeRows(records: readonly ChangeRecord[], page: Page, dates: ReadonlySet<string>): { models: Map<string, string[]>; problems: string[]; later: Map<string, string[]> } {
+  const detected = new Set(records.flatMap(recordModels));
+  const [rowsOf, later, problems, met] = [new Map<string, string[][]>(), new Map<string, string[]>(), [] as string[], new Set<string>()];
+  for (const { label, models, shutdown = "an unread date" } of page.rows) {
+    if (!models) continue;
+    if (!dates.has(shutdown)) {
+      const missing = models.filter((m) => !detected.has(m) && !later.get(shutdown)?.includes(m));
+      if (missing.length > 0) later.set(shutdown, [...(later.get(shutdown) ?? []), ...missing]);
+      continue;
+    }
+    met.add(shutdown);
+    const owners = records.filter((r) => r.effectiveAt === shutdown && recordModels(r).some((m) => models.includes(m)));
+    if (owners.length === 1) rowsOf.set(owners[0]!.id, [...(rowsOf.get(owners[0]!.id) ?? []), models]);
+    else problems.push(`${label} (${models.join(", ")}): ${owners.length === 0 ? `no record shutting down on ${shutdown} detects any of its models; darnit does not make that record yet` : `${owners.map((r) => r.id).join(" and ")} each detect some of its models`}`);
+  }
+  problems.push(...[...dates].filter((d) => !met.has(d)).map((d) => `no model row on the page shuts down on ${d}; take it off the list`));
+  const models = new Map<string, string[]>();
+  for (const r of records.filter((r) => rowsOf.has(r.id))) {
+    const rows = rowsOf.get(r.id)!;
+    const ids = [...new Set([...rows.map((row) => row[0]!), ...rows.flat(), ...recordModels(r)])];
+    const elsewhere = ids.filter((m) => detected.has(m) && !recordModels(r).includes(m));
+    if (elsewhere.length > 0) problems.push(`${r.id}: the page lists ${elsewhere.join(", ")} in its rows, but another record detects them`);
+    else models.set(r.id, ids);
+  }
+  return { models, problems, later };
+}
+
+const quoted = (ids: readonly string[], lang: "js" | "py") =>
+  ids.flatMap((m) => ['"', "'"].map((q) => (lang === "js" ? { context: `({ model: ${q}${m}${q} })`, selector: "pair" } : { context: `f(model=${q}${m}${q})`, selector: "keyword_argument" })));
+
+/** A model record's detection: each model as the call's model, in both quote styles, in JavaScript and Python. */
+export const modelDetection = (ids: readonly string[]) => ({ astGrepPatterns: { js: quoted(ids, "js"), py: quoted(ids, "py") } });
+
+/** A model record's title: its first models, the rest counted, and the shutdown date, in at most 100 characters. */
+export function modelTitle(ids: readonly string[], date: string): string {
+  for (let n = Math.min(ids.length, 6); ; n--) {
+    const named = n === ids.length ? `${n > 1 ? `${ids.slice(0, -1).join(", ")} and ` : ""}${ids.at(-1)}` : `${ids.slice(0, n).join(", ")} and ${ids.length - n} more`;
+    if (named.length <= 75 || n === 1) return `${named} shut down on ${date}`.slice(0, 100);
+  }
+}
+
+/** A model record's migration notes, naming each model and the replacement cell of its newest row. */
+export function modelNotes(vendor: string, ids: readonly string[], date: string, page: Page): string {
+  const cells = ids.map((m) => page.replacements.get(m)?.[0] ?? EM_DASH);
+  const offers = cells.every((c) => c === EM_DASH) ? `${vendor} names no replacement` : `Recommended replacements: ${ids.map((m, i) => `${m} to ${cells[i]}`).join("; ")}`;
+  return `${vendor} removes these models from the API on ${date}: ${ids.join(", ")}. Calls that name them fail after that date. ${offers}${END}, so test the switch rather than only renaming.`;
+}
+
+const call = (m: string, i: number, lang: "js" | "py") =>
+  ['"', "'"].map((q, k) => (lang === "js" ? `export const ${"ab"[k]}${i} = await openai.chat.completions.create({ model: ${q}${m}${q}, messages });` : `${"ab"[k]}${i} = client.chat.completions.create(model=${q}${m}${q}, messages=messages)`));
+
+/** A model record's fixture: every model in both quote styles and a longer near miss, the same before and after. */
+export function modelFixtures(ids: readonly string[]): Record<string, string> {
+  const near = `${ids[0]}-x`;
+  const js = `import OpenAI from "openai";\n\nconst openai = new OpenAI();\n\n${ids.flatMap((m, i) => call(m, i, "js")).join("\n")}\n\n// Near miss: a longer name is a different model.\nexport const near = await openai.chat.completions.create({ model: "${near}", messages });\n`;
+  const py = `from openai import OpenAI\n\nclient = OpenAI()\n\n${ids.flatMap((m, i) => call(m, i, "py")).join("\n")}\n\n# Near miss: a longer name is a different model.\nnear = client.chat.completions.create(model="${near}", messages=messages)\n`;
+  const note = "Report only: there are no rules, so after/ matches before/. Every listed model appears in both quote styles; the near miss at the end must not match.";
+  const expected = `${JSON.stringify({ note, matches: { "before/app.js": ids.length * 2, "before/app.py": ids.length * 2 } }, null, 2)}\n`;
+  return { "fixtures/basic/before/app.js": js, "fixtures/basic/before/app.py": py, "fixtures/basic/after/app.js": js, "fixtures/basic/after/app.py": py, "fixtures/basic/expected.json": expected };
 }

@@ -1055,6 +1055,31 @@ describe("model shutdowns", () => {
     expect(json(values)).toMatchObject([{ model: "text-ada-001", replacement: { model: "gpt-5.6-terra", source } }]);
   });
 
+  it("reports the gpt-5 and o3 aliases OpenAI shuts down with their snapshots, through the CLI", { timeout: 60_000 }, async () => {
+    const swaps = {
+      "gpt-5": "use gpt-5.6-sol instead (OpenAI's recommendation)",
+      "gpt-5-mini": "use gpt-5.6-terra instead (OpenAI's recommendation)",
+      "gpt-5-nano": "use gpt-5.6-luna instead (OpenAI's recommendation)",
+      "gpt-5-pro": "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro",
+      o3: "use gpt-5.6-sol instead (OpenAI's recommendation)",
+      "o3-pro": "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro",
+    };
+    const aliases = Object.keys(swaps);
+    const dir = await scratch({
+      "app.js": aliases.map((m) => `const r = await client.chat.completions.create({ model: "${m}", messages: [] })\n`).join(""),
+      "app.py": `from openai import OpenAI\nclient = OpenAI()\n${aliases.map((m) => `r = client.chat.completions.create(model="${m}", messages=[])\n`).join("")}`,
+    });
+    const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    const run = spawnSync(process.execPath, ["--import", "tsx", cli, "check", dir], { encoding: "utf8", env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "" } });
+    expect(run.status).toBe(1);
+    const lines = run.stdout.split("\n");
+    const heading = lines.findIndex((l) => l.startsWith("openai 2026-06-11: ") && l.includes(" shut down on 2026-12-11 "));
+    expect(heading).toBeGreaterThanOrEqual(0);
+    const sites = lines.slice(heading + 1, lines.findIndex((l, i) => i > heading && /^ {2}\d+ call sites? in/.test(l)));
+    const found = sites.flatMap((l, i) => (/^ {2}app\.(js|py):\d+:\d+ {2}/.test(l) ? [`${l.trim().replace(/:\d+:\d+ {2}.*/, "")} ${/["']([^"']+)["']/.exec(l)![1]} ${sites[i + 1]!.trim()}`] : []));
+    expect(found.sort()).toEqual(["app.js", "app.py"].flatMap((f) => aliases.map((m) => `${f} ${m} ${swaps[m as keyof typeof swaps]}`)).sort());
+  });
+
   it("prints record text in the replacement line as other output, one line and no control characters", async () => {
     const { hits } = await checkReport(await scratch({ "app.py": 'from openai import OpenAI\nclient = OpenAI()\nclient.responses.create(model="o3-2025-04-16")\n' }));
     const record = hits[0]!.record;

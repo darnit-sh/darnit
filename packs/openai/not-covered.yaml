@@ -133,26 +133,6 @@
     data_source.sampling_params.
 
 - items:
-    - schema ModelIdsShared anyOf 1 enum gpt-5
-    - schema ModelIdsShared anyOf 1 enum gpt-5-mini
-    - schema ModelIdsShared anyOf 1 enum gpt-5-nano
-    - schema ModelIdsShared anyOf 1 enum o3
-    - schema ModelIdsResponses anyOf 1 enum o3-pro
-    - schema ModelIdsResponses anyOf 1 enum gpt-5-pro
-    - schema BetaModelIdsShared anyOf 1 enum gpt-5
-    - schema BetaModelIdsShared anyOf 1 enum gpt-5-mini
-    - schema BetaModelIdsShared anyOf 1 enum gpt-5-nano
-    - schema BetaModelIdsShared anyOf 1 enum o3
-    - schema BetaModelIdsResponses anyOf 1 enum o3-pro
-    - schema BetaModelIdsResponses anyOf 1 enum gpt-5-pro
-  date: "2026-12-11"
-  needs-record: >-
-    Add these aliases to openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down. OpenAI's
-    deprecations page lists gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3 and o3-pro for 2026-12-11,
-    the record's date, but the record names only the dated snapshots, so code naming these aliases
-    is not reported.
-
-- items:
     - schema AssistantSupportedModels enum gpt-4.1
     - schema AssistantSupportedModels enum gpt-4.1-mini
     - schema AssistantSupportedModels enum gpt-4o

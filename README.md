@@ -16,7 +16,7 @@ openai 2024-09-12: Rename max_tokens to max_completion_tokens on chat completion
   1 call site in 1 file
   https://developers.openai.com/api/docs/api-reference/chat/create
 
-Scanned 1 JavaScript, TypeScript or Python file against 33 change records.
+Scanned 1 JavaScript, TypeScript or Python file against 35 change records.
 Not checked: request options built elsewhere and passed in as a variable.
 
 $ npx darnit fix
@@ -80,7 +80,7 @@ Small on purpose. A change gets a rewrite only when the rewrite is proven.
 | OpenAI: `max_tokens` → `max_completion_tokens` on chat completions | reports | rewrites |
 | OpenAI: chat completions `functions` → `tools` | reports | reports only: code that reads the response needs changes a rule can't make safely |
 | OpenAI: `style` and `response_format` on image generation and edits, found by the weekly spec check | reports, marked unreviewed | no: waiting for review |
-| OpenAI: 143 retiring models listed on the deprecations page | reports, marked parser-verified | reports only: a newer model can answer differently |
+| OpenAI: 149 retiring models listed on the deprecations page | reports, marked parser-verified | reports only: a newer model can answer differently |
 
 | Vendor | Status |
 |---|---|
@@ -475,7 +475,9 @@ those are read from OpenAI's deprecations page by a script, confirmed by a secon
 separate parser, and stay parser-verified until a person reviews them. Their replacements
 come from the same page's tables (`npm run replacements`), read from the tree a WHATWG HTML
 parser builds, so only tables a browser shows count. It fails on a deprecation table it cannot
-read strictly and on any table row naming a model it did not read from that row. Known limits:
+read strictly and on any table row naming a model it did not read from that row. For each shutdown
+date in `corpus/openai/whole-rows.txt`, the record for that date also detects every model the page lists
+in that date's rows, aliases included: `--write` adds a missing one and `--check` fails naming it. Known limits:
 model names outside the page's tables, in lists or paragraphs, are not checked, and neither is a
 table hidden by a CSS class rather than an attribute. New candidates also
 come from the vendors' own API specs: once a week a workflow

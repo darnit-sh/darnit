@@ -1,0 +1,5 @@
+# Shutdown dates on OpenAI's deprecations page whose model rows the records detect whole: every model a row names,
+# aliases included, goes into the record shutting down that day that detects any of the row's models. npm run
+# replacements -- --page <page> --write adds a missing one, with the record's title, notes and fixture to match, and
+# --check fails naming it. Models of rows on other dates that no record detects are listed as later batches.
+2026-12-11

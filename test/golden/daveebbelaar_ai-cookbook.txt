@@ -19,10 +19,14 @@ H models/openai/04-structured-output/Instructor/04-ticket-system.py:40:9 #1e64d6
 H models/openai/05-responses/08-reasoning.py:15:5 #2dd14a2d openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H models/openai/08-video/1-sora-quickstart.py:13:5 #77f09111 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
 H models/openai/08-video/2-references.py:65:5 #77f09111 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+H models/openai/08-video/2-references.py:17:5 #c8c5dbf9 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 H models/openai/08-video/3-sora-pro-model.py:13:5 #1b851b97 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
 H models/openai/08-video/4-sora-prompting.py:22:5 #77f09111 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
 H models/openai/08-video/5-sora-remix.py:36:5 #77f09111 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
+H models/openai/08-video/utils/director.py:18:13 #c8c5dbf9 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+H models/openai/09-web/web_search.py:6:5 #4d5dde24 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 P context/web/1-get-single-page.py:8:9 #4549d969 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P context/web/2-web-search.py:8:9 #3d129a59 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 P context/web/3-search-handbook.py:14:9 #4549d969 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P knowledge/mem0/oss/config.py:8:56 #5fee4864 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M knowledge/agentic-rag/6-production.py:220 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
