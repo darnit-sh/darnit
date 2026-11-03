@@ -23,12 +23,20 @@ export function readSources(): Sources {
   return sources;
 }
 
-/** The file an import specifier names, with .js read as .ts; undefined for a package or a builtin. */
+/** The source files TypeScript reads a JavaScript extension as, in the order it tries them. */
+const SOURCE_FOR: [RegExp, string[]][] = [
+  [/\.js$/, [".ts", ".tsx"]],
+  [/\.jsx$/, [".tsx"]],
+  [/\.mjs$/, [".mts"]],
+  [/\.cjs$/, [".cts"]],
+];
+
+/** The file an import specifier names, with .js read as .ts or .tsx; undefined for a package or a builtin. */
 function resolveSpecifier(file: string, specifier: string, sources: Sources): string | undefined {
   if (!specifier.startsWith(".") && !specifier.startsWith("/")) return undefined;
   const path = posix.join(posix.dirname(file), specifier);
-  const asTs = path.replace(/\.([cm]?)js(x?)$/, ".$1ts$2");
-  return sources.has(asTs) ? asTs : path;
+  const [ext, exts] = SOURCE_FOR.find(([e]) => e.test(path)) ?? [/$/, []];
+  return [...exts.map((to) => path.replace(ext, to)), path].find((p) => sources.has(p)) ?? path;
 }
 
 const isCreateRequire = (node: ts.Node | undefined): boolean =>

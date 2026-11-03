@@ -244,6 +244,12 @@ describe("an import across islands and scripts/ fails", () => {
     expect(withLine("src/refusal.ts", `import "./missing.json";`)).toEqual([`src/refusal.ts imports "./missing.json", which is not a file under src/ or scripts/`]);
   });
 
+  it("an import of a .js path that names a .tsx file", () => {
+    const tsx = new Map(sources).set("src/scan/view.tsx", "export const v = 1;\n");
+    tsx.set("src/refusal.ts", `import "./scan/view.js";\n${sources.get("src/refusal.ts")}`);
+    expect(check(tsx, allowlist)).toEqual(["src/refusal.ts -> src/scan/view.tsx: floor 0 imports floor 2"]);
+  });
+
   it("the computed require() in the rule applier, which the allowlist names", () => {
     const apply = sources.get("src/packs/apply.ts")!;
     expect(importsOf("src/packs/apply.ts", apply).computed).toEqual(["require(pkgPath)"]);
