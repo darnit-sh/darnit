@@ -1,0 +1,11 @@
+{
+  "src/scan/**": { "lines": 99, "branches": 92 },
+  "src/records/**": { "lines": 100, "branches": 100 },
+  "src/corpus/**": { "lines": 98, "branches": 93 },
+  "src/packs/**": { "lines": 88, "branches": 60 },
+  "src/!(fix.ts|git.ts|check.ts|detect.ts)": { "lines": 87, "branches": 78 },
+  "src/fix.ts": { "lines": 98, "branches": 93 },
+  "src/git.ts": { "lines": 94, "branches": 82 },
+  "src/check.ts": { "lines": 98, "branches": 92 },
+  "src/detect.ts": { "lines": 98, "branches": 90 }
+}

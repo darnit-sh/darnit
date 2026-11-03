@@ -591,14 +591,14 @@ client.chat.completions.create(model="o1", max_tokens  # cap
     });
   });
 
-  it("compares comments in time near a parse, on a file made of comments", async () => {
+  it("compares comments in time near a parse, on a file made of comments", { timeout: 60_000, tags: ["cpu-time"] }, async () => {
     const source = `${"// note\nconst a = { max_tokens: /* x */ 1 }; /* y */\n".repeat(40_000)}`;
     const after = source.replaceAll("max_tokens", "max_completion_tokens");
     const parsing = await cpuTime(() => parseCode(Lang.JavaScript, source), 3);
     expect(await cpuTime(() => expect(keepsComments("big.js", source, after)).toBe(true), 3)).toBeLessThan(6 * parsing + 500);
     expect(keepsComments("big.js", source, after.replace("/* y */\n", "\n"))).toBe(false);
     expect(keepsComments("big.txt", source, source)).toBe(false);
-  }, 60_000);
+  });
 
   it("does not list leftovers under a partial rewrite that was put back", async () => {
     const dir = await repoWith({ "client.js": RAW_FETCH, "sdk.js": SDK_CALL });
@@ -2790,7 +2790,7 @@ describe("forTerminal", () => {
     expect(forTerminal(diff, false, {})).toBe(diff.replaceAll("\u001b", ""));
   });
 
-  it("colors a hostile diff quickly", async () => {
+  it("colors a hostile diff quickly", { tags: ["cpu-time"] }, async () => {
     const diff = `diff --git a/x b/x\n@@ -1 +1 @@\n+${" ".repeat(200_000)}x\n+${"\t".repeat(200_000)}\n${"+ \n-\n".repeat(100_000)}`;
     expect(await cpuTime(() => forTerminal(diff, true, {}), 3, 300)).toBeLessThan(300);
   });
@@ -2860,7 +2860,7 @@ describe("prose", () => {
     expect(prose("a\u200Bb\u202Ec\uFEFFd")).toBe("a\\\\u200bb\\\\u202ec\\\\ufeffd");
   });
 
-  it("stays fast on hostile input", async () => {
+  it("stays fast on hostile input", { tags: ["cpu-time"] }, async () => {
     expect(await cpuTime(() => prose(`${".".repeat(50000)}a`), 3, 500)).toBeLessThan(500);
   });
 });

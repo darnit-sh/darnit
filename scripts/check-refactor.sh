@@ -28,6 +28,8 @@ base=$1 head=$2
 type=$(title_type)
 
 mb=$(git merge-base "$base" "$head")
+# Every type: coverage thresholds only go up.
+sh "$(dirname "$0")/check-coverage.sh" "$mb" "$head" || exit 1
 # npm and yarn config anywhere, which can send every npm run and npx in CI through a script of its own.
 # Names match in any case, as they do on a macOS runner's disk.
 config=$(paths | grep -iE '(^|/)\.(npmrc|yarnrc[^/]*)"?$' || true)

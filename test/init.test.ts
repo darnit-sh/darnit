@@ -92,7 +92,7 @@ describe("detectApis", () => {
 });
 
 describe("detectApis on a repository built to slow it down", () => {
-  it("finishes quickly on a Python file of blank lines", async () => {
+  it("finishes quickly on a Python file of blank lines", { tags: ["cpu-time"] }, async () => {
     const dir = await scratchCopy("small");
     await writeFile(join(dir, "blank.py"), "\n".repeat(150_000));
     const time = await cpuTime(async () => expect((await detectApis(dir)).map((d) => d.vendor)).toEqual(["openai"]), 3, 2000);
@@ -508,7 +508,7 @@ describe("init --force rewrites only what git could put back", () => {
     ]);
   });
 
-  it("compares a darnit.yml too large to read whole without reading it", async () => {
+  it("compares a darnit.yml too large to read whole without reading it", { tags: ["cpu-time"] }, async () => {
     const dir = await committed("small", { "darnit.yml": "version: 1\n" });
     // Sparse, so it takes no disk space; reading it whole with readFile throws past 2 GiB.
     const size = 3 * 2 ** 30;

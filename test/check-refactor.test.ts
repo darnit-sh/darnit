@@ -56,6 +56,7 @@ afterAll(() => new Promise<void>((done) => server.close(() => done())));
 const guard = {
   "check-refactor.sh": readFileSync(script, "utf8"),
   "pr-common.sh": readFileSync("scripts/pr-common.sh", "utf8"),
+  "check-coverage.sh": readFileSync("scripts/check-coverage.sh", "utf8"),
   "timed.sh": 'sh "$(dirname "$0")/check-refactor.sh" "$@"\ns=$?\ntimes\nexit $s\n',
 };
 
@@ -342,6 +343,18 @@ describe("the rule picked by the title's type", () => {
       expect(r, title).toMatchObject({ status: 0, baseTests: false });
       expect(r.out).toContain("**Passed:**");
     }
+  });
+
+  it("fails any type that lowers a coverage threshold, judged from base", async () => {
+    const thresholds = (lines: number) => ({ write: "coverage-thresholds.json", text: JSON.stringify({ "src/**": { lines } }) });
+    const landed = [thresholds(80), { write: "vitest.config.ts", text: 'import t from "./coverage-thresholds.json";\n' }];
+    const lowered = await repo([thresholds(79)], landed);
+    for (const type of ["fix", "refactor", "docs", "ci"]) {
+      const r = await check(lowered, `${type}: x`, "Proof: none, lowers the threshold\n");
+      expect(r.status, type).toBe(1);
+      expect(r.summary, type).toContain("- src/** lines 80 to 79");
+    }
+    expect((await rule("test: x", [thresholds(81)], "", {}, landed)).status).toBe(0);
   });
 
   it("fails any type that adds or changes a dependency npm would fetch from outside the registry", async () => {
