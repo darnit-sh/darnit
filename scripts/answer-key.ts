@@ -209,6 +209,14 @@ export function applyKnown(repo: string, t: Tally, known: readonly Known[]): str
 /** Each line only one side has with no rule for it. */
 export const misses = (t: Tally) => t.unexplained.map((u) => `${esc(u.file)}:${u.line} ${u.id} only in ${u.side}`);
 
+/** An error for each known line whose repository repos.tsv does not list, as it would never be compared. */
+export const unlisted = (known: readonly Known[], rows: readonly { repo: string }[]) =>
+  known.filter((k) => !rows.some((r) => r.repo === k.repo)).map((k) => `${KNOWN} lists ${k.repo}, which is not in repos.tsv`);
+
+/** Why darnit's run on `repo` cannot be compared: it failed, or it checked fewer records than the search has ids from. */
+export const notComparable = (repo: string, run: ReturnType<typeof runCheck>, records: number) =>
+  "error" in run ? run.error : run.report.scanned.records !== records ? `darnit checked ${repo} against ${run.report.scanned.records} records, not all ${records}` : undefined;
+
 /** 1 when any line is unexplained or a repository could not be compared. */
 export const exitCode = (t: Tally, errors: readonly string[] = []) => (t.unexplained.length > 0 || errors.length > 0 ? 1 : 0);
 
@@ -220,13 +228,14 @@ async function main() {
   const models = new Map(records.map((r) => [r.id, new Set(recordModels(r))]));
   const total = tally();
   const known = parseKnown(readFileSync(resolve(KNOWN), "utf8"));
-  const errors = known.filter((k) => !rows.some((r) => r.repo === k.repo)).map((k) => `${KNOWN} lists ${k.repo}, which is not in repos.tsv`);
+  const errors = unlisted(known, rows);
   let compared = 0;
   for (const { repo, sha } of rows) {
     const dir = clone(args.dir, repo, sha);
     const run = dir ? runCheck(dir, repo) : { error: `could not fetch ${repo} at ${sha}` };
-    if ("error" in run || run.report.scanned.records !== records.length) {
-      errors.push("error" in run ? run.error : `darnit checked ${repo} against ${run.report.scanned.records} records, not all ${records.length}`);
+    const why = notComparable(repo, run, records.length);
+    if (why !== undefined || "error" in run) {
+      errors.push(why!);
       console.log(`${ci ? "::error::" : "error: "}${errors.at(-1)}`);
       continue;
     }

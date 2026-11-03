@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { answerKey, applyKnown, exitCode, misses, parseKnown, RULES, summary, tally } from "../scripts/answer-key.js";
+import { answerKey, applyKnown, exitCode, misses, notComparable, parseKnown, RULES, summary, tally, unlisted } from "../scripts/answer-key.js";
 import type { Report } from "../scripts/golden.js";
 import { checkReport, mentionsToJson, toJson } from "../src/check.js";
 import { loadRecords } from "../src/records/load.js";
@@ -97,6 +97,42 @@ describe("answer key for model-name mentions", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("agrees with darnit on each line a guard in the rules decides", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "darnit-answer-key-guards-"));
+    try {
+      const write = (file: string, lines: string[]) => writeFileSync(join(dir, file), [...lines, ""].join("\n"));
+      // A dot then a digit joins the word; gpt-4 is no code name, even on a long line; o1 outside code files is a mention.
+      write("notes.md", ["gpt-4.9 is not a model.", `${"x ".repeat(2600)}gpt-4 here`, "x = o1 + 1", 'Ask the ada team, or "ada".']);
+      // Inside a string or comment opened on an earlier line, o1 is a mention; after a closed comment it is code.
+      write("doc.py", ['"""', "o1 runs here", '"""', "'''", "o1 runs here", "'''"]);
+      write("doc.js", ["const s = `", "o1 runs here", "`;", "/*", "o1 runs here", "*/", "/* note */", "x = o1 + 1;"]);
+      // A model on the second line of a call darnit reports.
+      write("call.js", ['import OpenAI from "openai";', "const client = new OpenAI();", "await client.chat.completions.create({", "  model:", '    "gpt-4-32k",', "  messages: [],", "});"]);
+      writeFileSync(join(dir, "blob.bin"), "\0gpt-4 in a binary file\n");
+      const found = await checkReport(dir);
+      const r: Report = { scanned: found.coverage, hits: toJson(found.hits) as Report["hits"], possiblyAffected: toJson(found.values) as Report["possiblyAffected"], mentions: mentionsToJson(found.mentions) };
+      const t = await answerKey(dir, r, ids);
+      expect(misses(t)).toEqual([]);
+      expect(summary(t)).toBe(
+        "mentions 9 = agreed 7 + explained by a rule 2 (call site 1, code name 1) + known 0 + unexplained 0\nnot a mention, part of a longer word: 2",
+      );
+      // One match explained does not cover another match of the same id on that line that is a mention.
+      const dropped = await answerKey(dir, { ...r, mentions: r.mentions.filter((m) => !(m.file === "notes.md" && m.line === 4)) }, ids);
+      expect(misses(dropped)).toEqual(["notes.md:4 ada only in search"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a run darnit failed or ran with fewer records, and a known line for a repository it does not compare", () => {
+    const report = { scanned: { files: 1, records: 3 }, hits: [], possiblyAffected: [], mentions: [] };
+    expect(notComparable("a/b", { exit: 0, report }, 3)).toBeUndefined();
+    expect(notComparable("a/b", { exit: 0, report }, 4)).toBe("darnit checked a/b against 3 records, not all 4");
+    expect(notComparable("a/b", { error: "darnit exited 2 on a/b" }, 3)).toBe("darnit exited 2 on a/b");
+    const known = parseKnown("repo\tfile\tline\tid\tside\treason\na/b\ta.js\t1\to1\tsearch\tdarnit is right here\nc/d\ta.js\t1\to1\tsearch\tdarnit is right here\n");
+    expect(unlisted(known, [{ repo: "a/b" }])).toEqual(["test/answer-key/known.tsv lists c/d, which is not in repos.tsv"]);
   });
 
   it("counts a listed difference as known, and fails on a listed one no longer seen or an unlisted one", () => {
