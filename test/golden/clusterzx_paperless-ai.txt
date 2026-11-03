@@ -34,6 +34,7 @@ M services/serviceUtils.js:27 o1-2024-12-17 openai:2026-04-22:legacy-gpt-model-s
 M services/serviceUtils.js:27 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M services/serviceUtils.js:27 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M services/serviceUtils.js:27 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:27 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M services/serviceUtils.js:27 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/serviceUtils.js:30 text-davinci-003 openai:2023-07-06:gpt-and-embeddings-shut-down
 M services/serviceUtils.js:30 text-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down

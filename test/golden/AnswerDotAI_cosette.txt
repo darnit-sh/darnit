@@ -30,11 +30,15 @@ M 00_core.ipynb:135 gpt-4o-mini-tts-2025-12-15 openai:2026-10-01:text-to-speech-
 M 00_core.ipynb:135 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
 M 00_core.ipynb:137 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
 M 00_core.ipynb:137 gpt-4o-transcribe-diarize openai:2026-08-26:transcription-models-shut-down
+M 00_core.ipynb:138 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:138 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:138 gpt-5-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M 00_core.ipynb:139 gpt-5-codex openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
+M 00_core.ipynb:139 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:139 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M 00_core.ipynb:140 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:140 gpt-5-nano-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M 00_core.ipynb:140 gpt-5-pro openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:141 gpt-5-pro-2025-10-06 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:142 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M 00_core.ipynb:142 gpt-5.1-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
@@ -55,11 +59,13 @@ M 00_core.ipynb:150 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:150 o1-2024-12-17 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:150 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:151 o1-pro-2025-03-19 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M 00_core.ipynb:151 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:151 o3-2025-04-16 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:152 o3-deep-research openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M 00_core.ipynb:152 o3-deep-research-2025-06-26 openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M 00_core.ipynb:152 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:153 o3-mini-2025-01-31 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M 00_core.ipynb:153 o3-pro openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:153 o3-pro-2025-06-10 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:154 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:154 o4-mini-2025-04-16 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -71,6 +77,8 @@ M 00_core.ipynb:158 tts-1-hd openai:2026-10-01:text-to-speech-models-shut-down
 M 00_core.ipynb:159 whisper-1 openai:2026-08-26:transcription-models-shut-down
 M 00_core.ipynb:183 gpt-5.2-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
 M 00_core.ipynb:183 gpt-5.1-codex openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
+M 00_core.ipynb:183 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M 00_core.ipynb:183 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:183 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M 00_core.ipynb:183 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M 00_core.ipynb:183 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -82,6 +90,7 @@ M 00_core.ipynb:183 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:183 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:183 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
 M 00_core.ipynb:183 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M 00_core.ipynb:183 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:183 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:183 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:191 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -98,6 +107,7 @@ M 00_core.ipynb:215 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:215 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M 00_core.ipynb:215 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:239 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M 00_core.ipynb:251 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:292 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:355 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:386 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
@@ -139,8 +149,12 @@ M 00_core.ipynb:2681 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:2681 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:2681 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
 M 00_core.ipynb:2681 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M 00_core.ipynb:2681 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 00_core.ipynb:2681 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 00_core.ipynb:2681 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M 01_toolloop.ipynb:55 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M 01_toolloop.ipynb:55 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M 01_toolloop.ipynb:55 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 01_toolloop.ipynb:55 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M 01_toolloop.ipynb:55 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M 01_toolloop.ipynb:55 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -152,8 +166,10 @@ M 01_toolloop.ipynb:55 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 01_toolloop.ipynb:55 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 01_toolloop.ipynb:55 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
 M 01_toolloop.ipynb:55 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M 01_toolloop.ipynb:55 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 01_toolloop.ipynb:55 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M 01_toolloop.ipynb:55 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M 01_toolloop.ipynb:76 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 01_toolloop.ipynb:203 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 01_toolloop.ipynb:234 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M 01_toolloop.ipynb:462 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
@@ -184,6 +200,7 @@ M README.md:37 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M README.md:37 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M README.md:37 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
 M README.md:37 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M README.md:37 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M README.md:37 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M README.md:37 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M README.md:130 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
@@ -191,6 +208,8 @@ M README.md:134 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M README.md:135 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M cosette/core.py:47 gpt-5.2-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
 M cosette/core.py:47 gpt-5.1-codex openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
+M cosette/core.py:47 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M cosette/core.py:47 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M cosette/core.py:47 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M cosette/core.py:47 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M cosette/core.py:47 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -202,6 +221,7 @@ M cosette/core.py:47 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M cosette/core.py:47 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M cosette/core.py:47 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
 M cosette/core.py:47 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M cosette/core.py:47 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M cosette/core.py:47 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M cosette/core.py:47 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M cosette/core.py:50 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
@@ -225,6 +245,7 @@ M cosette/core.py:273 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M cosette/core.py:273 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M cosette/core.py:273 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
 M cosette/core.py:273 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M cosette/core.py:273 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M cosette/core.py:273 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M cosette/core.py:273 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M index.ipynb:163 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down

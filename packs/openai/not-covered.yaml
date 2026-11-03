@@ -133,41 +133,6 @@
     data_source.sampling_params.
 
 - items:
-    - schema ModelIdsShared anyOf 1 enum gpt-5
-    - schema ModelIdsShared anyOf 1 enum gpt-5-mini
-    - schema ModelIdsShared anyOf 1 enum gpt-5-nano
-    - schema ModelIdsShared anyOf 1 enum o3
-    - schema ModelIdsResponses anyOf 1 enum o3-pro
-    - schema ModelIdsResponses anyOf 1 enum gpt-5-pro
-    - schema BetaModelIdsShared anyOf 1 enum gpt-5
-    - schema BetaModelIdsShared anyOf 1 enum gpt-5-mini
-    - schema BetaModelIdsShared anyOf 1 enum gpt-5-nano
-    - schema BetaModelIdsShared anyOf 1 enum o3
-    - schema BetaModelIdsResponses anyOf 1 enum o3-pro
-    - schema BetaModelIdsResponses anyOf 1 enum gpt-5-pro
-  date: "2026-12-11"
-  needs-record: >-
-    Add these aliases to openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down. OpenAI's
-    deprecations page lists gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3 and o3-pro for 2026-12-11,
-    the record's date, but the record names only the dated snapshots, so code naming these aliases
-    is not reported.
-
-- items:
-    - schema AssistantSupportedModels enum gpt-5
-    - schema AssistantSupportedModels enum gpt-5-mini
-    - schema AssistantSupportedModels enum gpt-5-nano
-    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5
-    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-mini
-    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-nano
-  date: "2026-12-11"
-  needs-record: >-
-    Add gpt-5, gpt-5-mini and gpt-5-nano to openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down,
-    which has the shutdown date the spec gives and names only the dated snapshots: `darnit check` on
-    beta.assistants.create with model gpt-5 finds nothing. Once added, check reports them in
-    assistant and thread run calls as it does the snapshots, and they belong with the snapshots'
-    reason below.
-
-- items:
     - schema CreateSpeechRequest property model anyOf 1 enum gpt-4o-mini-tts
   date: "2027-01-06"
   needs-record: >-
@@ -374,9 +339,15 @@
     - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-2025-08-07
     - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-mini-2025-08-07
     - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-nano-2025-08-07
+    - schema AssistantSupportedModels enum gpt-5
+    - schema AssistantSupportedModels enum gpt-5-mini
+    - schema AssistantSupportedModels enum gpt-5-nano
+    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5
+    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-mini
+    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-nano
   reason: >-
     Covered by openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down: `darnit check` reports
-    these snapshots as the model of beta.assistants.create, beta.assistants.update,
+    these snapshots and aliases as the model of beta.assistants.create, beta.assistants.update,
     beta.threads.runs.create and beta.threads.createAndRun calls, create_and_run in Python.
     Accounting cannot match them: vendors.yml maps no SDK call for POST /assistants/{assistant_id}
     or POST /threads/runs, and maps POST /threads/{thread_id}/runs to threads.runs.create, which is

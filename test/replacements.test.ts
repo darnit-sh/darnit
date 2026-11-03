@@ -1,8 +1,11 @@
 import { execFile } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { cellModels, pageMismatches, readPage, recommended, replacementsFor } from "../src/corpus/replacements.js";
+import { cellModels, modelDetection, modelFixtures, modelNotes, modelTitle, pageMismatches, readPage, recommended, replacementsFor, shutdownDate, wholeRows } from "../src/corpus/replacements.js";
 import { modelIds, parseSpec } from "../src/corpus/spec.js";
 import { loadRecords } from "../src/records/load.js";
 import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/records/schema.js";
@@ -541,6 +544,212 @@ describe("fix.models from the page", () => {
       "dall-e-3": { human: "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare", source: PAGE },
       "codex-mini-latest": { human: "not a plain swap: OpenAI recommends gpt-5-codex-mini, which its API spec does not list", source: PAGE },
     });
+  });
+});
+
+describe("whole rows from the page", () => {
+  const dated = (date: string, rows: string[]) => table(rows).replaceAll("<td>2026</td>", `<td>${date}</td>`);
+  const on = (slug: string, date: string, models: string[]) => parseChangeRecord({ ...shutdown(slug, models), effectiveAt: date, detection: modelDetection(models) }, `${slug}.json`);
+
+  it("reads each shutdown date the page writes, and no other text", () => {
+    // The page writes some ISO dates with non-breaking hyphens.
+    expect(["Dec 11, 2026", "December 11, 2026", "Sept 9, 2027", "2026-09-24", "2026\u201103\u201126", "Feb 29, 2028"].map(shutdownDate)).toEqual(["2026-12-11", "2026-12-11", "2027-09-09", "2026-09-24", "2026-03-26", "2028-02-29"]);
+    for (const no of ["Feb 29, 2027", "2026-13-01", "2026-3-26", "Ma 1, 2026", "Decembers 1, 2026", "11 Dec 2026", "Dec 11 2026", "", "Dec 11, 2026 and later", "0099-01-01"]) expect(shutdownDate(no), no).toBeUndefined();
+  });
+
+  it("reads every model row of the saved page with its shutdown date", async () => {
+    const rows = readPage(await FIXTURE).rows.filter((r) => r.models);
+    // "at earliest 2024-06-13" is no one date: its models count under an unread date, never under another row's.
+    expect(rows.filter((r) => !r.shutdown).map((r) => r.label)).toEqual(["table 36 row 2"]);
+    expect(rows.filter((r) => r.shutdown === "2026-12-11").map((r) => r.models)).toEqual([
+      ["gpt-5", "gpt-5-2025-08-07"],
+      ["gpt-5-mini", "gpt-5-mini-2025-08-07"],
+      ["gpt-5-nano", "gpt-5-nano-2025-08-07"],
+      ["gpt-5-pro", "gpt-5-pro-2025-10-06"],
+      ["o3", "o3-2025-04-16"],
+      ["o3-pro", "o3-pro-2025-06-10"],
+    ]);
+  });
+
+  it("gives the record of a row's date every model of its rows, and lists other dates' undetected models for later", () => {
+    const page = readPage(dated("Dec 11, 2026", ["a | a-1 || x-1", "b | b-1 || y-1"]) + dated("Jan 1, 2027", ["c | c-1 || x-1", "d-1 || x-1"]));
+    const records = [on("one", "2026-12-11", ["a-1", "b-1"]), on("two", "2027-01-01", ["c-1"])];
+    expect(wholeRows(records, page, new Set(["2026-12-11"]))).toEqual({
+      models: new Map([["openai:2026-01-01:one", ["a", "b", "a-1", "b-1"]]]),
+      problems: [],
+      later: new Map([["2027-01-01", ["c", "d-1"]]]),
+    });
+    // A record of another date detecting the row's models is not its record.
+    expect(wholeRows([on("one", "2026-12-12", ["a-1", "b-1"])], page, new Set(["2026-12-11"])).problems).toEqual([
+      "table 1 row 2 (a, a-1): no record shutting down on 2026-12-11 detects any of its models; darnit does not make that record yet",
+      "table 1 row 3 (b, b-1): no record shutting down on 2026-12-11 detects any of its models; darnit does not make that record yet",
+    ]);
+  });
+
+  it("fails a row two records share, a model another record detects, and a date no row has", () => {
+    const page = readPage(dated("Dec 11, 2026", ["a | a-1 | b-1 || x-1", "c | c-1 || x-1"]));
+    expect(wholeRows([on("one", "2026-12-11", ["a-1"]), on("two", "2026-12-11", ["b-1"])], page, new Set(["2026-12-11"])).problems).toEqual([
+      "table 1 row 2 (a, a-1, b-1): openai:2026-01-01:one and openai:2026-01-01:two each detect some of its models",
+      "table 1 row 3 (c, c-1): no record shutting down on 2026-12-11 detects any of its models; darnit does not make that record yet",
+    ]);
+    expect(wholeRows([on("one", "2026-12-11", ["c-1"]), on("two", "2026-01-01", ["c"])], page, new Set(["2026-12-11"])).problems).toEqual([
+      "table 1 row 2 (a, a-1, b-1): no record shutting down on 2026-12-11 detects any of its models; darnit does not make that record yet",
+      "openai:2026-01-01:one: the page lists c in its rows, but another record detects them",
+    ]);
+    expect(wholeRows([], page, new Set(["2026-12-12"])).problems).toEqual(["no model row on the page shuts down on 2026-12-12; take it off the list"]);
+  });
+
+  it("writes a row with no replacement in plain words in the notes, never the page's dash, and reads it back as that row", () => {
+    const page = readPage(dated("Dec 11, 2026", ["a | a-1 || x-1", "b | b-1 || &mdash;"]));
+    const notes = modelNotes("OpenAI", ["a", "b", "a-1", "b-1"], "2026-12-11", page);
+    expect(notes).toBe(
+      "OpenAI removes these models from the API on 2026-12-11: a, b, a-1, b-1. Calls that name them fail after that date. Recommended replacements: a to x-1; b to no replacement named; a-1 to x-1; b-1 to no replacement named. A newer model can answer differently, so test the switch rather than only renaming.",
+    );
+    expect(notes).not.toMatch(/[\u2013\u2014]/);
+    const r = parseChangeRecord({ ...on("one", "2026-12-11", ["a", "b", "a-1", "b-1"]), notes: { migration: notes } }, "one.json");
+    expect(pageMismatches([r], page)).toEqual([]);
+    expect(pageMismatches([{ ...r, notes: { migration: notes.replace("b to no replacement named", "b to x-1") } }], page)).toEqual(["openai:2026-01-01:one: notes say b to x-1, the page says no replacement named"]);
+    expect(modelNotes("OpenAI", ["b", "b-1"], "2026-12-11", page)).toContain(". OpenAI names no replacement. A newer model");
+  });
+
+  it("builds detection and fixtures the way every shipped model record has them, and a title of at most 100 characters", async () => {
+    const loaded = (await loadRecords()).filter((l) => recordModels(l.record).length > 0);
+    const differ = [];
+    for (const { record, packDir } of loaded) {
+      const ids = recordModels(record);
+      if (JSON.stringify(record.detection) !== JSON.stringify(modelDetection(ids))) differ.push(`${record.id} detection`);
+      for (const [rel, text] of Object.entries(modelFixtures(ids))) if ((await readFile(join(packDir, rel), "utf8")) !== text) differ.push(`${record.id} ${rel}`);
+    }
+    expect(differ).toEqual([]);
+    expect(loaded).toHaveLength(29);
+    expect(modelTitle(["a"], "2026-12-11")).toBe("a shut down on 2026-12-11");
+    expect(modelTitle(["a", "b", "c"], "2026-12-11")).toBe("a, b and c shut down on 2026-12-11");
+    expect(modelTitle(["a", "b", "c", "d", "e", "f", "g"], "2026-12-11")).toBe("a, b, c, d, e, f and 1 more shut down on 2026-12-11");
+    const long = Array.from({ length: 4 }, (_, i) => `${"m".repeat(98)}-${i}`);
+    expect(modelTitle(long, "2026-12-11")).toHaveLength(100);
+  });
+
+});
+
+describe("npm run replacements on a copy of the repository", () => {
+  const run = promisify(execFile);
+  const ROOT = fileURLToPath(new URL("../", import.meta.url));
+  const PACK = "packs/openai/2026-06-11-gpt-5-and-o3-model-deprecations-shut-down";
+  const SNAPSHOTS = ["gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-5-nano-2025-08-07", "gpt-5-pro-2025-10-06", "o3-2025-04-16", "o3-pro-2025-06-10"];
+
+  /** A copy holding what the script reads, the script run in it, and every file under its packs/. */
+  async function copy() {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-replacements-"));
+    // The run reads the saved spec and the row lists, as the shipped-records test above reads the spec.
+    for (const f of ["src", "scripts", "packs", join("corpus", "openai"), "package.json", "test/fixtures/deprecations.html"]) await cp(join(ROOT, f), join(dir, f), { recursive: true });
+    await symlink(join(ROOT, "node_modules"), join(dir, "node_modules"));
+    const script = (...flags: string[]) =>
+      run(process.execPath, ["--import", "tsx", "scripts/replacements.ts", "--page", "test/fixtures/deprecations.html", ...flags], { cwd: dir }).then(
+        (r) => ({ code: 0, out: r.stdout }),
+        (e: { code: number; stdout: string; stderr: string }) => ({ code: e.code, out: e.stdout + e.stderr }),
+      );
+    const packs = async () => {
+      const files = (await readdir(join(dir, "packs"), { recursive: true, withFileTypes: true })).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
+      return Object.fromEntries(await Promise.all(files.map(async (f) => [f.slice(dir.length + 1), await readFile(f, "utf8")] as const)));
+    };
+    const file = (rel: string) => join(dir, rel);
+    return { dir, script, packs, file, done: () => rm(dir, { recursive: true, force: true }) };
+  }
+
+  /** The record as it was before it detected the aliases: snapshots only, with that title, notes and fixture. */
+  async function snapshotsOnly(at: Awaited<ReturnType<typeof copy>>) {
+    const raw = JSON.parse(await readFile(at.file(`${PACK}/change.json`), "utf8")) as ChangeRecord & { fix: { models: Record<string, unknown> } };
+    raw.title = "o3-2025-04-16, gpt-5-2025-08-07, o3-pro-2025-06-10 and 3 more shut down on 2026-12-11";
+    raw.notes!.migration = modelNotes("OpenAI", SNAPSHOTS, "2026-12-11", readPage(await FIXTURE));
+    raw.detection = modelDetection(SNAPSHOTS);
+    raw.fix.models = Object.fromEntries(SNAPSHOTS.map((m) => [m, raw.fix.models[m]!]));
+    await writeFile(at.file(`${PACK}/change.json`), `${JSON.stringify(raw, null, 2)}\n`);
+    for (const [rel, text] of Object.entries(modelFixtures(SNAPSHOTS))) await writeFile(at.file(`${PACK}/${rel}`), text);
+    return raw;
+  }
+
+  it("passes --check on the shipped records, and refuses --check with --write", { timeout: 60_000 }, async () => {
+    const at = await copy();
+    try {
+      expect((await at.script("--check")).code).toBe(0);
+      const both = await at.script("--check", "--write");
+      expect(both.code).toBe(2);
+      expect(both.out).toContain("usage: npm run replacements");
+    } finally {
+      await at.done();
+    }
+  });
+
+  it("fails --check naming each alias the record lacks, writes nothing without --write, and --write writes back the shipped record whole", { timeout: 90_000 }, async () => {
+    const at = await copy();
+    try {
+      const shipped = await at.packs();
+      const raw = await snapshotsOnly(at);
+      expect(raw.notes!.migration).toContain(": gpt-5-2025-08-07, gpt-5-mini-2025-08-07,");
+      const before = await at.packs();
+      const failed = await at.script("--check");
+      expect(failed.code).toBe(1);
+      expect([...failed.out.matchAll(/change\.json: does not detect (\S+), which the page lists in its 2026-12-11 rows/g)].map((m) => m[1])).toEqual(["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro", "o3", "o3-pro"]);
+      const report = await at.script();
+      expect(report.code).toBe(0);
+      expect(report.out).toContain(`--write would change openai/2026-06-11-gpt-5-and-o3-model-deprecations-shut-down/change.json, openai/2026-06-11-gpt-5-and-o3-model-deprecations-shut-down/fixtures/basic/before/app.js`);
+      expect(await at.packs()).toEqual(before);
+      expect((await at.script("--write")).code).toBe(0);
+      expect(await at.packs()).toEqual(shipped);
+    } finally {
+      await at.done();
+    }
+  });
+
+  it("fails --check on a fixture that is not what the page gives, naming the file", { timeout: 60_000 }, async () => {
+    const at = await copy();
+    try {
+      const app = at.file(`${PACK}/fixtures/basic/before/app.py`);
+      await writeFile(app, (await readFile(app, "utf8")).replace('model="o3"', 'model="o3-x"'));
+      const failed = await at.script("--check");
+      expect(failed.code).toBe(1);
+      expect(failed.out).toContain("2026-06-11-gpt-5-and-o3-model-deprecations-shut-down/change.json: fixtures/basic/before/app.py not what the page gives");
+      expect(failed.out).not.toContain("does not detect");
+    } finally {
+      await at.done();
+    }
+  });
+
+  it("adds nothing to a record whose detection is not one model record's, and says so", { timeout: 60_000 }, async () => {
+    const at = await copy();
+    try {
+      const raw = await snapshotsOnly(at);
+      raw.detection.astGrepPatterns.js!.push({ context: "({ engine: \"o3-2025-04-16\" })", selector: "pair" });
+      await writeFile(at.file(`${PACK}/change.json`), `${JSON.stringify(raw, null, 2)}\n`);
+      const before = await at.packs();
+      const failed = await at.script("--write");
+      expect(failed.code).toBe(1);
+      expect(failed.out).toContain("2026-06-11-gpt-5-and-o3-model-deprecations-shut-down/change.json: its detection is not one model record's, so darnit does not add gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3, o3-pro to it");
+      expect(await at.packs()).toEqual(before);
+    } finally {
+      await at.done();
+    }
+  });
+
+  it("writes nothing at all when the page has a problem, whatever a model id on it holds", { timeout: 180_000 }, async () => {
+    const at = await copy();
+    try {
+      const page = await readFile(at.file("test/fixtures/deprecations.html"), "utf8");
+      const row = "<code>gpt-5</code> | <code>gpt-5-2025-08-07</code>";
+      expect(page).toContain(row);
+      const before = await at.packs();
+      for (const bad of ["gpt-5&quot;x", "gpt-5`x", "gpt-5.*", "gpt-5: &amp;a", "$model", "GPT-5-X", `g${"x".repeat(100)}`]) {
+        await writeFile(at.file("test/fixtures/deprecations.html"), page.replace(row, `${row} | <code>${bad}</code>`));
+        const failed = await at.script("--write");
+        expect(failed.code, bad).toBe(1);
+        expect(failed.out, bad).toMatch(/✗ Problems:\n {2}\S/);
+        expect(failed.out, bad).toContain("wrote nothing");
+        expect(failed.out, bad).not.toContain("wrote openai/");
+        expect(await at.packs(), bad).toEqual(before);
+      }
+    } finally {
+      await at.done();
+    }
   });
 });
 
