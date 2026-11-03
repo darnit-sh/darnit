@@ -1,13 +1,13 @@
-import { spawnSync } from "node:child_process";
-import { appendFile, cp, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { execFileSync, spawnSync } from "node:child_process";
+import { appendFile, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { compare, parseAllowlist } from "../scripts/allowlist.js";
+import { compare, knipFindings, parseAllowlist, problems } from "../scripts/allowlist.js";
 
 const ROOT = join(import.meta.dirname, "..");
 const tsx = join(ROOT, "node_modules", ".bin", "tsx");
-const COPIED = ["src", "scripts", "test", ".gitignore", "package.json", "knip.json", "tsconfig.json", "vitest.config.ts", "eslint.config.js"];
+const COPIED = ["src", "scripts", "test", ".gitignore", "package.json", "knip.json", "tsconfig.json", "tsconfig.build.json", "vitest.config.ts", "eslint.config.js"];
 
 const tempDirs: string[] = [];
 afterEach(async () => {
@@ -23,8 +23,8 @@ async function copy() {
   return dir;
 }
 
-const run = (kind: "unused" | "duplicates", root = ROOT) => {
-  const r = spawnSync(tsx, ["scripts/allowlist.ts", kind, "--root", root], { cwd: ROOT, encoding: "utf8" });
+const run = (kind: "unused" | "duplicates", root = ROOT, env: NodeJS.ProcessEnv = process.env) => {
+  const r = spawnSync(tsx, ["scripts/allowlist.ts", kind, "--root", root], { cwd: ROOT, encoding: "utf8", env });
   return { status: r.status, out: r.stdout + r.stderr };
 };
 
@@ -55,6 +55,12 @@ describe("the allowlists", () => {
   it("report a finding the list lacks and a line whose finding is gone", () => {
     const { lines } = parseAllowlist("kept\twhy\ngone\twhy\n", 1);
     expect(compare(["kept", "new"], lines)).toEqual({ missing: ["new"], stale: [{ line: 2, finding: "gone" }] });
+    expect(problems("list.tsv", "kept\twhy\nbare\n", 1, () => ["kept"])).toEqual(["list.tsv: line 2 needs 1 fields and a reason, tab separated"]);
+  });
+
+  it("key a member by its parent, so one cannot stand in for another of the same name", () => {
+    const report = { issues: [{ file: "src/k.ts", enumMembers: [{ namespace: "Kind", name: "B" }, { namespace: "Mode", name: "B" }], owners: [] }] };
+    expect(knipFindings(report)).toEqual(["enumMembers\tsrc/k.ts\tKind.B", "enumMembers\tsrc/k.ts\tMode.B"]);
   });
 });
 
@@ -127,5 +133,64 @@ describe("npm run duplicates", () => {
     const r = run("duplicates", dir);
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/scripts\/allow\/duplicates\.tsv:\d+ is no longer found: src\/a\.ts:1-60\tsrc\/b\.ts:1-60/);
+  });
+});
+
+describe("what knip cannot see, and members of the same name", () => {
+  it("keeps an unseen line while its file declares the name, and reports it once the code is gone", async () => {
+    const dir = await copy();
+    await edit(join(dir, "src/git.ts"), "export const deleteBranch = ", "const removedBranch = ");
+    const r = run("unused", dir);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/scripts\/allow\/unused\.tsv:\d+ is no longer found: unseen\tsrc\/git\.ts\tdeleteBranch/);
+    expect(r.out).not.toContain("\tswitchTo");
+  });
+
+  it("tells apart enum members of the same name", async () => {
+    const dir = await copy();
+    await writeFile(join(dir, "src/kinds.ts"), "export enum Kind { A, B }\nexport enum Mode { A, B }\n");
+    await appendFile(join(dir, "src/versions.ts"), '\nimport { Kind, Mode } from "./kinds.js";\nexport const kinds = [Kind.A, Mode.A];\n');
+    await appendFile(join(dir, "scripts/allow/unused.tsv"), "exports\tsrc/versions.ts\tkinds\ttest\nenumMembers\tsrc/kinds.ts\tMode.B\ttest\n");
+    const r = run("unused", dir);
+    expect(r.status).toBe(1);
+    expect(r.out.split("\n").filter((l) => l.startsWith("not in") || l.includes("no longer found"))).toEqual([
+      "not in scripts/allow/unused.tsv: enumMembers\tsrc/kinds.ts\tKind.B (remove it, or add the line with the reason it stays)",
+    ]);
+  });
+});
+
+describe("the tools as run from npm run knip and npm run duplicates", () => {
+  it("finds what git's global and info excludes and a .jscpd.json of the folder's own would hide", async () => {
+    const dir = await copy();
+    execFileSync("git", ["init", "-q"], { cwd: dir });
+    const home = await mkdtemp(join(tmpdir(), "darnit-allowlist-home-"));
+    tempDirs.push(home);
+    await writeFile(join(home, "ignore"), "orphan.ts\ntwo.ts\n");
+    await writeFile(join(home, ".gitconfig"), `[core]\n\texcludesFile = ${join(home, "ignore")}\n`);
+    await writeFile(join(dir, ".git/info/exclude"), "src/orphan.ts\nsrc/two.ts\n");
+    await writeFile(join(dir, ".jscpd.json"), '{ "ignore": ["**/two.ts"], "minTokens": 5000 }\n');
+    await writeFile(join(dir, "src/orphan.ts"), "export const orphan = 1;\n");
+    await writeFile(join(dir, "src/one.ts"), block((n) => n));
+    await writeFile(join(dir, "src/two.ts"), block((n) => n));
+    const env = Object.fromEntries(Object.entries({ ...process.env, HOME: home }).filter(([k]) => k !== "GIT_CONFIG_GLOBAL"));
+    expect(run("unused", dir, env).out).toContain("not in scripts/allow/unused.tsv: files\tsrc/orphan.ts");
+    expect(run("duplicates", dir, env).out).toMatch(/not in scripts\/allow\/duplicates\.tsv: src\/one\.ts:1-\d+\tsrc\/two\.ts:1-\d+/);
+  });
+
+  it("fails when either tool exits with an error, and on a line with no reason", async () => {
+    const dir = await copy();
+    await rm(join(dir, "node_modules"));
+    await mkdir(join(dir, "node_modules/.bin"), { recursive: true });
+    for (const name of ["knip", "jscpd"]) await writeFile(join(dir, "node_modules/.bin", name), "#!/bin/sh\necho broken >&2\nexit 3\n", { mode: 0o755 });
+    for (const [kind, name] of [["unused", "knip"], ["duplicates", "jscpd"]] as const) {
+      const r = run(kind, dir);
+      expect(r.status, name).toBe(1);
+      expect(r.out).toContain(`${name} exited 3; run npx ${name} to see why\nbroken`);
+    }
+    const plain = await copy();
+    await appendFile(join(plain, "scripts/allow/duplicates.tsv"), "src/a.ts:1-60\tsrc/b.ts:1-60\n");
+    const r = run("duplicates", plain);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/scripts\/allow\/duplicates\.tsv: line \d+ needs 2 fields and a reason, tab separated/);
   });
 });
