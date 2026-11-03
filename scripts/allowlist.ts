@@ -1,8 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { stillUnused } from "./unseen.js";
 
 // Runs knip (unused files, exports and dependencies) or jscpd (duplicated blocks) and compares what it finds with
 // scripts/allow/<kind>.tsv, one finding per line with the reason it stays. Fails on a finding the list lacks and on
@@ -13,13 +15,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Tests and data are left out of the duplicate search: tests repeat setup on purpose, so each reads on its own.
 const DUPLICATE_PATHS = ["src", "scripts"];
 const MIN_TOKENS = "50";
-// An `unseen` line in unused.tsv names code knip cannot see is unused; it stays found while the file declares it.
+// An `unseen` line in unused.tsv names code knip cannot see is unused, judged by scripts/unseen.ts instead.
 const UNSEEN = "unseen";
 
 type Line = { line: number; finding: string };
+/** What a tool found, each finding with a note shown beside it when the list lacks it. */
+type Found = ReadonlyMap<string, string>;
 type KnipItem = { name?: unknown; namespace?: unknown } | KnipItem[];
 type KnipReport = { issues: ({ file: string } & Record<string, unknown>)[] };
-type Place = { name: string; start: number; end: number };
+type Place = { name: string; start: number; end: number; startLoc: { position: number }; endLoc: { position: number } };
 type CloneReport = { duplicates: { firstFile: Place; secondFile: Place }[] };
 
 /** The lines of an allowlist: `fields` tab separated fields that name a finding, then the reason it stays. */
@@ -42,20 +46,23 @@ export function parseAllowlist(text: string, fields: number) {
 }
 
 /** Findings the allowlist lacks, and allowlist lines whose finding is gone. */
-export function compare(found: readonly string[], lines: readonly Line[]) {
+export function compare(found: Iterable<string>, lines: readonly Line[]) {
   const listed = new Set(lines.map((l) => l.finding));
   const now = new Set(found);
   return { missing: [...now].filter((f) => !listed.has(f)).sort(), stale: lines.filter((l) => !now.has(l.finding)) };
 }
 
 /** What is wrong with the allowlist `file` holds as `text`, given what a tool found, one message each. */
-export function problems(file: string, text: string, fields: number, find: (lines: readonly Line[]) => string[]): string[] {
+export function problems(file: string, text: string, fields: number, find: (lines: readonly Line[]) => Found | readonly string[]): string[] {
   const { lines, errors } = parseAllowlist(text, fields);
-  const { missing, stale } = compare(find(lines), lines);
+  const result = find(lines);
+  const found: Found = Array.isArray(result) ? new Map(result.map((f) => [f, ""])) : (result as Found);
+  const { missing, stale } = compare(found.keys(), lines);
+  const note = (f: string) => (found.get(f) ? ` (${found.get(f)})` : "");
   return [
     ...errors.map((e) => `${file}: ${e}`),
-    ...missing.map((f) => `not in ${file}: ${f} (remove it, or add the line with the reason it stays)`),
-    ...stale.map((s) => `${file}:${s.line} is no longer found: ${s.finding} (remove the line)`),
+    ...missing.map((f) => `not in ${file}: ${f}${note(f)}; remove it, or add the line with the reason it stays`),
+    ...stale.map((s) => `${file}:${s.line} is no longer found: ${s.finding}; remove the line`),
   ];
 }
 
@@ -73,22 +80,34 @@ export function knipFindings(report: KnipReport): string[] {
   );
 }
 
-/** Each clone jscpd reports as its two places, `file:start-end`, in order. */
-export function cloneFindings(report: CloneReport, root: string): string[] {
-  const place = (p: Place) => `${relative(root, p.name)}:${p.start}-${p.end}`;
-  return report.duplicates.map((d) => [place(d.firstFile), place(d.secondFile)].sort().join("\t"));
+/**
+ * Each clone jscpd reports, keyed by its two sides as `file#hash`, the hash of the duplicated text with its spacing
+ * folded, so an edit elsewhere in either file keeps the key; the note gives the lines. A repeat of the same pair and
+ * text is numbered, so a second copy is a finding of its own.
+ */
+export function cloneFindings(report: CloneReport, root: string): Found {
+  const text = new Map<string, Buffer>();
+  const side = (p: Place) => {
+    if (!text.has(p.name)) text.set(p.name, readFileSync(p.name));
+    const bytes = text.get(p.name)!.subarray(p.startLoc.position, p.endLoc.position).toString("utf8").replace(/\s+/g, " ").trim();
+    return { id: `${relative(root, p.name)}#${createHash("sha256").update(bytes).digest("hex").slice(0, 12)}`, at: `${relative(root, p.name)}:${p.start}-${p.end}` };
+  };
+  const found = new Map<string, string>();
+  for (const d of report.duplicates) {
+    const pair = [side(d.firstFile), side(d.secondFile)].sort((a, b) => a.id.localeCompare(b.id) || a.at.localeCompare(b.at));
+    const key = pair.map((s) => s.id).join("\t");
+    let n = 1;
+    while (found.has(n === 1 ? key : `${key} #${n}`)) n++;
+    found.set(n === 1 ? key : `${key} #${n}`, `lines ${pair.map((s) => s.at).join(" and ")}`);
+  }
+  return found;
 }
 
-/** The `unseen` lines whose file still declares the name they give. */
+/** The `unseen` lines whose name is still unused, by scripts/unseen.ts. */
 function unseen(root: string, lines: readonly Line[]): string[] {
-  return lines
-    .map((l) => l.finding)
-    .filter((f) => {
-      const [type, file = "", name = ""] = f.split("\t");
-      const at = join(root, file);
-      if (type !== UNSEEN || !/^\w+$/.test(name) || !existsSync(at)) return false;
-      return new RegExp(`\\b(const|let|function|class|type|interface|enum)\\s+${name}\\b`).test(readFileSync(at, "utf8"));
-    });
+  const listed = lines.map((l) => l.finding.split("\t")).filter(([type]) => type === UNSEEN);
+  const files = new Set(listed.map(([, file]) => file!));
+  return [...files].flatMap((file) => [...stillUnused(root, file, listed.filter(([, f]) => f === file).map(([, , n]) => n!))].map((n) => `${UNSEEN}\t${file}\t${n}`));
 }
 
 function tool(name: string, args: string[], root: string) {
@@ -106,7 +125,7 @@ function unused(root: string, lines: readonly Line[]): string[] {
   return [...knipFindings(JSON.parse(out) as KnipReport), ...unseen(root, lines)];
 }
 
-function duplicates(root: string): string[] {
+function duplicates(root: string): Found {
   const out = mkdtempSync(join(tmpdir(), "darnit-jscpd-"));
   try {
     // An empty config in place of a .jscpd.json the folder might hold.
@@ -121,10 +140,12 @@ function duplicates(root: string): string[] {
 
 const KINDS = { unused: { find: unused, fields: 3 }, duplicates: { find: duplicates, fields: 2 } };
 
-/** The problems with `root`'s allowlist for `kind`, one message each. */
+/** The problems with `root`'s allowlist for `kind`, one message each. It is read only as a file at its own path. */
 export function check(kind: keyof typeof KINDS, root: string): string[] {
   const file = `scripts/allow/${kind}.tsv`;
-  return problems(file, readFileSync(join(root, file), "utf8"), KINDS[kind].fields, (lines) => KINDS[kind].find(root, lines));
+  const at = join(root, file);
+  if (realpathSync(at) !== join(realpathSync(root), file) || !lstatSync(at).isFile()) return [`${file} is reached through a link or is not a file; it is read only as a file at that path`];
+  return problems(file, readFileSync(at, "utf8"), KINDS[kind].fields, (lines) => KINDS[kind].find(root, lines));
 }
 
 function main() {

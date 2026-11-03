@@ -1,7 +1,8 @@
-# Duplicated blocks jscpd finds in src/ and scripts/ that stay for now, one per line: the two places as
-# file:first-last line, then the reason, tab separated. npm run duplicates fails on a block missing here and on a
-# line whose block is gone, so moving one of these blocks means updating its line.
-scripts/accounting.ts:8-21	scripts/corpus.ts:11-24	the same imports and --root handling; goes with a shared script helper
-scripts/accounting.ts:9-21	scripts/backfill-removals.ts:16-19	the same --root handling; goes with a shared script helper
-src/scan/astgrep.ts:143-149	src/scan/astgrep.ts:200-206	two copies of one binary search; goes when they share one
-src/versions.ts:53-58	src/versions.ts:62-68	pins and locked read a file the same way; goes when they share one reader
+# Duplicated blocks jscpd finds in src/ and scripts/ that stay for now, one per line: each side as file#hash, where the
+# hash is of the duplicated text with its spacing folded, then the reason, tab separated. Line numbers are not part
+# of the key, so an edit elsewhere in either file leaves the line as it is; npm run duplicates shows them for a block
+# missing here. It fails on a block missing here and on a line whose block is gone.
+scripts/accounting.ts#1926d7817a08	scripts/corpus.ts#c99fc74def60	the same imports and --root handling; goes with a shared script helper
+scripts/accounting.ts#4e29dbab0c96	scripts/backfill-removals.ts#df93f08e4dfe	the same --root handling; goes with a shared script helper
+src/scan/astgrep.ts#1a669bb5b877	src/scan/astgrep.ts#fe5b54d9c762	two copies of one binary search; goes when they share one
+src/versions.ts#685a44d92094	src/versions.ts#97a42d042c2f	pins and locked read a file the same way; goes when they share one reader

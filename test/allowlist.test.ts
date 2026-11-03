@@ -1,9 +1,9 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFile, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { appendFile, cp, mkdir, mkdtemp, readFile, rename as move, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { compare, knipFindings, parseAllowlist, problems } from "../scripts/allowlist.js";
+import { cloneFindings, compare, knipFindings, parseAllowlist, problems } from "../scripts/allowlist.js";
 
 const ROOT = join(import.meta.dirname, "..");
 const tsx = join(ROOT, "node_modules", ".bin", "tsx");
@@ -56,6 +56,16 @@ describe("the allowlists", () => {
     const { lines } = parseAllowlist("kept\twhy\ngone\twhy\n", 1);
     expect(compare(["kept", "new"], lines)).toEqual({ missing: ["new"], stale: [{ line: 2, finding: "gone" }] });
     expect(problems("list.tsv", "kept\twhy\nbare\n", 1, () => ["kept"])).toEqual(["list.tsv: line 2 needs 1 fields and a reason, tab separated"]);
+  });
+
+  it("number a second copy of the same text between the same files, so it is a finding of its own", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-clones-"));
+    tempDirs.push(dir);
+    await writeFile(join(dir, "a.ts"), "copied text\ncopied text\n");
+    const place = (start: number) => ({ name: join(dir, "a.ts"), start, end: start, startLoc: { position: (start - 1) * 12 }, endLoc: { position: start * 12 - 1 } });
+    const found = cloneFindings({ duplicates: [{ firstFile: place(1), secondFile: place(2) }, { firstFile: place(2), secondFile: place(1) }] }, dir);
+    expect([...found.keys()].map((k) => k.replace(/#\w{12}/g, "#h"))).toEqual(["a.ts#h\ta.ts#h", "a.ts#h\ta.ts#h #2"]);
+    expect([...found.values()]).toEqual(["lines a.ts:1-1 and a.ts:2-2", "lines a.ts:1-1 and a.ts:2-2"]);
   });
 
   it("key a member by its parent, so one cannot stand in for another of the same name", () => {
@@ -115,7 +125,7 @@ describe("npm run duplicates", () => {
     await writeFile(join(dir, "src/two.ts"), `// a copy\n${block((n) => n)}`);
     const r = run("duplicates", dir);
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/not in scripts\/allow\/duplicates\.tsv: src\/one\.ts:1-\d+\tsrc\/two\.ts:2-\d+/);
+    expect(r.out).toMatch(/not in scripts\/allow\/duplicates\.tsv: src\/one\.ts#\w{12}\tsrc\/two\.ts#\w{12} \(lines src\/one\.ts:1-\d+ and src\/two\.ts:2-\d+\)/);
   });
 
   it("fails on the same block with every name changed", async () => {
@@ -124,15 +134,23 @@ describe("npm run duplicates", () => {
     await writeFile(join(dir, "src/two.ts"), block((n) => `${n}Copy`));
     const r = run("duplicates", dir);
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/not in scripts\/allow\/duplicates\.tsv: src\/one\.ts:1-\d+\tsrc\/two\.ts:1-\d+/);
+    expect(r.out).toMatch(/not in scripts\/allow\/duplicates\.tsv: src\/one\.ts#\w{12}\tsrc\/two\.ts#\w{12} \(lines src\/one\.ts:1-\d+ and src\/two\.ts:1-\d+\)/);
+  });
+
+  it("keys a block by its text, so an edit above a listed block changes nothing", async () => {
+    const dir = await copy();
+    for (const file of ["src/versions.ts", "src/scan/astgrep.ts", "scripts/accounting.ts", "scripts/corpus.ts", "scripts/backfill-removals.ts"]) {
+      await writeFile(join(dir, file), `// A note on what this module reads.\n\n${await readFile(join(dir, file), "utf8")}`);
+    }
+    expect(run("duplicates", dir)).toMatchObject({ status: 0 });
   });
 
   it("fails on a line left after its finding is gone", async () => {
     const dir = await copy();
-    await appendFile(join(dir, "scripts/allow/duplicates.tsv"), "src/a.ts:1-60\tsrc/b.ts:1-60\tonce copied\n");
+    await appendFile(join(dir, "scripts/allow/duplicates.tsv"), "src/a.ts#000000000000\tsrc/b.ts#000000000000\tonce copied\n");
     const r = run("duplicates", dir);
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/scripts\/allow\/duplicates\.tsv:\d+ is no longer found: src\/a\.ts:1-60\tsrc\/b\.ts:1-60/);
+    expect(r.out).toMatch(/scripts\/allow\/duplicates\.tsv:\d+ is no longer found: src\/a\.ts#0{12}\tsrc\/b\.ts#0{12}/);
   });
 });
 
@@ -146,6 +164,39 @@ describe("what knip cannot see, and members of the same name", () => {
     expect(r.out).not.toContain("\tswitchTo");
   });
 
+  it("does not count an inner declaration of the same name, so removing the exported add or commit is seen", async () => {
+    const dir = await copy();
+    const git = join(dir, "src/git.ts");
+    await edit(git, 'export const add = (root: string, files: readonly string[]) => git(root, ["add", "--", ...files]);\n', "");
+    await writeFile(git, (await readFile(git, "utf8")).replace(/\/\*\* Commits as the configured user[\s\S]*?\n}\n/, ""));
+    const r = run("unused", dir);
+    expect(r.out).toMatch(/is no longer found: unseen\tsrc\/git\.ts\tadd;/);
+    expect(r.out).toMatch(/is no longer found: unseen\tsrc\/git\.ts\tcommit;/);
+    expect(r.out).not.toMatch(/\t(switchTo|position|deleteBranch|currentBranch);/);
+  });
+
+  it("reports a name once it is used again: imported, read from a namespace import, or called in its file", async () => {
+    const dir = await copy();
+    await appendFile(join(dir, "src/versions.ts"), '\nimport { switchTo } from "./git.js";\nexport const back = switchTo;\n');
+    await appendFile(join(dir, "src/fix.ts"), "\nexport const drop = g.deleteBranch;\n");
+    await appendFile(join(dir, "src/git.ts"), "\nexport const where = (root: string) => position(root);\n");
+    const r = run("unused", dir);
+    for (const name of ["switchTo", "deleteBranch", "position", "currentBranch"]) expect(r.out).toMatch(new RegExp(`is no longer found: unseen\\tsrc/git\\.ts\\t${name};`));
+    expect(r.out).not.toMatch(/\t(add|commit);/);
+  });
+
+  it("keeps a name whose only user is itself unused and gone", async () => {
+    const dir = await copy();
+    const git = join(dir, "src/git.ts");
+    await writeFile(git, (await readFile(git, "utf8")).replace(/\/\*\* Where to come back to[\s\S]*?\n}\n/, ""));
+    const r = run("unused", dir);
+    expect(r.out).toMatch(/is no longer found: unseen\tsrc\/git\.ts\tposition;/);
+    expect(r.out).not.toContain("\tcurrentBranch;");
+  });
+
+});
+
+describe("knip's findings", () => {
   it("tells apart enum members of the same name", async () => {
     const dir = await copy();
     await writeFile(join(dir, "src/kinds.ts"), "export enum Kind { A, B }\nexport enum Mode { A, B }\n");
@@ -154,7 +205,7 @@ describe("what knip cannot see, and members of the same name", () => {
     const r = run("unused", dir);
     expect(r.status).toBe(1);
     expect(r.out.split("\n").filter((l) => l.startsWith("not in") || l.includes("no longer found"))).toEqual([
-      "not in scripts/allow/unused.tsv: enumMembers\tsrc/kinds.ts\tKind.B (remove it, or add the line with the reason it stays)",
+      "not in scripts/allow/unused.tsv: enumMembers\tsrc/kinds.ts\tKind.B; remove it, or add the line with the reason it stays",
     ]);
   });
 });
@@ -174,7 +225,20 @@ describe("the tools as run from npm run knip and npm run duplicates", () => {
     await writeFile(join(dir, "src/two.ts"), block((n) => n));
     const env = Object.fromEntries(Object.entries({ ...process.env, HOME: home }).filter(([k]) => k !== "GIT_CONFIG_GLOBAL"));
     expect(run("unused", dir, env).out).toContain("not in scripts/allow/unused.tsv: files\tsrc/orphan.ts");
-    expect(run("duplicates", dir, env).out).toMatch(/not in scripts\/allow\/duplicates\.tsv: src\/one\.ts:1-\d+\tsrc\/two\.ts:1-\d+/);
+    expect(run("duplicates", dir, env).out).toMatch(/not in scripts\/allow\/duplicates\.tsv: src\/one\.ts#\w{12}\tsrc\/two\.ts#\w{12} \(lines src\/one\.ts:1-\d+ and src\/two\.ts:1-\d+\)/);
+  });
+
+  it("reads a list only as a file at its own path, never through a link", async () => {
+    const dir = await copy();
+    await move(join(dir, "scripts/allow"), join(dir, "scripts/lists"));
+    await symlink("lists", join(dir, "scripts/allow"));
+    expect(run("unused", dir).out).toContain("scripts/allow/unused.tsv is reached through a link or is not a file");
+    await rm(join(dir, "scripts/allow"));
+    await mkdir(join(dir, "scripts/allow"));
+    await symlink("../lists/duplicates.tsv", join(dir, "scripts/allow/duplicates.tsv"));
+    const r = run("duplicates", dir);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("scripts/allow/duplicates.tsv is reached through a link or is not a file");
   });
 
   it("fails when either tool exits with an error, and on a line with no reason", async () => {
