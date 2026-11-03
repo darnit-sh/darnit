@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, SgNode } from "@ast-grep/napi";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, scan, snippet, toJson, type Coverage, type Hit } from "../src/check.js";
+import { check, checkJson, checkReport, exitCodeForCheck, mentionsToJson, render, replacement, scan, snippet, toJson, type Coverage, type Hit } from "../src/check.js";
 import { escapedPieces, escapeHidden, MAX_FILE_BYTES } from "../src/detect.js";
 import { loadRecords } from "../src/records/load.js";
 import { compilePatterns, findMatches, grammarFor } from "../src/scan/astgrep.js";
@@ -995,6 +995,46 @@ describe("model shutdowns", () => {
     expect([...new Set(values.map((v) => `${v.file}:${v.line}`))].sort()).toEqual(["raw.js:2", "raw.py:4"]);
   });
 
+  it("reports a retiring model written as a template string with nothing in it, as a quoted one", async () => {
+    const dir = await scratch({
+      "app.js": 'import OpenAI from "openai";\nconst c = new OpenAI();\nawait c.chat.completions.create({ model: `o1-mini`, messages: [] });\nawait c.chat.completions.create({ model: "o1-mini", messages: [] });\n',
+      "app.ts": [
+        'import OpenAI from "openai";',
+        'import Groq from "groq-sdk";',
+        "const openai = new OpenAI();",
+        "const groq = new Groq();",
+        "export const a = (o) => openai.chat.completions.create({ messages, model: o.model ?? `gpt-4` });",
+        'export const b = fetch("https://api.openai.com/v1/chat/completions", { method: "POST", body: JSON.stringify({ "model": `gpt-4` }) });',
+        "export const c = (x) => openai.chat.completions.create({ messages, model: `o1-${x}` });",
+        "export const d = groq.chat.completions.create({ messages, model: `o1-mini` });",
+        // A name spelled with an escape is not read as the name, quoted or not; an escaped backtick makes it another name.
+        "export const e = openai.chat.completions.create({ messages, model: `o1\\-mini` });",
+        'export const f = openai.chat.completions.create({ messages, model: "o1\\-mini" });',
+        "export const g = openai.chat.completions.create({ messages, model: `o1-mini\\`` });",
+        "",
+      ].join("\n"),
+    });
+    const { hits, values, coverage } = await checkReport(dir);
+    expect([...new Set(locations(shutdowns(hits)))].sort()).toEqual(["app.js:3", "app.js:4", "app.ts:5", "app.ts:6"]);
+    expect(exitCodeForCheck(hits)).toBe(1);
+    // The recommended model is read from the call site as from a quoted one.
+    const backtick = hits.find((h) => h.file === "app.js" && h.line === 3 && h.record.fix?.models)!;
+    const quoted = hits.find((h) => h.file === "app.js" && h.line === 4 && h.record === backtick.record)!;
+    expect(replacement(backtick)).toBeDefined();
+    expect(replacement(backtick)).toEqual(replacement(quoted));
+    // A look-alike's call is left out as with a quoted name; a template with code in it is no model name.
+    expect(coverage.foreignAt).toEqual(["app.ts:8"]);
+    expect(values).toEqual([]);
+    // The only use fails the check on its own.
+    const only = await checkReport(await scratch({ "app.js": 'import OpenAI from "openai";\nconst c = new OpenAI();\nawait c.chat.completions.create({ model: `o1-mini`, messages: [] });\n' }));
+    expect(exitCodeForCheck(only.hits)).toBe(1);
+    // Only a plain name has a template form: one with code, an escape or a backtick in it matches only as quoted.
+    const js = grammarFor("app.js")!.grammar;
+    const source = ["f({ model: `a${b}` });", "f({ model: `a\\nb` });", "f({ model: `a\\`b` });", 'f({ model: "a\\nb" });', "f({ model: `a` });", 'f({ model: "c`d" });', "f({ model: ``e`` });"].join("\n");
+    const names = ['"a${b}"', '"a\\nb"', '"a\\`b"', '"a"', '"c`d"', '"`e`"'].map((v) => ({ context: `({ model: ${v} })`, selector: "pair" }));
+    expect(findMatches(source, js, names).map((m) => m.line)).toEqual([4, 5, 6]);
+  });
+
   it("reports a retiring model written as the fallback when no model is passed", async () => {
     const dir = await scratch({
       "stt.ts": [
@@ -1568,6 +1608,16 @@ describe("check on a repository built to slow it down", () => {
     // About 0.9 seconds on a laptop.
     expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 5000)).toBeLessThan(5000);
     expect(new Set(hits.map((h) => h.line)).size).toBe(3000);
+  });
+
+  it("checks thousands of models written as template strings, and as many with code in them, within a CPU and memory budget", { timeout: 60_000 }, async () => {
+    const text = `import OpenAI from "openai";\nconst c = new OpenAI();\n${times(3000, (i) => `c.chat.completions.create({ model: o.model ?? \`gpt-4\` });\nc.chat.completions.create({ model: \`gpt-4\${s${i}}\` });\n`)}`;
+    const dir = await scratch({ "app.ts": text });
+    let hits: Hit[] = [];
+    // About 1.7 seconds and 190 MB, as with quoted names.
+    expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 5000)).toBeLessThan(5000);
+    expect(new Set(hits.map((h) => h.line)).size).toBe(3000);
+    if (process.platform === "linux") expect(peakOf(dir).peak).toBeLessThan(400);
   });
 
   it("checks a class name imported from thousands of packages, with as many calls, within a CPU budget", { timeout: 60_000 }, async () => {
