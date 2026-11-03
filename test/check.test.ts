@@ -1007,6 +1007,10 @@ describe("model shutdowns", () => {
         'export const b = fetch("https://api.openai.com/v1/chat/completions", { method: "POST", body: JSON.stringify({ "model": `gpt-4` }) });',
         "export const c = (x) => openai.chat.completions.create({ messages, model: `o1-${x}` });",
         "export const d = groq.chat.completions.create({ messages, model: `o1-mini` });",
+        // A name spelled with an escape is not read as the name, quoted or not; an escaped backtick makes it another name.
+        "export const e = openai.chat.completions.create({ messages, model: `o1\\-mini` });",
+        'export const f = openai.chat.completions.create({ messages, model: "o1\\-mini" });',
+        "export const g = openai.chat.completions.create({ messages, model: `o1-mini\\`` });",
         "",
       ].join("\n"),
     });
@@ -1024,9 +1028,11 @@ describe("model shutdowns", () => {
     // The only use fails the check on its own.
     const only = await checkReport(await scratch({ "app.js": 'import OpenAI from "openai";\nconst c = new OpenAI();\nawait c.chat.completions.create({ model: `o1-mini`, messages: [] });\n' }));
     expect(exitCodeForCheck(only.hits)).toBe(1);
-    // A quoted name that reads as code in a template has no template form.
+    // Only a plain name has a template form: one with code, an escape or a backtick in it matches only as quoted.
     const js = grammarFor("app.js")!.grammar;
-    expect(findMatches("f({ model: `a${b}` });\nf({ model: `a` });", js, [{ context: '({ model: "a${b}" })', selector: "pair" }, { context: '({ model: "a" })', selector: "pair" }]).map((m) => m.line)).toEqual([2]);
+    const source = ["f({ model: `a${b}` });", "f({ model: `a\\nb` });", "f({ model: `a\\`b` });", 'f({ model: "a\\nb" });', "f({ model: `a` });", 'f({ model: "c`d" });', "f({ model: ``e`` });"].join("\n");
+    const names = ['"a${b}"', '"a\\nb"', '"a\\`b"', '"a"', '"c`d"', '"`e`"'].map((v) => ({ context: `({ model: ${v} })`, selector: "pair" }));
+    expect(findMatches(source, js, names).map((m) => m.line)).toEqual([4, 5, 6]);
   });
 
   it("reports a retiring model written as the fallback when no model is passed", async () => {

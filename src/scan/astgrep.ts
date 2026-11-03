@@ -229,13 +229,17 @@ function requests(root: SgNode, source: string, nodes: readonly SgNode[], symbol
   return out;
 }
 
+// A plain name in a pattern, such as a model name: letters, digits and `_.:/-`.
+const NAME = String.raw`[\w.:/-]+`;
+const LITERAL = new RegExp(String.raw`(["'])(${NAME})\1`, "g");
+
 /**
  * Quoted plain names in a pattern, such as a model name: code without that text cannot match it.
  * Anything else in quotes (a $VAR, spaces, escapes) is left to the parser. Assumes quoted text
  * sits inside the selected node, as in every record today; the fixtures would catch one that
  * does not.
  */
-const literals = (context: string) => [...context.matchAll(/(["'])([\w.:/-]+)\1/g)].map((m) => m[2]!);
+const literals = (context: string) => [...context.matchAll(LITERAL)].map((m) => m[2]!);
 
 const QUOTED = String.raw`("[^"]*"|'[^']*')`;
 const JS_VALUE = new RegExp(String.raw`^\(\{\s*(\w+):\s*${QUOTED}\s*\}\)$`);
@@ -266,11 +270,12 @@ function covered(p: AstGrepPattern, all: readonly AstGrepPattern[]): boolean {
 
 // The key of a pattern that also matches the key quoted; no record uses this name.
 const KEY = "DARNIT_KEY";
+const PLAIN = new RegExp(String.raw`^(["'])${NAME}\1$`);
 
-/** A quoted value written as a template string with nothing in it, the same value in JavaScript: `model: \`gpt-4\``. None when it would read as code there. */
+/** A plain quoted name written as a template string with nothing in it, the same value in JavaScript: `model: \`gpt-4\``. None for a name with an escape, a backtick or a `$`. */
 function templateOf(context: string): string | undefined {
   const js = JS_VALUE.exec(context);
-  return js && !/[`$\\]/.test(js[2]!) ? `\`${js[2]!.slice(1, -1)}\`` : undefined;
+  return js && PLAIN.test(js[2]!) ? `\`${js[2]!.slice(1, -1)}\`` : undefined;
 }
 
 /**
