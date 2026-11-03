@@ -134,7 +134,7 @@ as `replacement`, `{ model, source }` or `{ human, source }`.
 
 ```
 $ npx darnit check
-openai 2026-06-11: o3-2025-04-16, gpt-5-2025-08-07, o3-pro-2025-06-10 and 3 more shut down on 2026-12-11 (parser-verified, not read by a person)
+openai 2026-06-11: gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3, o3-pro and 6 more shut down on 2026-12-11 (parser-verified, not read by a person)
   app.ts:3:50  model: "o3-2025-04-16"
     use gpt-5.6-sol instead (OpenAI's recommendation)
   app.ts:4:50  model: "gpt-5-pro-2025-10-06"
