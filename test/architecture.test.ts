@@ -14,7 +14,7 @@ const at = (floor: number, paths: string[], ...also: string[]): Group => ({ floo
 const GROUPS: Record<string, Group> = {
   cli: at(4, ["src/cli.ts", "src/init.ts", "src/update.ts", "src/cli/"]),
   check: at(3, ["src/check.ts", "src/check/"]),
-  fix: at(3, ["src/fix.ts", "src/plan.ts", "src/tests.ts", "src/fix/"], "check", "apply"),
+  fix: at(3, ["src/fix.ts", "src/plan.ts", "src/tests.ts", "src/fix/"], "check"),
   apply: at(3, ["src/packs/apply.ts"]),
   scan: at(2, ["src/scan/"], "records"),
   records: at(2, ["src/records/"]),
@@ -27,6 +27,7 @@ const GROUPS: Record<string, Group> = {
   output: at(1, ["src/output/"]),
   errors: at(0, ["src/refusal.ts", "src/errors.ts"]),
   corpus: { floor: NaN, reach: 2, kind: "island", paths: ["src/corpus/"], also: [] },
+  // The map lets the fixture runner use the rule applier, so a pack runs in CI as it runs for a user.
   fixtures: { floor: NaN, reach: 2, kind: "island", paths: ["src/packs/fixtures.ts"], also: ["apply"] },
   scripts: { floor: NaN, reach: 3, kind: "scripts", paths: ["scripts/"], also: [] },
 };
@@ -159,6 +160,10 @@ describe("an import against the module map fails", () => {
       it(`${failure.split(":")[0]} as ${form}`, () => {
         expect(withLine(file, write(spec))).toContainEqual(expect.stringContaining(failure));
       });
+
+  it("fix importing the rule applier, which the map leaves out of fix until it moves into src/fix/", () => {
+    expect(withLine("src/plan.ts", `import "./packs/apply.js";`)).toEqual(["src/plan.ts -> src/packs/apply.ts: fix imports apply on its own floor 3"]);
+  });
 });
 
 describe("a cycle, a misplaced file or a stale allowlist line fails", () => {

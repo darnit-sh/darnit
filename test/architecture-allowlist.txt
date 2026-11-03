@@ -4,6 +4,7 @@
 # list only shrinks.
 scripts/e2e.ts -> src/init.ts: the hostile repository scenario compares the workflow init writes
 src/detect.ts -> src/scan/clients.ts: vendorClients returns the VendorClients type the scanner defines
+src/fix.ts -> src/packs/apply.ts: fix applies the rule packs; the line goes away when the applier moves into src/fix/
 src/git.ts -> src/github.ts: originAuth reads the Actions token through envToken
 src/packs/apply.ts -> require(pkgPath): finds the ast-grep binary through the package.json of @ast-grep/cli
 src/records/load.ts -> src/scan/astgrep.ts: a record whose patterns ast-grep cannot compile does not load
