@@ -25,11 +25,16 @@ M services/serviceUtils.js:47 o1-2024-12-17 openai:2026-04-22:legacy-gpt-model-s
 M services/serviceUtils.js:48 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M services/serviceUtils.js:49 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M services/serviceUtils.js:50 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:51 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M services/serviceUtils.js:52 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/serviceUtils.js:55 text-davinci-003 openai:2023-07-06:gpt-and-embeddings-shut-down
 M services/serviceUtils.js:56 text-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M tests/test-ai-provider-streaming.js:1029 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/test-ai-provider-streaming.js:1029 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test-ai-provider-streaming.js:1053 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M tests/test-ai-provider-streaming.js:1055 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/test-ai-provider-streaming.js:1058 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test-ai-provider-streaming.js:1079 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/test-response-truncation-detection.js:16 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M views/settings.ejs:277 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M views/settings.ejs:279 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

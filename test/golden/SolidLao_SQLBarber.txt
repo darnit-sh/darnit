@@ -11130,6 +11130,7 @@ M outputs/intermediate/logs/postgres_imdb_2025-07-22_02-56/llm.log:6529 o3-mini 
 M outputs/intermediate/logs/postgres_imdb_2025-07-22_02-56/llm.log:6856 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M outputs/intermediate/logs/postgres_imdb_2025-07-22_02-56/llm.log:7192 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M outputs/intermediate/logs/postgres_imdb_2025-07-22_02-56/llm.log:7538 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/llm/gpt.py:9 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/llm/gpt.py:10 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/llm/gpt.py:44 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M src/llm/gpt.py:44 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27

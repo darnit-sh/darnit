@@ -4,12 +4,14 @@ P src/LLMProviders/langchain/openaiAgent.tsx:16:10 #ca042255 o1-mini openai:2025
 P src/LLMProviders/langchain/openaiInstruct.tsx:15:10 #db007b64 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
 P src/ui/settings/sections/otherProviders/whisper.tsx:30:10 #ce4e5b59 whisper-1 openai:2026-08-26:transcription-models-shut-down
 M src/LLMProviders/interface.ts:80 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/LLMProviders/interface.ts:80 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/LLMProviders/langchain/base.tsx:425 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/LLMProviders/langchain/base.tsx:437 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/LLMProviders/langchain/base.tsx:437 gpt-3.5-turbo-0301 openai:2023-06-13:updated-chat-models-shut-down-2024-09-13
 M src/LLMProviders/langchain/base.tsx:440 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/LLMProviders/langchain/base.tsx:440 gpt-4-0314 openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
 M src/LLMProviders/langchain/openaiAgent.tsx:171 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/LLMProviders/langchain/openaiAgent.tsx:171 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/LLMProviders/langchain/openaiAgent.tsx:219 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/LLMProviders/langchain/openaiAgent.tsx:236 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/LLMProviders/langchain/openaiAgent.tsx:248 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -17,6 +19,7 @@ M src/LLMProviders/langchain/openaiAgent.tsx:248 gpt-3.5-turbo-0301 openai:2023-
 M src/LLMProviders/langchain/openaiAgent.tsx:251 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/LLMProviders/langchain/openaiAgent.tsx:251 gpt-4-0314 openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
 M src/LLMProviders/langchain/openaiChat.tsx:152 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/LLMProviders/langchain/openaiChat.tsx:152 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/LLMProviders/langchain/openaiChat.tsx:259 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/LLMProviders/langchain/openaiChat.tsx:276 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/LLMProviders/langchain/openaiChat.tsx:288 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -30,9 +33,13 @@ M src/LLMProviders/langchain/openaiInstruct.tsx:254 gpt-3.5-turbo-0301 openai:20
 M src/LLMProviders/langchain/openaiInstruct.tsx:257 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/LLMProviders/langchain/openaiInstruct.tsx:257 gpt-4-0314 openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
 M src/lib/models/index.ts:33 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/lib/models/index.ts:33 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/lib/models/index.ts:50 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M src/lib/models/index.ts:77 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/lib/models/index.ts:90 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M src/lib/models/index.ts:104 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/lib/models/index.ts:117 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M src/lib/models/index.ts:131 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/lib/models/index.ts:143 gpt-5-nano-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/lib/models/index.ts:169 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/lib/models/index.ts:178 gpt-4-vision-preview openai:2024-06-06:gpt-4-32k-and-vision-preview-models-shut-down-2024-12-06
@@ -61,6 +68,7 @@ M src/lib/models/index.ts:879 o1 openai:2026-04-22:legacy-gpt-model-snapshots-sh
 M src/lib/models/index.ts:892 o1-2024-12-17 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/lib/models/index.ts:906 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/lib/models/index.ts:919 o1-pro-2025-03-19 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/lib/models/index.ts:933 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/lib/models/index.ts:946 o3-2025-04-16 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/lib/models/index.ts:960 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/lib/models/index.ts:973 o4-mini-2025-04-16 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

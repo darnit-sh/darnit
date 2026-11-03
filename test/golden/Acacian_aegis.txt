@@ -1,10 +1,12 @@
 exit 0
 scanned files=459 records=35 otherFiles=199 foreign=0 tooLarge=0 skipped=0
+M docs/solutions/ai-agent-cost-governance.md:207 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M examples/awesome-llm-apps/aegis_governance_app.py:386 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M playground/js/demos.js:324 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M playground/js/demos.js:327 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M playground/js/demos.js:328 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M playground/js/demos.js:329 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M playground/js/demos.js:330 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M playground/js/demos.js:331 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M playground/js/demos.js:332 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M playground/js/demos.js:1641 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -17,6 +19,7 @@ M src/aegis/core/budget.py:117 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-sn
 M src/aegis/core/budget.py:120 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/aegis/core/budget.py:121 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/aegis/core/budget.py:122 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
+M src/aegis/core/budget.py:123 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/aegis/core/budget.py:124 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/aegis/core/budget.py:125 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/aegis/guardrails/prompt_leak.py:160 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -32,6 +35,7 @@ M tests/cli/test_scan.py:1068 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots
 M tests/cli/test_scan.py:1082 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/cli/test_scan.py:1096 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/cli/test_scan.py:1133 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_cost_callbacks.py:210 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/test_guardrails_prompt_leak.py:96 gpt-4o-2024-05-13 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/test_integrations_patch.py:50 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/test_integrations_patch.py:58 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

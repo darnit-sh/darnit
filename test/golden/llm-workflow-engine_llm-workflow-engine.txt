@@ -1,7 +1,10 @@
 exit 0
 scanned files=88 records=35 otherFiles=111 foreign=0 tooLarge=0 skipped=0
 P lwe/core/constants.py:13:29 #507089af gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M COMMIT_LOG.md:55 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M COMMIT_LOG.md:63 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M COMMIT_LOG.md:63 o3-pro openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M COMMIT_LOG.md:69 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M COMMIT_LOG.md:69 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M COMMIT_LOG.md:104 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M COMMIT_LOG.md:114 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -64,18 +67,26 @@ M lwe/plugins/provider_chat_openai.py:152 o1-pro openai:2026-04-22:legacy-gpt-mo
 M lwe/plugins/provider_chat_openai.py:155 o1-pro-2025-03-19 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/plugins/provider_chat_openai.py:158 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/plugins/provider_chat_openai.py:161 o3-mini-2025-01-31 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M lwe/plugins/provider_chat_openai.py:164 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:167 o3-2025-04-16 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:170 o3-pro openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:173 o3-pro-2025-06-10 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:176 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/plugins/provider_chat_openai.py:179 o4-mini-2025-04-16 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M lwe/plugins/provider_chat_openai.py:182 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:185 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:188 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:191 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:194 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:197 gpt-5-nano-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:200 gpt-5-pro openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:203 gpt-5-pro-2025-10-06 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:206 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M lwe/plugins/provider_chat_openai.py:212 gpt-5.2-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
 M lwe/plugins/provider_chat_openai.py:227 gpt-5.3-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
 M lwe/plugins/provider_chat_openai.py:280 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M lwe/plugins/provider_chat_openai.py:280 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:280 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:285 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M lwe/plugins/provider_chat_openai.py:285 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M lwe/plugins/provider_fake_llm.py:186 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
