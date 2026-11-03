@@ -212,15 +212,20 @@ describe("deriveCandidates", () => {
     for (let i = 0; i < 100_000; i++) schemas[`C${i}`] = ref(`C${i + 1}`);
     schemas["C100000"] = { description: "Deprecated in favor of `g`." };
     let candidates: ReturnType<typeof synthetic>["candidates"] = [];
-    const run = (n: number) => () => ({ candidates } = synthetic(Object.fromEntries(fields.slice(0, n).map((f) => [f, ref("C0")])), fields.slice(0, n).map((f) => deprecated(f)), schemas));
-    // Sixty fields through the chain cost about what one does; sixty times as much when each walks it again.
-    expect(await slowdown(run(60), run(1), 4)).toBeLessThan(4);
+    const run = () => ({ candidates } = synthetic(Object.fromEntries(fields.map((f) => [f, ref("C0")])), fields.map((f) => deprecated(f)), schemas));
+    // About three and a half times following the chain once by hand; far more when each field walks it again.
+    expect(await slowdown(run, byHand(schemas), 8)).toBeLessThan(8);
     expect(candidates).toHaveLength(60);
     expect(candidates.every((c) => c.record.id.endsWith("-to-g"))).toBe(true);
   });
 });
 
 const ref = (name: string): Schema => ({ $ref: `#/components/schemas/${name}` });
+
+/** Follows the $ref chain from C0 by hand: the reads resolve makes, without its cache and cycle check. */
+const byHand = (schemas: Record<string, Schema>) => () => {
+  for (let s = schemas["C0"]; s?.$ref; ) s = schemas[s.$ref.slice("#/components/schemas/".length)];
+};
 
 function deprecated(field: string, path = "/chat/completions", operation = "POST") {
   return { id: "request-property-deprecated", level: 1 as const, text: `request property \`${field}\` deprecated`, operation, path };
@@ -232,7 +237,7 @@ function synthetic(properties: Record<string, Schema>, entries: ChangeEntry[], s
 }
 
 describe("requestProperty", () => {
-  it("stops at $ref cycles and follows long chains, reading each schema about once", () => {
+  it("stops at $ref cycles and follows long chains within a CPU budget, reading each schema about once", async () => {
     const all: Record<string, Schema> = { A: ref("B"), B: ref("A"), Self: ref("Self") };
     for (let i = 0; i < 100_000; i++) all[`C${i}`] = ref(`C${i + 1}`);
     all["C100000"] = { properties: { max_tokens: ref("Self") } };
@@ -245,13 +250,19 @@ describe("requestProperty", () => {
       },
     });
     const op = (name: string) => ({ post: { requestBody: { content: { "application/json": { schema: ref(name) } } } } });
-    const spec: Spec = { paths: { "/a": op("A"), "/self": op("Self"), "/chain": op("C0") }, components: { schemas } };
     const odd = { paths: { "/x": { post: { requestBody: { content: { "application/json": { schema: { allOf: 1, $ref: 2 } } } } } } } } as unknown as Spec;
-    expect(requestProperty(spec, "POST", "/a", "max_tokens")).toBeUndefined();
-    expect(requestProperty(spec, "POST", "/self", "max_tokens")).toBeUndefined();
-    expect(requestProperty(spec, "POST", "/chain", "max_tokens")).toEqual(ref("Self"));
-    expect(requestProperty(spec, "POST", "/chain", "constructor")).toBeUndefined();
-    expect(requestProperty(odd, "POST", "/x", "max_tokens")).toBeUndefined();
+    // A new spec each time, as each one resolves a name only once.
+    const lookups = (from: Record<string, Schema>, start: string) => () => {
+      const spec: Spec = { paths: { "/a": op("A"), "/self": op("Self"), "/chain": op(start) }, components: { schemas: from } };
+      expect(requestProperty(spec, "POST", "/a", "max_tokens")).toBeUndefined();
+      expect(requestProperty(spec, "POST", "/self", "max_tokens")).toBeUndefined();
+      expect(requestProperty(spec, "POST", "/chain", "max_tokens")).toEqual(ref("Self"));
+      expect(requestProperty(spec, "POST", "/chain", "constructor")).toBeUndefined();
+      expect(requestProperty(odd, "POST", "/x", "max_tokens")).toBeUndefined();
+    };
+    lookups(schemas, "C0")();
     expect(reads).toBeGreaterThan(100_000);
+    // About twice following the chain by hand.
+    expect(await slowdown(lookups(all, "C0"), byHand(all), 5)).toBeLessThan(5);
   });
 });
