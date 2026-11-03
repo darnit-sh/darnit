@@ -1,12 +1,30 @@
 #!/bin/sh
 # One rule per pull request type, so a new title cannot dodge a guard. A refactor or perf change keeps
-# every existing test, a test, docs or tooling change leaves the code and what the suite proves alone,
-# and a revert is exactly the inverse of one commit. Results go to the job summary on the pull request page.
+# every existing test, a test, docs or tooling change leaves the code and what the suite proves alone, a
+# style change is exactly the formatter's output, and a revert is exactly the inverse of one commit. Results
+# go to the job summary on the pull request page.
 #   TITLE=... BODY=... check-refactor.sh <base sha> <head sha>
 #   check-refactor.sh --base-tests <base sha>   runs base's tests and fixtures against the checked out code
+#   check-refactor.sh --style <base sha> <head sha>   formats base's copy of each changed file with the
+#     prettier in node_modules, which must be the version base pins, and base's config
 # The second form overwrites test/ and the fixtures in the working tree.
 set -eu
 . "$(dirname "$0")/pr-common.sh"
+
+# Fails a style change that touches anything but edits to existing .ts, .js, .mjs and .cjs files that keep
+# their mode, with formatter config and workflow actions out whatever the extension. An added or removed file
+# shows mode 000000 on one side.
+style_scope() {
+  outside=$({
+    git diff --raw --no-renames "$base...$head" | awk -F '\t' '{ split($1, m, " ") }
+      m[1] != ":" m[2] || m[2] !~ /^100(644|755)$/ || $2 !~ /\.(ts|js|mjs|cjs)$/ { print $2 }'
+    paths | grep -iE '(^|/)(\.prettierrc|prettier\.config\.)|^"?\.github/' || true
+  } | awk '!seen[$0]++')
+  [ -z "$outside" ] && return
+  say "**(a) failed:** a style change only edits existing code files the formatter covers. Touched:"
+  list "$outside"
+  exit 1
+}
 
 if [ "${1:-}" = --base-tests ]; then
   base=$2
@@ -22,6 +40,44 @@ if [ "${1:-}" = --base-tests ]; then
   npx tsx scripts/fixtures.ts || { say "**(b) failed:** a pack fixture from base fails against this change's code (log above)."; fail=1; }
   [ "$fail" = 0 ] && say "**(b) passed:** every test and fixture from base passes against this change's code."
   exit "$fail"
+fi
+
+if [ "${1:-}" = --style ]; then
+  base=$2 head=$3
+  style_scope
+  tree=$(mktemp -d)
+  trap 'rm -rf "$tree"' EXIT
+  git archive "$base" | tar -x -C "$tree"
+  # As the CLI reads them: .gitignore and .prettierignore at the root, config and .editorconfig by each file.
+  differ=$(paths | node -e '(async () => {
+    const { execFileSync } = require("node:child_process");
+    const { join } = require("node:path");
+    const [tree, base, mb, head] = process.argv.slice(1);
+    const blob = (rev, f) => execFileSync("git", ["cat-file", "blob", `${rev}:${f}`], { maxBuffer: 2 ** 28 });
+    const prettier = require("prettier");
+    let pinned;
+    try { pinned = JSON.parse(blob(base, "package.json")).devDependencies?.prettier; } catch {}
+    if (pinned !== prettier.version) return console.log(`prettier ${pinned ?? "(none)"} pinned in base\x27s package.json, ${prettier.version} installed`);
+    const ignorePath = [join(tree, ".gitignore"), join(tree, ".prettierignore")];
+    for (const f of require("node:fs").readFileSync(0, "utf8").split("\n").filter(Boolean)) {
+      const file = join(tree, f);
+      const info = await prettier.getFileInfo(file, { ignorePath, resolveConfig: true });
+      if (info.ignored || !info.inferredParser) { console.log(`${f} (left out by base\x27s .prettierignore)`); continue; }
+      try {
+        const options = await prettier.resolveConfig(file, { editorconfig: true });
+        const out = await prettier.format(blob(mb, f).toString("utf8"), { ...options, filepath: file });
+        if (!Buffer.from(out, "utf8").equals(blob(head, f))) console.log(`${f} (differs from the formatter\x27s output)`);
+      } catch (e) { console.log(`${f} (could not be formatted: ${String(e?.message).split("\n")[0]})`); }
+    }
+  })().catch((e) => console.log(`the formatter (could not run: ${String(e?.message).split("\n")[0]})`))' "$tree" "$base" "$(git merge-base "$base" "$head")" "$head") ||
+    differ="the formatter (could not run; log above)"
+  if [ -n "$differ" ]; then
+    say "**(b) failed:** a style change is exactly what base's pinned prettier writes over base's copy of each file with base's config. Not so for:"
+    list "$differ"
+    exit 1
+  fi
+  say "**(b) passed:** every changed file is what prettier $(node -p 'require("prettier").version') writes over base's copy with base's config."
+  exit 0
 fi
 
 base=$1 head=$2
@@ -297,6 +353,12 @@ test | docs | chore | ci | build)
     exit 1
   fi
   say "**Passed:** nothing the rule keeps changed."
+  ;;
+style)
+  say "**Rule for \`style\`:** (a) only edits to existing .ts, .js, .mjs and .cjs files that base's .prettierignore keeps: no added, removed or renamed file, and no package.json, lock, formatter config, workflow or other file; (b) each is exactly what base's pinned prettier writes over base's copy with base's config."
+  style_scope
+  say "**(a) passed:** every changed path is an existing code file; base's .prettierignore and (b) are checked next."
+  echo "style=true" >>"${GITHUB_OUTPUT:-/dev/null}"
   ;;
 fix | feat) say "**Rule for \`$type\`:** passes here; the proof check covers $type changes." ;;
 revert)

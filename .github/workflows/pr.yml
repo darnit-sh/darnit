@@ -62,12 +62,12 @@ jobs:
           git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
           printf "Rule from base's scripts/check-refactor.sh\n\n" | tee -a "$GITHUB_STEP_SUMMARY"
           sh "$RUNNER_TEMP/scripts/check-refactor.sh" "$BASE" "$HEAD"
-      - if: steps.table.outputs.base-tests == 'true'
+      - if: steps.table.outputs.base-tests == 'true' || steps.table.outputs.style == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
-      - if: steps.table.outputs.base-tests == 'true'
+      - if: steps.table.outputs.base-tests == 'true' || steps.table.outputs.style == 'true'
         run: npm ci
       - if: steps.table.outputs.base-tests == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -76,6 +76,9 @@ jobs:
           key: oasdiff-${{ runner.os }}-${{ hashFiles('src/corpus/oasdiff.ts') }}
       - if: steps.table.outputs.base-tests == 'true'
         run: sh "$RUNNER_TEMP/scripts/check-refactor.sh" --base-tests "$BASE"
+      # A style change does not change the lock, so npm ci installs the prettier base pins.
+      - if: steps.table.outputs.style == 'true'
+        run: sh "$RUNNER_TEMP/scripts/check-refactor.sh" --style "$BASE" "$HEAD"
 
   # A fix or feat that changes code or a rule pack brings a test that fails without it (scripts/check-proof.sh).
   # Runs again when the title or body is edited, with base's copy of the scripts when base has one.

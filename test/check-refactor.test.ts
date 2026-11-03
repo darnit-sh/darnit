@@ -102,7 +102,7 @@ const lock = (packages: Record<string, object> = {}) =>
 /** package.json with `deps` merged over base's dependency fields. */
 const withDeps = (deps: object) => `${JSON.stringify({ ...JSON.parse(pkg()), ...deps })}\n`;
 
-type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean };
+type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean; chmod?: string; mode?: string };
 
 const gitIn =
   (dir: string) =>
@@ -157,9 +157,10 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
       if (e.revert) git("revert", "--no-commit", "HEAD");
     }
     git("add", "-A");
+    for (const e of es.filter((e) => e.chmod)) git("update-index", "--chmod=+x", e.chmod!);
     for (const e of es.filter((e) => e.index)) {
       const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: dir, input: e.text ?? "changed\n", encoding: "utf8" }).trim();
-      git("update-index", "--add", "--cacheinfo", `100644,${blob},${e.index}`);
+      git("update-index", "--add", "--cacheinfo", `${e.mode ?? "100644"},${blob},${e.index}`);
     }
   };
   if (landed.length) {
@@ -241,6 +242,7 @@ async function check(
     out: run.stdout,
     summary: await readFile(summary, "utf8"),
     baseTests: (await readFile(output, "utf8")).includes("base-tests=true"),
+    style: (await readFile(output, "utf8")).includes("style=true"),
   };
 }
 
@@ -346,7 +348,7 @@ describe("the rule picked by the title's type", () => {
 
   it("fails any type that adds or changes a dependency npm would fetch from outside the registry", async () => {
     const fake = await repo([{ write: "package.json", text: withDeps({ devDependencies: { vitest: "file:./fake-vitest" } }) }]);
-    for (const type of ["docs", "test", "chore", "ci", "build", "fix", "feat", "refactor", "perf", "revert"]) {
+    for (const type of ["docs", "test", "chore", "ci", "build", "fix", "feat", "refactor", "perf", "style", "revert"]) {
       const r = await check(fake, `${type}: x`, "Proof: none, swaps the test runner\n");
       expect(r.status, type).toBe(1);
       expect(r.summary, type).toContain('- package.json devDependencies.vitest "file:./fake-vitest"');
@@ -805,6 +807,7 @@ describe("the rule picked by the title's type", () => {
       ["feat", "packs/.npmrc"],
       ["refactor", ".yarnrc.yml"],
       ["perf", ".npmrc"],
+      ["style", "packs/.npmrc"],
       ["revert", ".npmrc"],
       ["docs", ".yarnrc"],
       ["chore", ".npmrc"],
@@ -964,5 +967,118 @@ describe("the rule picked by the title's type", () => {
     expect(failed.status).toBe(1);
     expect(failed.stdout).toContain("(b) failed:** a test from base");
     expect(failed.stdout).toContain("(b) failed:** a pack fixture from base");
+  });
+});
+
+describe("the style rule", () => {
+  const formatter = {
+    version: (JSON.parse(readFileSync("package.json", "utf8")) as { devDependencies: Record<string, string> }).devDependencies.prettier!,
+    config: readFileSync(".prettierrc.json", "utf8"),
+    ignore: readFileSync(".prettierignore", "utf8"),
+  };
+  const messy = "const a = {b:1}\nexport const long = [first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth];\n";
+  // printWidth 120 from base's config keeps the second line whole; prettier's default 80 would break it.
+  const tidy = "const a = { b: 1 };\nexport const long = [first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth];\n";
+  const test = { messy: "if (a<b) {x()}\n", tidy: "if (a < b) {\n  x();\n}\n" };
+  /** Base as it is once the formatter lands: prettier pinned, its config and ignore file, and unformatted code. */
+  const landed = (version = formatter.version): Edit[] => [
+    { write: "package.json", text: withDeps({ devDependencies: { prettier: version } }) },
+    { write: ".prettierrc.json", text: formatter.config },
+    { write: ".prettierignore", text: formatter.ignore },
+    { write: "src/a.ts", text: messy },
+    { write: "test/a.test.ts", text: test.messy },
+    { write: "test/golden/case.ts", text: messy },
+    { write: "packs/v/p/fixtures/basic/input.ts", text: messy },
+  ];
+  /** Runs the refactor job's steps: the table step, then --style with this repository's packages when it asks. */
+  async function style(edits: Edit[], base = landed(), title = "style: format the code") {
+    const made = await repo(edits, base);
+    const table = await check(made, title);
+    if (!table.style) return table;
+    await symlink(resolve("node_modules"), join(made.dir, "node_modules"));
+    const run = spawnSync("sh", [script, "--style", made.base, made.head], { cwd: made.dir, encoding: "utf8", env: { ...process.env, GITHUB_STEP_SUMMARY: "" } });
+    return { ...table, status: run.status, out: table.out + run.stdout };
+  }
+
+  it("passes a change that is exactly base's prettier output over base's files, with base's config", async () => {
+    const r = await style([{ write: "src/a.ts", text: tidy }, { write: "test/a.test.ts", text: test.tidy }]);
+    expect(r).toMatchObject({ status: 0, style: true, baseTests: false });
+    expect(r.out).toContain("(a) passed");
+    expect(r.out).toContain(`**(b) passed:** every changed file is what prettier ${formatter.version} writes`);
+  });
+
+  it("fails a change that is not the formatter's output, and names each file that differs", async () => {
+    const flipped = await style([{ write: "src/a.ts", text: tidy }, { write: "test/a.test.ts", text: test.tidy.replace("<", "<=") }]);
+    expect(flipped.status).toBe(1);
+    expect(flipped.out).toContain("**(b) failed:**");
+    expect(flipped.out).toContain("- test/a.test.ts (differs from the formatter's output)\n");
+    expect(flipped.out).not.toContain("- src/a.ts");
+    const other = await style([{ write: "src/a.ts", text: "export const a = 2;\n" }]);
+    expect(other.status).toBe(1);
+    expect(other.out).toContain("- src/a.ts (differs from the formatter's output)\n");
+    const wide = await style([{ write: "src/a.ts", text: tidy.replace("[first", "[\n  first") }]);
+    expect(wide.status).toBe(1);
+  });
+
+  it("fails a change that adds, removes or renames a file, or touches anything but code the formatter covers", async () => {
+    const bumped = withDeps({ devDependencies: { prettier: "3.9.9" } });
+    for (const [edit, shown] of [
+      [{ write: "src/b.ts", text: tidy }, "src/b.ts"],
+      [{ remove: "src/a.ts" }, "src/a.ts"],
+      [{ move: ["src/a.ts", "src/c.ts"] }, "src/c.ts"],
+      [{ write: "package.json", text: bumped }, "package.json"],
+      [{ write: "package-lock.json", text: lock() + "\n" }, "package-lock.json"],
+      [{ write: ".prettierrc.json", text: '{ "printWidth": 80 }\n' }, ".prettierrc.json"],
+      [{ write: ".prettierignore", text: "*\n" }, ".prettierignore"],
+      [{ write: "prettier.config.js", text: "export default {};\n" }, "prettier.config.js"],
+      [{ write: "test/golden/repo.txt" }, "test/golden/repo.txt"],
+      [{ write: ".github/workflows/ci.yml" }, ".github/workflows/ci.yml"],
+      [{ write: "README.md" }, "README.md"],
+      [{ link: "test/helpers.ts" }, "test/helpers.ts"],
+      [{ write: "test/a.test.ts", text: test.tidy, chmod: "test/a.test.ts" }, "test/a.test.ts"],
+    ] as [Edit, string][]) {
+      const r = await style([{ write: "src/a.ts", text: tidy }, edit]);
+      expect(r, JSON.stringify(edit)).toMatchObject({ status: 1, style: false });
+      expect(r.out).toContain("**(a) failed:**");
+      expect(r.out).toContain(`- ${shown}\n`);
+    }
+  });
+
+  it("fails a change to a link, even when its target is the formatter's output", async () => {
+    const link = { index: "src/link.ts", mode: "120000" };
+    const r = await style([{ ...link, text: "x;\n" }], [...landed(), { ...link, text: "x" }]);
+    expect(r).toMatchObject({ status: 1, style: false });
+    expect(r.out).toContain("- src/link.ts\n");
+  });
+
+  it("fails a change to formatter config or a workflow action written in code, even when it is the formatter's output", async () => {
+    for (const f of ["src/prettier.config.mjs", "test/.prettierrc.cjs", ".github/actions/a/index.js"]) {
+      const r = await style([{ write: f, text: test.tidy }], [...landed(), { write: f, text: test.messy }]);
+      expect(r, f).toMatchObject({ status: 1, style: false });
+      expect(r.out).toContain(`- ${f}\n`);
+    }
+  });
+
+  it("fails a change to a file base's .prettierignore leaves out, even when it is the formatter's output", async () => {
+    for (const f of ["packs/v/p/fixtures/basic/input.ts", "test/golden/case.ts"]) {
+      const r = await style([{ write: "src/a.ts", text: tidy }, { write: f, text: tidy }]);
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f} (left out by base's .prettierignore)\n`);
+    }
+  });
+
+  it("judges by the prettier version base pins, and fails when base pins none", async () => {
+    const edits = [{ write: "src/a.ts", text: tidy }];
+    for (const [version, why] of [
+      ["3.9.9", `prettier 3.9.9 pinned in base's package.json, ${formatter.version} installed`],
+      [`^${formatter.version}`, `prettier ^${formatter.version} pinned in base's package.json, ${formatter.version} installed`],
+    ]) {
+      const r = await style(edits, landed(version));
+      expect(r.status, version).toBe(1);
+      expect(r.out).toContain(`- ${why}\n`);
+    }
+    const none = await style(edits, landed().slice(1));
+    expect(none.status).toBe(1);
+    expect(none.out).toContain(`- prettier (none) pinned in base's package.json, ${formatter.version} installed\n`);
   });
 });

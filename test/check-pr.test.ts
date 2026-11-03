@@ -63,11 +63,29 @@ describe("the title job", () => {
     expect((await titleJob("ci: tidy the title check", checker, "exit 0\n")).status).toBe(0);
   });
 
+  it("knows the style type, for a change that is exactly the formatter's output", async () => {
+    expect((await titleJob("style: format the code", checker, "exit 0\n")).status).toBe(0);
+    expect((await titleJob("style(scan)!: format", checker, "exit 0\n")).status).toBe(0);
+    expect((await titleJob("styles: format the code", checker, "exit 0\n")).status).toBe(1);
+  });
+
   it("uses the change's own check when base has none", async () => {
     const added = await titleJob("ci: add the title check", null, checker);
     expect(added.status).toBe(0);
     expect(added.out).toContain("this change's scripts/check-pr.sh, since base has none");
     expect((await titleJob("wip", null, checker)).status).toBe(1);
+  });
+});
+
+describe("the refactor job", () => {
+  it("installs the locked packages, then runs base's style rule, when the table step asks for it", async () => {
+    const steps = (await workflow("pr")).jobs.refactor!.steps! as (Step & { if?: string })[];
+    const asked = steps.filter((s) => s.if?.includes("steps.table.outputs.style == 'true'"));
+    expect(asked.map((s) => s.uses?.replace(/@.*/, "") ?? s.run)).toEqual([
+      "actions/setup-node",
+      "npm ci",
+      'sh "$RUNNER_TEMP/scripts/check-refactor.sh" --style "$BASE" "$HEAD"',
+    ]);
   });
 });
 
