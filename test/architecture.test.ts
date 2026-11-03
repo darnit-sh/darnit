@@ -1,13 +1,13 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { posix } from "node:path";
-import ts from "typescript";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { buildGraph, cycles, readSources, type Graph, type Sources } from "./import-graph.js";
 
 /**
  * The module map: each group of files sits on a floor and imports only from lower floors. An island
  * imports floors up to its reach and is imported only from scripts/, which reach floor 3. `also` names
  * the groups on the same floor, or the island exceptions, a group may still import. Paths are files, or
- * folders ending in a slash; a file in none of them fails the test.
+ * folders ending in a slash; a file in none of them fails the test. Folders that do not exist yet (src/cli/,
+ * src/vendors/ and the like) are where the map puts files as they move, so a moved file keeps its floor.
  */
 type Group = { floor: number; reach: number; kind?: "island" | "scripts"; paths: string[]; also: string[] };
 const at = (floor: number, paths: string[], ...also: string[]): Group => ({ floor, reach: floor - 1, paths, also });
@@ -32,53 +32,13 @@ const GROUPS: Record<string, Group> = {
 };
 
 const ALLOWLIST = "test/architecture-allowlist.txt";
-const CODE = /\.[cm]?[jt]sx?$/;
 
 type Place = Group & { group: string };
-type Sources = Map<string, string>;
 
 function placeOf(file: string): Place | undefined {
   const inside = (path: string) => (path.endsWith("/") ? file.startsWith(path) : file === path);
   const entry = Object.entries(GROUPS).find(([, g]) => g.paths.some(inside));
   return entry && { ...entry[1], group: entry[0] };
-}
-
-/** Every file under src/ and every code file under scripts/, by path from the repository root. */
-function readSources(): Sources {
-  const sources: Sources = new Map();
-  for (const dir of ["src", "scripts"]) {
-    for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
-      const file = posix.relative(".", `${entry.parentPath}/${entry.name}`.split("\\").join("/"));
-      if (!entry.isDirectory() && (dir === "src" || CODE.test(file))) sources.set(file, readFileSync(file, "utf8"));
-    }
-  }
-  return sources;
-}
-
-/** The file an import specifier names, with .js read as .ts; undefined for a package or a builtin. */
-function resolveSpecifier(file: string, specifier: string, sources: Sources): string | undefined {
-  if (!specifier.startsWith(".") && !specifier.startsWith("/")) return undefined;
-  const path = posix.join(posix.dirname(file), specifier);
-  const asTs = path.replace(/\.([cm]?)js(x?)$/, ".$1ts$2");
-  return sources.has(asTs) ? asTs : path;
-}
-
-/** Static imports, `import type`, `export ... from`, side effect imports and import() with a literal. */
-function buildGraph(sources: Sources, problems: string[]): Map<string, Set<string>> {
-  const graph = new Map<string, Set<string>>();
-  for (const [file, text] of sources) {
-    const targets = new Set<string>();
-    graph.set(file, targets);
-    if (!CODE.test(file)) continue;
-    if (/\bimport\s*\(\s*(?:[^\s"'`)]|`[^`]*\$\{)/.test(text)) problems.push(`${file} has an import() of a computed path, which this test cannot place`);
-    for (const { fileName } of ts.preProcessFile(text, true, true).importedFiles) {
-      const target = resolveSpecifier(file, fileName, sources);
-      if (target === undefined) continue;
-      if (sources.has(target)) targets.add(target);
-      else problems.push(`${file} imports "${fileName}", which is not a file under src/ or scripts/`);
-    }
-  }
-  return graph;
 }
 
 /** Why an import from one place to another breaks the module map, or undefined when it does not. */
@@ -91,28 +51,6 @@ function breaks(from: Place, to: Place): string | undefined {
   if (from.kind) return `${who} imports floor ${to.floor}, above floor ${from.reach}`;
   if (to.floor > from.floor) return `floor ${from.floor} imports floor ${to.floor}`;
   return `${from.group} imports ${to.group} on its own floor ${from.floor}`;
-}
-
-/** The strongly connected sets of files with more than one file or an import of itself (Tarjan). */
-function cycles(graph: Map<string, Set<string>>): string[][] {
-  const index = new Map<string, number>();
-  const low = new Map<string, number>();
-  const stack: string[] = [];
-  const found: string[][] = [];
-  const visit = (file: string): void => {
-    index.set(file, index.size);
-    low.set(file, index.get(file)!);
-    stack.push(file);
-    for (const next of graph.get(file) ?? []) {
-      if (!index.has(next)) visit(next);
-      if (stack.includes(next)) low.set(file, Math.min(low.get(file)!, low.get(next)!));
-    }
-    if (low.get(file) !== index.get(file)) return;
-    const set = stack.splice(stack.indexOf(file));
-    if (set.length > 1 || graph.get(file)?.has(file)) found.push(set.sort());
-  };
-  for (const file of [...graph.keys()].sort()) if (!index.has(file)) visit(file);
-  return found;
 }
 
 /** Allowlist lines: `a -> b: reason` for an import, `cycle a b c: reason` for a cycle's files. */
@@ -138,7 +76,7 @@ function misplaced(sources: Sources): string[] {
 }
 
 /** Each import and cycle that breaks the module map, keyed as its allowlist line would name it. */
-function breaches(graph: Map<string, Set<string>>): Map<string, string> {
+function breaches(graph: Graph): Map<string, string> {
   const broken = new Map<string, string>();
   for (const [file, targets] of graph) {
     const from = placeOf(file);
