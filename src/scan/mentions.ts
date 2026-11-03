@@ -14,7 +14,7 @@ const QUOTES = new Set(['"', "'", "`"]);
 const SETTING = /^[ \t]*[=:][ \t]*$/;
 const LINE_END = /[ \t]*\r?(?:\n|$)/y;
 /** Longer lines are minified or machine-made. */
-const LONG_LINE = 5000;
+export const LONG_LINE = 5000;
 
 /**
  * How a language writes comments and strings: `hash` comments, strings in `multiline` that may span lines,
@@ -33,6 +33,9 @@ const SYNTAX: Record<string, Syntax> = {
   ...family(["c", "h", "cc", "cpp", "cxx", "hpp", "cs"], { multiline: [], apostrophe: true }),
   ...family(["rs"], { multiline: [], apostrophe: false }),
 };
+
+/** Whether `file` is code by its extension, where a name such as o1 counts only inside a comment or string or as a setting value. */
+export const isCodeFile = (file: string) => Object.hasOwn(SYNTAX, extname(file));
 
 /** Binary files hold a NUL byte near the start; text files do not. */
 export const isBinary = (text: string) => text.slice(0, 8192).includes("\0");

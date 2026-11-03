@@ -2146,26 +2146,35 @@ console.log(config);`,
       });
     }
 
-    // CPU time through the CLI, git's included, for 100 rewritten files over 1: about 9 ms a file here and 5 ms on main,
-    // and 46 ms when each file took its own git processes.
+    // Counts the git processes the CLI starts, through a git first on PATH that logs each call; when each file took its
+    // own, 100 files took hundreds more than 1.
     it("stores and commits many files with a few git processes, not a few per file", async () => {
-      const cpu = async (n: number) => {
+      const real = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+      const calls = async (n: number) => {
         const { dir, outside, api, close } = await setup(Object.fromEntries(Array.from({ length: n }, (_, i) => [`f${i}.js`, SDK_CALL])));
         const preload = join(outside, "local-api.mjs");
         await writeFile(preload, `const f = globalThis.fetch;\nglobalThis.fetch = (url, init) => f(String(url).replace(/^https:\\/\\/api\\.github\\.com\\//, ${JSON.stringify(api)}), init);\n`);
-        const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-        const env = { ...process.env, DARNIT_NO_UPDATE_CHECK: "1", GITHUB_ACTIONS: "", GITHUB_TOKEN: TOKEN, GH_TOKEN: "", SSH_AUTH_SOCK: "", NODE_OPTIONS: `--import ${preload}` };
+        // darnit refuses a git under its temp folder, so it gets one of its own beside the logging git.
+        const [bin, tmp, log] = [join(outside, "bin"), join(outside, "tmp"), join(outside, "git.log")];
+        await mkdir(bin);
+        await mkdir(tmp);
+        await writeFile(join(bin, "git"), `#!/bin/sh\necho git >> '${log}'\nexec '${real}' "$@"\n`, { mode: 0o755 });
         try {
-          const run = ["node", "--import", import.meta.resolve("tsx"), cli, "fix", "--pr", "--repo", "o/r", "--test", "true", "."];
-          const { stderr } = await promisify(execFile)("bash", ["-c", 'TIMEFORMAT="%U %S"; time "$@" > /dev/null 2>&1', "bash", ...run], { cwd: dir, env });
+          const out = await darnitWith(
+            { GITHUB_TOKEN: TOKEN, NODE_OPTIONS: `--import ${preload}`, PATH: `${bin}${delimiter}${process.env.PATH}`, TMPDIR: tmp },
+            dir,
+            ...["fix", "--pr", "--repo", "o/r", "--test", "true", "."],
+          );
+          expect(out.code, out.stderr).toBe(0);
           expect((await git(dir, ["ls-remote", "--heads", "origin", SDK_BRANCH], 30)).trim()).not.toBe("");
-          return stderr.trim().split(/\s+/).map(Number).reduce((a, b) => a + b, 0);
+          return (await readFile(log, "utf8")).split("\n").filter(Boolean).length;
         } finally {
           close();
         }
       };
-      const one = await cpu(1);
-      expect(await cpu(100) - one).toBeLessThan(100 * 0.025);
+      const [one, many] = [await calls(1), await calls(100)];
+      expect(one).toBeGreaterThan(0);
+      expect(many, `${many} git processes for 100 files, ${one} for 1`).toBeLessThan(one * 1.5 + 5);
     }, 120_000);
 
     it("runs no filter driver the repository configures while storing the rewrite", async () => {
