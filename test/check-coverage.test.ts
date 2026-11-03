@@ -211,6 +211,6 @@ describe("the coverage thresholds", () => {
     const files = (await readdir("src", { recursive: true })).filter((f) => f.endsWith(".ts")).map((f) => posix.join("src", f.replaceAll("\\", "/")));
     expect(files.length).toBeGreaterThan(20);
     expect(files.filter((f) => keys.filter((k) => picomatch(k)(f)).length !== 1)).toEqual([]);
-    expect(keys.filter((k) => !files.some(picomatch(k)))).toEqual([]);
+    expect(keys.filter((k) => !files.some((f) => picomatch(k)(f)))).toEqual([]);
   });
 });
