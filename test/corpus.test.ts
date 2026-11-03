@@ -9,7 +9,7 @@ import { parseSpec, requestProperty, type Schema, type Spec } from "../src/corpu
 import { runPackFixtures } from "../src/packs/fixtures.js";
 import { findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { loadRecords } from "../src/records/load.js";
-import { cpuTime } from "./helpers.js";
+import { slowdown } from "./helpers.js";
 
 const YAML_DIR = fileURLToPath(new URL("./fixtures/specs/", import.meta.url));
 const config = { spec: "https://example.com/openapi.yaml", symbols: { "POST /chat/completions": "chat.completions.create" } };
@@ -212,14 +212,20 @@ describe("deriveCandidates", () => {
     for (let i = 0; i < 100_000; i++) schemas[`C${i}`] = ref(`C${i + 1}`);
     schemas["C100000"] = { description: "Deprecated in favor of `g`." };
     let candidates: ReturnType<typeof synthetic>["candidates"] = [];
-    const ms = await cpuTime(() => ({ candidates } = synthetic(Object.fromEntries(fields.map((f) => [f, ref("C0")])), fields.map((f) => deprecated(f)), schemas)), 3, 1000);
+    const run = () => ({ candidates } = synthetic(Object.fromEntries(fields.map((f) => [f, ref("C0")])), fields.map((f) => deprecated(f)), schemas));
+    // About three and a half times following the chain once by hand; over a hundred when each field walks it again.
+    expect(await slowdown(run, byHand(schemas), 8)).toBeLessThan(8);
     expect(candidates).toHaveLength(60);
     expect(candidates.every((c) => c.record.id.endsWith("-to-g"))).toBe(true);
-    expect(ms).toBeLessThan(1000);
   });
 });
 
 const ref = (name: string): Schema => ({ $ref: `#/components/schemas/${name}` });
+
+/** Follows the $ref chain from C0 by hand: the reads resolve makes, without its cache and cycle check. */
+const byHand = (schemas: Record<string, Schema>) => () => {
+  for (let s = schemas["C0"]; s?.$ref; ) s = schemas[s.$ref.slice("#/components/schemas/".length)];
+};
 
 function deprecated(field: string, path = "/chat/completions", operation = "POST") {
   return { id: "request-property-deprecated", level: 1 as const, text: `request property \`${field}\` deprecated`, operation, path };
@@ -231,20 +237,32 @@ function synthetic(properties: Record<string, Schema>, entries: ChangeEntry[], s
 }
 
 describe("requestProperty", () => {
-  it("stops at $ref cycles and follows long chains within a CPU budget", { tags: ["cpu-time"] }, async () => {
-    const schemas: Record<string, Schema> = { A: ref("B"), B: ref("A"), Self: ref("Self") };
-    for (let i = 0; i < 100_000; i++) schemas[`C${i}`] = ref(`C${i + 1}`);
-    schemas["C100000"] = { properties: { max_tokens: ref("Self") } };
+  it("stops at $ref cycles and follows long chains within a CPU budget, reading each schema about once", { tags: ["cpu-time"] }, async () => {
+    const all: Record<string, Schema> = { A: ref("B"), B: ref("A"), Self: ref("Self") };
+    for (let i = 0; i < 100_000; i++) all[`C${i}`] = ref(`C${i + 1}`);
+    all["C100000"] = { properties: { max_tokens: ref("Self") } };
+    // A cycle followed for ever fails here instead of hanging the run.
+    let reads = 0;
+    const schemas = new Proxy(all, {
+      get(target, key) {
+        if (++reads > 2 * 100_004) throw new Error(`read schemas ${reads} times`);
+        return Reflect.get(target, key) as unknown;
+      },
+    });
     const op = (name: string) => ({ post: { requestBody: { content: { "application/json": { schema: ref(name) } } } } });
-    const spec: Spec = { paths: { "/a": op("A"), "/self": op("Self"), "/chain": op("C0") }, components: { schemas } };
     const odd = { paths: { "/x": { post: { requestBody: { content: { "application/json": { schema: { allOf: 1, $ref: 2 } } } } } } } } as unknown as Spec;
-    const ms = await cpuTime(() => {
+    // A new spec each time, as each one resolves a name only once.
+    const lookups = (from: Record<string, Schema>, start: string) => () => {
+      const spec: Spec = { paths: { "/a": op("A"), "/self": op("Self"), "/chain": op(start) }, components: { schemas: from } };
       expect(requestProperty(spec, "POST", "/a", "max_tokens")).toBeUndefined();
       expect(requestProperty(spec, "POST", "/self", "max_tokens")).toBeUndefined();
       expect(requestProperty(spec, "POST", "/chain", "max_tokens")).toEqual(ref("Self"));
       expect(requestProperty(spec, "POST", "/chain", "constructor")).toBeUndefined();
       expect(requestProperty(odd, "POST", "/x", "max_tokens")).toBeUndefined();
-    }, 3, 1000);
-    expect(ms).toBeLessThan(1000);
+    };
+    lookups(schemas, "C0")();
+    expect(reads).toBeGreaterThan(100_000);
+    // Two to three and a half times following the chain by hand.
+    expect(await slowdown(lookups(all, "C0"), byHand(all), 5)).toBeLessThan(5);
   });
 });

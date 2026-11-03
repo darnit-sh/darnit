@@ -25,7 +25,7 @@ import { retiringModels } from "../src/corpus/readme.js";
 import { parseSpec, type Spec } from "../src/corpus/spec.js";
 import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 import { parseChangeRecord } from "../src/records/schema.js";
-import { cpuTime } from "./helpers.js";
+import { slowdown } from "./helpers.js";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const tsx = join(ROOT, "node_modules", ".bin", "tsx");
@@ -555,10 +555,10 @@ describe("npm run accounting", () => {
     const schemas: Record<string, unknown> = { All: { properties: Object.fromEntries(Array.from({ length: 140 }, (_, i) => [`s${i}`, { $ref: `#/components/schemas/S${i}` }])) } };
     for (let i = 0; i < 140; i++) schemas[`S${i}`] = { properties: { model: enumOf } };
     const spec = { paths: Object.fromEntries(paths.map((p) => [p, { post: body("All") }])), components: { schemas } };
-    const run = () => account({ vendor: "openai", spec, removals: [], records, notCovered: [] });
-    expect(run().covered.size).toBe(20020);
-    const ms = await cpuTime(run, 3, 1000);
-    expect(ms).toBeLessThan(1000);
+    const run = (these: typeof records) => () => account({ vendor: "openai", spec, removals: [], records: these, notCovered: [] });
+    expect(run(records)().covered.size).toBe(20020);
+    // Three to six times accounting with no records; 13 to 54 when each value asked again whether a record names each operation.
+    expect(await slowdown(run(records), run([]), 10)).toBeLessThan(10);
   });
 
   it("accounts for a large spec within its time budget", { tags: ["cpu-time"] }, async () => {
@@ -574,8 +574,14 @@ describe("npm run accounting", () => {
     for (let i = 0; i < 500; i++) paths[`/p${i}`] = { post: body(`S${i * 4}`) };
     const records = (await loadRecords()).map((l) => l.record);
     const spec = { paths, components: { schemas } };
-    const ms = await cpuTime(() => account({ vendor: "openai", spec, removals: [], records, notCovered: [] }), 3, 1500);
-    expect(ms).toBeLessThan(1500);
+    // Against plain walks over every value in the spec, which read what accounting reads without its own work.
+    const walk = (v: unknown): void => {
+      if (v && typeof v === "object") for (const x of Object.values(v)) walk(x);
+    };
+    const walks = () => {
+      for (let i = 0; i < 4; i++) walk(spec);
+    };
+    expect(await slowdown(() => account({ vendor: "openai", spec, removals: [], records, notCovered: [] }), walks, 25)).toBeLessThan(25);
   });
 });
 
