@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ import { exitCodeFor, type FixResult } from "../src/fix.js";
 import { init, pinned, WORKFLOW } from "../src/init.js";
 import { loadRecords } from "../src/records/load.js";
 import { modelNames } from "../src/scan/astgrep.js";
+import { LONG_LINE } from "../src/scan/mentions.js";
 import { TIME_LIMIT_MINUTES } from "../src/tests.js";
 import { atLeast } from "../src/versions.js";
 
@@ -70,6 +71,13 @@ const config = cached(async () => {
 type Doc = "README.md" | "SECURITY.md" | "RELEASING.md";
 // A space in a pattern matches any run of spaces and line breaks, so rewrapping a paragraph keeps its match.
 const loose = (at: RegExp, flags: string) => new RegExp(at.source.replaceAll(" ", "\\s+"), flags);
+// The major versions of an action this repository's own workflows use, pinned as `<sha> # vN.x.y`.
+const ours = async (action: string) => {
+  const dir = new URL("../.github/workflows/", import.meta.url);
+  const texts = await Promise.all((await readdir(dir)).map((f) => readFile(new URL(f, dir), "utf8")));
+  const majors = texts.flatMap((t) => [...t.matchAll(new RegExp(`uses: actions/${action}@[0-9a-f]{40} # (v\\d+)\\.`, "g"))].map((m) => m[1]));
+  return [...new Set(majors)].join(", ");
+};
 // The same pattern read from the workflow init writes.
 const workflow = (at: RegExp) => ({ in: ["README.md"] as Doc[], at, is: () => [at.exec(WORKFLOW)?.[1]] });
 
@@ -84,7 +92,7 @@ const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) 
     at: /OpenAI: (\d+) retiring models/,
     is: async () => [new Set((await loadRecords()).flatMap(({ record }) => Object.values(record.detection.astGrepPatterns).flatMap(modelNames))).size],
   },
-  { in: ["README.md"], at: /line over (\S+) characters/, is: async () => [Number((await declared("src/scan/mentions.ts", /^const LONG_LINE = (\d+);$/m))?.[0]).toLocaleString("en-US")] },
+  { in: ["README.md"], at: /line over (\S+) characters/, is: () => [LONG_LINE.toLocaleString("en-US")] },
   { in: ["README.md"], at: /files over (\S+) MB/, is: () => [MAX_FILE_BYTES / 1024 / 1024] },
   { in: ["README.md"], at: /takes over (\d+) minutes is stopped/, is: () => [TIME_LIMIT_MINUTES] },
   { in: ["README.md"], at: /waits at most (\S+) seconds/, is: async () => [Number((await declared("src/update.ts", /^const BUDGET_MS = (\d+);$/m))?.[0]) / 1000] },
@@ -111,6 +119,11 @@ const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) 
   workflow(/node-version: (\d+)/),
   workflow(/uses: actions\/checkout@(v\d+)/),
   workflow(/uses: actions\/setup-node@(v\d+)/),
+  { in: ["README.md"], at: /uses: actions\/upload-artifact@(v\d+)/, is: async () => [await ours("upload-artifact")] },
+  { in: ["README.md"], at: /uses: actions\/download-artifact@(v\d+)/, is: async () => [await ours("download-artifact")] },
+  // The version the README's fix --prepare and --publish example installs, and the file npm pack names after it.
+  { in: ["README.md"], at: /darnit@(\d[\w.-]*\w)/, is: async () => [(await pkg()).version] },
+  { in: ["README.md"], at: /darnit-(\d[\w.-]*\w)\.tgz/, is: async () => [(await pkg()).version] },
   { in: ["SECURITY.md"], at: /the newest (\S+) release/, is: async () => [await line()] },
   { in: ["SECURITY.md"], at: /pick up a new (\S+) release/, is: async () => [await line()] },
   { in: ["SECURITY.md"], at: /^\| Newest (\d+\.\d+)\.x \|/, is: async () => [await line()] },
