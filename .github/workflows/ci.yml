@@ -39,6 +39,9 @@ jobs:
       - run: "! git config --name-only --get-regexp '^http\\..*\\.extraheader$'"
       - run: npm run lint
       - run: npm run typecheck
+      # Unused files, exports and dependencies, and duplicated blocks, each checked against its list in scripts/allow/.
+      - run: npm run knip
+      - run: npm run duplicates
 
   test:
     strategy:

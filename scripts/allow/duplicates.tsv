@@ -1,0 +1,7 @@
+# Duplicated blocks jscpd finds in src/ and scripts/ that stay for now, one per line: the two places as
+# file:first-last line, then the reason, tab separated. npm run duplicates fails on a block missing here and on a
+# line whose block is gone, so moving one of these blocks means updating its line.
+scripts/accounting.ts:8-21	scripts/corpus.ts:11-24	the same imports and --root handling; goes with a shared script helper
+scripts/accounting.ts:9-21	scripts/backfill-removals.ts:16-19	the same --root handling; goes with a shared script helper
+src/scan/astgrep.ts:143-149	src/scan/astgrep.ts:200-206	two copies of one binary search; goes when they share one
+src/versions.ts:53-58	src/versions.ts:62-68	pins and locked read a file the same way; goes when they share one reader

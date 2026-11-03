@@ -1,0 +1,18 @@
+# What knip finds that stays for now, one per line: type, file, name and the reason, tab separated.
+# npm run knip fails on a finding missing here and on a line whose finding is gone.
+binaries	test/fix.test.ts	chattr	a system program the test runs, not an npm package
+binaries	test/init.test.ts	mkfifo	a system program the test runs, not an npm package
+binaries	test/tests.test.ts	mkfifo	a system program the test runs, not an npm package
+devDependencies	package.json	jscpd	scripts/allowlist.ts runs it from node_modules/.bin, which knip does not trace
+exports	src/corpus/oasdiff.ts	OASDIFF_VERSION	used only in its own file; the export goes with the dead code cleanup
+exports	src/corpus/replacements.ts	fold	used only in its own file; the export goes with the dead code cleanup
+exports	src/records/schema.ts	AstGrepPatternSchema	used only in its own file; the export goes with the dead code cleanup
+exports	src/records/schema.ts	ChangeRecordSchema	used only in its own file; the export goes with the dead code cleanup
+exports	src/records/schema.ts	LangSchema	used only in its own file; the export goes with the dead code cleanup
+types	src/corpus/replacements.ts	Row	used only in its own file; the export goes with the dead code cleanup
+types	src/corpus/replacements.ts	Table	used only in its own file; the export goes with the dead code cleanup
+types	src/detect.ts	Vendor	used only in its own file; the export goes with the dead code cleanup
+types	src/fix.ts	PrResult	used only in its own file; the export goes with the dead code cleanup
+types	src/fix.ts	RecordResult	used only in its own file; the export goes with the dead code cleanup
+types	src/fix.ts	Site	used only in its own file; the export goes with the dead code cleanup
+types	src/fix.ts	TestOutcome	used only in its own file; the export goes with the dead code cleanup
