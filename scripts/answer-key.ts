@@ -206,6 +206,9 @@ export function applyKnown(repo: string, t: Tally, known: readonly Known[]): str
   return stale.map((k) => `${repo} ${esc(k.file)}:${k.line} ${k.id} only in ${k.side} is in ${KNOWN} but no longer differs: remove that line`);
 }
 
+/** `text` on one line, each line break made "; ", as the per-repository line prints the summary. */
+export const oneLine = (text: string) => text.replaceAll("\n", "; ");
+
 /** Each line only one side has with no rule for it. */
 export const misses = (t: Tally) => t.unexplained.map((u) => `${esc(u.file)}:${u.line} ${u.id} only in ${u.side}`);
 
@@ -242,7 +245,7 @@ async function main() {
     compared++;
     const t = await answerKey(dir!, run.report, models);
     errors.push(...applyKnown(repo, t, known));
-    console.log([`${repo}: ${summary(t).replace("\n", "; ")}`, ...misses(t).map((m) => `  unexplained ${m}`)].join("\n"));
+    console.log([`${repo}: ${oneLine(summary(t))}`, ...misses(t).map((m) => `  unexplained ${m}`)].join("\n"));
     total.mentions += t.mentions;
     total.agreed += t.agreed;
     total.known += t.known;

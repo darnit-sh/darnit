@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { answerKey, applyKnown, exitCode, misses, notComparable, parseKnown, RULES, summary, tally, unlisted } from "../scripts/answer-key.js";
+import { answerKey, applyKnown, exitCode, misses, notComparable, oneLine, parseKnown, RULES, summary, tally, unlisted } from "../scripts/answer-key.js";
 import type { Report } from "../scripts/golden.js";
 import { checkReport, mentionsToJson, toJson } from "../src/check.js";
 import { loadRecords } from "../src/records/load.js";
@@ -35,6 +35,8 @@ describe("answer key for model-name mentions", () => {
       "mentions 10 = agreed 5 + explained by a rule 5 (call site 1, longer id 1, letters only 1, long line 1, code name 1) + known 0 + unexplained 0\nnot a mention, part of a longer word: 2",
     );
     expect(exitCode(t)).toBe(0);
+    expect(oneLine(summary(t))).toBe(summary(t).split("\n").join("; "));
+    expect(oneLine("a\nb\nc\n")).toBe("a; b; c; ");
   });
 
   it("fails on a line only one side has and no rule explains, naming the side", async () => {
