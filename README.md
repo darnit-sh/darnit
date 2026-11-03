@@ -491,10 +491,11 @@ To add a vendor, open a pull request adding its spec URL and SDK calls to
 
 - Request options built somewhere else and passed in as a variable are not
   followed. `check` reminds you at the end of every report, clean or not.
-- A model name fails `check` only when written in the call's own `model` option
-  as a plain string or a fallback such as `name || "gpt-4"`. Written any other
-  way in the call (a quoted `"model"` key, a template string, a Python f-string,
-  `**kwargs`) or set as a value named for a model or engine elsewhere (a
+- A model name fails `check` only when written in the call's own `model` option,
+  with its key bare or quoted (`"model": "gpt-4"`), as a plain string, a
+  JavaScript or TypeScript template string with nothing in it (`` `gpt-4` ``) or
+  a fallback such as `name || "gpt-4"`. Written any other way in the call (a
+  Python f-string, `**kwargs`) or set as a value named for a model or engine elsewhere (a
   constant, a default, a keyword argument, an object or dict entry, an
   environment variable's default), it is only listed under "Possibly affected",
   and some of those go to other providers. This includes framework calls such as
