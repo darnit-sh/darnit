@@ -102,7 +102,7 @@ const lock = (packages: Record<string, object> = {}) =>
 /** package.json with `deps` merged over base's dependency fields. */
 const withDeps = (deps: object) => `${JSON.stringify({ ...JSON.parse(pkg()), ...deps })}\n`;
 
-type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean };
+type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; symlink?: [string, string]; gitlink?: string; revert?: boolean };
 
 const gitIn =
   (dir: string) =>
@@ -154,9 +154,15 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
         await rm(join(dir, e.link));
         await symlink("../src/a.ts", join(dir, e.link));
       }
+      if (e.symlink) {
+        await rm(join(dir, e.symlink[0]), { recursive: true, force: true });
+        await mkdir(dirname(join(dir, e.symlink[0])), { recursive: true });
+        await symlink(e.symlink[1], join(dir, e.symlink[0]));
+      }
       if (e.revert) git("revert", "--no-commit", "HEAD");
     }
     git("add", "-A");
+    for (const e of es.filter((e) => e.gitlink)) git("update-index", "--add", "--cacheinfo", `160000,${git("rev-parse", "HEAD")},${e.gitlink}`);
     for (const e of es.filter((e) => e.index)) {
       const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: dir, input: e.text ?? "changed\n", encoding: "utf8" }).trim();
       git("update-index", "--add", "--cacheinfo", `100644,${blob},${e.index}`);
@@ -1013,6 +1019,38 @@ describe("lines added to an allowlist under scripts/allow/", () => {
     }
     expect((await grow("ci: x", [{ write: "scripts/Allow/Duplicates.TSV", text: "a\tb\twhy\n" }], "")).status).toBe(1);
     expect((await grow("ci: x", [{ write: ".gitattributes", text: "*.tsv -diff\n" }, { write: LIST, text: added }], "")).status).toBe(1);
+  });
+
+  it("fails a link or submodule that is, holds or points at scripts/allow/ or a folder above it, under any type", async () => {
+    const lists = `${kept}exports\tsrc/a.ts\tleftOver\twhy\n`;
+    const moved: Edit[] = [{ write: "scripts/lists/unused.tsv", text: lists }, { write: "src/a.ts" }, { symlink: ["scripts/allow", "lists"] }];
+    const folder = await grow("fix(scan): x", moved, "");
+    expect(folder.status).toBe(1);
+    expect(folder.out).toContain("a link or submodule that is, holds or points at that folder or one above it:\n- scripts/allow\n");
+    const cases: Edit[][] = [
+      [{ write: "scripts/lists/unused.tsv", text: lists }, { symlink: [LIST, "../lists/unused.tsv"] }],
+      [{ symlink: ["docs/unused.tsv", "../scripts/allow/unused.tsv"] }],
+      [{ symlink: ["docs/up", ".."] }],
+      [{ symlink: ["scripts", "tools"] }],
+      [{ gitlink: "scripts/allow/vendored" }],
+    ];
+    for (const edits of cases) {
+      for (const title of ["fix: x", "ci: x"]) {
+        const r = await grow(title, edits);
+        expect(r.status, `${title} ${JSON.stringify(edits)}`).toBe(1);
+        expect(r.out).toContain("a link or submodule that is, holds or points at");
+      }
+    }
+    expect((await grow("fix: x", [{ symlink: ["docs/readme", "../README.md"] }], "")).status).toBe(0);
+  });
+
+  it("counts a change to what reads the lists as an added line", async () => {
+    for (const file of ["scripts/allowlist.ts", "scripts/unseen.ts", "knip.json", "Knip.JSON"]) {
+      const r = await grow("fix: x", [{ write: file }], "");
+      expect(r.status, file).toBe(1);
+      expect(r.out).toContain(`- ${file}\n`);
+      expect((await grow("ci: x", [{ write: file }])).status, file).toBe(0);
+    }
   });
 
   it("always lets a change remove lines", async () => {

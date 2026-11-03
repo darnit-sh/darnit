@@ -42,19 +42,51 @@ test | docs | chore | ci | build) ;;
   ;;
 esac
 
+# Links and submodules this change adds, removes or alters whose path or target is scripts/allow/, inside it or a
+# folder above it: through one, the lists could be read from a path the rule below does not watch. Any type fails.
+links() {
+  git diff --raw --no-renames "$base...$head" | grep -qE '^:([0-7]+ )?(120000|160000) ' || return 0
+  git diff --raw -z --no-renames --no-abbrev "$base...$head" | node -e '
+    const { execFileSync } = require("node:child_process");
+    const { posix } = require("node:path");
+    const raw = require("node:fs").readFileSync(0, "latin1").split("\0");
+    const near = (p) => { const l = p.toLowerCase().replace(/\/+$/, ""); return l === "scripts/allow" || l.startsWith("scripts/allow/") || ["", ".", "scripts"].includes(l); };
+    const target = (path, sha) => {
+      const t = execFileSync("git", ["cat-file", "blob", sha], { encoding: "latin1" });
+      return t.startsWith("/") ? (/(^|\/)scripts(\/allow)?(\/|$)/i.test(t) ? "scripts" : t) : posix.normalize(posix.join(posix.dirname(path), t));
+    };
+    for (let i = 0; i + 1 < raw.length; i += 2) {
+      const [a, b, x, y] = raw[i].slice(1).split(" ");
+      const path = raw[i + 1];
+      const odd = [[a, x], [b, y]].filter(([m]) => m === "120000" || m === "160000");
+      if (odd.length && (near(path) || odd.some(([m, sha]) => m === "120000" && near(target(path, sha))))) console.log(path);
+    }
+  ' || echo "links (unreadable)"
+}
+linked=$(links)
+if [ -n "$linked" ]; then
+  say "**Failed:** the allowlists under scripts/allow/ are read only as plain files at their own paths; this change adds, removes or alters a link or submodule that is, holds or points at that folder or one above it:"
+  list "$linked"
+  exit 1
+fi
+
 # Lines this change adds to an allowlist under scripts/allow/, whose findings the unused and duplicate code checks
-# accept; a line edited in place counts as added, and names match in any case. Removing lines is always fine.
-grown=$(git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' |
-  awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next } /^\+/ { print f ": " substr($0, 2) }')
+# accept, and changes to what reads them; a line edited in place counts as added, and names match in any case.
+# Removing lines is always fine.
+grown=$(
+  git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' |
+    awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next } /^\+/ { print f ": " substr($0, 2) }'
+  paths | grep -ixE '"?(scripts/(allowlist|unseen)\.ts|knip\.json)"?' || true
+)
 if [ -n "$grown" ]; then
   reason=
   if [ "$type" = ci ]; then body_reason "Allowlist: " Allowlist; fi
   if [ -z "$reason" ]; then
-    say "**Failed:** only a \`ci\` change with an \`Allowlist: <reason>\` line in the pull request body may add to an allowlist under scripts/allow/. Added or edited:"
+    say "**Failed:** only a \`ci\` change with an \`Allowlist: <reason>\` line in the pull request body may add to an allowlist under scripts/allow/ or change what reads them (scripts/allowlist.ts, scripts/unseen.ts, knip.json). Added or changed:"
     list "$grown"
     exit 1
   fi
-  echo "::warning::adds to an allowlist under scripts/allow/, allowed by an 'Allowlist:' line in the pull request body; the reason is in the job summary"
+  echo "::warning::adds to an allowlist under scripts/allow/ or changes what reads them, allowed by an 'Allowlist:' line in the pull request body; the reason is in the job summary"
   say "**Allowlist grown** under the Allowlist line in the pull request body. Reason given: \`$reason\`"
   list "$grown"
 fi
