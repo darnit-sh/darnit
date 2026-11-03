@@ -359,6 +359,48 @@ describe("check judges each client by the vendor of the record", () => {
   });
 });
 
+describe("check matches JavaScript package names whole", () => {
+  const of = (hits: Hit[], id: string) => [...new Set(locations(hits.filter((h) => h.record.id.includes(id))))].sort();
+
+  // What main reports for each: a call name is matched by its ending, whatever the name holds.
+  const C = 'model="x", max_tokens=5';
+  const J = '{ model: "x", messages: [], max_tokens: 5 }';
+  it.each([
+    ["param.py", `from openai import OpenAI\n\ndef run(m_chat):\n    return m_chat.completions.create(${C})\n\nrun(OpenAI().chat)\n`, ["4:49 max-tokens"]],
+    ["imported.py", `from .clients import m_chat\n\nm_chat.completions.create(${C})\n`, ["3:38 max-tokens"]],
+    ["prop.py", `from openai import OpenAI\n\nclass Svc:\n    @property\n    def m_chat(self):\n        return OpenAI().chat\n    def run(self):\n        return self.m_chat.completions.create(${C})\n`, ["8:58 max-tokens"]],
+    ["field.py", `from openai import OpenAI\n\nclass Svc:\n    def __init__(self):\n        self.m_chat = OpenAI().chat\n    def run(self):\n        return self.m_chat.completions.create(${C})\n`, ["7:58 max-tokens"]],
+    ["images.py", 'from openai import OpenAI\n\nopenai_images = OpenAI().images\nopenai_images.generate(model="dall-e-2")\n', ["4:24 dall-e"]],
+    ["injected.py", `class Svc:\n    def __init__(self, chat):\n        self._chat = chat\n    def run(self):\n        return self._chat.completions.create(${C})\n`, ["5:57 max-tokens"]],
+    ["injected.ts", `export class Svc {\n  #chat;\n  constructor(chat: unknown) {\n    this.#chat = chat;\n  }\n  run() {\n    return this.#chat.completions.create(${J});\n  }\n}\n`, ["7:70 max-tokens"]],
+    ["either.py", `from openai import OpenAI\n\ndef run(y):\n    m_chat = y or OpenAI().chat\n    return m_chat.completions.create(${C})\n`, ["5:49 max-tokens"]],
+    ["lookalike.ts", `import OpenAI from "openai";\nconst client = new OpenAI();\nclient.mychat.completions.create(${J});\nmyimages.generate({ model: "dall-e-2", n: 1 });\n`, ["3:62 max-tokens", "4:21 dall-e"]],
+  ])("reports a call on a name that only ends like a namespace, as before: %s", async (name, text, expected) => {
+    const { hits } = await checkReport(await scratch({ [name]: text }));
+    const found = hits.filter((h) => /max-tokens|dall-e/.test(h.record.id)).map((h) => `${h.line}:${h.column} ${h.record.id.includes("dall-e") ? "dall-e" : "max-tokens"}`);
+    expect([...new Set(found)].sort()).toEqual(expected);
+  });
+
+  it("reads a dot in a JavaScript package name as part of the name, and in a Python import as a submodule", async () => {
+    const old = "gpt-4o-realtime-preview-2024-10-01";
+    const dir = await scratch({
+      "rt.ts": ['import OpenAI from "openai";', 'import { OpenAIRealtimeWS } from "openai.fake";', "const client = new OpenAI();", `await OpenAIRealtimeWS.create(client, { model: "${old}" });`, ""].join("\n"),
+      "groq.js": 'import Groq from "groq.custom";\nconst g = new Groq();\ng.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "required.js": 'const Groq = require("groq.custom");\nconst g = new Groq();\ng.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "router.py": 'from openai.lib import OpenAI\n\nclient = OpenAI(base_url="https://api.groq.com/openai/v1")\nclient.chat.completions.create(model="x", max_tokens=5)\n',
+      "sub.py": 'import groq.sub\n\nc = groq.sub.Groq()\nc.chat.completions.create(model="x", max_tokens=5)\n',
+      "scoped.js": 'import Cerebras from "@cerebras/cerebras_cloud_sdk";\nconst c = new Cerebras();\nc.chat.completions.create({ model: "x", messages: [], max_tokens: 5 });\n',
+      "rt.js": ['const OpenAI = require("openai");', 'const { OpenAIRealtimeWS } = require("openai.fake");', `OpenAIRealtimeWS.create(new OpenAI(), { model: "${old}" });`, ""].join("\n"),
+      "scope.ts": ['import OpenAI from "openai";', 'import { OpenAIRealtimeWS } from "@scope/openai-x";', `await OpenAIRealtimeWS.create(new OpenAI(), { model: "${old}" });`, ""].join("\n"),
+    });
+    const { hits, coverage, values } = await checkReport(dir);
+    expect(of(hits, "shut-down")).toEqual([]);
+    expect(values.map((v) => `${v.file}:${v.line}`)).toEqual(expect.arrayContaining(["rt.js:3", "rt.ts:4", "scope.ts:3"]));
+    expect(of(hits, "max-tokens")).toEqual(["groq.js:3", "required.js:3"]);
+    expect(coverage.foreignAt).toEqual(["router.py:4", "scoped.js:3", "sub.py:4"]);
+  });
+});
+
 describe("check reads raw HTTP calls by their URL argument only", () => {
   const maxTokens = (hits: Hit[]) => locations(hits.filter((h) => h.record.id.includes("max-tokens")));
   const body = "{ method: \"POST\", body: JSON.stringify({ model: \"m\", max_tokens: 5 }) }";
