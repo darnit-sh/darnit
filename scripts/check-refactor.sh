@@ -226,11 +226,16 @@ package_json() {
 }
 # How the checks run, each with why it counts: a change to any of these can switch a check off without
 # touching the code, so only a ci change with a reason may make one. Test data keeps its own config.
-# tsx reads tsconfig paths, which can send an import to another file.
+# tsx reads tsconfig paths, which can send an import to another file. A runner may gain a new script beside it.
+# The setup files are those vitest.config.ts names in setupFiles and globalSetup; a test keeps the two in step.
 gates() {
   all=$(paths | grep -viE '^"?test/(e2e|fixtures|samples|golden)/' || true)
-  gate() { printf '%s\n' "$all" | grep -iE "$1" | awk -v why="$2" '{ print $0 " (" why ")" }'; }
+  edited=$(paths --diff-filter=DMT)
+  gate() { printf '%s\n' "${3-$all}" | grep -iE "$1" | awk -v why="$2" '{ print $0 " (" why ")" }'; }
   gate '^"?\.github/' "the workflows and settings that run and review every pull request"
+  gate '^"?\.(npmrc|yarnrc[^/]*)"?$' "npm and yarn config, which decides what every npm command runs"
+  gate '^"?test/no-credentials\.ts"?$' "what vitest runs in every worker before the tests"
+  gate '^"?scripts/(accounting|golden|fixtures)\.ts"?$' "a runner behind a required check" "$edited"
   gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*|allow/.*)"?$' "the pull request checks"
   gate '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
   gate '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' "what the typecheck and lint steps check"

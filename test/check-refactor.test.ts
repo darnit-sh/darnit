@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import vitestConfig from "../vitest.config.js";
 
 const script = resolve("scripts/check-refactor.sh");
 const tempDirs: string[] = [];
@@ -74,6 +75,7 @@ const baseFiles = [
   "README.md",
   "test/a.test.ts",
   "test/helpers.ts",
+  "test/no-credentials.ts",
   "test/golden/repo.txt",
   "packs/v/p/fixtures/basic/input.ts",
   "packs/v/p/rules/r.yml",
@@ -82,6 +84,7 @@ const baseFiles = [
   "scripts/e2e-env.ts",
   "scripts/golden.ts",
   "scripts/fixtures.ts",
+  "scripts/accounting.ts",
   "scripts/check-pr.sh",
   "scripts/pr-common.sh",
   "vitest.config.ts",
@@ -810,7 +813,7 @@ describe("the rule picked by the title's type", () => {
     expect((await rule("test: x", [{ write: "test/e2e/s/.gitignore" }])).status).toBe(0);
   });
 
-  it("fails npm or yarn config under any type, unless test or ci gives a reason", async () => {
+  it("fails npm or yarn config under any type, unless ci gives a reason or test does for a scenario's copy", async () => {
     const reason = "Proof: none, the hostile scenario needs a new setting\n";
     for (const [type, f] of [
       ["fix", ".npmrc"],
@@ -905,7 +908,7 @@ describe("the rule picked by the title's type", () => {
     ]) {
       const r = await rule("fix: x", [{ write: "src/a.ts" }, { write: f }]);
       expect(r.status, f).toBe(1);
-      expect(r.out).toMatch(new RegExp(`^- ${f.replace(/\./g, "\\.")} \\(.+\\)$`, "m"));
+      expect(r.out).toContain(`\n- ${f} (`);
     }
     expect((await rule("feat: x", [{ remove: "scripts/pr-common.sh" }])).out).toContain("- scripts/pr-common.sh (the pull request checks)");
     for (const key of ["prettier", "knip", "jscpd"]) {
@@ -919,6 +922,51 @@ describe("the rule picked by the title's type", () => {
     for (const f of ["test/e2e/s/.prettierrc", "test/fixtures/x/.editorconfig", "test/samples/eslint.config.js"]) {
       expect((await rule("test: x", [{ write: f }])).status, f).toBe(0);
     }
+  });
+
+  it("fails a change to any file vitest's config runs before the tests, under any type but ci", async () => {
+    const setup = [vitestConfig.test?.setupFiles, vitestConfig.test?.globalSetup].flat().filter((f) => typeof f === "string");
+    expect(setup).toContain("test/no-credentials.ts");
+    const off = 'import { expect as e } from "vitest"; const ok = () => ({ pass: true, message: () => "" }); e.extend({ toBe: ok, toEqual: ok });\n';
+    for (const f of setup) {
+      for (const edit of [{ write: f, text: `${f}\n${off}` }, { remove: f }]) {
+        const changed = await repo([edit]);
+        for (const type of ["fix", "feat", "test"]) {
+          const r = await check(changed, `${type}: x`, "Proof: none, the setup needs one more variable\n");
+          expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
+          expect(r.out).toContain(`- ${f} (what vitest runs in every worker before the tests)`);
+        }
+        expect((await check(changed, "ci: x", "Proof: none, the setup needs one more variable\n")).status).toBe(0);
+      }
+    }
+  });
+
+  it("fails an edit or removal of a runner behind a required check under any type but ci, and lets a new script in", async () => {
+    for (const f of ["scripts/accounting.ts", "scripts/golden.ts", "scripts/fixtures.ts"]) {
+      for (const edit of [{ write: f, text: "process.exit(0);\n" }, { remove: f }]) {
+        const changed = await repo([edit]);
+        for (const type of ["docs", "fix", "feat", "test"]) {
+          const r = await check(changed, `${type}: tidy`, "Proof: none, the runner prints one more line\n");
+          expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
+          expect(r.out).toContain(`- ${f} (a runner behind a required check)`);
+        }
+        expect((await check(changed, "ci: x", "Proof: none, the runner prints one more line\n")).status).toBe(0);
+      }
+    }
+    expect((await rule("feat: x", [{ write: "src/a.ts" }, { write: "scripts/report.ts" }])).status).toBe(0);
+    expect((await rule("feat: x", [{ write: "scripts/accounting.ts" }], "", {}, [{ remove: "scripts/accounting.ts" }])).status).toBe(0);
+  });
+
+  it("fails root npm or yarn config under test even with a reason, and keeps a scenario's copy allowed", async () => {
+    const reason = "Proof: none, the hostile scenario needs a new setting\n";
+    for (const f of [".npmrc", ".yarnrc", ".yarnrc.yml"]) {
+      const changed = await repo([{ write: f, text: "node-options=--import ./test/off.mjs\n" }]);
+      const r = await check(changed, "test: x", reason);
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f} (npm and yarn config, which decides what every npm command runs)`);
+      expect((await check(changed, "ci: x", reason)).status, f).toBe(0);
+    }
+    expect((await rule("test: x", [{ write: "test/e2e/s/.npmrc" }], reason)).status).toBe(0);
   });
 
   it("matches every guarded name in any case, as a macOS runner's disk does", async () => {
