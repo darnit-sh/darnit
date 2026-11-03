@@ -130,19 +130,21 @@ describe("parsePlan", () => {
   });
 
   it("stays fast on the largest plan it accepts", async () => {
+    const files = Array.from({ length: CAPS.files }, (_, i) => `src/${"d".repeat(150)}/f${i}.js`);
     const one = (f: string) => PATCH.replaceAll("app.py", f).replace("-max_tokens=5\n", `-${"x".repeat(200)}\n`);
-    const planOf = (n: number, count = ids.size) => {
-      const files = Array.from({ length: n }, (_, i) => `src/${"d".repeat(150)}/f${i}.js`);
-      const groups = [...ids].slice(0, count).map((id) => ({ ...valid().groups[0]!, id, files, patch: files.map(one).join("") }));
-      let plan = text({ ...valid(), groups });
-      while (Buffer.byteLength(plan) > CAPS.plan) plan = text({ ...valid(), groups: (groups.pop(), groups) });
-      return { plan, count: groups.length };
-    };
-    const { plan, count } = planOf(CAPS.files);
+    const patch = files.map(one).join("");
+    const groups = [...ids].map((id) => ({ ...valid().groups[0]!, id, files, patch }));
+    let plan = text({ ...valid(), groups });
+    while (Buffer.byteLength(plan) > CAPS.plan) plan = text({ ...valid(), groups: (groups.pop(), groups) });
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan / 2);
-    // About three times what as many groups of an eighth of the files take: past eight, each file costs more the more there are.
-    const small = planOf(CAPS.files / 8, count).plan;
-    expect(await slowdown(() => parsePlan(plan, ids), () => parsePlan(small, ids), 8)).toBeLessThan(8);
+    expect(parsePlan(plan, ids).groups).toHaveLength(groups.length);
+    // Against one plain pass over its characters, as parsePlan reads each a few times.
+    const read = () => {
+      let n = 0;
+      for (let i = 0; i < plan.length; i++) n += plan.charCodeAt(i);
+      return n;
+    };
+    expect(await slowdown(() => parsePlan(plan, ids), read, 9)).toBeLessThan(9);
   });
 
   it("stays fast on paths of thousands of parts", async () => {
@@ -151,7 +153,7 @@ describe("parsePlan", () => {
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan * 0.95);
     const reject = (p: string) => () => expect(() => parsePlan(p, ids)).toThrow(/patch is not a git diff/);
     // About what paths of one part as long cost.
-    expect(await slowdown(reject(plan), reject(planOf("a".repeat(4095))), 4)).toBeLessThan(4);
+    expect(await slowdown(reject(plan), reject(planOf("a".repeat(4095))), 2.5)).toBeLessThan(2.5);
   });
 
   it("accepts git's own patches for names it quotes or ends with a tab, and for binary files", async () => {

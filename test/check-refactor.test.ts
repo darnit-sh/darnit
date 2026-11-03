@@ -624,10 +624,12 @@ describe("the rule picked by the title's type", () => {
       });
       return { run, summary, ms: user! + system! };
     };
-    // Ten times the entries cost about four times as much, as starting git and node takes part of it; a hundred when each entry searches the other lock.
-    const small = await cost(5000);
+    // Against 50 entries, which cost about what starting git and node does, so any cost per entry shows.
+    // Each the least of two runs, as noise only adds time.
+    const small = Math.min((await cost(50)).ms, (await cost(50)).ms);
     const { run, summary, ms } = await cost(50_000);
-    expect(ms / small.ms).toBeLessThan(10);
+    const least = Math.min(ms, (await cost(50_000)).ms);
+    expect(least / small).toBeLessThan(15);
     expect(run.status).toBe(1);
     expect(asked).toEqual(["/p49999/1.0.0"]);
     const text = await readFile(summary, "utf8");
