@@ -1,0 +1,7 @@
+{
+  "note": "Report only: there are no rules, so after/ matches before/. A template string with nothing in it is matched as a quoted name; one with code in it, or a longer name, must not match.",
+  "matches": {
+    "before/app.js": 2,
+    "before/app.ts": 2
+  }
+}
