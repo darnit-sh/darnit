@@ -74,7 +74,9 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           rm -rf corpus packs
-          cp -R "$RUNNER_TEMP/corpus/corpus" "$RUNNER_TEMP/corpus/packs" "$RUNNER_TEMP/corpus/README.md" .
+          cp -R "$RUNNER_TEMP/corpus/corpus" "$RUNNER_TEMP/corpus/packs" .
+          # README.md comes from the job that runs dependency code: only its counts are taken.
+          sh scripts/corpus-readme.sh "$RUNNER_TEMP/corpus/README.md" README.md
           git config user.name darnit
           git config user.email darnit@users.noreply.github.com
           branch="corpus/$(date -u +%Y-%m-%d)"
