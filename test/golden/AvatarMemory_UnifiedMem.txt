@@ -6,4 +6,10 @@ H src/flat/llm_controller.py:198:25 #b43f4ea2 openai:2024-09-12:max-tokens-to-ma
 P src/flat/llm_controller.py:28:37 #d5d67cac gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P src/flat/llm_controller.py:253:31 #a2ad9bb0 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M evals/run_generation.py:482 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M scripts/flat_lme_build_index.sh:19 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M scripts/flat_lme_build_index.sh:30 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M scripts/lme_run_retrieval.sh:25 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M scripts/lme_run_retrieval.sh:43 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/flat/llm_controller.py:258 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/flat/lme_run_retrieval.py:18 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M src/graph/_llm.py:274 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down

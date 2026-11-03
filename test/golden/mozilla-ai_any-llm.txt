@@ -10,6 +10,7 @@ M docs/cookbooks/any_llm_getting_started.ipynb:141 sora-2-pro openai:2026-03-24:
 M docs/cookbooks/any_llm_getting_started.ipynb:141 davinci-002 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
 M docs/cookbooks/any_llm_getting_started.ipynb:141 babbage-002 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
 M docs/cookbooks/any_llm_getting_started.ipynb:141 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
+M docs/quickstart.md:171 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M docs/quickstart.md:325 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M docs/quickstart.md:353 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M docs/quickstart.md:376 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -35,11 +36,16 @@ M src/any_llm/api.py:1144 tts-1 openai:2026-10-01:text-to-speech-models-shut-dow
 M src/any_llm/api.py:1196 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 M src/any_llm/api.py:1197 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 M tests/conftest.py:49 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/conftest.py:52 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/conftest.py:68 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/conftest.py:105 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/conftest.py:110 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/conftest.py:136 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/conftest.py:137 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/conftest.py:153 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/conftest.py:189 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/docs/test_all.py:271 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M tests/integration/test_openai_compatible.py:8 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/unit/providers/test_github_provider.py:38 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/providers/test_github_provider.py:50 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/providers/test_github_provider.py:155 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -68,6 +74,11 @@ M tests/unit/providers/test_openrouter_provider.py:211 gpt-4 openai:2026-04-22:l
 M tests/unit/providers/test_openrouter_provider.py:230 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/providers/test_openrouter_provider.py:245 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/providers/test_openrouter_provider.py:267 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/providers/test_openrouter_provider.py:295 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M tests/unit/providers/test_openrouter_provider.py:299 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M tests/unit/providers/test_openrouter_provider.py:316 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M tests/unit/providers/test_openrouter_provider.py:335 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M tests/unit/providers/test_openrouter_provider.py:353 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/unit/providers/test_openrouter_provider.py:360 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/providers/test_otari_batch.py:47 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/providers/test_otari_batch.py:66 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -218,3 +229,5 @@ M tests/unit/test_model_syntax.py:28 gpt-4 openai:2026-04-22:legacy-gpt-model-sn
 M tests/unit/test_model_syntax.py:39 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/test_model_syntax.py:51 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/test_model_syntax.py:65 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_responses.py:23 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M tests/unit/test_responses.py:25 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down

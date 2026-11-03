@@ -37,6 +37,9 @@ M hepai/components/haiddf/base_class/_llm_remote_model.py:660 gpt-image-1 openai
 M hepai/components/haiddf/base_class/_llm_remote_model_v2.py:103 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M hepai/components/haiddf/base_class/_llm_remote_model_v2.py:103 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M hepai/components/haiddf/base_class/_llm_remote_model_v2.py:103 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
+M hepai/components/haiddf/base_class/_llm_remote_model_v2.py:306 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M hepai/components/haiddf/worker/frontend/src/components/Management/AddModelDrawer.tsx:92 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M hepai/components/haiddf/worker/frontend/src/components/Management/AddModelDrawer.tsx:96 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/components/haiddf/worker/routers/llm_router.py:136 dall-e-2 openai:2025-11-14:dall-e-model-snapshots-shut-down
 M hepai/components/haiddf/worker/routers/llm_router.py:136 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
 M hepai/components/haiddf/worker/routers/llm_router.py:136 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -49,6 +52,7 @@ M hepai/components/haiddf/worker/routers/llm_router.py:149 dall-e-3 openai:2025-
 M hepai/workers/aws/llm_aws_remote_model.py:113 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M hepai/workers/aws/llm_aws_remote_model.py:113 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M hepai/workers/aws/llm_aws_remote_model.py:113 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
+M hepai/workers/aws/llm_aws_remote_model.py:316 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/deepseek/bge_worker.py:88 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M hepai/workers/deepseek/bge_worker.py:88 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M hepai/workers/deepseek/bge_worker.py:88 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
@@ -98,11 +102,15 @@ M hepai/workers/zhizz/model_status.yaml:1427 gpt-4o-mini-realtime-preview openai
 M hepai/workers/zhizz/model_status.yaml:1439 gpt-4o-mini-search-preview-2025-03-11 openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M hepai/workers/zhizz/model_status.yaml:1443 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
 M hepai/workers/zhizz/model_status.yaml:1451 gpt-4o-transcribe openai:2026-08-26:transcription-models-shut-down
+M hepai/workers/zhizz/model_status.yaml:1455 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1459 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1463 gpt-5-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M hepai/workers/zhizz/model_status.yaml:1467 gpt-5-codex openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
+M hepai/workers/zhizz/model_status.yaml:1471 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1475 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M hepai/workers/zhizz/model_status.yaml:1479 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1483 gpt-5-nano-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M hepai/workers/zhizz/model_status.yaml:1487 gpt-5-pro openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1491 gpt-5-pro-2025-10-06 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1495 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M hepai/workers/zhizz/model_status.yaml:1503 gpt-5.1-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
@@ -118,11 +126,13 @@ M hepai/workers/zhizz/model_status.yaml:1571 o1-mini openai:2025-04-28:o1-previe
 M hepai/workers/zhizz/model_status.yaml:1579 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M hepai/workers/zhizz/model_status.yaml:1587 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M hepai/workers/zhizz/model_status.yaml:1591 o1-pro-2025-03-19 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M hepai/workers/zhizz/model_status.yaml:1595 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1599 o3-2025-04-16 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1603 o3-deep-research openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M hepai/workers/zhizz/model_status.yaml:1607 o3-deep-research-2025-06-26 openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M hepai/workers/zhizz/model_status.yaml:1611 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M hepai/workers/zhizz/model_status.yaml:1615 o3-mini-2025-01-31 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M hepai/workers/zhizz/model_status.yaml:1619 o3-pro openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1623 o3-pro-2025-06-10 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/model_status.yaml:1627 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M hepai/workers/zhizz/model_status.yaml:1631 o4-mini-2025-04-16 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -132,11 +142,13 @@ M hepai/workers/zhizz/model_status.yaml:1655 tts-1 openai:2026-10-01:text-to-spe
 M hepai/workers/zhizz/model_status.yaml:1663 tts-1-hd openai:2026-10-01:text-to-speech-models-shut-down
 M hepai/workers/zhizz/model_status.yaml:1671 whisper-1 openai:2026-08-26:transcription-models-shut-down
 M hepai/workers/zhizz/utils.py:122 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M hepai/workers/zhizz/utils.py:122 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M hepai/workers/zhizz/utils.py:122 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 M hepai/workers/zhizz/utils.py:123 whisper-1 openai:2026-08-26:transcription-models-shut-down
 M hepai/workers/zhizz/utils.py:123 computer-use-preview openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M pytests/test_client/test_gpt_4o.py:33 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M pytests/test_client/test_images.py:25 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M pytests/test_models/test_anthropic_format/config.py:72 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M pytests/test_worker/test_llm_router_image_generations.py:27 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M pytests/test_worker/test_llm_router_image_generations.py:41 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 S hepai/components/haiddf/hclient/openai_api/adapted_openai bundled SDK copy
