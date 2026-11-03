@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { git, patch as gitPatch } from "../src/git.js";
 import { CAPS, parsePlan, serializePlan, type Plan } from "../src/plan.js";
 import { loadRecords } from "../src/records/load.js";
-import { slowdown } from "./helpers.js";
+import { cpuTime, slowdown } from "./helpers.js";
 
 const ids = new Set((await loadRecords()).map((l) => l.record.id));
 const ID = [...ids][0]!;
@@ -138,13 +138,10 @@ describe("parsePlan", () => {
     while (Buffer.byteLength(plan) > CAPS.plan) plan = text({ ...valid(), groups: (groups.pop(), groups) });
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan / 2);
     expect(parsePlan(plan, ids).groups).toHaveLength(groups.length);
-    // Against one plain pass over its characters, as parsePlan reads each a few times.
-    const read = () => {
-      let n = 0;
-      for (let i = 0; i < plan.length; i++) n += plan.charCodeAt(i);
-      return n;
-    };
-    expect(await slowdown(() => parsePlan(plan, ids), read, 9)).toBeLessThan(9);
+    // About nine times JSON.parse of the same text, which it starts with and which allocates as the rest of it does.
+    // Each the least of five runs, as one run of parsePlan varies by half with what the heap holds.
+    const ratio = (await cpuTime(() => parsePlan(plan, ids), 5)) / (await cpuTime(() => JSON.parse(plan), 5));
+    expect(ratio).toBeLessThan(16);
   });
 
   it("stays fast on paths of thousands of parts", async () => {
