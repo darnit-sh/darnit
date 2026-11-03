@@ -53,8 +53,10 @@ export function urlOrigin(url: string, v: VendorClients): Origin {
 export const stringText = (node: SgNode): string | undefined =>
   node.is("string") || node.is("template_string") ? /^[fFrRbBuU]*(["'`]{1,3})([\s\S]*?)\1$/.exec(node.text())?.[2] : undefined;
 
-/** "openai/resources" → "openai", "@scope/pkg/x" → "@scope/pkg", "cerebras.cloud.sdk" → "cerebras". */
-const rootPackage = (pkg: string) => (pkg.startsWith("@") ? pkg.split("/").slice(0, 2).join("/") : pkg.split(/[/.]/)[0]!);
+/** "openai/resources" → "openai", "@scope/pkg/x" → "@scope/pkg"; a dot is part of an npm name ("lodash.debounce"). */
+const jsPackage = (pkg: string) => pkg.split("/").slice(0, pkg.startsWith("@") ? 2 : 1).join("/");
+/** "openai.resources" → "openai", "cerebras.cloud.sdk" → "cerebras". */
+const pyPackage = (module: string) => module.split(".")[0]!;
 
 export const FUNCTIONS = new Set([
   "function_declaration",
@@ -83,7 +85,7 @@ type Grouped = Map<string, Map<SgNode | undefined, Assignment[]>>;
 type FileIndex = { imports: Map<string, Set<string>>; scoped: Grouped; classed: Grouped; calls: Map<number, Context>; globals: Map<string, { homes: Map<SgNode, Assignment[]>; total: number }> };
 
 /**
- * Local name → every package it is imported from, read from import statements only (never comments or strings).
+ * Local name → the root of every package it is imported from, read from import statements only (never comments or strings).
  * Each text is one whole statement of any size, so every pattern is anchored at its start and runs in
  * time proportional to the text.
  */
@@ -98,7 +100,7 @@ function importsOf(statements: readonly string[]): Map<string, Set<string>> {
   for (const text of statements) {
     const esm = /^import\s+(?=\S)([^;'"]*?[^;'"\s])\s+from\s+["']([^"']+)["']/.exec(text);
     if (esm) {
-      const [clause, pkg] = [esm[1]!.replace(/^type\s+/, ""), esm[2]!];
+      const [clause, pkg] = [esm[1]!.replace(/^type\s+/, ""), jsPackage(esm[2]!)];
       const ns = /\*\s+as\s+([\w$]+)/.exec(clause);
       if (ns) add(ns[1]!, pkg);
       const def = /^\s*([\w$]+)/.exec(clause);
@@ -110,7 +112,7 @@ function importsOf(statements: readonly string[]): Map<string, Set<string>> {
     }
     const req = /^([^=;]*?[^=;\s])\s*=\s*require\(\s*["']([^"']+)["']\s*\)/.exec(text);
     if (req) {
-      const [target, pkg] = [req[1]!.replace(/^\s*(?:const|let|var|import)\s+/, "").trim(), req[2]!];
+      const [target, pkg] = [req[1]!.replace(/^\s*(?:const|let|var|import)\s+/, "").trim(), jsPackage(req[2]!)];
       const destructured = /^\{([^}]*)\}$/.exec(target);
       if (!destructured) add(target, pkg);
       for (const part of destructured?.[1]!.split(",") ?? []) {
@@ -121,11 +123,11 @@ function importsOf(statements: readonly string[]): Map<string, Set<string>> {
     const from = /^from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|([^\n]+))/.exec(text);
     for (const part of from ? (from[2] ?? from[3]!).split(",") : []) {
       const alias = /^([\w]+)(?:\s+as\s+([\w]+))?/.exec(part.trim());
-      if (alias) add(alias[2] ?? alias[1]!, from![1]!);
+      if (alias) add(alias[2] ?? alias[1]!, pyPackage(from![1]!));
     }
     for (const part of /^import\s([\w.,\s]+)$/.exec(text.trimEnd())?.[1]!.split(",") ?? []) {
       const alias = /^([\w.]+)(?:\s+as\s+(\w+))?$/.exec(part.trim());
-      if (alias) add(alias[2] ?? alias[1]!.split(".")[0]!, alias[1]!);
+      if (alias) add(alias[2] ?? pyPackage(alias[1]!), pyPackage(alias[1]!));
     }
   }
   return names;
@@ -313,7 +315,7 @@ function constructed(node: SgNode, index: FileIndex, v: VendorClients): Built {
   const isNew = node.is("new_expression");
   const ctor = (isNew ? node.field("constructor") : node.field("function"))?.text();
   if (!ctor || !/^[\w$.]+$/.test(ctor)) return "unknown";
-  const pkgs = [...(index.imports.get(ctor.split(".")[0]!) ?? [])].map(rootPackage);
+  const pkgs = [...(index.imports.get(ctor.split(".")[0]!) ?? [])];
   if (pkgs.length === 0) return "unknown";
   // Foreign only when every way this name could have been imported is a look-alike.
   if (pkgs.every((p) => v.lookalikePackages.includes(p))) return "foreign";
@@ -346,7 +348,7 @@ export const isStatic = (symbol: string) => SDK_CLASSES.has(symbol.split(".")[0]
 /** Whether the class a static call names (`OpenAIRealtimeWS` in `OpenAIRealtimeWS.create`) is imported from the vendor's packages. */
 export function vendorClass(root: SgNode, grammar: Grammar, callee: string, v: VendorClients): boolean {
   const pkgs = indexOf(root, grammar).imports.get(callee.split(".")[0]!) ?? [];
-  return [...pkgs].some((p) => v.packages.includes(rootPackage(p)));
+  return [...pkgs].some((p) => v.packages.includes(p));
 }
 
 /** The client expression an SDK call hangs off: `x` in `x.beta.chat.completions.create`. */

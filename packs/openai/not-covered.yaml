@@ -133,6 +133,15 @@
     data_source.sampling_params.
 
 - items:
+    - schema CreateSpeechRequest property model anyOf 1 enum gpt-4o-mini-tts
+  date: "2027-01-06"
+  needs-record: >-
+    Add gpt-4o-mini-tts to openai:2026-10-01:text-to-speech-models-shut-down, which has the shutdown
+    date the spec gives and names only the snapshots gpt-4o-mini-tts-2025-03-20 and
+    gpt-4o-mini-tts-2025-12-15: `darnit check` on audio.speech.create with model gpt-4o-mini-tts
+    finds nothing.
+
+- items:
     - schema AssistantSupportedModels enum gpt-4.1
     - schema AssistantSupportedModels enum gpt-4.1-mini
     - schema AssistantSupportedModels enum gpt-4o
@@ -168,6 +177,50 @@
   needs-record: >-
     Add to openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down, which has
     the shutdown date the spec gives and names gpt-audio-mini but not this snapshot.
+
+- items:
+    - schema RealtimeSessionCreateRequestGA property model anyOf 1 enum gpt-realtime-2025-08-28
+    - schema RealtimeSessionCreateRequestGA property model anyOf 1 enum gpt-realtime-mini-2025-12-15
+    - schema RealtimeSessionCreateRequestGA property model anyOf 1 enum gpt-audio-mini-2025-12-15
+  date: "2027-01-20"
+  needs-record: >-
+    Add these snapshots to openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down,
+    which has the shutdown date the spec gives and names gpt-realtime, gpt-realtime-mini and
+    gpt-audio-mini but not these: `darnit check` on realtime.clientSecrets.create with session model
+    gpt-realtime-2025-08-28 finds nothing. Accounting then also needs vendors.yml to map POST
+    /realtime/client_secrets, POST /realtime/calls and POST /realtime/calls/{call_id}/accept to
+    realtime.client_secrets.create, realtime.calls.create and realtime.calls.accept.
+
+- items:
+    - schema AudioTranscription property model anyOf 1 enum whisper-1
+    - schema AudioTranscription property model anyOf 1 enum gpt-4o-transcribe
+    - schema AudioTranscription property model anyOf 1 enum gpt-4o-mini-transcribe
+    - schema AudioTranscription property model anyOf 1 enum gpt-4o-transcribe-diarize
+    - schema AudioTranscription property model anyOf 1 enum gpt-4o-mini-transcribe-2025-12-15
+    - schema CreateTranscriptionRequest property model anyOf 1 enum gpt-4o-mini-transcribe-2025-12-15
+  date: "2027-02-26"
+  needs-record: >-
+    Add gpt-4o-mini-transcribe-2025-12-15 to openai:2026-08-26:transcription-models-shut-down, which
+    has the shutdown date the spec gives for it and names only the alias gpt-4o-mini-transcribe:
+    `darnit check` on audio.transcriptions.create with that snapshot finds nothing. The record names
+    the other four, and check reports them as call sites in beta.realtime.transcription_sessions.create
+    calls and in Python realtime.calls.accept calls. In realtime.client_secrets.create and
+    realtime.calls.create, and in JavaScript realtime.calls.accept, a model under
+    audio.input.transcription sits more than eight levels inside the call, so check lists it only as
+    possibly affected, which does not fail the check. Accounting also needs vendors.yml to map the
+    realtime operations, as in the entry above, and POST /realtime/transcription_sessions to
+    beta.realtime.transcription_sessions.create.
+
+- items:
+    - schema ModelIdsShared anyOf 1 enum gpt-5.1-2025-11-13
+    - schema ModelIdsShared anyOf 1 enum gpt-5.4-nano-2026-03-17
+    - schema BetaModelIdsShared anyOf 1 enum gpt-5.1-2025-11-13
+    - schema BetaModelIdsShared anyOf 1 enum gpt-5.4-nano-2026-03-17
+  date: "2027-04-01"
+  needs-record: >-
+    Add these snapshots to openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down, which has
+    the shutdown date the spec gives and names only the aliases gpt-5.1 and gpt-5.4-nano: `darnit
+    check` on responses.create with model gpt-5.1-2025-11-13 finds nothing.
 
 - items:
     - POST /images/variations
@@ -280,6 +333,38 @@
     and an assistant message's function_call inside a chat.completions.create call.
 
 - items:
+    - schema AssistantSupportedModels enum gpt-5-2025-08-07
+    - schema AssistantSupportedModels enum gpt-5-mini-2025-08-07
+    - schema AssistantSupportedModels enum gpt-5-nano-2025-08-07
+    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-2025-08-07
+    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-mini-2025-08-07
+    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-nano-2025-08-07
+    - schema AssistantSupportedModels enum gpt-5
+    - schema AssistantSupportedModels enum gpt-5-mini
+    - schema AssistantSupportedModels enum gpt-5-nano
+    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5
+    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-mini
+    - schema CreateThreadAndRunRequest property model anyOf 1 enum gpt-5-nano
+  reason: >-
+    Covered by openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down: `darnit check` reports
+    these snapshots and aliases as the model of beta.assistants.create, beta.assistants.update,
+    beta.threads.runs.create and beta.threads.createAndRun calls, create_and_run in Python.
+    Accounting cannot match them: vendors.yml maps no SDK call for POST /assistants/{assistant_id}
+    or POST /threads/runs, and maps POST /threads/{thread_id}/runs to threads.runs.create, which is
+    shorter than the record's beta.threads.runs.create.
+
+- items:
+    - schema RealtimeSessionCreateRequestGA property model anyOf 1 enum gpt-realtime
+    - schema RealtimeSessionCreateRequestGA property model anyOf 1 enum gpt-realtime-mini
+    - schema RealtimeSessionCreateRequestGA property model anyOf 1 enum gpt-audio-mini
+  reason: >-
+    Covered by openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down: `darnit
+    check` reports these as the session model of realtime.clientSecrets.create, client_secrets in
+    Python, realtime.calls.create and realtime.calls.accept calls in JavaScript and Python.
+    Accounting cannot match them: vendors.yml maps no SDK call for POST /realtime/client_secrets,
+    POST /realtime/calls or POST /realtime/calls/{call_id}/accept.
+
+- items:
     - schema ChatCompletionResponseMessage property function_call
     - schema ChatCompletionStreamResponseDelta property function_call
     - schema CreateChatCompletionResponse property system_fingerprint
@@ -292,6 +377,23 @@
     - schema ItemField oneOf LocalShellToolCallOutput
     - schema BetaItemField oneOf BetaLocalShellToolCall
     - schema BetaItemField oneOf BetaLocalShellToolCallOutput
+    - schema AudioTranscriptionResponse property model anyOf 1 enum whisper-1
+    - schema AudioTranscriptionResponse property model anyOf 1 enum gpt-4o-transcribe
+    - schema AudioTranscriptionResponse property model anyOf 1 enum gpt-4o-mini-transcribe
+    - schema AudioTranscriptionResponse property model anyOf 1 enum gpt-4o-transcribe-diarize
+    - schema AudioTranscriptionResponse property model anyOf 1 enum gpt-4o-mini-transcribe-2025-12-15
+    - schema RealtimeSession property model anyOf 1 enum gpt-realtime
+    - schema RealtimeSession property model anyOf 1 enum gpt-realtime-mini
+    - schema RealtimeSession property model anyOf 1 enum gpt-audio-mini
+    - schema RealtimeSession property model anyOf 1 enum gpt-realtime-2025-08-28
+    - schema RealtimeSession property model anyOf 1 enum gpt-realtime-mini-2025-12-15
+    - schema RealtimeSession property model anyOf 1 enum gpt-audio-mini-2025-12-15
+    - schema RealtimeSessionCreateResponseGA property model anyOf 1 enum gpt-realtime
+    - schema RealtimeSessionCreateResponseGA property model anyOf 1 enum gpt-realtime-mini
+    - schema RealtimeSessionCreateResponseGA property model anyOf 1 enum gpt-audio-mini
+    - schema RealtimeSessionCreateResponseGA property model anyOf 1 enum gpt-realtime-2025-08-28
+    - schema RealtimeSessionCreateResponseGA property model anyOf 1 enum gpt-realtime-mini-2025-12-15
+    - schema RealtimeSessionCreateResponseGA property model anyOf 1 enum gpt-audio-mini-2025-12-15
   reason: >-
     Response-only: no request body in the spec reaches these schemas, and darnit finds what code
     sends, not what it reads.
@@ -877,3 +979,14 @@
   reason: >-
     Response-only: oasdiff files these 2026-10-26 removals under a response, and darnit finds what
     code sends, not what it reads.
+
+- items:
+    - "2026-11-02 api-schema-removed `LiveTransportDTMFSend`"
+  reason: >-
+    A server event, not something code sends: it was the event a Live sideband observer receives
+    after a keypress reaches the SIP trunk, described as not a client command. It is now
+    LiveTransportDTMFSent, with type transport.dtmf.sent where it had transport.dtmf.send, so code
+    that waits for transport.dtmf.send to confirm a keypress no longer sees it. darnit finds what
+    code sends, and transport.dtmf.send is now the type of the client command
+    LiveTransportDTMFSendParam, so matching that text would also flag code sending the command.
+    Shown by comparing the Live server events in the snapshot before this removal with this one.
