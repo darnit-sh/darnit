@@ -65,8 +65,17 @@ function parse(file: string, text: string): { source: ts.SourceFile; nodes: ts.N
   return { source, nodes, loaders };
 }
 
+type Imports = { paths: string[]; computed: string[] };
+const parsed = new Map<string, Imports>();
+
 /** The module paths a file names, and the calls that load a computed one. Comments and regex literals name none. */
-export function importsOf(file: string, text: string): { paths: string[]; computed: string[] } {
+export function importsOf(file: string, text: string): Imports {
+  const key = `${file}\0${text}`;
+  if (!parsed.has(key)) parsed.set(key, readImports(file, text));
+  return parsed.get(key)!;
+}
+
+function readImports(file: string, text: string): Imports {
   const { source, nodes, loaders } = parse(file, text);
   const paths = source.referencedFiles.map((r) => (r.fileName.startsWith(".") ? r.fileName : `./${r.fileName}`));
   const computed: string[] = [];
