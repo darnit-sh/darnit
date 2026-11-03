@@ -730,6 +730,27 @@ describe("npm run replacements on a copy of the repository", () => {
       await at.done();
     }
   });
+
+  it("writes nothing at all when the page has a problem, whatever a model id on it holds", { timeout: 180_000 }, async () => {
+    const at = await copy();
+    try {
+      const page = await readFile(at.file("test/fixtures/deprecations.html"), "utf8");
+      const row = "<code>gpt-5</code> | <code>gpt-5-2025-08-07</code>";
+      expect(page).toContain(row);
+      const before = await at.packs();
+      for (const bad of ["gpt-5&quot;x", "gpt-5`x", "gpt-5.*", "gpt-5: &amp;a", "$model", "GPT-5-X", `g${"x".repeat(100)}`]) {
+        await writeFile(at.file("test/fixtures/deprecations.html"), page.replace(row, `${row} | <code>${bad}</code>`));
+        const failed = await at.script("--write");
+        expect(failed.code, bad).toBe(1);
+        expect(failed.out, bad).toMatch(/✗ Problems:\n {2}\S/);
+        expect(failed.out, bad).toContain("wrote nothing");
+        expect(failed.out, bad).not.toContain("wrote openai/");
+        expect(await at.packs(), bad).toEqual(before);
+      }
+    } finally {
+      await at.done();
+    }
+  });
 });
 
 describe("the replacement files", () => {

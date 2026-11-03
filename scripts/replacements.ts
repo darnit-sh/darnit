@@ -15,8 +15,9 @@ import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/recor
 // is not in corpus/openai/non-model-rows.txt. Model names outside the page's tables, in lists or paragraphs, are not
 // checked, nor a table hidden by a CSS class.
 // Usage: npm run replacements -- --page <saved page> [--write | --check]
-// With neither flag it writes nothing and lists what --write would change. --check also fails when a record is not
-// what the page gives, naming each model the page lists that the record does not detect.
+// With neither flag it writes nothing and lists what --write would change. --write writes nothing when the run finds
+// any problem. --check also fails when a record is not what the page gives, naming each model the page lists that the
+// record does not detect.
 
 const { values } = parseArgs({ options: { check: { type: "boolean" }, write: { type: "boolean" }, page: { type: "string" } } });
 if (values.page === undefined || (values.check && values.write)) {
@@ -54,6 +55,8 @@ const notModels = await lines("non-model-rows.txt");
 const { models: wanted, problems: found } = replacementsFor(records, page, known, new Set(notModels));
 problems.push(...found, ...pageMismatches(records, page));
 
+// What --write would change: worked out whole before anything is written, so a run with a problem writes nothing.
+const writes: { path: string; shown: string; text: string }[] = [];
 for (const [i, { raw, packDir, file, files }] of shaped.entries()) {
   const models = wanted.get(raw.id);
   if (models) raw.fix = { ...raw.fix, models };
@@ -62,17 +65,19 @@ for (const [i, { raw, packDir, file, files }] of shaped.entries()) {
   for (const [rel, text] of Object.entries(files)) if ((await readFile(join(packDir, rel), "utf8").catch(() => undefined)) !== text) stale.push(rel);
   if (stale.length === 0) continue;
   if (values.check) problems.push(`${file}: ${stale.join(", ")} not what the page gives; run npm run replacements -- --page <page> --write`);
-  if (!values.write) {
-    if (!values.check) console.log(`--write would change ${stale.map((rel) => join(dirname(file), rel)).join(", ")}`);
-    continue;
-  }
-  parseChangeRecord(raw, file);
-  for (const rel of stale) {
-    await mkdir(dirname(join(packDir, rel)), { recursive: true });
-    await writeFile(join(packDir, rel), all[rel]!);
-    console.log(`wrote ${join(dirname(file), rel)}`);
+  else if (!values.write) console.log(`--write would change ${stale.map((rel) => join(dirname(file), rel)).join(", ")}`);
+  else {
+    parseChangeRecord(raw, file);
+    writes.push(...stale.map((rel) => ({ path: join(packDir, rel), shown: join(dirname(file), rel), text: all[rel]! })));
   }
 }
+if (values.write && problems.length > 0) console.log(`wrote nothing: the run has ${problems.length} problem${problems.length === 1 ? "" : "s"}, listed below`);
+else
+  for (const w of writes) {
+    await mkdir(dirname(w.path), { recursive: true });
+    await writeFile(w.path, w.text);
+    console.log(`wrote ${w.shown}`);
+  }
 
 const list = (title: string, items: string[]) => items.length > 0 && console.log([`${title}:`, ...items.map((l) => `  ${shown(l)}`)].join("\n"));
 const entries = [...wanted.values()].flatMap((m) => Object.entries(m));
