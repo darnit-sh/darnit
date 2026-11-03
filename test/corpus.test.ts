@@ -213,7 +213,7 @@ describe("deriveCandidates", () => {
     schemas["C100000"] = { description: "Deprecated in favor of `g`." };
     let candidates: ReturnType<typeof synthetic>["candidates"] = [];
     const run = () => ({ candidates } = synthetic(Object.fromEntries(fields.map((f) => [f, ref("C0")])), fields.map((f) => deprecated(f)), schemas));
-    // About three and a half times following the chain once by hand; far more when each field walks it again.
+    // About three and a half times following the chain once by hand; over a hundred when each field walks it again.
     expect(await slowdown(run, byHand(schemas), 8)).toBeLessThan(8);
     expect(candidates).toHaveLength(60);
     expect(candidates.every((c) => c.record.id.endsWith("-to-g"))).toBe(true);
@@ -262,7 +262,7 @@ describe("requestProperty", () => {
     };
     lookups(schemas, "C0")();
     expect(reads).toBeGreaterThan(100_000);
-    // About twice following the chain by hand.
+    // Two to three and a half times following the chain by hand.
     expect(await slowdown(lookups(all, "C0"), byHand(all), 5)).toBeLessThan(5);
   });
 });

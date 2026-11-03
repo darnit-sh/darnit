@@ -1666,7 +1666,8 @@ describe("check parses each file once", () => {
 
 /**
  * Hits in `text` checked as `name`, which must take under `bound` times the CPU time of checking plain code of its size
- * and language. Each file's own healthy ratio differs, so its bound is about two and a half times that.
+ * and language. A healthy ratio runs from about a tenth to three by file, so each has its own bound, set over the worst
+ * ratio measured under load.
  */
 async function quickly(name: string, text: string, bound: number): Promise<Hit[]> {
   const line = name.endsWith(".py") ? "a = f(b, c)\n" : "const a = f(b, c);\n";

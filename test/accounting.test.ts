@@ -557,7 +557,7 @@ describe("npm run accounting", () => {
     const spec = { paths: Object.fromEntries(paths.map((p) => [p, { post: body("All") }])), components: { schemas } };
     const run = (these: typeof records) => () => account({ vendor: "openai", spec, removals: [], records: these, notCovered: [] });
     expect(run(records)().covered.size).toBe(20020);
-    // About 4 times accounting with no records; over 13 when each value asked whether a record names each operation again.
+    // Three to six times accounting with no records; 13 to 54 when each value asked again whether a record names each operation.
     expect(await slowdown(run(records), run([]), 10)).toBeLessThan(10);
   });
 
