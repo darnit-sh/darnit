@@ -345,15 +345,19 @@ describe("the rule picked by the title's type", () => {
     }
   });
 
-  it("fails any type that lowers a coverage threshold, judged from base", async () => {
+  it("fails any type that lowers a coverage threshold or adds an ignore comment, judged from base, unless a ci change gives a reason", async () => {
     const thresholds = (lines: number) => ({ write: "coverage-thresholds.json", text: JSON.stringify({ "src/**": { lines } }) });
     const landed = [thresholds(80), { write: "vitest.config.ts", text: 'import t from "./coverage-thresholds.json";\n' }];
-    const lowered = await repo([thresholds(79)], landed);
+    const lowered = await repo([thresholds(79), { write: "src/a.ts", text: "/* v8 ignore next */\n" }], landed);
     for (const type of ["fix", "refactor", "docs", "ci"]) {
       const r = await check(lowered, `${type}: x`, "Proof: none, lowers the threshold\n");
       expect(r.status, type).toBe(1);
-      expect(r.summary, type).toContain("- src/** lines 80 to 79");
+      expect(r.summary, type).toContain("- src/** lines 80 to 79\n- src/a.ts: /* v8 ignore next */");
     }
+    const reason = await check(lowered, "ci: x", "Proof: none, moves a folder\nCoverage: the folder moves and keeps its tests\n");
+    expect(reason.status).toBe(1);
+    expect(reason.summary).toContain("Reason given: `the folder moves and keeps its tests`");
+    expect(reason.summary).toContain("- src/a.ts\n");
     expect((await rule("test: x", [thresholds(81)], "", {}, landed)).status).toBe(0);
   });
 

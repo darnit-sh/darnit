@@ -22,10 +22,11 @@ visible() {
       print out
     }'
 }
-# Sets $reason to the reason on a "Proof: none, <reason>" line a reader sees, backticks made quotes so
-# it shows as code, or to nothing when there is no such line or the reason is under 10 characters.
+# Sets $reason to the reason on a "Proof: none, <reason>" line a reader sees, or on a line starting with the
+# prefix given, backticks made quotes so it shows as code, or to nothing when there is no such line or the
+# reason is under 10 characters.
 opt_out() {
-  reason=$(visible | sed -n 's/^Proof: none, //p' | head -1 | sed 's/[[:space:]]*$//')
+  reason=$(visible | sed -n "s/^${1:-Proof: none, }//p" | head -1 | sed 's/[[:space:]]*$//')
   # Characters, not bytes, whatever the locale: UTF-8 continuation bytes are not counted.
   if [ $(($(printf '%s' "$reason" | LC_ALL=C tr -d '\200-\277' | wc -c))) -lt 10 ]; then
     [ -n "$reason" ] && say "The opt-out line was ignored: its reason needs at least 10 characters."

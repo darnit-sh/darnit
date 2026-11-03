@@ -1,12 +1,47 @@
 #!/bin/sh
-# Coverage thresholds only go up: every folder in base's coverage-thresholds.json stays in head's at the same
-# or a higher percent, and vitest.config.ts still reads the file. A file head leaves unreadable counts as removed.
-#   check-coverage.sh <base sha> <head sha>
+# Coverage only goes up. Once base has coverage-thresholds.json, a change fails when it lowers or removes a threshold
+# there, changes a vitest or vite config, the coverage plugin's pin or the vitest it runs in, or adds an ignore comment
+# under src/, unless it is a ci change with a `Coverage: <reason>` line. Judged from base, by diffing the two commits.
+#   TITLE=... BODY=... check-coverage.sh <base sha> <head sha>
+#   check-coverage.sh --new-keys <base sha> <json summary>   each folder the thresholds add, against what CI measured
 set -eu
 . "$(dirname "$0")/pr-common.sh"
+file=coverage-thresholds.json
+
+if [ "${1:-}" = --new-keys ]; then
+  added=$(node -e '
+    const { execFileSync } = require("node:child_process");
+    const { readFileSync } = require("node:fs");
+    const { relative, sep } = require("node:path");
+    const [base, summaryFile, file, dir] = process.argv.slice(1);
+    const pm = require(require.resolve("picomatch", { paths: [process.cwd(), dir] }));
+    const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    let was;
+    try { was = JSON.parse(execFileSync("git", ["show", `${base}:${file}`], { encoding: "utf8", stdio: "pipe" })); } catch {}
+    const [now, summary] = [file, summaryFile].map((f) => JSON.parse(readFileSync(f, "utf8")));
+    const files = Object.entries(summary).filter(([f]) => f !== "total").map(([f, s]) => [relative(process.cwd(), f).split(sep).join("/"), s]);
+    for (const [glob, t] of Object.entries(now)) {
+      if (isObj(was) && Object.hasOwn(was, glob)) continue;
+      const hit = files.filter(([f]) => pm(glob)(f));
+      if (!hit.length) console.log(`${glob} matches no file`);
+      for (const metric of hit.length ? ["lines", "branches"] : []) {
+        const [c, n] = hit.reduce(([c, n], [, s]) => [c + s[metric].covered, n + s[metric].total], [0, 0]);
+        const pct = n ? Math.floor((100 * c) / n) : 100;
+        const v = isObj(t) ? t[metric] : undefined;
+        if (!(typeof v === "number" && v >= pct)) console.log(`${glob} ${metric} ${JSON.stringify(v) ?? "(none)"}, measured ${pct}%`);
+      }
+    }
+  ' "$2" "$3" "$file" "$(dirname "$0")") || added="$file or $3 (unreadable)"
+  if [ -n "$added" ]; then
+    say "**Failed:** a folder this change adds to $file sits below the coverage this run measured, rounded down, or matches no file:"
+    list "$added"
+    exit 1
+  fi
+  say "**Coverage passed:** every folder this change adds to $file sits at or above the coverage this run measured."
+  exit 0
+fi
 
 base=$1 head=$2
-file=coverage-thresholds.json
 git cat-file -e "$base:$file" 2>/dev/null || exit 0
 
 lowered=$(node -e '
@@ -26,11 +61,45 @@ lowered=$(node -e '
       if (typeof v === "number" && !(typeof n[metric] === "number" && n[metric] >= v)) console.log(`${glob} ${metric} ${v} to ${JSON.stringify(n[metric]) ?? "(none)"}`);
   }
 ' "$base" "$head" "$file") || lowered="$file (unreadable)"
-git show "$head:vitest.config.ts" 2>/dev/null | grep -qF "$file" || lowered=$(printf '%s\n' "$lowered" "vitest.config.ts no longer reads $file" | grep . || true)
 
-if [ -n "$lowered" ]; then
-  say "**Failed:** coverage thresholds only go up; this change lowers or removes some from base's $file:"
-  list "$lowered"
-  exit 1
+# Any line of a config vitest reads can reach the coverage settings, so any change to one counts.
+configs=$(paths | grep -iE '^"?(vitest\.config|vite\.config|vitest\.workspace)\.[^/]*"?$' | sed 's/$/ (coverage settings)/' || true)
+
+# The plugin, and the vitest it runs inside, as package.json asks for them and the lock installs them.
+pins=$(node -e '
+  const { execFileSync } = require("node:child_process");
+  const [base, head] = process.argv.slice(1);
+  const read = (rev, f) => {
+    try { return JSON.parse(execFileSync("git", ["show", `${rev}:${f}`], { encoding: "utf8", stdio: "pipe", maxBuffer: 2 ** 28 })); }
+    catch { return undefined; }
+  };
+  const fields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "overrides"];
+  const spec = (j, n) => JSON.stringify(fields.map((f) => j?.[f]?.[n]));
+  const entry = (j, n) => JSON.stringify(j?.packages?.[`node_modules/${n}`]);
+  for (const [f, at, label] of [["package.json", spec, ""], ["package-lock.json", entry, "node_modules/"]]) {
+    const [a, b] = [read(base, f), read(head, f)];
+    for (const n of ["@vitest/coverage-v8", "vitest"]) if (at(a, n) !== at(b, n)) console.log(`${f} ${label}${n}`);
+  }
+' "$base" "$head") || pins="package.json or package-lock.json (unreadable)"
+
+# Every hint the plugin reads (istanbul, c8, v8 or node:coverage, then ignore), in any case, on an added line.
+ignores=$(git diff --no-renames -U0 "$base" "$head" -- src | awk '
+  /^\+\+\+ / { f = substr($0, 7); next }
+  /^\+/ && tolower($0) ~ /(istanbul|[cv]8|node:coverage)[ \t]+ignore/ { l = substr($0, 2); sub(/^[ \t]+/, "", l); print f ": " l }')
+
+found=$(printf '%s\n' "$lowered" "$configs" "$pins" "$ignores" | grep . || true)
+if [ -z "$found" ]; then
+  say "**Coverage passed:** nothing that decides coverage went down: the thresholds in base's $file, vitest and vite config, the coverage plugin's pin and ignore comments under src/."
+  exit 0
 fi
-say "**Coverage passed:** every threshold in base's $file stays or goes up."
+reason=
+[ "$(title_type)" = ci ] && opt_out "Coverage: "
+if [ -n "$reason" ]; then
+  echo "::warning::coverage settings change, allowed by a 'Coverage:' line in the pull request body; the reason is in the job summary"
+  say "**Coverage settings changed** under the \`Coverage:\` line in the pull request body. Reason given: \`$reason\`"
+  list "$found"
+  exit 0
+fi
+say "**Failed:** coverage only goes up. Only a ci change with a \`Coverage: <reason>\` line may lower or remove a threshold in base's $file, change a vitest or vite config, the coverage plugin's pin or the vitest it runs in, or add an ignore comment under src/. Found:"
+list "$found"
+exit 1

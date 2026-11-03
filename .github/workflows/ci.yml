@@ -55,6 +55,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The coverage step reads the thresholds on the first parent: base on a pull request, the commit before on main.
+          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -74,6 +76,9 @@ jobs:
       # tests time, so that runner runs them in a pass of their own.
       - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         run: npm test -- --coverage --tags-filter='!cpu-time'
+      # A folder this change adds to coverage-thresholds.json starts at or above what the step above measured.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: sh scripts/check-coverage.sh --new-keys HEAD^1 coverage/coverage-summary.json
       - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         run: npm test -- --tags-filter=cpu-time
       # Every pack's rules against its fixtures. Zero matches where fixtures

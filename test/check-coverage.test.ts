@@ -1,8 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, posix, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const tempDirs: string[] = [];
@@ -11,8 +11,18 @@ afterEach(async () => {
 });
 
 const file = "coverage-thresholds.json";
-const config = `import thresholds from "./${file}" with { type: "json" };\n`;
+const config = `import thresholds from "./${file}" with { type: "json" };\nexport default { test: { coverage: { thresholds } } };\n`;
 const thresholds = { "src/scan/**": { lines: 90, branches: 80 }, "src/fix.ts": { lines: 70, branches: 60 } };
+const pkg = (plugin = "5.0.5", vitest = "^5.0.5") => JSON.stringify({ devDependencies: { "@vitest/coverage-v8": plugin, vitest } });
+const lock = (plugin = "5.0.5", vitest = "5.0.5") =>
+  JSON.stringify({ packages: { "node_modules/@vitest/coverage-v8": { version: plugin }, "node_modules/vitest": { version: vitest } } });
+const baseFiles = {
+  [file]: JSON.stringify(thresholds),
+  "vitest.config.ts": config,
+  "package.json": pkg(),
+  "package-lock.json": lock(),
+  "src/git.ts": "export const a = 1;\n/* v8 ignore next */\nexport const b = 2;\n",
+};
 type Files = Record<string, string | undefined>;
 
 /** A repo whose base commit holds `base` and whose head commit applies `head` over it; undefined removes a file. */
@@ -22,7 +32,10 @@ async function repo(base: Files, head: Files) {
   const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
   git("init", "-q");
   const commit = async (files: Files) => {
-    for (const [f, text] of Object.entries(files)) await (text === undefined ? rm(join(dir, f)) : writeFile(join(dir, f), text));
+    for (const [f, text] of Object.entries(files)) {
+      await mkdir(dirname(join(dir, f)), { recursive: true });
+      await (text === undefined ? rm(join(dir, f)) : writeFile(join(dir, f), text));
+    }
     git("add", "-A");
     git("commit", "-q", "--allow-empty", "-m", "c");
     return git("rev-parse", "HEAD");
@@ -30,32 +43,41 @@ async function repo(base: Files, head: Files) {
   return { dir, base: await commit(base), head: await commit(head) };
 }
 
-async function gate(head: Files, base: Files = { [file]: JSON.stringify(thresholds), "vitest.config.ts": config }) {
-  const r = await repo(base, head);
-  const summary = join(r.dir, ".git", "summary");
-  const run = spawnSync("sh", [resolve("scripts/check-coverage.sh"), r.base, r.head], {
-    cwd: r.dir,
+/** Runs the gate with `args` in `dir`, as check-refactor.sh does with the pull request's title and body. */
+async function run(dir: string, args: string[], title: string, body: string) {
+  const summary = join(dir, ".git", "summary");
+  const r = spawnSync("sh", [resolve("scripts/check-coverage.sh"), ...args], {
+    cwd: dir,
     encoding: "utf8",
-    env: { ...process.env, GITHUB_STEP_SUMMARY: summary },
+    env: { ...process.env, TITLE: title, BODY: body, GITHUB_STEP_SUMMARY: summary },
   });
-  return { status: run.status, out: run.stdout, summary: await readFile(summary, "utf8").catch(() => "") };
+  return { status: r.status, out: r.stdout, summary: await readFile(summary, "utf8").catch(() => "") };
+}
+
+async function gate(head: Files, title = "fix: x", body = "", base: Files = baseFiles) {
+  const r = await repo(base, head);
+  return run(r.dir, [r.base, r.head], title, body);
 }
 
 const withThresholds = (t: object): Files => ({ [file]: JSON.stringify(t) });
+const lowered = withThresholds({ ...thresholds, "src/fix.ts": { lines: 69, branches: 60 } });
 
 describe("the coverage gate", () => {
-  it("passes thresholds that stay, go up or gain a folder or metric", async () => {
+  it("passes thresholds that stay, go up or gain a folder or metric, and code that changes without an ignore comment", async () => {
     expect((await gate({})).status).toBe(0);
-    const raised = await gate(withThresholds({ ...thresholds, "src/fix.ts": { lines: 71, branches: 60, functions: 50 }, "src/git.ts": { lines: 1 } }));
+    const raised = await gate({
+      ...withThresholds({ ...thresholds, "src/fix.ts": { lines: 71, branches: 60, functions: 50 }, "src/git.ts": { lines: 1 } }),
+      "src/git.ts": "export const a = 3;\n/* v8 ignore next */\nexport const b = 2;\n",
+      "test/a.test.ts": "/* v8 ignore start */\n",
+    });
     expect(raised.status).toBe(0);
-    expect(raised.summary).toContain("every threshold in base's coverage-thresholds.json stays or goes up");
+    expect(raised.summary).toContain("nothing that decides coverage went down");
   });
 
   it("fails a lowered threshold and names the folder, metric and both values", async () => {
     const r = await gate(withThresholds({ ...thresholds, "src/scan/**": { lines: 90, branches: 79 } }));
     expect(r.status).toBe(1);
     expect(r.out).toContain("- src/scan/** branches 80 to 79");
-    expect(r.summary).toContain("coverage thresholds only go up");
   });
 
   it("fails a folder or metric removed, renamed or made something other than a number", async () => {
@@ -71,9 +93,6 @@ describe("the coverage gate", () => {
       expect(r.status, line).toBe(1);
       expect(r.out).toContain(line);
     }
-  });
-
-  it("fails a thresholds file head removes or leaves unreadable", async () => {
     for (const text of [undefined, "{", "[]", "null"]) {
       const r = await gate({ [file]: text });
       expect(r.status, String(text)).toBe(1);
@@ -81,20 +100,105 @@ describe("the coverage gate", () => {
     }
   });
 
-  it("fails a vitest config that no longer reads the thresholds file", async () => {
-    for (const text of [undefined, "export default {};\n"]) {
-      const r = await gate({ "vitest.config.ts": text });
-      expect(r.status, String(text)).toBe(1);
-      expect(r.out).toContain(`- vitest.config.ts no longer reads ${file}`);
+  it("fails any change to a vitest or vite config, however it still names the thresholds file", async () => {
+    const configs = [
+      `// reads ./${file}\nexport default { test: { coverage: { thresholds: {} } } };\n`,
+      config.replace(`./${file}`, `./test/${file}`),
+      config.replace("{ thresholds }", '{ thresholds: { ...thresholds, "src/packs/**": { lines: 0, branches: 0 } } }'),
+      config.replace("{ thresholds }", '{ thresholds, exclude: ["src/packs/**"] }'),
+      `${config}// a comment\n`,
+    ];
+    for (const text of configs) {
+      const r = await gate({ "vitest.config.ts": text, [`test/${file}`]: "{}" });
+      expect(r.status, text).toBe(1);
+      expect(r.out).toContain("- vitest.config.ts (coverage settings)");
+    }
+    for (const f of ["vite.config.ts", "vitest.config.mts", "vitest.workspace.json"]) expect((await gate({ [f]: "export default {};\n" })).out).toContain(`- ${f} (coverage settings)`);
+    expect((await gate({ "vitest.config.ts": undefined })).status).toBe(1);
+  });
+
+  it("fails any change to the coverage plugin's pin or the vitest it runs in", async () => {
+    const cases: [Files, string][] = [
+      [{ "package.json": pkg("5.1.0") }, "- package.json @vitest/coverage-v8"],
+      [{ "package.json": pkg(undefined, "^5.1.0") }, "- package.json vitest"],
+      [{ "package-lock.json": lock("5.1.0") }, "- package-lock.json node_modules/@vitest/coverage-v8"],
+      [{ "package-lock.json": lock(undefined, "5.1.0") }, "- package-lock.json node_modules/vitest"],
+      [{ "package.json": "{" }, "- package.json @vitest/coverage-v8"],
+    ];
+    for (const [files, line] of cases) {
+      const r = await gate(files);
+      expect(r.status, line).toBe(1);
+      expect(r.out).toContain(line);
     }
   });
 
-  it("passes when base has no thresholds file, so it starts judging once one lands", async () => {
-    expect((await gate(withThresholds({}), { "vitest.config.ts": "export default {};\n" })).status).toBe(0);
+  it("fails an ignore comment added anywhere in src/, in each form the coverage plugin reads", async () => {
+    const hints = ["/* v8 ignore start */", "/* c8 ignore next 3 */", "// istanbul ignore else", "/* v8 ignore next -- @preserve */", "/* node:coverage ignore file */", "/* V8 Ignore Next */"];
+    for (const hint of hints) {
+      const r = await gate({ "src/git.ts": `${hint}\n${baseFiles["src/git.ts"]}`, "src/new/a.ts": "" });
+      expect(r.status, hint).toBe(1);
+      expect(r.out).toContain(`- src/git.ts: ${hint}`);
+    }
+    expect((await gate({ "src/new/a.ts": "/* istanbul ignore if */\n" })).out).toContain("- src/new/a.ts: /* istanbul ignore if */");
   });
 
-  it("judges an unreadable base as no thresholds rather than failing every change", async () => {
-    expect((await gate(withThresholds({}), { [file]: "{", "vitest.config.ts": config })).status).toBe(0);
+  it("lets only a ci change with a Coverage line a reader sees do any of that, and shows the reason", async () => {
+    const body = "Text\nCoverage: the records folder moves to src/recs\n";
+    const allowed = await gate(lowered, "ci: rename", body);
+    expect(allowed.status).toBe(0);
+    expect(allowed.out).toContain("::warning::");
+    expect(allowed.summary).toContain("Reason given: `the records folder moves to src/recs`");
+    expect(allowed.summary).toContain("- src/fix.ts lines 70 to 69");
+    for (const [title, text] of [
+      ["fix: x", body],
+      ["test: x", body],
+      ["ci: x", ""],
+      ["ci: x", `<!--\n${body}-->`],
+      ["ci: x", "```\nCoverage: inside a code block\n```"],
+      ["ci: x", "Coverage: short"],
+      ["ci: x", "Proof: none, lowers the threshold\n"],
+    ]) {
+      expect((await gate(lowered, title, text)).status, `${title} ${text}`).toBe(1);
+    }
+  });
+
+  it("starts judging once base has a thresholds file, and reads an unreadable one as no thresholds", async () => {
+    const before = { "vitest.config.ts": "export default {};\n" };
+    expect((await gate({ ...withThresholds({}), "vitest.config.ts": config }, "fix: x", "", before)).status).toBe(0);
+    expect((await gate(withThresholds({}), "fix: x", "", { ...baseFiles, [file]: "{" })).status).toBe(0);
+  });
+});
+
+/** A coverage summary as vitest's json-summary reporter writes it, with absolute paths under `dir`. */
+const summaryOf = (dir: string, files: Record<string, [number, number, number, number]>) =>
+  JSON.stringify(
+    Object.fromEntries(
+      Object.entries(files).map(([f, [lc, lt, bc, bt]]) => [join(dir, f), { lines: { covered: lc, total: lt }, branches: { covered: bc, total: bt } }]),
+    ),
+  );
+
+describe("a folder added to the thresholds", () => {
+  async function added(head: object, files: Record<string, [number, number, number, number]>) {
+    const r = await repo({ [file]: JSON.stringify(thresholds) }, withThresholds(head));
+    await writeFile(join(r.dir, "summary.json"), summaryOf(r.dir, files));
+    return run(r.dir, ["--new-keys", r.base, "summary.json"], "", "");
+  }
+  const measured: Record<string, [number, number, number, number]> = { "src/fix.ts": [10, 100, 10, 100], "src/recs/a.ts": [87, 100, 3, 4], "src/recs/b.ts": [0, 0, 0, 0] };
+
+  it("passes at or above the measured percent, rounded down, and leaves folders base has alone", async () => {
+    expect((await added({ ...thresholds, "src/recs/**": { lines: 87, branches: 75 } }, measured)).status).toBe(0);
+  });
+
+  it("fails one below the measured percent, one missing a metric, and one that matches no file", async () => {
+    const r = await added(
+      { ...thresholds, "src/recs/**": { lines: 0, branches: 75 }, "src/recs/a.ts": { lines: 87 }, "src/records/**": { lines: 100, branches: 100 } },
+      measured,
+    );
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("- src/recs/** lines 0, measured 87%");
+    expect(r.out).toContain("- src/recs/a.ts branches (none), measured 75%");
+    expect(r.out).toContain("- src/records/** matches no file");
+    expect(r.out).not.toContain("src/fix.ts");
   });
 });
 
@@ -102,10 +206,11 @@ describe("the coverage gate", () => {
 const picomatch = createRequire(import.meta.url)("picomatch") as (glob: string) => (path: string) => boolean;
 
 describe("the coverage thresholds", () => {
-  it("put every source file in exactly one folder's line", async () => {
-    const globs = Object.keys(JSON.parse(await readFile(file, "utf8")) as object).map(picomatch);
+  it("put every source file in exactly one folder's line, and every line matches a file", async () => {
+    const keys = Object.keys(JSON.parse(await readFile(file, "utf8")) as object);
     const files = (await readdir("src", { recursive: true })).filter((f) => f.endsWith(".ts")).map((f) => posix.join("src", f.replaceAll("\\", "/")));
     expect(files.length).toBeGreaterThan(20);
-    expect(files.filter((f) => globs.filter((matches) => matches(f)).length !== 1)).toEqual([]);
+    expect(files.filter((f) => keys.filter((k) => picomatch(k)(f)).length !== 1)).toEqual([]);
+    expect(keys.filter((k) => !files.some(picomatch(k)))).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config";
-// Line and branch percent per folder of src/; scripts/check-coverage.sh fails a change that lowers one.
+// Line and branch percent per folder of src/; scripts/check-coverage.sh fails a change that lowers one or edits this file.
 import thresholds from "./coverage-thresholds.json" with { type: "json" };
 
 export default defineConfig({
@@ -13,7 +13,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
-      reporter: ["text-summary"],
+      reporter: ["text-summary", "json-summary"],
       thresholds,
     },
   },
