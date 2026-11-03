@@ -1,12 +1,14 @@
 // Packs darnit exactly as npm would ship it, installs the tarball into an empty
 // folder, and runs init, check and fix against every scenario in test/e2e/.
 // Unit tests import the source; this checks the artifact users actually get.
+// With --tarball <path> --integrity <sha512-...> it checks that tarball instead of packing one.
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { notUser, userEnv } from "./e2e-env.js";
+import { WORKFLOW } from "../src/init.js";
+import { givenTarball, installTarball, notUser, userEnv } from "./e2e-env.js";
 
 // No run may reach the npm registry.
 process.env.DARNIT_NO_UPDATE_CHECK = "1";
@@ -149,17 +151,29 @@ if (JSON.stringify(folders) !== JSON.stringify(Object.keys(EXPECT).sort())) {
   throw new Error(`test/e2e folders [${folders.join(", ")}] do not match the expectations [${Object.keys(EXPECT).join(", ")}]`);
 }
 
+let given: ReturnType<typeof givenTarball>;
+try {
+  given = givenTarball(process.argv.slice(2));
+} catch (e) {
+  console.error(`e2e: ${(e as Error).message}`);
+  process.exit(2);
+}
+
 const work = mkdtempSync(join(tmpdir(), "darnit-e2e-"));
 let failures = 0;
 try {
-  must("npm", ["pack", "--silent", "--pack-destination", work], ROOT);
-  const tarball = join(work, readdirSync(work).find((f) => f.endsWith(".tgz"))!);
-  const install = join(work, "install");
-  mkdirSync(install);
-  must("npm", ["init", "-y"], install);
-  must("npm", ["install", "--silent", tarball], install);
+  const { install, line: installed, env: tarballEnv, packed } = installTarball(
+    work,
+    given,
+    (dest) => must("npm", ["pack", "--silent", "--pack-destination", dest], ROOT),
+    (tarball, dir) => {
+      must("npm", ["init", "-y"], dir);
+      must("npm", ["install", "--silent", tarball], dir);
+      return must(join(dir, "node_modules", ".bin", "darnit"), ["--version"], dir).trim();
+    },
+  );
   const darnit = join(install, "node_modules", ".bin", "darnit");
-  console.log(`darnit ${must(darnit, ["--version"], install).trim()} from ${tarball}\n`);
+  console.log(`${installed}\n`);
   // A mistyped flag is darnit failing (2), never "call sites found" (1), which would turn a scheduled run red.
   const usage = run(darnit, ["check", "--no-such-flag"], install);
   if (usage.exit !== 2) {
@@ -236,8 +250,14 @@ try {
   const hostile = join(work, "hostile");
   cpSync(join(SCENARIOS, "16-hostile-repo"), hostile, { recursive: true });
   must(darnit, ["init"], hostile);
-  const line = /^\s*- run: (.*npx darnit@\S+.*)$/m.exec(readFileSync(join(hostile, ".github", "workflows", "darnit.yml"), "utf8"))![1]!;
-  const packed = (cmd: string) => cmd.replace(/darnit@\S+/, `--package='${tarball}' darnit`);
+  // The line is taken from the source of what init writes, so no file content reaches the shell; the file init wrote must hold it.
+  const runLine = (yml: string) => /^\s*- run: (.*npx darnit@\S+.*)$/m.exec(yml)?.[1];
+  const line = runLine(WORKFLOW)!;
+  const wrote = runLine(readFileSync(join(hostile, ".github", "workflows", "darnit.yml"), "utf8"));
+  if (wrote !== line) {
+    failures++;
+    console.log(`✗ init wrote the workflow line ${JSON.stringify(wrote)}, expected ${JSON.stringify(line)}`);
+  } else console.log("✓ init wrote the workflow line");
   const runnerTemp = join(work, "runner-temp");
   const npmCache = join(work, "npm-cache");
   mkdirSync(runnerTemp);
@@ -247,6 +267,7 @@ try {
   symlinkSync(join(must("npm", ["config", "get", "cache"], install).trim(), "_cacache"), join(npmCache, "_cacache"));
   const actions = {
     ...USER_ENV,
+    ...tarballEnv,
     RUNNER_TEMP: runnerTemp,
     GITHUB_WORKSPACE: hostile,
     npm_config_cache: npmCache,
