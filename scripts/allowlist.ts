@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { stillUnused } from "./unseen.js";
 
 // Runs knip (unused files, exports and dependencies) or jscpd (duplicated blocks) and compares what it finds with
@@ -139,7 +139,10 @@ const KINDS = { unused: { find: unused, fields: 3 }, duplicates: { find: duplica
 export function check(kind: keyof typeof KINDS, root: string): string[] {
   const file = `scripts/allow/${kind}.tsv`;
   const at = join(root, file);
-  if (realpathSync(at) !== join(realpathSync(root), file) || !lstatSync(at).isFile()) return [`${file} is reached through a link or is not a file; it is read only as a file at that path`];
+  const steps = ["scripts", "scripts/allow", file].map((p) => lstatSync(join(root, p), { throwIfNoEntry: false }));
+  if (steps.some((step) => !step)) return [`${file} is missing; the check reads its list only from there`];
+  const plain = steps.every((step, i) => (i < 2 ? step!.isDirectory() : step!.isFile()));
+  if (!plain || realpathSync(at) !== join(realpathSync(root), file)) return [`${file} is reached through a link or is not a file; it is read only as a file at that path`];
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as object;
   const keys = ["knip", "jscpd"].filter((k) => Object.hasOwn(pkg, k));
   if (keys.length > 0) return keys.map((k) => `package.json has a "${k}" key, which would add to what knip.json and this check set; remove it`);
@@ -149,7 +152,8 @@ export function check(kind: keyof typeof KINDS, root: string): string[] {
 function main() {
   const kind = process.argv[2];
   const at = process.argv.indexOf("--root");
-  const root = at > 0 ? resolve(process.argv[at + 1] ?? "") : fileURLToPath(new URL("../", import.meta.url));
+  // npm runs the script from the folder holding package.json, which is the repository checked.
+  const root = resolve(at > 0 ? (process.argv[at + 1] ?? "") : ".");
   if (kind !== "unused" && kind !== "duplicates") {
     console.error("usage: tsx scripts/allowlist.ts unused|duplicates [--root <dir>]");
     process.exitCode = 2;
@@ -161,4 +165,5 @@ function main() {
   else console.log(`${kind}: every finding is in scripts/allow/${kind}.tsv`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();
+// Compared by real path, so a run through a linked folder still runs the check rather than nothing.
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) main();

@@ -1,44 +1,10 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { appendFile, cp, mkdir, mkdtemp, readFile, rename as move, rm, symlink, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { appendFile, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { cloneFindings, compare, knipFindings, parseAllowlist, problems } from "../scripts/allowlist.js";
-
-const ROOT = join(import.meta.dirname, "..");
-const tsx = join(ROOT, "node_modules", ".bin", "tsx");
-const COPIED = ["src", "scripts", "test", ".gitignore", "package.json", "knip.json", "tsconfig.json", "tsconfig.build.json", "vitest.config.ts", "eslint.config.js"];
-
-const tempDirs: string[] = [];
-afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
-});
-
-/** This repository's code and configs in a temporary folder, with its node_modules linked in. */
-async function copy() {
-  const dir = await mkdtemp(join(tmpdir(), "darnit-allowlist-"));
-  tempDirs.push(dir);
-  await Promise.all(COPIED.map((p) => cp(join(ROOT, p), join(dir, p), { recursive: true })));
-  await symlink(join(ROOT, "node_modules"), join(dir, "node_modules"));
-  return dir;
-}
-
-const run = (kind: "unused" | "duplicates", root = ROOT, env: NodeJS.ProcessEnv = process.env) => {
-  const r = spawnSync(tsx, ["scripts/allowlist.ts", kind, "--root", root], { cwd: ROOT, encoding: "utf8", env });
-  return { status: r.status, out: r.stdout + r.stderr };
-};
-
-const edit = async (file: string, from: string, to: string) => {
-  const text = await readFile(file, "utf8");
-  expect(text).toContain(from);
-  await writeFile(file, text.replace(from, to));
-};
-
-/** A 60 line function; `rename` swaps every name in it, as a copy with variables renamed would. */
-function block(rename: (name: string) => string) {
-  const body = Array.from({ length: 57 }, (_, i) => `  const ${rename(`part${i}`)} = ${rename("input")}.slice(${i}, ${i + 3}).trim() + ${rename("sep")};`);
-  return [`export function ${rename("pieces")}(${rename("input")}: string, ${rename("sep")}: string): number {`, ...body, `  return ${rename("part0")}.length;`, "}", ""].join("\n");
-}
+import { block, copy, edit, run, tempDirs } from "./allowlist-copy.js";
 
 describe("the allowlists", () => {
   it("name exactly what knip and jscpd find in this repository", () => {
@@ -236,52 +202,4 @@ describe("the tools as run from npm run knip and npm run duplicates", () => {
     expect(run("duplicates", dir, env).out).toMatch(/not in scripts\/allow\/duplicates\.tsv: src\/one\.ts\tsrc\/two\.ts\t#1 \(lines src\/one\.ts:1-\d+ and src\/two\.ts:1-\d+\)/);
   });
 
-});
-
-describe("what the check reads", () => {
-  it("reads a list only as a file at its own path, never through a link", async () => {
-    const dir = await copy();
-    await move(join(dir, "scripts/allow"), join(dir, "scripts/lists"));
-    await symlink("lists", join(dir, "scripts/allow"));
-    expect(run("unused", dir).out).toContain("scripts/allow/unused.tsv is reached through a link or is not a file");
-    await rm(join(dir, "scripts/allow"));
-    await mkdir(join(dir, "scripts/allow"));
-    await symlink("../lists/duplicates.tsv", join(dir, "scripts/allow/duplicates.tsv"));
-    const r = run("duplicates", dir);
-    expect(r.status).toBe(1);
-    expect(r.out).toContain("scripts/allow/duplicates.tsv is reached through a link or is not a file");
-    await rm(join(dir, "scripts/allow/duplicates.tsv"));
-    await move(join(dir, "scripts/lists/duplicates.tsv"), join(dir, "scripts/allow/duplicates.tsv"));
-    await move(join(dir, "scripts"), join(dir, "tools"));
-    await symlink("tools", join(dir, "scripts"));
-    expect(run("duplicates", dir).out).toContain("scripts/allow/duplicates.tsv is reached through a link or is not a file");
-  });
-
-  it("refuses to run with a knip or jscpd key in package.json, which knip reads whatever --config says", async () => {
-    const dir = await copy();
-    await writeFile(join(dir, "src/orphan.ts"), "export const orphan = 1;\n");
-    const pkg = join(dir, "package.json");
-    await writeFile(pkg, JSON.stringify({ ...JSON.parse(await readFile(pkg, "utf8")), knip: { ignore: ["src/orphan.ts"] }, jscpd: { ignore: ["**/versions.ts"] } }));
-    const unused = run("unused", dir);
-    expect(unused.status).toBe(1);
-    expect(unused.out).toContain('package.json has a "knip" key, which would add to what knip.json and this check set; remove it');
-    expect(run("duplicates", dir).out).toContain('package.json has a "jscpd" key');
-  });
-
-  it("fails when either tool exits with an error, and on a line with no reason", async () => {
-    const dir = await copy();
-    await rm(join(dir, "node_modules"));
-    await mkdir(join(dir, "node_modules/.bin"), { recursive: true });
-    for (const name of ["knip", "jscpd"]) await writeFile(join(dir, "node_modules/.bin", name), "#!/bin/sh\necho broken >&2\nexit 3\n", { mode: 0o755 });
-    for (const [kind, name] of [["unused", "knip"], ["duplicates", "jscpd"]] as const) {
-      const r = run(kind, dir);
-      expect(r.status, name).toBe(1);
-      expect(r.out).toContain(`${name} exited 3; run npx ${name} to see why\nbroken`);
-    }
-    const plain = await copy();
-    await appendFile(join(plain, "scripts/allow/duplicates.tsv"), "src/a.ts\tsrc/b.ts\t#1\n");
-    const r = run("duplicates", plain);
-    expect(r.status).toBe(1);
-    expect(r.out).toMatch(/scripts\/allow\/duplicates\.tsv: line \d+ needs 3 fields and a reason, tab separated/);
-  });
 });
