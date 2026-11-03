@@ -249,12 +249,21 @@ describe("an import across islands and scripts/ fails", () => {
     tsx.set("src/refusal.ts", `import "./scan/view.js";\n${sources.get("src/refusal.ts")}`);
     expect(check(tsx, allowlist)).toEqual(["src/refusal.ts -> src/scan/view.tsx: floor 0 imports floor 2"]);
   });
+});
 
-  it("the computed require() in the rule applier, which the allowlist names", () => {
+describe("the computed require() in the rule applier", () => {
+  it("is read, and named by the allowlist", () => {
     const apply = sources.get("src/packs/apply.ts")!;
     expect(importsOf("src/packs/apply.ts", apply).computed).toEqual(["require(pkgPath)"]);
     expect(check(new Map(sources).set("src/packs/apply.ts", apply.replace("require(pkgPath)", "JSON.parse(pkgPath)")), allowlist)).toEqual([
       `${ALLOWLIST}: "src/packs/apply.ts -> require(pkgPath)" no longer breaks the module map; remove its line`,
+    ]);
+  });
+
+  it("does not cover a second call with the same text", () => {
+    const sneak = `export function sneak(): unknown { const pkgPath = "../check.js"; return require(pkgPath); }`;
+    expect(check(new Map(sources).set("src/packs/apply.ts", `${sources.get("src/packs/apply.ts")}\n${sneak}\n`), allowlist)).toEqual([
+      "src/packs/apply.ts -> require(pkgPath)#2: an import() or require() of a computed path, which this test cannot place",
     ]);
   });
 });

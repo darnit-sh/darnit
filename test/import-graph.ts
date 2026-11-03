@@ -6,7 +6,7 @@ import ts from "typescript";
 
 export type Sources = Map<string, string>;
 export type Graph = Map<string, Set<string>>;
-/** The graph, and each import() or require() of a computed path as "file -> call". */
+/** The graph, and each import() or require() of a computed path as "file -> call", numbered from the second copy. */
 export type ImportGraph = { graph: Graph; computed: string[] };
 
 const CODE = /\.[cm]?[jt]sx?$/;
@@ -95,6 +95,16 @@ function readImports(file: string, text: string): Imports {
   return { paths, computed };
 }
 
+/** "file -> call" for each call, a repeat numbered, so an allowlist line covers one call and not every copy of it. */
+function numbered(file: string, calls: string[]): string[] {
+  const seen = new Map<string, number>();
+  return calls.map((call) => {
+    const n = (seen.get(call) ?? 0) + 1;
+    seen.set(call, n);
+    return `${file} -> ${call}${n > 1 ? `#${n}` : ""}`;
+  });
+}
+
 /** Each file's imports of other files under src/ and scripts/. A JSON file outside them is data, not a module. */
 export function buildGraph(sources: Sources, problems: string[]): ImportGraph {
   const graph: Graph = new Map();
@@ -104,7 +114,7 @@ export function buildGraph(sources: Sources, problems: string[]): ImportGraph {
     graph.set(file, targets);
     if (!CODE.test(file)) continue;
     const found = importsOf(file, text);
-    computed.push(...found.computed.map((call) => `${file} -> ${call}`));
+    computed.push(...numbered(file, found.computed));
     for (const specifier of found.paths) {
       const target = resolveSpecifier(file, specifier, sources);
       if (target === undefined || (target.endsWith(".json") && existsSync(target))) continue;
