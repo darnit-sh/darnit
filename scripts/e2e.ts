@@ -7,6 +7,7 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, syml
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { WORKFLOW } from "../src/init.js";
 import { givenTarball, installTarball, notUser, userEnv } from "./e2e-env.js";
 
 // No run may reach the npm registry.
@@ -249,7 +250,14 @@ try {
   const hostile = join(work, "hostile");
   cpSync(join(SCENARIOS, "16-hostile-repo"), hostile, { recursive: true });
   must(darnit, ["init"], hostile);
-  const line = /^\s*- run: (.*npx darnit@\S+.*)$/m.exec(readFileSync(join(hostile, ".github", "workflows", "darnit.yml"), "utf8"))![1]!;
+  // The line is taken from the source of what init writes, so no file content reaches the shell; the file init wrote must hold it.
+  const runLine = (yml: string) => /^\s*- run: (.*npx darnit@\S+.*)$/m.exec(yml)?.[1];
+  const line = runLine(WORKFLOW)!;
+  const wrote = runLine(readFileSync(join(hostile, ".github", "workflows", "darnit.yml"), "utf8"));
+  if (wrote !== line) {
+    failures++;
+    console.log(`✗ init wrote the workflow line ${JSON.stringify(wrote)}, expected ${JSON.stringify(line)}`);
+  } else console.log("✓ init wrote the workflow line");
   const runnerTemp = join(work, "runner-temp");
   const npmCache = join(work, "npm-cache");
   mkdirSync(runnerTemp);
