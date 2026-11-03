@@ -1,0 +1,7 @@
+{
+  "name": "readme-config-sample",
+  "private": true,
+  "dependencies": {
+    "openai": "^4.60.0"
+  }
+}
