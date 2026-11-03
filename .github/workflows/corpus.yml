@@ -40,6 +40,7 @@ jobs:
           path: |
             corpus
             packs
+            README.md
       - if: steps.changes.outputs.count != '0'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -74,11 +75,13 @@ jobs:
         run: |
           rm -rf corpus packs
           cp -R "$RUNNER_TEMP/corpus/corpus" "$RUNNER_TEMP/corpus/packs" .
+          # README.md comes from the job that runs dependency code: only its counts are taken.
+          sh scripts/corpus-readme.sh "$RUNNER_TEMP/corpus/README.md" README.md
           git config user.name darnit
           git config user.email darnit@users.noreply.github.com
           branch="corpus/$(date -u +%Y-%m-%d)"
           git switch -c "$branch"
-          git add corpus packs
+          git add corpus packs README.md
           git commit -m "feat(corpus): refresh vendor specs"
           git push -u origin "$branch"
           gh pr create --base main --title "feat(corpus): new vendor changes" --body-file "$RUNNER_TEMP/log/corpus.log"
