@@ -325,7 +325,96 @@ run summary. darnit asks npm once per run, waits at most 1.5 seconds, never
 changes the exit code, and never asks with `--json`. Set
 `DARNIT_NO_UPDATE_CHECK=1` (or `NO_UPDATE_NOTIFIER=1`) to turn it off.
 
-Want pull requests instead of a red run? darnit runs your tests before it
+Want pull requests instead of a red run? Use two jobs. The first installs your
+project and runs `fix --prepare`, which makes each change, runs your build and
+tests, and writes a plan. The second opens the pull requests with `fix --publish`:
+
+```yaml
+name: darnit
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+      # setup-node's problem matchers would turn repository text darnit prints into annotations.
+      - run: |
+          echo "::remove-matcher owner=tsc::"
+          echo "::remove-matcher owner=eslint-stylish::"
+          echo "::remove-matcher owner=eslint-compact::"
+      - run: npm ci   # or whatever installs your project
+      - run: cd "${RUNNER_TEMP:?}" && npx darnit@0.2.0-rc.1 fix --prepare "${RUNNER_TEMP:?}/plan" "${GITHUB_WORKSPACE:?}"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: darnit-plan
+          path: ${{ runner.temp }}/plan
+          if-no-files-found: error
+
+  publish:
+    needs: prepare
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - run: |
+          echo "::remove-matcher owner=tsc::"
+          echo "::remove-matcher owner=eslint-stylish::"
+          echo "::remove-matcher owner=eslint-compact::"
+      - uses: actions/download-artifact@v8
+        with:
+          name: darnit-plan
+          path: ${{ runner.temp }}/plan
+      # One chain: when any part fails, nothing after it runs, whatever the shell's options.
+      - run: |
+          cd "${RUNNER_TEMP:?}" &&
+            mkdir darnit &&
+            cd darnit &&
+            echo '{}' > package.json &&
+            npm pack darnit@0.2.0-rc.1 &&
+            test "sha512-$(openssl dgst -sha512 -binary darnit-0.2.0-rc.1.tgz | base64 -w0)" = "${INTEGRITY:?}" &&
+            npm install ./darnit-0.2.0-rc.1.tgz
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-cache
+          # Paste what `npm view darnit@0.2.0-rc.1 dist.integrity` prints.
+          INTEGRITY: ""
+      - run: cd "${RUNNER_TEMP:?}" && darnit/node_modules/.bin/darnit fix --publish plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+```
+
+Why two jobs: the write token never shares a job with your code. The first job
+runs your install scripts, build and tests with a read-only token it does not
+keep, and `--prepare` refuses to start if it finds a token. The second job holds
+the write token but never checks out or runs your repository. It installs darnit
+into a new folder with its own `package.json`, so npm reads no `.npmrc` from your
+repository or the home folder, and stops unless the package matches the checksum
+in `INTEGRITY`, so fill that in first. `--publish` then makes each change again on
+a fresh clone and opens a pull request only when it matches the plan. A change
+whose tests fail still turns the run red, and the others still get their pull
+requests.
+
+For code you trust, one job can do both. darnit runs your tests before it
 pushes, so the job has to install your dependencies first:
 
 ```yaml
@@ -333,7 +422,7 @@ permissions:
   contents: write
   pull-requests: write
 
-# ...same as above, with the checkout keeping no token on disk:
+# ...same as the scheduled check above, with the checkout keeping no token on disk:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -352,7 +441,8 @@ tests run in the same job, and git config they write to the repository, such as
 `http.curloptResolve` with `http.sslVerify false`, can send darnit's git calls to
 GitHub, and the token with them, to another server. That includes the check for
 an existing branch, which runs before any test, even when nothing is pushed.
-This workflow cannot prevent that. On code you do not trust, run `check` only.
+This workflow cannot prevent that. On code you do not trust, use the two-job
+workflow above, or run `check` only.
 
 Also turn on *Settings → Actions → General → Allow GitHub Actions to create
 and approve pull requests*. Pull requests opened this way don't trigger your
@@ -401,10 +491,11 @@ To add a vendor, open a pull request adding its spec URL and SDK calls to
 
 - Request options built somewhere else and passed in as a variable are not
   followed. `check` reminds you at the end of every report, clean or not.
-- A model name fails `check` only when written in the call's own `model` option
-  as a plain string or a fallback such as `name || "gpt-4"`. Written any other
-  way in the call (a quoted `"model"` key, a template string, a Python f-string,
-  `**kwargs`) or set as a value named for a model or engine elsewhere (a
+- A model name fails `check` only when written in the call's own `model` option,
+  with its key bare or quoted (`"model": "gpt-4"`), as a plain string, a
+  JavaScript or TypeScript template string with nothing in it (`` `gpt-4` ``) or
+  a fallback such as `name || "gpt-4"`. Written any other way in the call (a
+  Python f-string, `**kwargs`) or set as a value named for a model or engine elsewhere (a
   constant, a default, a keyword argument, an object or dict entry, an
   environment variable's default), it is only listed under "Possibly affected",
   and some of those go to other providers. This includes framework calls such as
