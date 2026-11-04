@@ -100,6 +100,33 @@ describe("the coverage gate", () => {
     }
   });
 
+  it("fails any change to a vitest or vite config, also in a ci change with only a Proof line, until a Coverage line gives a reason", async () => {
+    const edits: Files[] = [
+      { "vitest.config.ts": config.replace("{ thresholds }", "{ thresholds: {} }") },
+      { "vitest.config.ts": `// reads ./${file}\nexport default { test: { coverage: { thresholds: {} } } };\n` },
+      { "vitest.config.ts": config.replace(`./${file}`, `./test/${file}`), [`test/${file}`]: "{}" },
+      { "vitest.config.ts": config.replace("{ thresholds }", '{ thresholds: { ...thresholds, "src/packs/**": { lines: 0, branches: 0 } } }') },
+      { "vitest.config.ts": config.replace("{ thresholds }", '{ thresholds, exclude: ["src/packs/**"] }') },
+      { "vitest.config.ts": undefined },
+      { "vite.config.ts": "export default {};\n" },
+      { "vitest.config.mts": "export default {};\n" },
+      { "vitest.workspace.json": "[]\n" },
+      { "Vitest.Config.JS": "export default {};\n" },
+    ];
+    const proof = "Proof: none, changes the test runner config\n";
+    for (const edit of edits) {
+      const f = Object.keys(edit)[0]!;
+      for (const [title, body] of [["fix: x", ""], ["ci: x", proof], ["ci: x", `${proof}Coverage: short\n`]]) {
+        const r = await gate(edit, title, body);
+        expect(r.status, `${f} ${title} ${body}`).toBe(1);
+        expect(r.out).toContain(`- ${f} (coverage settings)`);
+      }
+      const reason = await gate(edit, "ci: x", `${proof}Coverage: the runner moves to a new config\n`);
+      expect(reason.status, f).toBe(0);
+      expect(reason.summary).toContain(`- ${f} (coverage settings)`);
+    }
+  });
+
   it("fails any change to the coverage plugin's pin or the vitest it runs in", async () => {
     const cases: [Files, string][] = [
       [{ "package.json": pkg("5.1.0") }, "- package.json @vitest/coverage-v8"],

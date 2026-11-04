@@ -366,10 +366,11 @@ describe("the rule picked by the title's type", () => {
     expect((await check(raised, "test: x")).summary).toContain("- coverage-thresholds.json (which tests run and how much they must cover)");
   });
 
-  it("refuses outside ci any change to a vitest or vite config, however it still names the thresholds file", async () => {
+  it("refuses outside ci any change to a vitest or vite config, and in ci without a Coverage line, however it still names the thresholds file", async () => {
     const config = 'import thresholds from "./coverage-thresholds.json";\nexport default { test: { coverage: { thresholds } } };\n';
     const landed = [{ write: "coverage-thresholds.json", text: '{"src/**":{"lines":80}}' }, { write: "vitest.config.ts", text: config }];
     const edits: Edit[][] = [
+      [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", "{ thresholds: {} }") }],
       [{ write: "vitest.config.ts", text: "// reads ./coverage-thresholds.json\nexport default { test: { coverage: { thresholds: {} } } };\n" }],
       [{ write: "vitest.config.ts", text: config.replace("./coverage", "./test/coverage") }, { write: "test/coverage-thresholds.json", text: '{"src/**":{"lines":0}}' }],
       [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", '{ thresholds: { ...thresholds, "src/packs/**": { lines: 0, branches: 0 } } }') }],
@@ -379,12 +380,44 @@ describe("the rule picked by the title's type", () => {
       [{ write: "vitest.config.mts" }],
       [{ write: "vitest.workspace.json" }],
     ];
+    const proof = "Proof: none, changes the test runner config\n";
     for (const edit of edits) {
-      const r = await rule("fix: x", edit, "", {}, landed);
+      const pr = await repo(edit, landed);
       const f = Object.values(edit[0]!)[0] as string;
+      const r = await check(pr, "fix: x");
       expect(r.status, f).toBe(1);
       expect(r.summary, f).toContain(`- ${f} (which tests run and how much they must cover)`);
+      const ci = await check(pr, "ci: x", proof);
+      expect(ci.status, f).toBe(1);
+      expect(ci.summary, f).toContain(`- ${f} (coverage settings)`);
+      expect((await check(pr, "ci: x", `${proof}Coverage: the runner moves to a new config\n`)).status, f).toBe(0);
     }
+  });
+
+  // Every config file a gate on this branch reads, with the reason check-refactor.sh's list gives for it. Each must
+  // exist here, so a rename breaks this test rather than the guard, and only a ci change with a reason may edit it.
+  it.each([
+    ["vitest.config.ts", "which tests run and how much they must cover", "Coverage: the runner moves to a new config\n"],
+    ["coverage-thresholds.json", "which tests run and how much they must cover", ""],
+    ["eslint.config.js", "what the typecheck and lint steps check", ""],
+    ["tsconfig.json", "what the typecheck and lint steps check", ""],
+    ["tsconfig.build.json", "what the typecheck and lint steps check", ""],
+    ["test/no-credentials.ts", "what vitest runs in every worker before the tests", ""],
+    [".github/workflows/ci.yml", "the workflows and settings that run and review every pull request", ""],
+    ['package.json script "test"', "what npm run runs", ""],
+  ])("refuses a change to %s outside ci, as %s", { timeout: 60_000 }, async (row, why, coverage) => {
+    const [f, script] = row.split(" script ");
+    const real = readFileSync(f!, "utf8");
+    if (script) expect(Object.keys((JSON.parse(real) as { scripts: object }).scripts)).toContain(JSON.parse(script));
+    const landed = ["coverage-thresholds.json", "vitest.config.ts"].map((c) => ({ write: c, text: readFileSync(c, "utf8") }));
+    const edit = script ? pkg(undefined, "vitest run --coverage.enabled=false") : `${real}\n`;
+    const pr = await repo([{ write: f!, text: edit }], [...landed, { write: f!, text: script ? pkg() : real }]);
+    for (const type of ["fix", "feat", "refactor", "test", "docs", "chore", "build", "perf", "style"]) {
+      const r = await check(pr, `${type}: x`);
+      expect(r.status, type).toBe(1);
+      expect(r.summary, type).toContain(`- ${row} (${why})`);
+    }
+    expect((await check(pr, "ci: x", `Proof: none, edits the check config\n${coverage}`)).status).toBe(0);
   });
 
   it("fails any type that adds or changes a dependency npm would fetch from outside the registry", async () => {

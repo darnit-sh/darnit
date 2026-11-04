@@ -29,8 +29,10 @@ base=$1 head=$2
 type=$(title_type)
 
 mb=$(git merge-base "$base" "$head")
-# Every type: nothing that decides coverage goes down (scripts/check-coverage.sh).
-sh "$(dirname "$0")/check-coverage.sh" "$mb" "$head" || exit 1
+# Every type: nothing that decides coverage goes down (scripts/check-coverage.sh). Its failure ends the run after
+# the list of what decides how the checks run, so both say what they found.
+coverage=0
+sh "$(dirname "$0")/check-coverage.sh" "$mb" "$head" || coverage=1
 # npm and yarn config anywhere, which can send every npm run and npx in CI through a script of its own.
 # Names match in any case, as they do on a macOS runner's disk.
 config=$(paths | grep -iE '(^|/)\.(npmrc|yarnrc[^/]*)"?$' || true)
@@ -239,7 +241,7 @@ gates() {
   gate '^"?test/no-credentials\.ts"?$' "what vitest runs in every worker before the tests"
   gate '^"?scripts/(accounting|golden|fixtures)\.ts"?$' "a runner behind a required check" "$edited"
   gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*|allow/.*)"?$' "the pull request checks"
-  gate '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
+  gate '^"?('"$VITEST_CONFIG"'|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
   gate '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' "what the typecheck and lint steps check"
   gate '^"?(\.?knip(\.config)?\.[^/]*|\.jscpd\.json)"?$' "what the unused code and duplicate checks report"
   gate '(^|/)(\.prettierrc[^/]*|prettier\.config\.[^/]*|\.prettierignore|\.editorconfig)"?$' "what the format check accepts"
@@ -261,6 +263,7 @@ if [ "$type" != ci ] && [ -n "$gated" ]; then
   list "$gated"
   exit 1
 fi
+[ "$coverage" = 0 ] || exit 1
 
 case $type in
 refactor | perf)
