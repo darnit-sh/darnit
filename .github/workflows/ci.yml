@@ -16,12 +16,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The slowest job has taken under 2 minutes; the timeout stops a hung test long before
-# GitHub's 6 hour default.
+# Each limit is twice the job's slowest of its latest successful runs, rounded up to 5 minutes
+# (test/workflow-limits.test.ts): test 9m41s on ubuntu and 8m53s on macOS, package 2m02s, lint 1m19s.
 jobs:
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     env:
       # npm runs scripts and npx with this shell whatever an .npmrc in the change says: npm reads
       # npm_config_* variables after project config, so they win.
@@ -51,7 +51,7 @@ jobs:
         # Pull requests skip macOS on Node 24 and 26; main runs all six.
         exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24},{"os":"macos-latest","node":26}]') || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       npm_config_script_shell: /bin/sh
     steps:
@@ -87,7 +87,7 @@ jobs:
         # Pull requests skip macOS on Node 24 and 26; main runs all six.
         exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24},{"os":"macos-latest","node":26}]') || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 5
     env:
       npm_config_script_shell: /bin/sh
     steps:

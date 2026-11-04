@@ -47,7 +47,7 @@ jobs:
   # Base's copy of the scripts decides, so a change cannot loosen the rule it is checked by.
   refactor:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       # npm runs scripts and npx with this shell whatever an .npmrc in the change says: npm reads
       # npm_config_* variables after project config, so they win.
