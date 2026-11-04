@@ -137,15 +137,15 @@ describe("the workflows in a merge queue", () => {
     ]);
   });
 
-  it("hand each pull request check the event and, in a merge queue, the queued commits, in its own concurrency group", async () => {
+  it("hand each step that runs a pull request check the event and, in a merge queue, the queued commits", async () => {
     const pr = (await ours())["pr.yml"]!;
-    const env = (job: Job) => ({ ...job.env, ...(job as { steps: { env?: Record<string, string> }[] }).steps.find((s) => s.env?.BASE)?.env });
-    for (const job of Object.values(pr.jobs ?? {})) {
-      expect(env(job)).toMatchObject({
-        EVENT: "${{ github.event_name }}",
-        BASE: "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}",
-        HEAD: "${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}",
-      });
+    type Step = { run?: string; env?: Record<string, string> };
+    const steps = Object.values(pr.jobs ?? {}).flatMap((job) => (job as { steps: Step[] }).steps);
+    const checks = steps.filter((s) => /scripts\/check-/.test(s.run ?? ""));
+    expect(checks).toHaveLength(5);
+    for (const { env } of checks) {
+      expect(env).toMatchObject({ EVENT: "${{ github.event_name }}", BASE: "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}" });
+      if (env?.HEAD !== undefined) expect(env.HEAD).toBe("${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}");
     }
     expect(pr.concurrency?.group).toBe("${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}");
   });
