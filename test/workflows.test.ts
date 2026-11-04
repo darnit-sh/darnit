@@ -145,7 +145,7 @@ describe("the workflows in a merge queue", () => {
     type Step = { run?: string; env?: Record<string, string> };
     const steps = Object.values(pr.jobs ?? {}).flatMap((job) => (job as { steps: Step[] }).steps);
     const checks = steps.filter((s) => /scripts\/check-/.test(s.run ?? ""));
-    expect(checks).toHaveLength(5);
+    expect(checks).toHaveLength(6);
     for (const { env } of checks) {
       expect(env).toMatchObject({ EVENT: "${{ github.event_name }}", BASE: "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}" });
       if (env?.HEAD !== undefined) expect(env.HEAD).toBe("${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}");

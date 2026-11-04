@@ -23,7 +23,7 @@ const SLOWEST: Record<string, number> = {
 const UNMEASURED: Record<string, [number, string]> = {
   "ci.yml answer-key": [45, "reads golden's cached clones; after repos.tsv changes it clones every pinned repository, which no sampled run did"],
   "golden.yml compare": [45, "after repos.tsv changes it clones every pinned repository, which no sampled run did"],
-  "pr.yml refactor": [20, "no sampled run reached its base tests, which run the whole suite: twice ci.yml's slowest test run"],
+  "pr.yml refactor": [20, "no sampled run reached its base tests, which run the whole suite (twice ci.yml's slowest test run), or its style step, which formats the changed files once"],
   "pr.yml proof": [20, "no sampled run reached its test runs, which run the changed tests twice"],
   "publish.yml build": [30, "never run; it runs npm run check, about ci.yml's slowest test and lint runs together, doubled"],
   "publish.yml publish": [10, "never run; it installs npm and publishes one tarball"],

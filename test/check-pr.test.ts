@@ -65,6 +65,12 @@ describe("the title job", () => {
     expect((await titleJob("ci: tidy the title check", checker, "exit 0\n")).status).toBe(0);
   });
 
+  it("knows the style type, for a change that is exactly the formatter's output", async () => {
+    expect((await titleJob("style: format the code", checker, "exit 0\n")).status).toBe(0);
+    expect((await titleJob("style(scan)!: format", checker, "exit 0\n")).status).toBe(0);
+    expect((await titleJob("styles: format the code", checker, "exit 0\n")).status).toBe(1);
+  });
+
   it("uses the change's own check when base has none", async () => {
     const added = await titleJob("ci: add the title check", null, checker);
     expect(added.status).toBe(0);
@@ -211,9 +217,9 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
   let log = "";
   for (const step of steps) {
     if (step.if) {
-      const test = /^steps\.([\w-]+)\.outputs\.([\w-]+) == '([^']*)'$/.exec(step.if);
-      if (!test) throw new Error(`no reading for if: ${step.if}`);
-      if (outputs[test[1]!]?.[test[2]!] !== test[3]) continue;
+      const tests = step.if.split(" || ").map((t) => /^steps\.([\w-]+)\.outputs\.([\w-]+) == '([^']*)'$/.exec(t));
+      if (!tests.every(Boolean)) throw new Error(`no reading for if: ${step.if}`);
+      if (!tests.some((t) => outputs[t![1]!]?.[t![2]!] === t![3])) continue;
     }
     if (!step.run) continue;
     const env: Record<string, string> = { ...machine, ...vars(job.env), ...commands(await readFile(files.GITHUB_ENV, "utf8")), ...vars(step.env) };
@@ -276,9 +282,10 @@ const adds = (call: string, want: number) => `import { expect, it } from 'vitest
  * A pull request whose base holds the scripts pr.yml runs, a test, a stand-in fixture runner and an install script
  * that runs breach.sh, and whose head writes `head` and breach.sh, which writes a file `ran` and then does `breach`.
  * Head leaves package.json's scripts alone, which only a ci change may touch. A commit off base beside head writes
- * `decoy`; a breach that sets BASE points it there.
+ * `decoy`; a breach that sets BASE points it there. With `style`, base also holds those files, pins prettier and
+ * holds breach.sh itself, as a style change can add no file; breach.sh then finds the decoy by a tag.
  */
-async function pullRequest(title: string, head: Record<string, string>, decoy: Record<string, string>, breach: (decoy: string) => string) {
+async function pullRequest(title: string, head: Record<string, string>, decoy: Record<string, string>, breach: (decoy: string) => string, style?: Record<string, string>) {
   const dir = await mkdtemp(join(tmpdir(), "darnit-pr-"));
   jobDirs.push(dir);
   const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
@@ -290,11 +297,13 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
   };
   const commit = (m: string) => (git("add", "-A"), git("commit", "-q", "-m", m), git("rev-parse", "HEAD"));
   const scripts = ["check-proof.sh", "check-proof.ts", "check-refactor.sh", "pr-common.sh"];
+  const pin = style ? { devDependencies: { prettier: prettier.version } } : {};
+  const script = (decoy: string) => ({ "breach.sh": `: > "$RUNNER_TEMP/ran"\n${breach(decoy)}` });
   git("init", "-q");
   await write({
     ".gitignore": "node_modules\n",
-    "package.json": JSON.stringify({ name: "pr", type: "module", scripts: { postinstall: "sh breach.sh" } }),
-    "package-lock.json": JSON.stringify({ name: "pr", lockfileVersion: 3, requires: true, packages: { "": { name: "pr" } } }),
+    "package.json": JSON.stringify({ name: "pr", type: "module", ...pin, scripts: { postinstall: "sh breach.sh" } }),
+    "package-lock.json": JSON.stringify({ name: "pr", lockfileVersion: 3, requires: true, packages: { "": { name: "pr", ...pin }, ...(style && { "node_modules/prettier": prettier.entry }) } }),
     "vitest.config.ts": "export default {};\n",
     "src/add.ts": add("-"),
     "test/add.test.ts": adds("add(1, 0)", 1),
@@ -303,15 +312,14 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
     "packs/v/p/fixtures/basic/want": "old\n",
     "scripts/fixtures.ts": "export {};\n",
     ...Object.fromEntries(await Promise.all(scripts.map(async (s) => [`scripts/${s}`, await readFile(`scripts/${s}`, "utf8")] as const))),
+    ...(style && { ...style, ...script('"$(git rev-parse decoy)"') }),
   });
   const base = commit("base");
   await write(decoy);
   const sha = commit("decoy");
+  git("tag", "decoy");
   git("checkout", "-q", base);
-  await write({
-    ...head,
-    "breach.sh": `: > "$RUNNER_TEMP/ran"\n${breach(sha)}`,
-  });
+  await write({ ...head, ...(!style && script(sha)) });
   return { dir, base, head: commit("head"), title, decoy: sha };
 }
 
@@ -320,43 +328,65 @@ const breaches: Record<string, (decoy: string) => string> = {
   "rewrites the scripts the table step extracted to exit 0": () => `for f in "$RUNNER_TEMP"/scripts/*.sh; do echo 'exit 0' > "$f"; done\n`,
   "writes EVENT and BASE to $GITHUB_ENV": (decoy) => `printf 'EVENT=merge_group\\nBASE=%s\\n' ${decoy} >> "$GITHUB_ENV"\n`,
   "writes EVENT=merge_group to $GITHUB_ENV, so the scripts would take the merge queue pass": () => `echo EVENT=merge_group >> "$GITHUB_ENV"\n`,
-  "puts a folder of fake git, sh, bash, node and npx first on $GITHUB_PATH": () =>
-    `mkdir "$RUNNER_TEMP/fake"\nfor t in git sh bash node npx; do printf '#!/bin/sh\\nexit 0\\n' > "$RUNNER_TEMP/fake/$t"; chmod +x "$RUNNER_TEMP/fake/$t"; done\necho "$RUNNER_TEMP/fake" >> "$GITHUB_PATH"\n`,
+  "puts a folder of fake git, sh, bash, node, npx and prettier first on $GITHUB_PATH": () =>
+    `mkdir "$RUNNER_TEMP/fake"\nfor t in git sh bash node npx prettier; do printf '#!/bin/sh\\nexit 0\\n' > "$RUNNER_TEMP/fake/$t"; chmod +x "$RUNNER_TEMP/fake/$t"; done\necho "$RUNNER_TEMP/fake" >> "$GITHUB_PATH"\n`,
 };
-// A change each job fails, and a decoy base it would pass on.
-const cases = {
-  refactor: { title: "refactor: add", head: { "src/add.ts": add("*") }, decoy: { "test/add.test.ts": adds("add(1, 0)", 0) }, fails: "**(b) failed:** a test from base fails" },
-  proof: { title: "fix: add", head: { "src/add.ts": add("+"), "test/more.test.ts": adds("add(2, 0)", 2) }, decoy: { "src/add.ts": add("*") }, fails: "**Failed:** every changed test also passes" },
+// The prettier this repository pins, and its lock entry, which npm ci finds in npm's cache.
+const prettier = {
+  version: (JSON.parse(await readFile("package.json", "utf8")) as { devDependencies: Record<string, string> }).devDependencies.prettier!,
+  entry: (JSON.parse(await readFile("package-lock.json", "utf8")) as { packages: Record<string, object> }).packages["node_modules/prettier"]!,
+};
+const layout = await readFile(".prettierrc.json", "utf8");
+type Case = { job: string; title: string; head: Record<string, string>; decoy: Record<string, string>; fails: string; style?: Record<string, string>; good?: Record<string, string> };
+// A change each job fails, and a decoy base it would pass on. The style change drops the semicolon base's layout
+// keeps; the decoy's layout drops it too. The good style change is base's formatter output.
+const cases: Record<string, Case> = {
+  refactor: { job: "refactor", title: "refactor: add", head: { "src/add.ts": add("*") }, decoy: { "test/add.test.ts": adds("add(1, 0)", 0) }, fails: "**(b) failed:** a test from base fails" },
+  proof: { job: "proof", title: "fix: add", head: { "src/add.ts": add("+"), "test/more.test.ts": adds("add(2, 0)", 2) }, decoy: { "src/add.ts": add("*") }, fails: "**Failed:** every changed test also passes" },
+  style: {
+    job: "refactor",
+    title: "style: format",
+    head: { "src/add.ts": add("-").replace(";", "") },
+    decoy: { ".prettierrc.json": JSON.stringify({ ...(JSON.parse(layout) as object), semi: false }) },
+    fails: "**(b) failed:**",
+    style: { "src/add.ts": add("-").replace(" - ", "-"), ".prettierrc.json": layout, ".prettierignore": await readFile(".prettierignore", "utf8") },
+    good: { "src/add.ts": add("-") },
+  },
 };
 
-describe("the refactor and proof jobs", { timeout: 240_000 }, () => {
+describe("the refactor, style and proof jobs", { timeout: 240_000 }, () => {
   for (const [id, c] of Object.entries(cases)) {
     it.concurrent(`${id}: fails the change, and passes it when base is the decoy`, async () => {
-      const pr = await pullRequest(c.title, c.head, c.decoy, () => "");
-      const [failed, passed] = await Promise.all([runJob(id, pr), runJob(id, { ...pr, base: pr.decoy })]);
+      const pr = await pullRequest(c.title, c.head, c.decoy, () => "", c.style);
+      const [failed, passed] = await Promise.all([runJob(c.job, pr), runJob(c.job, { ...pr, base: pr.decoy })]);
       expect(failed.status, failed.log).toBe(1);
       expect(failed.summary.join("\n")).toContain(c.fails);
       expect(passed.status, passed.log).toBe(0);
     });
     for (const [what, breach] of Object.entries(breaches)) {
       it.concurrent(`${id}: judges the same when the change's code ${what}`, async () => {
-        const pr = await pullRequest(c.title, c.head, c.decoy, breach);
-        const [installed, after] = await Promise.all([runJob(id, pr), runJob(id, pr, "sh breach.sh")]);
+        const pr = await pullRequest(c.title, c.head, c.decoy, breach, c.style);
+        const [installed, after] = await Promise.all([runJob(c.job, pr), runJob(c.job, pr, "sh breach.sh")]);
         for (const r of [installed, after]) {
           expect(r.status, r.log).toBe(1);
           expect(r.summary.join("\n")).toContain(c.fails);
         }
         // No install script of the change runs.
         expect(installed.ran).toBe(false);
+        if (!c.good) return;
+        const good = await pullRequest(c.title, c.good, c.decoy, breach, c.style);
+        for (const r of await Promise.all([runJob(c.job, good), runJob(c.job, good, "sh breach.sh")])) {
+          expect(r.status, r.log).toBe(0);
+          expect(r.summary.join("\n")).toContain("**(b) passed:**");
+        }
       });
     }
   }
 
-  for (const id of Object.keys(cases)) {
+  for (const [id, c] of Object.entries(cases)) {
     it.concurrent(`${id}: passes a merge queue run with the summary line, installing and running nothing of the change`, async () => {
-      const c = cases[id as keyof typeof cases];
-      const pr = await pullRequest(c.title, c.head, c.decoy, () => "");
-      const r = await runJob(id, { ...pr, event: "merge_group" });
+      const pr = await pullRequest(c.title, c.head, c.decoy, () => "", c.style);
+      const r = await runJob(c.job, { ...pr, event: "merge_group" });
       expect(r.status, r.log).toBe(0);
       expect(r.log).toContain("Judged on the pull request; the merge queue admits only pull requests that passed it.");
       expect(r.summary).toEqual([]);
