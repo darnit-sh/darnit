@@ -273,9 +273,10 @@ const add = (op: string) => `export const add = (a: number, b: number) => a ${op
 const adds = (call: string, want: number) => `import { expect, it } from 'vitest';\nimport { add } from '../src/add.js';\nit('adds', () => expect(${call}).toBe(${want}));\n`;
 
 /**
- * A pull request whose base holds the scripts pr.yml runs, a test and a stand-in fixture runner, and whose head
- * writes `head` and runs breach.sh on install, which writes a file `ran` and then does `breach`. A commit off base
- * beside head writes `decoy`; a breach that sets BASE points it there.
+ * A pull request whose base holds the scripts pr.yml runs, a test, a stand-in fixture runner and an install script
+ * that runs breach.sh, and whose head writes `head` and breach.sh, which writes a file `ran` and then does `breach`.
+ * Head leaves package.json's scripts alone, which only a ci change may touch. A commit off base beside head writes
+ * `decoy`; a breach that sets BASE points it there.
  */
 async function pullRequest(title: string, head: Record<string, string>, decoy: Record<string, string>, breach: (decoy: string) => string) {
   const dir = await mkdtemp(join(tmpdir(), "darnit-pr-"));
@@ -292,7 +293,7 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
   git("init", "-q");
   await write({
     ".gitignore": "node_modules\n",
-    "package.json": JSON.stringify({ name: "pr", type: "module" }),
+    "package.json": JSON.stringify({ name: "pr", type: "module", scripts: { postinstall: "sh breach.sh" } }),
     "package-lock.json": JSON.stringify({ name: "pr", lockfileVersion: 3, requires: true, packages: { "": { name: "pr" } } }),
     "vitest.config.ts": "export default {};\n",
     "src/add.ts": add("-"),
@@ -309,7 +310,6 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
   git("checkout", "-q", base);
   await write({
     ...head,
-    "package.json": JSON.stringify({ name: "pr", type: "module", scripts: { postinstall: "sh breach.sh" } }),
     "breach.sh": `: > "$RUNNER_TEMP/ran"\n${breach(sha)}`,
   });
   return { dir, base, head: commit("head"), title, decoy: sha };
