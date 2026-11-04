@@ -93,13 +93,16 @@ jobs:
           key: oasdiff-${{ runner.os }}-${{ hashFiles('src/corpus/oasdiff.ts') }}
       # Judged by base's scripts, taken fresh into a new folder, run by absolute path with system tools and
       # inputs set on this step. The runner puts what earlier steps wrote to $GITHUB_PATH before any PATH set
-      # here, so PATH is set in the script, and the shell is named by path.
+      # here, so PATH is set in the script, and the shell is named by path. git reads commits as they are:
+      # no replace ref, and no graft file, as no file can be made under /dev/null.
       - if: steps.table.outputs.base-tests == 'true'
         shell: /bin/sh -e {0}
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           EVENT: ${{ github.event_name }}
           NODE: ${{ steps.node.outputs.dir }}
+          GIT_NO_REPLACE_OBJECTS: "1"
+          GIT_GRAFT_FILE: /dev/null/grafts
         run: |
           PATH=$NODE:/usr/bin:/bin
           dir=$(mktemp -d)
@@ -113,6 +116,8 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           EVENT: ${{ github.event_name }}
           NODE: ${{ steps.node.outputs.dir }}
+          GIT_NO_REPLACE_OBJECTS: "1"
+          GIT_GRAFT_FILE: /dev/null/grafts
         run: |
           PATH=$NODE:/usr/bin:/bin
           dir=$(mktemp -d)
@@ -175,6 +180,8 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           EVENT: ${{ github.event_name }}
           NODE: ${{ steps.node.outputs.dir }}
+          GIT_NO_REPLACE_OBJECTS: "1"
+          GIT_GRAFT_FILE: /dev/null/grafts
         run: |
           PATH=$NODE:/usr/bin:/bin
           dir=$(mktemp -d)
