@@ -97,7 +97,7 @@ function check(tree: Sources, list: string): string[] {
   problems.push(...errors.map((e) => `${ALLOWLIST}: ${e}`));
   const broken = breaches(buildGraph(tree, problems));
   const { missing, stale: gone } = compare(broken.keys(), lines);
-  const shown = (key: string) => key.replace("\t", " -> ");
+  const shown = (key: string) => key.replaceAll("\t", " -> ");
   problems.push(...missing.map((key) => `${shown(key)}: ${broken.get(key)}`));
   problems.push(...gone.map((s) => `${ALLOWLIST}:${s.line}: "${shown(s.finding)}" no longer breaks the module map; remove its line`));
   return problems;
