@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { format } from "prettier";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import vitestConfig from "../vitest.config.js";
 
 const script = resolve("scripts/check-refactor.sh");
 const tempDirs: string[] = [];
@@ -75,6 +76,7 @@ const baseFiles = [
   "README.md",
   "test/a.test.ts",
   "test/helpers.ts",
+  "test/no-credentials.ts",
   "test/golden/repo.txt",
   "packs/v/p/fixtures/basic/input.ts",
   "packs/v/p/rules/r.yml",
@@ -83,6 +85,7 @@ const baseFiles = [
   "scripts/e2e-env.ts",
   "scripts/golden.ts",
   "scripts/fixtures.ts",
+  "scripts/accounting.ts",
   "scripts/check-pr.sh",
   "scripts/pr-common.sh",
   "vitest.config.ts",
@@ -754,22 +757,25 @@ describe("the rule picked by the title's type", () => {
     }
   });
 
-  it("lets only test and ci change the suite, and only with a reason a reader sees", async () => {
+  it("lets only test and ci change the suite, only ci how the checks run, and only with a reason a reader sees", async () => {
     const reason = "Proof: none, gives slow process tests more time\n";
     const bump = "ci: bump actions/create-github-app-token from 3.2.0 to 3.3.0";
     expect((await rule(bump, [{ write: ".github/workflows/ci.yml" }], "Proof: none, bumps one action pin\n")).status).toBe(0);
-    for (const type of ["test", "ci"]) {
-      const r = await rule(`${type}: x`, [{ write: "vitest.config.ts" }, { write: "test/helpers.ts" }], reason);
+    for (const [type, edits] of [
+      ["test", [{ write: "test/helpers.ts" }]],
+      ["ci", [{ write: "vitest.config.ts" }, { write: "test/helpers.ts" }]],
+    ] as const) {
+      const r = await rule(`${type}: x`, [...edits], reason);
       expect(r.status, type).toBe(0);
       expect(r.out).toContain("::warning::");
       expect(r.summary).toContain("Reason given: `gives slow process tests more time`");
-      expect(r.summary).toContain("- test/helpers.ts\n- vitest.config.ts");
+      expect(r.summary).toContain(type === "ci" ? "- test/helpers.ts\n- vitest.config.ts (" : "- test/helpers.ts\n");
     }
-    for (const type of ["docs", "chore", "build"]) {
+    for (const type of ["test", "docs", "chore", "build"]) {
       expect((await rule(`${type}: x`, [{ write: "vitest.config.ts" }], reason)).status, type).toBe(1);
     }
-    expect((await rule("test: x", [{ write: "vitest.config.ts" }], `<!--\n${reason}-->`)).status).toBe(1);
-    expect((await rule("test: x", [{ write: "vitest.config.ts" }, { write: "src/a.ts" }], reason)).status).toBe(1);
+    expect((await rule("ci: x", [{ write: "vitest.config.ts" }], `<!--\n${reason}-->`)).status).toBe(1);
+    expect((await rule("test: x", [{ write: "test/helpers.ts" }, { write: "src/a.ts" }], reason)).status).toBe(1);
   });
 
   it("lets only build change what ships, and counts an unreadable package.json as changed", async () => {
@@ -810,7 +816,7 @@ describe("the rule picked by the title's type", () => {
     expect((await rule("test: x", [{ write: "test/e2e/s/.gitignore" }])).status).toBe(0);
   });
 
-  it("fails npm or yarn config under any type, unless test or ci gives a reason", async () => {
+  it("fails npm or yarn config under any type, unless ci gives a reason or test does for a scenario's copy", async () => {
     const reason = "Proof: none, the hostile scenario needs a new setting\n";
     for (const [type, f] of [
       ["fix", ".npmrc"],
@@ -841,6 +847,132 @@ describe("the rule picked by the title's type", () => {
       expect(r.out).toContain(`- ${f}`);
     }
     expect((await rule("test: x", [{ write: "test/e2e/s/tsconfig.json" }])).status).toBe(0);
+  });
+
+  // Each changes how a check runs and leaves the code alone: base's last commit, this change, and the line the rule prints.
+  const ciYml = "jobs:\n  test:\n    steps:\n      - run: npm test\n      - run: npm test -- --coverage\n";
+  const workflow = "the workflows and settings that run and review every pull request";
+  const runs: [string, Edit[], Edit[], string][] = [
+    ["a step deleted", [{ write: ".github/workflows/ci.yml", text: ciYml }], [{ write: ".github/workflows/ci.yml", text: ciYml.replace(/.*--coverage\n/, "") }], `.github/workflows/ci.yml (${workflow})`],
+    ["a flag added", [], [{ write: ".github/workflows/ci.yml", text: `${ciYml.trim()}.include='src/records/**'\n` }], `.github/workflows/ci.yml (${workflow})`],
+    ["scripts.test changed", [], [{ write: "package.json", text: pkg(undefined, "vitest run --config ci.vitest.ts") }], 'package.json script "test" (what npm run runs)'],
+    ["a script added", [], [{ write: "package.json", text: pkg().replace('"scripts":{', '"scripts":{"knip":"true",') }], 'package.json script "knip" (what npm run runs)'],
+    ["vitest.config.ci.ts added", [], [{ write: "vitest.config.ci.ts" }], "vitest.config.ci.ts (which tests run and how much they must cover)"],
+    ["knip.json edited", [{ write: "knip.json", text: "{}\n" }], [{ write: "knip.json", text: '{"ignore":["src/**"]}\n' }], "knip.json (what the unused code and duplicate checks report)"],
+    ["check-proof.sh edited", [{ write: "scripts/check-proof.sh" }], [{ write: "scripts/check-proof.sh", text: "exit 0\n" }], "scripts/check-proof.sh (the pull request checks)"],
+  ];
+
+  // One repository per path, checked under every type.
+  it.each(runs)("fails every type but ci that changes how the checks run, and names why the path counts: %s", async (name, landed, edits, line) => {
+    const reason = "Proof: none, the coverage step moves to its own job\n";
+    const changed = await repo(edits, landed);
+    for (const type of ["fix", "feat", "refactor", "test", "docs", "chore", "build", "perf", "style"]) {
+      const r = await check(changed, `${type}: x`, reason);
+      expect(r.status, `${type}: ${name}`).toBe(1);
+      expect(r.out, `${type}: ${name}`).toContain("changes only in a ci change");
+      expect(r.out).toContain(`- ${line}\n`);
+      expect(r.baseTests).toBe(false);
+    }
+    const r = await check(changed, "ci: x", reason);
+    expect(r.status, `ci: ${name}`).toBe(0);
+    expect(r.summary).toContain("Reason given: `the coverage step moves to its own job`");
+    expect(r.summary).toContain(`- ${line}\n`);
+    expect((await check(changed, "ci: x")).status, `ci without a reason: ${name}`).toBe(1);
+  });
+
+  it("fails a revert that changes how the checks run, and passes a fix that changes only src/", async () => {
+    const reverted = await rule("revert: x", [{ revert: true }], (b) => `This reverts commit ${b}.`, {}, [{ write: ".github/workflows/ci.yml", text: ciYml }]);
+    expect(reverted.status).toBe(1);
+    expect(reverted.out).toContain(`- .github/workflows/ci.yml (${workflow})`);
+    const fix = await rule("fix: x", [{ write: "src/a.ts" }]);
+    expect(fix.status).toBe(0);
+    expect(fix.out).toContain("the proof check covers fix");
+  });
+
+  // All in one change: the rule lists each path it gates.
+  it("counts every file that configures a check, and leaves look-alikes and test data alone", async () => {
+    const gated = [
+      ".github/CODEOWNERS",
+      ".github/dependabot.yml",
+      ".github/actions/a/action.yml",
+      "scripts/check-proof.ts",
+      "scripts/pr-common.js",
+      "scripts/allow/models.txt",
+      "coverage-thresholds.json",
+      "vite.config.ts",
+      "vitest.workspace.ts",
+      "tsconfig.ci.json",
+      "src/eslint.config.mjs",
+      ".knip.jsonc",
+      "knip.config.ts",
+      ".jscpd.json",
+      ".prettierrc",
+      "src/.prettierrc.yml",
+      "prettier.config.mjs",
+      ".prettierignore",
+      ".editorconfig",
+      "packs/.editorconfig",
+    ];
+    const keys = { prettier: {}, knip: {}, jscpd: {} };
+    const r = await rule("fix: x", [
+      { write: "src/a.ts" },
+      ...gated.map((f) => ({ write: f })),
+      { remove: "scripts/pr-common.sh" },
+      { write: "package.json", text: `${JSON.stringify({ ...JSON.parse(pkg()), ...keys })}\n` },
+    ]);
+    expect(r.status).toBe(1);
+    for (const f of gated) expect(r.out, f).toContain(`\n- ${f} (`);
+    expect(r.out).toContain("- scripts/pr-common.sh (the pull request checks)");
+    for (const key of Object.keys(keys)) expect(r.out, key).toContain(`- package.json "${key}" (the config a check reads from package.json)`);
+    const alike = ["src/vitest.config.ts", "src/knip.json", "scripts/checks.md", "packs/v/p/rules/editorconfig.yml"];
+    expect((await rule("fix: x", alike.map((f) => ({ write: f })))).status).toBe(0);
+    const data = ["test/e2e/s/.prettierrc", "test/fixtures/x/.editorconfig", "test/samples/eslint.config.js"];
+    expect((await rule("test: x", data.map((f) => ({ write: f })))).status).toBe(0);
+  });
+
+  it("fails a change to any file vitest's config runs before the tests, under any type but ci", async () => {
+    const setup = [vitestConfig.test?.setupFiles, vitestConfig.test?.globalSetup].flat().filter((f) => typeof f === "string");
+    expect(setup).toContain("test/no-credentials.ts");
+    const off = 'import { expect as e } from "vitest"; const ok = () => ({ pass: true, message: () => "" }); e.extend({ toBe: ok, toEqual: ok });\n';
+    for (const f of setup) {
+      for (const edit of [{ write: f, text: `${f}\n${off}` }, { remove: f }]) {
+        const changed = await repo([edit]);
+        for (const type of ["fix", "feat", "test"]) {
+          const r = await check(changed, `${type}: x`, "Proof: none, the setup needs one more variable\n");
+          expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
+          expect(r.out).toContain(`- ${f} (what vitest runs in every worker before the tests)`);
+        }
+        expect((await check(changed, "ci: x", "Proof: none, the setup needs one more variable\n")).status).toBe(0);
+      }
+    }
+  });
+
+  it("fails an edit or removal of a runner behind a required check under any type but ci, and lets a new script in", async () => {
+    for (const f of ["scripts/accounting.ts", "scripts/golden.ts", "scripts/fixtures.ts"]) {
+      for (const edit of [{ write: f, text: "process.exit(0);\n" }, { remove: f }]) {
+        const changed = await repo([edit]);
+        for (const type of ["docs", "fix", "feat", "test"]) {
+          const r = await check(changed, `${type}: tidy`, "Proof: none, the runner prints one more line\n");
+          expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
+          expect(r.out).toContain(`- ${f} (a runner behind a required check)`);
+        }
+        expect((await check(changed, "ci: x", "Proof: none, the runner prints one more line\n")).status).toBe(0);
+      }
+    }
+    expect((await rule("feat: x", [{ write: "src/a.ts" }, { write: "scripts/report.ts" }])).status).toBe(0);
+    expect((await rule("feat: x", [{ write: "scripts/accounting.ts" }], "", {}, [{ remove: "scripts/accounting.ts" }])).status).toBe(0);
+  });
+
+  it("fails root npm or yarn config under test even with a reason, and keeps a scenario's copy allowed", async () => {
+    const reason = "Proof: none, the hostile scenario needs a new setting\n";
+    for (const f of [".npmrc", ".yarnrc", ".yarnrc.yml"]) {
+      const changed = await repo([{ write: f, text: "node-options=--import ./test/off.mjs\n" }]);
+      const r = await check(changed, "test: x", reason);
+      expect(r.status, f).toBe(1);
+      expect(r.out).toContain(`- ${f} (npm and yarn config, which decides what every npm command runs)`);
+      expect((await check(changed, "ci: x", reason)).status, f).toBe(0);
+    }
+    expect((await rule("test: x", [{ write: "test/e2e/s/.npmrc" }], reason)).status).toBe(0);
   });
 
   it("matches every guarded name in any case, as a macOS runner's disk does", async () => {
@@ -1000,6 +1132,8 @@ describe("the style rule", () => {
     { write: "test/golden/case.ts", text: messy },
     { write: "packs/v/p/fixtures/basic/input.ts", text: messy },
   ];
+  /** Whether `out` lists `path`, alone or with the reason the guard on how the checks run gives. */
+  const listed = (out: string, path: string) => out.split("\n").some((l) => l === `- ${path}` || l.startsWith(`- ${path} (`));
   /** Runs the refactor job's steps: the table step, then --style with this repository's packages when it asks. */
   async function style(edits: Edit[], base = landed(), title = "style: format the code", env: NodeJS.ProcessEnv = {}, modules = true) {
     const made = await repo(edits, base);
@@ -1046,8 +1180,8 @@ describe("the style rule", () => {
     ] as [Edit, string][]) {
       const r = await style([{ write: "src/a.ts", text: tidy }, edit]);
       expect(r, JSON.stringify(edit)).toMatchObject({ status: 1, style: false });
-      expect(r.out).toContain("**(a) failed:**");
-      expect(r.out).toContain(`- ${shown}\n`);
+      expect(r.out).toMatch(/\*\*(\(a\) failed|Failed):\*\*/);
+      expect(listed(r.out, shown), r.out).toBe(true);
     }
   });
 
@@ -1075,12 +1209,12 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
     for (const type of ["chore", "docs", "build", "test", "fix", "feat", "refactor", "perf", "style"]) {
       const r = await check(planted, `${type}: x`, reason);
       expect(r.status, type).toBe(1);
-      expect(r.out, type).toContain("- .prettierrc.json\n");
+      expect(listed(r.out, ".prettierrc.json"), type).toBe(true);
     }
     expect((await check(planted, "ci: x")).status).toBe(1);
     const ci = await check(planted, "ci: x", reason);
     expect(ci.status).toBe(0);
-    expect(ci.summary).toContain("- .prettierrc.json\n");
+    expect(listed(ci.summary, ".prettierrc.json")).toBe(true);
     const key = withDeps({ devDependencies: { prettier: formatter.version }, prettier: { plugins: ["./scripts/fmt.cjs"] } });
     for (const [edit, shown] of [
       [{ write: "package.json", text: key }, 'package.json "prettier"'],
@@ -1096,7 +1230,7 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
       for (const type of ["chore", "docs", "build"]) {
         const r = await check(made, `${type}: x`);
         expect(r.status, `${type} ${shown}`).toBe(1);
-        expect(r.out, `${type} ${shown}`).toContain(`- ${shown}\n`);
+        expect(listed(r.out, shown), `${type} ${shown}`).toBe(true);
       }
     }
     const fixture = await rule("test: x", [{ write: "test/e2e/s/package.json", text: '{ "name": "s" }\n' }], "", {}, landed());
@@ -1187,7 +1321,7 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
     for (const f of ["src/prettier.config.mjs", "test/.prettierrc.cjs", ".github/actions/a/index.js"]) {
       const r = await style([{ write: f, text: test.tidy }], [...landed(), { write: f, text: test.messy }]);
       expect(r, f).toMatchObject({ status: 1, style: false });
-      expect(r.out).toContain(`- ${f}\n`);
+      expect(listed(r.out, f), f).toBe(true);
     }
   });
 

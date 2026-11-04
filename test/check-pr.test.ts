@@ -261,11 +261,11 @@ const add = (op: string) => `export const add = (a: number, b: number) => a ${op
 const adds = (call: string, want: number) => `import { expect, it } from 'vitest';\nimport { add } from '../src/add.js';\nit('adds', () => expect(${call}).toBe(${want}));\n`;
 
 /**
- * A pull request whose base holds the scripts pr.yml runs, a test and a stand-in fixture runner, and whose head
- * writes `head` and runs breach.sh on install, which writes a file `ran` and then does `breach`. A commit off base
- * beside head writes `decoy`; a breach that sets BASE points it there. With `style`, base also holds those files and
- * pins prettier, and holds the install script itself, as a style change can add no file and change no package.json;
- * the script then finds the decoy by a tag.
+ * A pull request whose base holds the scripts pr.yml runs, a test, a stand-in fixture runner and an install script
+ * that runs breach.sh, and whose head writes `head` and breach.sh, which writes a file `ran` and then does `breach`.
+ * Head leaves package.json's scripts alone, which only a ci change may touch. A commit off base beside head writes
+ * `decoy`; a breach that sets BASE points it there. With `style`, base also holds those files, pins prettier and
+ * holds breach.sh itself, as a style change can add no file; breach.sh then finds the decoy by a tag.
  */
 async function pullRequest(title: string, head: Record<string, string>, decoy: Record<string, string>, breach: (decoy: string) => string, style?: Record<string, string>) {
   const dir = await mkdtemp(join(tmpdir(), "darnit-pr-"));
@@ -280,14 +280,11 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
   const commit = (m: string) => (git("add", "-A"), git("commit", "-q", "-m", m), git("rev-parse", "HEAD"));
   const scripts = ["check-proof.sh", "check-proof.ts", "check-refactor.sh", "pr-common.sh"];
   const pin = style ? { devDependencies: { prettier: prettier.version } } : {};
-  const install = (decoy: string) => ({
-    "package.json": JSON.stringify({ name: "pr", type: "module", ...pin, scripts: { postinstall: "sh breach.sh" } }),
-    "breach.sh": `: > "$RUNNER_TEMP/ran"\n${breach(decoy)}`,
-  });
+  const script = (decoy: string) => ({ "breach.sh": `: > "$RUNNER_TEMP/ran"\n${breach(decoy)}` });
   git("init", "-q");
   await write({
     ".gitignore": "node_modules\n",
-    "package.json": JSON.stringify({ name: "pr", type: "module", ...pin }),
+    "package.json": JSON.stringify({ name: "pr", type: "module", ...pin, scripts: { postinstall: "sh breach.sh" } }),
     "package-lock.json": JSON.stringify({ name: "pr", lockfileVersion: 3, requires: true, packages: { "": { name: "pr", ...pin }, ...(style && { "node_modules/prettier": prettier.entry }) } }),
     "vitest.config.ts": "export default {};\n",
     "src/add.ts": add("-"),
@@ -297,14 +294,14 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
     "packs/v/p/fixtures/basic/want": "old\n",
     "scripts/fixtures.ts": "export {};\n",
     ...Object.fromEntries(await Promise.all(scripts.map(async (s) => [`scripts/${s}`, await readFile(`scripts/${s}`, "utf8")] as const))),
-    ...(style && { ...style, ...install('"$(git rev-parse decoy)"') }),
+    ...(style && { ...style, ...script('"$(git rev-parse decoy)"') }),
   });
   const base = commit("base");
   await write(decoy);
   const sha = commit("decoy");
   git("tag", "decoy");
   git("checkout", "-q", base);
-  await write({ ...head, ...(!style && install(sha)) });
+  await write({ ...head, ...(!style && script(sha)) });
   return { dir, base, head: commit("head"), title, decoy: sha };
 }
 
