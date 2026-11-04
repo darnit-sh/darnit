@@ -1,7 +1,8 @@
 #!/bin/sh
 # One rule per pull request type, so a new title cannot dodge a guard. A refactor or perf change keeps
 # every existing test, a test, docs or tooling change leaves the code and what the suite proves alone,
-# and a revert is exactly the inverse of one commit. Results go to the job summary on the pull request page.
+# only a ci change alters how the checks run, and a revert is exactly the inverse of one commit. Results
+# go to the job summary on the pull request page.
 #   TITLE=... BODY=... check-refactor.sh <base sha> <head sha>
 #   check-refactor.sh --base-tests <base sha>   runs base's tests and fixtures against the checked out code
 # The second form overwrites test/ and the fixtures in the working tree.
@@ -192,18 +193,15 @@ collisions() {
 # What the suite and the pull request checks run besides the tests: the runners, the checks and the
 # modules tests import.
 guarded() {
-  grep -iE '^"?(scripts/((fixtures|e2e|e2e-env|golden)\.ts|check-[^/]+|pr-common\.sh)|test/.*\.[cm]?[jt]s)"?$' |
+  grep -iE '^"?(scripts/(fixtures|e2e|e2e-env|golden)\.ts|test/.*\.[cm]?[jt]s)"?$' |
     grep -viE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
 }
 # Those this change edits or removes, or shadows with an added file of the same path minus its extension
-# (test/helpers.js beside test/helpers.ts), and any test runner, TypeScript or ESLint config or workflow at all.
-# tsx reads tsconfig paths, which can send an import to another file.
+# (test/helpers.js beside test/helpers.ts).
 suite_files() {
   paths --diff-filter=DMT | guarded
   { git ls-tree -r --name-only "$mb" | guarded | sed 's/^/G /'; paths --diff-filter=A | sed 's/^/A /'; } |
     awk '{ p = substr($0, 3); s = p; sub(/^"/, "", s); sub(/\.[^.\/]*"?$/, "", s); s = tolower(s) } $1 == "G" { g[s] = 1; next } s in g { print p }'
-  paths | grep -iE '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|\.github/(workflows|actions)/.*)"?$' || true
-  paths | grep -iE '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' | grep -viE '^"?test/(e2e|fixtures|samples|golden)/' || true
   collisions
 }
 # package.json's "files", each script this change adds, alters or removes, or each of the fields named. A
@@ -226,6 +224,30 @@ package_json() {
     }
   ' "$mb" "$head" "$1" || echo "package.json (unreadable)"
 }
+# How the checks run, each with why it counts: a change to any of these can switch a check off without
+# touching the code, so only a ci change with a reason may make one. Test data keeps its own config.
+# tsx reads tsconfig paths, which can send an import to another file. A runner may gain a new script beside it.
+# The setup files are those vitest.config.ts names in setupFiles and globalSetup; a test keeps the two in step.
+gates() {
+  all=$(paths | grep -viE '^"?test/(e2e|fixtures|samples|golden)/' || true)
+  edited=$(paths --diff-filter=DMT)
+  gate() { printf '%s\n' "${3-$all}" | grep -iE "$1" | awk -v why="$2" '{ print $0 " (" why ")" }'; }
+  gate '^"?\.github/' "the workflows and settings that run and review every pull request"
+  gate '^"?\.(npmrc|yarnrc[^/]*)"?$' "npm and yarn config, which decides what every npm command runs"
+  gate '^"?test/no-credentials\.ts"?$' "what vitest runs in every worker before the tests"
+  gate '^"?scripts/(accounting|golden|fixtures|allowlist|unseen)\.ts"?$' "a runner behind a required check" "$edited"
+  gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*)"?$' "the pull request checks"
+  # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
+  shrunk=$(git diff --no-renames --text --numstat --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' | awk '$1 == 0 { print $3 }')
+  gate '^"?scripts/allow/' "the lists the pull request checks accept" "$(printf '%s\n' "$all" | grep -vixF -- "${shrunk:-//}" || true)"
+  gate '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
+  gate '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' "what the typecheck and lint steps check"
+  gate '^"?(\.?knip(\.config)?\.[^/]*|\.jscpd\.json)"?$' "what the unused code and duplicate checks report"
+  gate '(^|/)(\.prettierrc[^/]*|prettier\.config\.[^/]*|\.prettierignore|\.editorconfig)"?$' "what the format check accepts"
+  package_json scripts | awk '{ print $0 " (what npm run runs)" }'
+  package_json "prettier knip jscpd" | awk '{ print $0 " (the config a check reads from package.json)" }'
+}
+
 # What decides which files ship: package.json "files", and ignore files below the root, which drop files
 # inside "files" (a root one does not). Test scenarios do not ship.
 ships() {
@@ -234,22 +256,27 @@ ships() {
   paths | grep -iE '/\.gitignore"?$' | grep -viE '^"?test/' || true
 }
 
-# What lets a finding of the unused or duplicate code checks pass: a line added to an allowlist under scripts/allow/
-# (one edited in place counts as added), a change to what reads them or to knip or jscpd config, or an added line
-# with a tag knip skips an export for (@public, @beta, @alias) or a jscpd:ignore marker. Names match in any case.
-# Removing lines is always fine.
+gated=$(gates)
+if [ "$type" != ci ] && [ -n "$gated" ]; then
+  say "**Failed:** how the checks run changes only in a ci change with a \`Proof: none, <reason>\` line, so that no other change can switch a check off. Touched:"
+  list "$gated"
+  exit 1
+fi
+
+# What lets a finding of the unused or duplicate code checks pass besides the paths gates() lists: a line added to a
+# list under scripts/allow/ (one edited in place counts as added), or an added line anywhere with a tag knip skips an
+# export for (@public, @beta, @alias) or a jscpd:ignore marker. These are lines, not paths, so they are not entries in
+# gates(): a marker lands in code, and growing a list takes its own reason beside the ci one. Names match in any case.
 grown=$(
   git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" |
     awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next }
       /^\+/ && (tolower(f) ~ /^scripts\/allow\/.*\.tsv"?$/ || /@(public|beta|alias)([^A-Za-z0-9_]|$)/ || tolower($0) ~ /jscpd:ignore-(start|end)/) { print f ": " substr($0, 2) }'
-  paths | grep -ixE '"?(scripts/(allowlist|unseen)\.ts|\.?knip\.jsonc?|knip(\.config)?\.[cm]?[jt]s|\.jscpd\.json)"?' || true
-  package_json "knip jscpd"
 )
 if [ -n "$grown" ]; then
   reason=
   if [ "$type" = ci ]; then body_reason "Allowlist: " Allowlist; fi
   if [ -z "$reason" ]; then
-    say "**Failed:** only a \`ci\` change with an \`Allowlist: <reason>\` line in the pull request body may add to an allowlist under scripts/allow/, change what reads them or knip and jscpd config, or add a knip tag or jscpd:ignore marker. Added or changed:"
+    say "**Failed:** only a \`ci\` change with an \`Allowlist: <reason>\` line in the pull request body may add to an allowlist under scripts/allow/ or add a knip tag or jscpd:ignore marker. Added or changed:"
     list "$grown"
     exit 1
   fi
@@ -283,7 +310,8 @@ refactor | perf)
   fi
   ;;
 test | docs | chore | ci | build)
-  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, TypeScript and ESLint config, pull request checks, workflows"
+  suite="the fixture, end-to-end and golden runners, shared test modules"
+  [ "$type" = ci ] && suite="$suite, the workflows, check config, pull request checks, package.json scripts"
   case $type in
   chore | build) suite="$suite or npm and yarn config" ;;
   *) suite="$suite, npm and yarn config, package.json dependencies or the lock file" ;;
@@ -296,7 +324,7 @@ test | docs | chore | ci | build)
   say "**Rule for \`$type\`:** no change under src/, packs/*/*/rules/ or any change.json; $allowed; package.json \"files\", any .npmignore and any .gitignore below the root outside test/ $ships."
   touched=$(paths | grep -iE "$CODE" || true)
   [ "$type" = build ] || touched=$(printf '%s\n' "$touched" "$(ships)" | grep . || true)
-  changed=$(printf '%s\n' "$(suite_files)" "$(package_json scripts)" "$config" | grep . || true)
+  changed=$(printf '%s\n' "$(suite_files)" "$gated" "$config" | grep . || true)
   # Dependabot bumps registry versions under chore and build, which the source check above still judges.
   case $type in
   test | docs | ci)
