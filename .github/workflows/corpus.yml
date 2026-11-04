@@ -11,6 +11,7 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       # npm runs scripts and npx with this shell whatever an .npmrc in the checkout says: npm reads
       # npm_config_* variables after project config, so they win.
@@ -53,6 +54,7 @@ jobs:
     needs: refresh
     if: needs.refresh.outputs.count != '0'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0

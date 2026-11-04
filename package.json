@@ -37,7 +37,9 @@
     "replacements": "tsx scripts/replacements.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:fixtures",
     "golden": "npm run build && tsx scripts/golden.ts",
-    "answer-key": "npm run build && tsx scripts/answer-key.ts"
+    "answer-key": "npm run build && tsx scripts/answer-key.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@ast-grep/cli": "0.51.0",
@@ -55,6 +57,7 @@
     "jscpd": "5.4.2",
     "knip": "6.42.1",
     "parse5": "8.0.1",
+    "prettier": "3.9.10",
     "tsx": "^4.23.15",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.72.0",
