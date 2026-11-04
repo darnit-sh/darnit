@@ -8,7 +8,7 @@ export type Sources = Map<string, string>;
 export type Graph = Map<string, Set<string>>;
 /**
  * The graph, each import() or require() of a computed path, and each other use of require or createRequire,
- * as "file -> call", numbered from the second copy.
+ * as "file<TAB>call", numbered from the second copy.
  */
 export type ImportGraph = { graph: Graph; computed: string[]; loaders: string[] };
 
@@ -154,13 +154,13 @@ function readLoader(name: ts.Node, found: Imports, flat: (node: ts.Node) => stri
   else found.loaders.push(flat(useSite(name)));
 }
 
-/** "file -> call" for each call, a repeat numbered, so an allowlist line covers one call and not every copy of it. */
+/** "file<TAB>call" for each call, a repeat numbered, so an allowlist line covers one call and not every copy of it. */
 function numbered(file: string, calls: string[]): string[] {
   const seen = new Map<string, number>();
   return calls.map((call) => {
     const n = (seen.get(call) ?? 0) + 1;
     seen.set(call, n);
-    return `${file} -> ${call}${n > 1 ? `#${n}` : ""}`;
+    return `${file}\t${call}${n > 1 ? `#${n}` : ""}`;
   });
 }
 

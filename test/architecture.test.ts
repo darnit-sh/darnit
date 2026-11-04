@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { compare, parseAllowlist } from "../scripts/allowlist.js";
 import { buildGraph, cycles, importsOf, readSources, type ImportGraph, type Sources } from "./import-graph.js";
 
 /**
@@ -32,7 +33,7 @@ const GROUPS: Record<string, Group> = {
   scripts: { floor: NaN, reach: 3, kind: "scripts", paths: ["scripts/"], also: [] },
 };
 
-const ALLOWLIST = "test/architecture-allowlist.txt";
+const ALLOWLIST = "scripts/allow/imports.tsv";
 
 type Place = Group & { group: string };
 
@@ -54,22 +55,10 @@ function breaks(from: Place, to: Place): string | undefined {
   return `${from.group} imports ${to.group} on its own floor ${from.floor}`;
 }
 
-/** Allowlist lines: `a -> b: reason`, for an import the map forbids or one on a cycle. */
-function readAllowlist(text: string, problems: string[]): Set<string> {
-  const allowed = new Set<string>();
-  for (const line of text.split("\n").map((l) => l.trim())) {
-    if (!line || line.startsWith("#")) continue;
-    const match = /^(\S+ -> \S+): \S/.exec(line);
-    if (match) allowed.add(match[1]!);
-    else problems.push(`${ALLOWLIST}: "${line}" is not "a -> b: reason"`);
-  }
-  return allowed;
-}
-
 /** Files with no place in the map, and barrel files. */
-function misplaced(sources: Sources): string[] {
+function misplaced(tree: Sources): string[] {
   const problems: string[] = [];
-  for (const file of sources.keys()) {
+  for (const file of tree.keys()) {
     if (!placeOf(file)) problems.push(`${file} has no floor: add it to GROUPS in test/architecture.test.ts`);
     if (/(^|\/)index\.[cm]?[jt]sx?$/.test(file)) problems.push(`${file} is a barrel file: import from the file that defines each name`);
   }
@@ -89,30 +78,37 @@ function breaches({ graph, computed, loaders }: ImportGraph): Map<string, string
     for (const target of targets) {
       const to = placeOf(target);
       const why = from && to && breaks(from, to);
-      if (why) broken.set(`${file} -> ${target}`, why);
+      if (why) broken.set(`${file}\t${target}`, why);
     }
   }
   for (const set of cycles(graph)) {
     for (const [file, target] of set.flatMap((f) => [...graph.get(f)!].filter((t) => set.includes(t)).map((t) => [f, t]))) {
-      const key = `${file} -> ${target}`;
+      const key = `${file}\t${target}`;
       broken.set(key, [broken.get(key), `in the cycle of ${set.join(", ")}`].filter(Boolean).join("; "));
     }
   }
   return broken;
 }
 
-/** Every breach not on the allowlist, and every allowlist line that no longer names a breach. */
-function check(sources: Sources, allowlist: string): string[] {
-  const problems = misplaced(sources);
-  const allowed = readAllowlist(allowlist, problems);
-  const broken = breaches(buildGraph(sources, problems));
-  for (const [key, why] of [...broken].sort()) if (!allowed.has(key)) problems.push(`${key}: ${why}`);
-  for (const key of allowed) if (!broken.has(key)) problems.push(`${ALLOWLIST}: "${key}" no longer breaks the module map; remove its line`);
+/** Every breach not on the allowlist, and every allowlist line that no longer names a breach, each as "a -> b". */
+function check(tree: Sources, list: string): string[] {
+  const problems = misplaced(tree);
+  const { lines, errors } = parseAllowlist(list, 2);
+  problems.push(...errors.map((e) => `${ALLOWLIST}: ${e}`));
+  const broken = breaches(buildGraph(tree, problems));
+  const { missing, stale: gone } = compare(broken.keys(), lines);
+  const shown = (key: string) => key.replace("\t", " -> ");
+  problems.push(...missing.map((key) => `${shown(key)}: ${broken.get(key)}`));
+  problems.push(...gone.map((s) => `${ALLOWLIST}:${s.line}: "${shown(s.finding)}" no longer breaks the module map; remove its line`));
   return problems;
 }
 
 const sources = readSources();
 const allowlist = readFileSync(ALLOWLIST, "utf8");
+
+/** The failure for an allowlist line, named as "a -> b", whose break is gone. */
+const stale = (key: string) =>
+  `${ALLOWLIST}:${allowlist.split("\n").findIndex((l) => l.startsWith(`${key.replace(" -> ", "\t")}\t`)) + 1}: "${key}" no longer breaks the module map; remove its line`;
 
 /** The problems with one line added to one file, or with the file created when it does not exist. */
 function withLine(file: string, line: string): string[] {
@@ -197,19 +193,20 @@ describe("a cycle, a misplaced file or a stale allowlist line fails", () => {
 
   it("an allowlisted import removed from the code but left in the allowlist", () => {
     const gone = new Map(sources).set("src/git.ts", sources.get("src/git.ts")!.replace(/^import \{ envToken \}.*$/m, ""));
-    expect(check(gone, allowlist)).toEqual([`${ALLOWLIST}: "src/git.ts -> src/github.ts" no longer breaks the module map; remove its line`]);
+    expect(check(gone, allowlist)).toEqual([stale("src/git.ts -> src/github.ts")]);
   });
 
   it("an allowlisted cycle that changed", () => {
     const smaller = new Map(sources).set("src/detect.ts", sources.get("src/detect.ts")!.replace(/^import type \{ VendorClients \}.*$/m, ""));
     expect(check(smaller, allowlist)).toEqual([
-      `${ALLOWLIST}: "src/detect.ts -> src/scan/clients.ts" no longer breaks the module map; remove its line`,
-      `${ALLOWLIST}: "src/scan/astgrep.ts -> src/detect.ts" no longer breaks the module map; remove its line`,
+      stale("src/detect.ts -> src/scan/clients.ts"),
+      stale("src/scan/astgrep.ts -> src/detect.ts"),
     ]);
   });
 
   it("a malformed allowlist line", () => {
-    expect(check(sources, `${allowlist}\nsrc/git.ts -> src/github.ts\n`)).toEqual([`${ALLOWLIST}: "src/git.ts -> src/github.ts" is not "a -> b: reason"`]);
+    const lines = allowlist.split("\n").length;
+    expect(check(sources, `${allowlist}src/git.ts\tsrc/github.ts\n`)).toEqual([`${ALLOWLIST}: line ${lines} needs 2 fields and a reason, tab separated`]);
   });
 });
 
@@ -256,7 +253,7 @@ describe("the computed require() in the rule applier", () => {
     const apply = sources.get("src/packs/apply.ts")!;
     expect(importsOf("src/packs/apply.ts", apply)).toMatchObject({ computed: ["require(pkgPath)"], loaders: [`require=createRequire(import.meta.url)`, `createRequire(import.meta.url)`, `require.resolve("@ast-grep/cli/package.json")`] });
     expect(check(new Map(sources).set("src/packs/apply.ts", apply.replace("require(pkgPath)", "JSON.parse(pkgPath)")), allowlist)).toEqual([
-      `${ALLOWLIST}: "src/packs/apply.ts -> require(pkgPath)" no longer breaks the module map; remove its line`,
+      stale("src/packs/apply.ts -> require(pkgPath)"),
     ]);
   });
 
