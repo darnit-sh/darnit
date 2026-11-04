@@ -361,7 +361,30 @@ describe("the rule picked by the title's type", () => {
     expect(reason.status).toBe(1);
     expect(reason.summary).toContain("Reason given: `the folder moves and keeps its tests`");
     expect(reason.summary).toContain("- src/a.ts\n");
-    expect((await rule("test: x", [thresholds(81)], "", {}, landed)).status).toBe(0);
+    const raised = await repo([thresholds(81)], landed);
+    expect((await check(raised, "ci: x", "Proof: none, raises the threshold\n")).status).toBe(0);
+    expect((await check(raised, "test: x")).summary).toContain("- coverage-thresholds.json (which tests run and how much they must cover)");
+  });
+
+  it("refuses outside ci any change to a vitest or vite config, however it still names the thresholds file", async () => {
+    const config = 'import thresholds from "./coverage-thresholds.json";\nexport default { test: { coverage: { thresholds } } };\n';
+    const landed = [{ write: "coverage-thresholds.json", text: '{"src/**":{"lines":80}}' }, { write: "vitest.config.ts", text: config }];
+    const edits: Edit[][] = [
+      [{ write: "vitest.config.ts", text: "// reads ./coverage-thresholds.json\nexport default { test: { coverage: { thresholds: {} } } };\n" }],
+      [{ write: "vitest.config.ts", text: config.replace("./coverage", "./test/coverage") }, { write: "test/coverage-thresholds.json", text: '{"src/**":{"lines":0}}' }],
+      [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", '{ thresholds: { ...thresholds, "src/packs/**": { lines: 0, branches: 0 } } }') }],
+      [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", '{ thresholds, exclude: ["src/packs/**"] }') }],
+      [{ remove: "vitest.config.ts" }],
+      [{ write: "vite.config.ts" }],
+      [{ write: "vitest.config.mts" }],
+      [{ write: "vitest.workspace.json" }],
+    ];
+    for (const edit of edits) {
+      const r = await rule("fix: x", edit, "", {}, landed);
+      const f = Object.values(edit[0]!)[0] as string;
+      expect(r.status, f).toBe(1);
+      expect(r.summary, f).toContain(`- ${f} (which tests run and how much they must cover)`);
+    }
   });
 
   it("fails any type that adds or changes a dependency npm would fetch from outside the registry", async () => {

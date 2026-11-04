@@ -1,7 +1,9 @@
 #!/bin/sh
 # Coverage only goes up. Once base has coverage-thresholds.json, a change fails when it lowers or removes a threshold
-# there, changes a vitest or vite config, the coverage plugin's pin or the vitest it runs in, or adds an ignore comment
-# under src/, unless it is a ci change with a `Coverage: <reason>` line. Judged from base, by diffing the two commits.
+# there, changes the coverage plugin's pin or the vitest it runs in, or adds an ignore hint under src/, unless it is a
+# ci change with a `Coverage: <reason>` line. Judged from base, by diffing the two commits. Which files may change at
+# all is check-refactor.sh's list (vitest config and the thresholds file among them, only in a ci change); these judge
+# what a change does to a value or to code, which no path on that list can say.
 #   TITLE=... BODY=... check-coverage.sh <base sha> <head sha>
 #   check-coverage.sh --new-keys <base sha> <json summary>   each folder the thresholds add, against what CI measured
 set -eu
@@ -62,9 +64,6 @@ lowered=$(node -e '
   }
 ' "$base" "$head" "$file") || lowered="$file (unreadable)"
 
-# Any line of a config vitest reads can reach the coverage settings, so any change to one counts.
-configs=$(paths | grep -iE '^"?(vitest\.config|vite\.config|vitest\.workspace)\.[^/]*"?$' | sed 's/$/ (coverage settings)/' || true)
-
 # The plugin, and the vitest it runs inside, as package.json asks for them and the lock installs them.
 pins=$(node -e '
   const { execFileSync } = require("node:child_process");
@@ -97,9 +96,9 @@ ignores=$(node -e '
   }
 ' "$base" "$head") || ignores="src/ (ignore hints unreadable)"
 
-found=$(printf '%s\n' "$lowered" "$configs" "$pins" "$ignores" | grep . || true)
+found=$(printf '%s\n' "$lowered" "$pins" "$ignores" | grep . || true)
 if [ -z "$found" ]; then
-  say "**Coverage passed:** nothing that decides coverage went down: the thresholds in base's $file, vitest and vite config, the coverage plugin's pin and ignore comments under src/."
+  say "**Coverage passed:** nothing that decides coverage went down: the thresholds in base's $file, the coverage plugin's pin and ignore hints under src/."
   exit 0
 fi
 reason=
@@ -110,6 +109,6 @@ if [ -n "$reason" ]; then
   list "$found"
   exit 0
 fi
-say "**Failed:** coverage only goes up. Only a ci change with a \`Coverage: <reason>\` line may lower or remove a threshold in base's $file, change a vitest or vite config, the coverage plugin's pin or the vitest it runs in, or add an ignore comment under src/. Found:"
+say "**Failed:** coverage only goes up. Only a ci change with a \`Coverage: <reason>\` line may lower or remove a threshold in base's $file, change the coverage plugin's pin or the vitest it runs in, or add an ignore hint under src/. Found:"
 list "$found"
 exit 1

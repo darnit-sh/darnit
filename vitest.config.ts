@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
-// Line and branch percent per folder of src/; scripts/check-coverage.sh fails a change that lowers one or edits this file.
+// Line and branch percent per folder of src/. Only a ci change may edit this file or the thresholds
+// (scripts/check-refactor.sh), and lowering a threshold also takes a Coverage line (scripts/check-coverage.sh).
 import thresholds from "./coverage-thresholds.json" with { type: "json" };
 
 export default defineConfig({

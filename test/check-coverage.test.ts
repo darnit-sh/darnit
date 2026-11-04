@@ -100,23 +100,6 @@ describe("the coverage gate", () => {
     }
   });
 
-  it("fails any change to a vitest or vite config, however it still names the thresholds file", async () => {
-    const configs = [
-      `// reads ./${file}\nexport default { test: { coverage: { thresholds: {} } } };\n`,
-      config.replace(`./${file}`, `./test/${file}`),
-      config.replace("{ thresholds }", '{ thresholds: { ...thresholds, "src/packs/**": { lines: 0, branches: 0 } } }'),
-      config.replace("{ thresholds }", '{ thresholds, exclude: ["src/packs/**"] }'),
-      `${config}// a comment\n`,
-    ];
-    for (const text of configs) {
-      const r = await gate({ "vitest.config.ts": text, [`test/${file}`]: "{}" });
-      expect(r.status, text).toBe(1);
-      expect(r.out).toContain("- vitest.config.ts (coverage settings)");
-    }
-    for (const f of ["vite.config.ts", "vitest.config.mts", "vitest.workspace.json"]) expect((await gate({ [f]: "export default {};\n" })).out).toContain(`- ${f} (coverage settings)`);
-    expect((await gate({ "vitest.config.ts": undefined })).status).toBe(1);
-  });
-
   it("fails any change to the coverage plugin's pin or the vitest it runs in", async () => {
     const cases: [Files, string][] = [
       [{ "package.json": pkg("5.1.0") }, "- package.json @vitest/coverage-v8"],

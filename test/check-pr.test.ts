@@ -271,7 +271,7 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
     }
   };
   const commit = (m: string) => (git("add", "-A"), git("commit", "-q", "-m", m), git("rev-parse", "HEAD"));
-  const scripts = ["check-proof.sh", "check-proof.ts", "check-refactor.sh", "pr-common.sh"];
+  const scripts = ["check-coverage.sh", "check-proof.sh", "check-proof.ts", "check-refactor.sh", "pr-common.sh"];
   git("init", "-q");
   await write({
     ".gitignore": "node_modules\n",
