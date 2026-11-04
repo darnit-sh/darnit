@@ -53,14 +53,14 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "jscpd": "5.4.2",
-    "knip": "6.42.1",
+    "knip": "6.44.1",
     "parse5": "8.0.1",
     "prettier": "3.9.10",
     "tsx": "^4.23.15",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-eslint": "^8.72.0",
+    "typescript-eslint": "^8.72.1",
     "vitest": "^5.0.5"
   }
 }
