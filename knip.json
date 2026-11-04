@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["scripts/*.ts", "test/**/*.test.ts", "test/helpers.ts", "test/offer-graph.ts"],
+  "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts", "!test/samples/**", "!test/e2e/**"],
+  "vitest": { "config": ["vitest.config.ts"] },
+  "eslint": { "config": ["eslint.config.js"] }
+}

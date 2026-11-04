@@ -1,6 +1,12 @@
-# Shared by check-refactor.sh and check-proof.sh, which source it from their own folder.
+# Shared by check-pr.sh, check-refactor.sh and check-proof.sh, which source it from their own folder.
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 say() { printf '%s\n' "$1"; printf '%s\n\n' "$1" >>"$summary"; }
+# A merge queue run (EVENT=merge_group) has no pull request to read. Each check passes there and does
+# nothing else, which is safe because the queue admits only pull requests whose own run of it passed.
+queued() {
+  [ "${EVENT:-}" = merge_group ] || return 1
+  say "Judged on the pull request; the merge queue admits only pull requests that passed it."
+}
 list() { printf '%s\n' "$1" | sed 's/^/- /' | tee -a "$summary"; echo >>"$summary"; }
 title_type() { printf '%s\n' "${TITLE:-}" | sed -nE '1s/^([a-z]+)(\([a-z0-9-]+\))?!?: .*/\1/p'; }
 # Code and rule packs: what a fix or feat needs a proof for and what a test, docs or tooling change leaves alone.
@@ -22,14 +28,16 @@ visible() {
       print out
     }'
 }
-# Sets $reason to the reason on a "Proof: none, <reason>" line a reader sees, backticks made quotes so
-# it shows as code, or to nothing when there is no such line or the reason is under 10 characters.
-opt_out() {
-  reason=$(visible | sed -n 's/^Proof: none, //p' | head -1 | sed 's/[[:space:]]*$//')
+# Sets $reason to the reason on the first line a reader sees that starts with $1, backticks made quotes so it
+# shows as code, or to nothing when there is no such line or the reason is under 10 characters. $2 names the line.
+body_reason() {
+  reason=$(visible | awk -v p="$1" 'index($0, p) == 1 { print substr($0, length(p) + 1); exit }' | sed 's/[[:space:]]*$//')
   # Characters, not bytes, whatever the locale: UTF-8 continuation bytes are not counted.
   if [ $(($(printf '%s' "$reason" | LC_ALL=C tr -d '\200-\277' | wc -c))) -lt 10 ]; then
-    [ -n "$reason" ] && say "The opt-out line was ignored: its reason needs at least 10 characters."
+    [ -n "$reason" ] && say "The $2 line was ignored: its reason needs at least 10 characters."
     reason=
   fi
   reason=$(printf '%s' "$reason" | tr '`' "'")
 }
+# The reason on a "Proof: none, <reason>" line.
+opt_out() { body_reason "Proof: none, " opt-out; }

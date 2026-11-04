@@ -1,4 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const SPECS = ["dependencies", "optionalDependencies", "peerDependencies"] as const;
@@ -26,5 +29,27 @@ describe("runtime dependencies", () => {
       .filter(([, pkg]) => !pkg.dev)
       .flatMap(([path, pkg]) => SPECS.flatMap((kind) => Object.entries(pkg[kind] ?? {}).filter(([, spec]) => !exact(spec)).map(([name, spec]) => `${path} ${name}@${spec}`)));
     expect(ranged).toEqual([]);
+  });
+});
+
+describe("package-lock.json", () => {
+  it("is what npm ci accepts for package.json", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-lock-"));
+    try {
+      for (const f of ["package.json", "package-lock.json"]) await copyFile(new URL(`../${f}`, import.meta.url), join(dir, f));
+      const r = spawnSync("npm", ["ci", "--dry-run", "--ignore-scripts", "--offline"], { cwd: dir, encoding: "utf8" });
+      expect(r.stderr.split("\n").filter((l) => /Missing:|Invalid:/.test(l))).toEqual([]);
+      expect(r.status).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // npm ci --omit=peer skips a package flagged peer, so a direct dependency must never be.
+  it("flags no direct dependency as peer only", async () => {
+    const pkg = (await read("package.json")) as Record<"dependencies" | "devDependencies", Record<string, string>>;
+    const lock = (await read("package-lock.json")) as { packages: Record<string, { peer?: boolean }> };
+    const direct = [...Object.keys(pkg.dependencies), ...Object.keys(pkg.devDependencies)];
+    expect(direct.filter((name) => lock.packages[`node_modules/${name}`]?.peer)).toEqual([]);
   });
 });

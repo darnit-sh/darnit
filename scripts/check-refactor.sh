@@ -1,12 +1,29 @@
 #!/bin/sh
 # One rule per pull request type, so a new title cannot dodge a guard. A refactor or perf change keeps
 # every existing test, a test, docs or tooling change leaves the code and what the suite proves alone,
-# and a revert is exactly the inverse of one commit. Results go to the job summary on the pull request page.
+# only a ci change alters how the checks run, a style change is exactly the formatter's output, and a
+# revert is exactly the inverse of one commit. Results
+# go to the job summary on the pull request page.
 #   TITLE=... BODY=... check-refactor.sh <base sha> <head sha>
 #   check-refactor.sh --base-tests <base sha>   runs base's tests and fixtures against the checked out code
+#   check-refactor.sh --style <base sha> <head sha>   formats base's copy of each changed file with the
+#     prettier in node_modules, which must be the version base pins, and base's config
 # The second form overwrites test/ and the fixtures in the working tree.
 set -eu
 . "$(dirname "$0")/pr-common.sh"
+if queued; then exit 0; fi
+
+# Fails a style change that touches anything but edits to existing .ts, .js, .mjs and .cjs files that keep
+# their mode. An added or removed file shows mode 000000 on one side. Workflow actions and formatter config
+# written in code are among what only a ci change may touch (gates below).
+style_scope() {
+  outside=$(git diff --raw --no-renames "$base...$head" | awk -F '\t' '{ split($1, m, " ") }
+    m[1] != ":" m[2] || m[2] !~ /^100(644|755)$/ || $2 !~ /\.(ts|js|mjs|cjs)$/ { print $2 }')
+  [ -z "$outside" ] && return
+  say "**(a) failed:** a style change only edits existing code files the formatter covers. Touched:"
+  list "$outside"
+  exit 1
+}
 
 if [ "${1:-}" = --base-tests ]; then
   base=$2
@@ -22,6 +39,66 @@ if [ "${1:-}" = --base-tests ]; then
   npx tsx scripts/fixtures.ts || { say "**(b) failed:** a pack fixture from base fails against this change's code (log above)."; fail=1; }
   [ "$fail" = 0 ] && say "**(b) passed:** every test and fixture from base passes against this change's code."
   exit "$fail"
+fi
+
+if [ "${1:-}" = --style ]; then
+  base=$2 head=$3
+  style_scope
+  tree=$(mktemp -d)
+  trap 'rm -rf "$tree"' EXIT
+  git archive "$base" | tar -x -C "$tree"
+  # Options come only from base's root .prettierrc.json, read as JSON: no config file runs, and no plugin,
+  # override or parser can change what the code does. Templates are left as they are whatever it says.
+  differ=$(paths | node -e '(async () => {
+    const { execFileSync } = require("node:child_process");
+    const { existsSync, readFileSync } = require("node:fs");
+    const { join, posix } = require("node:path");
+    const [tree, base, mb, head] = process.argv.slice(1);
+    const blob = (rev, f) => execFileSync("git", ["cat-file", "blob", `${rev}:${f}`], { maxBuffer: 2 ** 28 });
+    const prettier = require(join(process.cwd(), "node_modules/prettier"));
+    let pinned;
+    try { pinned = JSON.parse(blob(base, "package.json")).devDependencies?.prettier; } catch {}
+    if (pinned !== prettier.version) return console.log(`prettier ${pinned ?? "(none)"} pinned in base\x27s package.json, ${prettier.version} installed`);
+    const files = readFileSync(0, "utf8").split("\n").filter(Boolean);
+    // Each config prettier or .editorconfig would read for a changed file: any in its folder or above it.
+    const listed = execFileSync("git", ["ls-tree", "-r", "-z", "--name-only", base], { encoding: "utf8", maxBuffer: 2 ** 28 }).split("\0");
+    const named = (p) => /^(\.prettierrc.*|prettier\.config\..*|\.editorconfig|package\.yaml)$/i.test(posix.basename(p)) ||
+      (/^package\.json$/i.test(posix.basename(p)) && (() => { try { return Object.hasOwn(JSON.parse(readFileSync(join(tree, p), "utf8")), "prettier"); } catch { return true; } })());
+    const dirs = new Set(files.flatMap((f) => f.split("/").slice(0, -1).map((_, i, a) => a.slice(0, i + 1).join("/")).concat("")));
+    const others = listed.filter((p) => p && p !== ".prettierrc.json" && dirs.has(posix.dirname(p) === "." ? "" : posix.dirname(p)) && named(p));
+    if (others.length) return others.forEach((p) => console.log(`${p} in base: only base\x27s root .prettierrc.json may set options`));
+    const rc = join(tree, ".prettierrc.json");
+    if (!existsSync(rc)) return console.log(".prettierrc.json in base is missing");
+    let config;
+    try { config = JSON.parse(readFileSync(rc, "utf8")); } catch {}
+    if (config === null || typeof config !== "object" || Array.isArray(config)) return console.log(".prettierrc.json in base is not a JSON object");
+    const layout = ["printWidth", "tabWidth", "useTabs", "semi", "singleQuote", "quoteProps", "trailingComma", "bracketSpacing", "arrowParens", "endOfLine", "embeddedLanguageFormatting"];
+    for (const [k, v] of Object.entries(config)) {
+      const at = `.prettierrc.json in base sets ${JSON.stringify(k)}`;
+      if (!layout.includes(k)) return console.log(`${at}, not a plain layout option`);
+      if (!["string", "number", "boolean"].includes(typeof v)) return console.log(`${at} to ${JSON.stringify(v)}, not a plain value`);
+      if (k === "embeddedLanguageFormatting" && v !== "off") return console.log(`${at} to ${JSON.stringify(v)}, where only "off" keeps templates as they are`);
+    }
+    // As the CLI reads them: .gitignore and .prettierignore at the root.
+    const ignorePath = [join(tree, ".gitignore"), join(tree, ".prettierignore")];
+    for (const f of files) {
+      const file = join(tree, f);
+      const info = await prettier.getFileInfo(file, { ignorePath, resolveConfig: false });
+      if (info.ignored || !info.inferredParser) { console.log(`${f} (left out by base\x27s .prettierignore)`); continue; }
+      try {
+        const out = await prettier.format(blob(mb, f).toString("utf8"), { ...config, embeddedLanguageFormatting: "off", filepath: file });
+        if (!Buffer.from(out, "utf8").equals(blob(head, f))) console.log(`${f} (differs from the formatter\x27s output)`);
+      } catch (e) { console.log(`${f} (could not be formatted: ${String(e?.message).split("\n")[0]})`); }
+    }
+  })().catch((e) => console.log(`the formatter (could not run: ${String(e?.message).split("\n")[0]})`))' "$tree" "$base" "$(git merge-base "$base" "$head")" "$head") ||
+    differ="the formatter (could not run; log above)"
+  if [ -n "$differ" ]; then
+    say "**(b) failed:** a style change is exactly what base's pinned prettier writes over base's copy of each file with the layout options in base's root .prettierrc.json. Not so for:"
+    list "$differ"
+    exit 1
+  fi
+  say "**(b) passed:** every changed file is what prettier $(node -p 'require(process.cwd() + "/node_modules/prettier").version') writes over base's copy with base's layout options."
+  exit 0
 fi
 
 base=$1 head=$2
@@ -192,18 +269,15 @@ collisions() {
 # What the suite and the pull request checks run besides the tests: the runners, the checks and the
 # modules tests import.
 guarded() {
-  grep -iE '^"?(scripts/((fixtures|e2e|e2e-env|golden)\.ts|check-[^/]+|pr-common\.sh)|test/.*\.[cm]?[jt]s)"?$' |
+  grep -iE '^"?(scripts/(fixtures|e2e|e2e-env|golden)\.ts|test/.*\.[cm]?[jt]s)"?$' |
     grep -viE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
 }
 # Those this change edits or removes, or shadows with an added file of the same path minus its extension
-# (test/helpers.js beside test/helpers.ts), and any test runner, TypeScript or ESLint config or workflow at all.
-# tsx reads tsconfig paths, which can send an import to another file.
+# (test/helpers.js beside test/helpers.ts).
 suite_files() {
   paths --diff-filter=DMT | guarded
   { git ls-tree -r --name-only "$mb" | guarded | sed 's/^/G /'; paths --diff-filter=A | sed 's/^/A /'; } |
     awk '{ p = substr($0, 3); s = p; sub(/^"/, "", s); sub(/\.[^.\/]*"?$/, "", s); s = tolower(s) } $1 == "G" { g[s] = 1; next } s in g { print p }'
-  paths | grep -iE '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|\.github/(workflows|actions)/.*)"?$' || true
-  paths | grep -iE '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' | grep -viE '^"?test/(e2e|fixtures|samples|golden)/' || true
   collisions
 }
 # package.json's "files", each script this change adds, alters or removes, or each of the fields named. A
@@ -226,6 +300,36 @@ package_json() {
     }
   ' "$mb" "$head" "$1" || echo "package.json (unreadable)"
 }
+# How the checks run, each with why it counts: a change to any of these can switch a check off without
+# touching the code, so only a ci change with a reason may make one. Test data keeps its own config.
+# tsx reads tsconfig paths, which can send an import to another file. A runner may gain a new script beside it.
+# The setup files are those vitest.config.ts names in setupFiles and globalSetup; a test keeps the two in step.
+gates() {
+  all=$(paths | grep -viE '^"?test/(e2e|fixtures|samples|golden)/' || true)
+  edited=$(paths --diff-filter=DMT)
+  gate() { printf '%s\n' "${3-$all}" | grep -iE "$1" | awk -v why="$2" '{ print $0 " (" why ")" }'; }
+  gate '^"?\.github/' "the workflows and settings that run and review every pull request"
+  gate '^"?\.(npmrc|yarnrc[^/]*)"?$' "npm and yarn config, which decides what every npm command runs"
+  gate '^"?test/no-credentials\.ts"?$' "what vitest runs in every worker before the tests"
+  gate '^"?scripts/(accounting|golden|fixtures|allowlist|unseen)\.ts"?$' "a runner behind a required check" "$edited"
+  gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*)"?$' "the pull request checks"
+  # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
+  shrunk=$(git diff --no-renames --text --numstat --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' | awk '$1 == 0 { print $3 }')
+  gate '^"?scripts/allow/' "the lists the pull request checks accept" "$(printf '%s\n' "$all" | grep -vixF -- "${shrunk:-//}" || true)"
+  gate '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
+  gate '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' "what the typecheck and lint steps check"
+  gate '^"?(\.?knip(\.config)?\.[^/]*|\.jscpd\.json)"?$' "what the unused code and duplicate checks report"
+  gate '(^|/)(\.prettierrc[^/]*|prettier\.config\.[^/]*|\.prettierignore|\.editorconfig|package\.yaml)"?$' "what the format check accepts"
+  package_json scripts | awk '{ print $0 " (what npm run runs)" }'
+  package_json "prettier knip jscpd" | awk '{ print $0 " (the config a check reads from package.json)" }'
+  # prettier also reads a "prettier" key from a package.json below the root, for the files beside and below it.
+  printf '%s\n' "$all" | grep -iE '/package\.json"?$' | { node -e '
+    const git = (rev, f) => require("node:child_process").execFileSync("git", ["show", `${rev}:${f}`], { encoding: "utf8", stdio: "pipe" });
+    const key = (rev, f) => { try { return JSON.stringify(JSON.parse(git(rev, f))?.prettier); } catch { return undefined; } };
+    for (const f of require("node:fs").readFileSync(0, "utf8").split("\n").filter(Boolean)) if (key(process.argv[1], f) !== key(process.argv[2], f)) console.log(`${f} "prettier"`);
+  ' "$mb" "$head" || echo 'package.json "prettier" (unreadable)'; } | awk '{ print $0 " (what the format check accepts)" }'
+}
+
 # What decides which files ship: package.json "files", and ignore files below the root, which drop files
 # inside "files" (a root one does not). Test scenarios do not ship.
 ships() {
@@ -233,6 +337,35 @@ ships() {
   paths | grep -iE '(^|/)\.npmignore"?$' || true
   paths | grep -iE '/\.gitignore"?$' | grep -viE '^"?test/' || true
 }
+
+gated=$(gates)
+if [ "$type" != ci ] && [ -n "$gated" ]; then
+  say "**Failed:** how the checks run changes only in a ci change with a \`Proof: none, <reason>\` line, so that no other change can switch a check off. Touched:"
+  list "$gated"
+  exit 1
+fi
+
+# What lets a finding of the unused or duplicate code checks pass besides the paths gates() lists: a line added to a
+# list under scripts/allow/ (one edited in place counts as added), or an added line anywhere with a tag knip skips an
+# export for (@public, @beta, @alias) or a jscpd:ignore marker. These are lines, not paths, so they are not entries in
+# gates(): a marker lands in code, and growing a list takes its own reason beside the ci one. Names match in any case.
+grown=$(
+  git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" |
+    awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next }
+      /^\+/ && (tolower(f) ~ /^scripts\/allow\/.*\.tsv"?$/ || /@(public|beta|alias)([^A-Za-z0-9_]|$)/ || tolower($0) ~ /jscpd:ignore-(start|end)/) { print f ": " substr($0, 2) }'
+)
+if [ -n "$grown" ]; then
+  reason=
+  if [ "$type" = ci ]; then body_reason "Allowlist: " Allowlist; fi
+  if [ -z "$reason" ]; then
+    say "**Failed:** only a \`ci\` change with an \`Allowlist: <reason>\` line in the pull request body may add to an allowlist under scripts/allow/ or add a knip tag or jscpd:ignore marker. Added or changed:"
+    list "$grown"
+    exit 1
+  fi
+  echo "::warning::adds to an allowlist or a way past the unused and duplicate code checks, allowed by an 'Allowlist:' line in the pull request body; the reason is in the job summary"
+  say "**Allowlist grown** under the Allowlist line in the pull request body. Reason given: \`$reason\`"
+  list "$grown"
+fi
 
 case $type in
 refactor | perf)
@@ -259,7 +392,8 @@ refactor | perf)
   fi
   ;;
 test | docs | chore | ci | build)
-  suite="the test runner config, fixture, end-to-end and golden runners, shared test modules, package.json scripts, TypeScript and ESLint config, pull request checks, workflows"
+  suite="the fixture, end-to-end and golden runners, shared test modules"
+  [ "$type" = ci ] && suite="$suite, the workflows, check config, pull request checks, package.json scripts"
   case $type in
   chore | build) suite="$suite or npm and yarn config" ;;
   *) suite="$suite, npm and yarn config, package.json dependencies or the lock file" ;;
@@ -272,7 +406,7 @@ test | docs | chore | ci | build)
   say "**Rule for \`$type\`:** no change under src/, packs/*/*/rules/ or any change.json; $allowed; package.json \"files\", any .npmignore and any .gitignore below the root outside test/ $ships."
   touched=$(paths | grep -iE "$CODE" || true)
   [ "$type" = build ] || touched=$(printf '%s\n' "$touched" "$(ships)" | grep . || true)
-  changed=$(printf '%s\n' "$(suite_files)" "$(package_json scripts)" "$config" | grep . || true)
+  changed=$(printf '%s\n' "$(suite_files)" "$gated" "$config" | grep . || true)
   # Dependabot bumps registry versions under chore and build, which the source check above still judges.
   case $type in
   test | docs | ci)
@@ -297,6 +431,12 @@ test | docs | chore | ci | build)
     exit 1
   fi
   say "**Passed:** nothing the rule keeps changed."
+  ;;
+style)
+  say "**Rule for \`style\`:** (a) only edits to existing .ts, .js, .mjs and .cjs files that base's .prettierignore keeps: no added, removed or renamed file, and no package.json, lock, formatter config, workflow or other file; (b) each is exactly what base's pinned prettier writes over base's copy with the layout options in base's root .prettierrc.json, tagged templates left as they are."
+  style_scope
+  say "**(a) passed:** every changed path is an existing code file; base's .prettierignore and (b) are checked next."
+  echo "style=true" >>"${GITHUB_OUTPUT:-/dev/null}"
   ;;
 fix | feat) say "**Rule for \`$type\`:** passes here; the proof check covers $type changes." ;;
 revert)
