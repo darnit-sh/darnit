@@ -14,10 +14,9 @@ updates:
       runtime:
         dependency-type: production
         update-types: [minor, patch]
-      # vitest and its coverage plugin must stay on the same version, so they move together.
+      # vitest and its coverage plugin must stay on the same version, so they move together, majors too.
       vitest:
         patterns: [vitest, "@vitest/*"]
-        update-types: [minor, patch]
       tooling:
         dependency-type: development
         update-types: [minor, patch]
