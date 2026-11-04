@@ -1243,17 +1243,22 @@ describe("fix when the tests remove or replace a file it changed", () => {
     await putBack(dir, "sdk.js", SDK_CALL);
   });
 
-  // A read that waits on the pipe fails the test at its time limit; a writer opened a second later then frees it.
-  it("does not wait on a pipe that appears after its check, and fails the check", { timeout: 3000 }, async () => {
+  // A read that waits on the pipe returns only once a writer, opened 20 seconds later, frees it; the run must end first.
+  it("does not wait on a pipe that appears after its check, and fails the check", async () => {
     const dir = await repoWith({ "sdk.js": SDK_CALL });
     race.path = join(dir, "sdk.js");
+    let freed = false;
     race.beforeRead = once(async () => {
       await rm(race.path);
       await promisify(execFile)("mkfifo", [race.path]);
-      const free = setTimeout(() => void writeFile(race.path, "", { flag: constants.O_WRONLY | constants.O_NONBLOCK }).catch(() => undefined), 4000);
+      const free = setTimeout(() => {
+        freed = true;
+        void writeFile(race.path, "", { flag: constants.O_WRONLY | constants.O_NONBLOCK }).catch(() => undefined);
+      }, 20_000);
       free.unref();
     });
     const result = await fix(dir, { test: "exit 1" });
+    expect(freed).toBe(false);
     expect(result.tests).toMatchObject({ passed: false, removed: "sdk.js" });
     await putBack(dir, "sdk.js", SDK_CALL);
   });
