@@ -1,13 +1,28 @@
 #!/bin/sh
 # One rule per pull request type, so a new title cannot dodge a guard. A refactor or perf change keeps
 # every existing test, a test, docs or tooling change leaves the code and what the suite proves alone,
-# only a ci change alters how the checks run, and a revert is exactly the inverse of one commit. Results
+# only a ci change alters how the checks run, a style change is exactly the formatter's output, and a
+# revert is exactly the inverse of one commit. Results
 # go to the job summary on the pull request page.
 #   TITLE=... BODY=... check-refactor.sh <base sha> <head sha>
 #   check-refactor.sh --base-tests <base sha>   runs base's tests and fixtures against the checked out code
+#   check-refactor.sh --style <base sha> <head sha>   formats base's copy of each changed file with the
+#     prettier in node_modules, which must be the version base pins, and base's config
 # The second form overwrites test/ and the fixtures in the working tree.
 set -eu
 . "$(dirname "$0")/pr-common.sh"
+
+# Fails a style change that touches anything but edits to existing .ts, .js, .mjs and .cjs files that keep
+# their mode. An added or removed file shows mode 000000 on one side. Workflow actions and formatter config
+# written in code are among what only a ci change may touch (gates below).
+style_scope() {
+  outside=$(git diff --raw --no-renames "$base...$head" | awk -F '\t' '{ split($1, m, " ") }
+    m[1] != ":" m[2] || m[2] !~ /^100(644|755)$/ || $2 !~ /\.(ts|js|mjs|cjs)$/ { print $2 }')
+  [ -z "$outside" ] && return
+  say "**(a) failed:** a style change only edits existing code files the formatter covers. Touched:"
+  list "$outside"
+  exit 1
+}
 
 if [ "${1:-}" = --base-tests ]; then
   base=$2
@@ -23,6 +38,66 @@ if [ "${1:-}" = --base-tests ]; then
   npx tsx scripts/fixtures.ts || { say "**(b) failed:** a pack fixture from base fails against this change's code (log above)."; fail=1; }
   [ "$fail" = 0 ] && say "**(b) passed:** every test and fixture from base passes against this change's code."
   exit "$fail"
+fi
+
+if [ "${1:-}" = --style ]; then
+  base=$2 head=$3
+  style_scope
+  tree=$(mktemp -d)
+  trap 'rm -rf "$tree"' EXIT
+  git archive "$base" | tar -x -C "$tree"
+  # Options come only from base's root .prettierrc.json, read as JSON: no config file runs, and no plugin,
+  # override or parser can change what the code does. Templates are left as they are whatever it says.
+  differ=$(paths | node -e '(async () => {
+    const { execFileSync } = require("node:child_process");
+    const { existsSync, readFileSync } = require("node:fs");
+    const { join, posix } = require("node:path");
+    const [tree, base, mb, head] = process.argv.slice(1);
+    const blob = (rev, f) => execFileSync("git", ["cat-file", "blob", `${rev}:${f}`], { maxBuffer: 2 ** 28 });
+    const prettier = require(join(process.cwd(), "node_modules/prettier"));
+    let pinned;
+    try { pinned = JSON.parse(blob(base, "package.json")).devDependencies?.prettier; } catch {}
+    if (pinned !== prettier.version) return console.log(`prettier ${pinned ?? "(none)"} pinned in base\x27s package.json, ${prettier.version} installed`);
+    const files = readFileSync(0, "utf8").split("\n").filter(Boolean);
+    // Each config prettier or .editorconfig would read for a changed file: any in its folder or above it.
+    const listed = execFileSync("git", ["ls-tree", "-r", "-z", "--name-only", base], { encoding: "utf8", maxBuffer: 2 ** 28 }).split("\0");
+    const named = (p) => /^(\.prettierrc.*|prettier\.config\..*|\.editorconfig|package\.yaml)$/i.test(posix.basename(p)) ||
+      (/^package\.json$/i.test(posix.basename(p)) && (() => { try { return Object.hasOwn(JSON.parse(readFileSync(join(tree, p), "utf8")), "prettier"); } catch { return true; } })());
+    const dirs = new Set(files.flatMap((f) => f.split("/").slice(0, -1).map((_, i, a) => a.slice(0, i + 1).join("/")).concat("")));
+    const others = listed.filter((p) => p && p !== ".prettierrc.json" && dirs.has(posix.dirname(p) === "." ? "" : posix.dirname(p)) && named(p));
+    if (others.length) return others.forEach((p) => console.log(`${p} in base: only base\x27s root .prettierrc.json may set options`));
+    const rc = join(tree, ".prettierrc.json");
+    if (!existsSync(rc)) return console.log(".prettierrc.json in base is missing");
+    let config;
+    try { config = JSON.parse(readFileSync(rc, "utf8")); } catch {}
+    if (config === null || typeof config !== "object" || Array.isArray(config)) return console.log(".prettierrc.json in base is not a JSON object");
+    const layout = ["printWidth", "tabWidth", "useTabs", "semi", "singleQuote", "quoteProps", "trailingComma", "bracketSpacing", "arrowParens", "endOfLine", "embeddedLanguageFormatting"];
+    for (const [k, v] of Object.entries(config)) {
+      const at = `.prettierrc.json in base sets ${JSON.stringify(k)}`;
+      if (!layout.includes(k)) return console.log(`${at}, not a plain layout option`);
+      if (!["string", "number", "boolean"].includes(typeof v)) return console.log(`${at} to ${JSON.stringify(v)}, not a plain value`);
+      if (k === "embeddedLanguageFormatting" && v !== "off") return console.log(`${at} to ${JSON.stringify(v)}, where only "off" keeps templates as they are`);
+    }
+    // As the CLI reads them: .gitignore and .prettierignore at the root.
+    const ignorePath = [join(tree, ".gitignore"), join(tree, ".prettierignore")];
+    for (const f of files) {
+      const file = join(tree, f);
+      const info = await prettier.getFileInfo(file, { ignorePath, resolveConfig: false });
+      if (info.ignored || !info.inferredParser) { console.log(`${f} (left out by base\x27s .prettierignore)`); continue; }
+      try {
+        const out = await prettier.format(blob(mb, f).toString("utf8"), { ...config, embeddedLanguageFormatting: "off", filepath: file });
+        if (!Buffer.from(out, "utf8").equals(blob(head, f))) console.log(`${f} (differs from the formatter\x27s output)`);
+      } catch (e) { console.log(`${f} (could not be formatted: ${String(e?.message).split("\n")[0]})`); }
+    }
+  })().catch((e) => console.log(`the formatter (could not run: ${String(e?.message).split("\n")[0]})`))' "$tree" "$base" "$(git merge-base "$base" "$head")" "$head") ||
+    differ="the formatter (could not run; log above)"
+  if [ -n "$differ" ]; then
+    say "**(b) failed:** a style change is exactly what base's pinned prettier writes over base's copy of each file with the layout options in base's root .prettierrc.json. Not so for:"
+    list "$differ"
+    exit 1
+  fi
+  say "**(b) passed:** every changed file is what prettier $(node -p 'require(process.cwd() + "/node_modules/prettier").version') writes over base's copy with base's layout options."
+  exit 0
 fi
 
 base=$1 head=$2
@@ -240,9 +315,15 @@ gates() {
   gate '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
   gate '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' "what the typecheck and lint steps check"
   gate '^"?(\.?knip(\.config)?\.[^/]*|\.jscpd\.json)"?$' "what the unused code and duplicate checks report"
-  gate '(^|/)(\.prettierrc[^/]*|prettier\.config\.[^/]*|\.prettierignore|\.editorconfig)"?$' "what the format check accepts"
+  gate '(^|/)(\.prettierrc[^/]*|prettier\.config\.[^/]*|\.prettierignore|\.editorconfig|package\.yaml)"?$' "what the format check accepts"
   package_json scripts | awk '{ print $0 " (what npm run runs)" }'
   package_json "prettier knip jscpd" | awk '{ print $0 " (the config a check reads from package.json)" }'
+  # prettier also reads a "prettier" key from a package.json below the root, for the files beside and below it.
+  printf '%s\n' "$all" | grep -iE '/package\.json"?$' | { node -e '
+    const git = (rev, f) => require("node:child_process").execFileSync("git", ["show", `${rev}:${f}`], { encoding: "utf8", stdio: "pipe" });
+    const key = (rev, f) => { try { return JSON.stringify(JSON.parse(git(rev, f))?.prettier); } catch { return undefined; } };
+    for (const f of require("node:fs").readFileSync(0, "utf8").split("\n").filter(Boolean)) if (key(process.argv[1], f) !== key(process.argv[2], f)) console.log(`${f} "prettier"`);
+  ' "$mb" "$head" || echo 'package.json "prettier" (unreadable)'; } | awk '{ print $0 " (what the format check accepts)" }'
 }
 
 # What decides which files ship: package.json "files", and ignore files below the root, which drop files
@@ -324,6 +405,12 @@ test | docs | chore | ci | build)
     exit 1
   fi
   say "**Passed:** nothing the rule keeps changed."
+  ;;
+style)
+  say "**Rule for \`style\`:** (a) only edits to existing .ts, .js, .mjs and .cjs files that base's .prettierignore keeps: no added, removed or renamed file, and no package.json, lock, formatter config, workflow or other file; (b) each is exactly what base's pinned prettier writes over base's copy with the layout options in base's root .prettierrc.json, tagged templates left as they are."
+  style_scope
+  say "**(a) passed:** every changed path is an existing code file; base's .prettierignore and (b) are checked next."
+  echo "style=true" >>"${GITHUB_OUTPUT:-/dev/null}"
   ;;
 fix | feat) say "**Rule for \`$type\`:** passes here; the proof check covers $type changes." ;;
 revert)
