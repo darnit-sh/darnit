@@ -56,7 +56,7 @@ if [ "${1:-}" = --style ]; then
     const { join, posix } = require("node:path");
     const [tree, base, mb, head] = process.argv.slice(1);
     const blob = (rev, f) => execFileSync("git", ["cat-file", "blob", `${rev}:${f}`], { maxBuffer: 2 ** 28 });
-    const prettier = require("prettier");
+    const prettier = require(join(process.cwd(), "node_modules/prettier"));
     let pinned;
     try { pinned = JSON.parse(blob(base, "package.json")).devDependencies?.prettier; } catch {}
     if (pinned !== prettier.version) return console.log(`prettier ${pinned ?? "(none)"} pinned in base\x27s package.json, ${prettier.version} installed`);
@@ -98,7 +98,7 @@ if [ "${1:-}" = --style ]; then
     list "$differ"
     exit 1
   fi
-  say "**(b) passed:** every changed file is what prettier $(node -p 'require("prettier").version') writes over base's copy with base's layout options."
+  say "**(b) passed:** every changed file is what prettier $(node -p 'require(process.cwd() + "/node_modules/prettier").version') writes over base's copy with base's layout options."
   exit 0
 fi
 

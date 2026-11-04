@@ -1001,12 +1001,12 @@ describe("the style rule", () => {
     { write: "packs/v/p/fixtures/basic/input.ts", text: messy },
   ];
   /** Runs the refactor job's steps: the table step, then --style with this repository's packages when it asks. */
-  async function style(edits: Edit[], base = landed(), title = "style: format the code") {
+  async function style(edits: Edit[], base = landed(), title = "style: format the code", env: NodeJS.ProcessEnv = {}, modules = true) {
     const made = await repo(edits, base);
     const table = await check(made, title);
     if (!table.style) return table;
-    await symlink(resolve("node_modules"), join(made.dir, "node_modules"));
-    const run = spawnSync("sh", [script, "--style", made.base, made.head], { cwd: made.dir, encoding: "utf8", env: { ...process.env, GITHUB_STEP_SUMMARY: "" } });
+    if (modules) await symlink(resolve("node_modules"), join(made.dir, "node_modules"));
+    const run = spawnSync("sh", [script, "--style", made.base, made.head], { cwd: made.dir, encoding: "utf8", env: { ...process.env, GITHUB_STEP_SUMMARY: "", ...env } });
     return { ...table, status: run.status, out: table.out + run.stdout };
   }
 
@@ -1149,6 +1149,31 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
     // Config elsewhere, where prettier would not read it for the changed files, does not count.
     const elsewhere = await style([{ write: "src/a.ts", text: tidy }], [...landed(), { write: "test/e2e/s/.editorconfig", text: "root = true\n" }]);
     expect(elsewhere.status).toBe(0);
+  });
+
+  it("runs prettier from node_modules by path, whatever prettier, npx or module folder comes first", async () => {
+    const fake = await mkdtemp(join(tmpdir(), "darnit-style-fake-"));
+    tempDirs.push(fake);
+    for (const tool of ["prettier", "npx"]) await writeIn(fake, `bin/${tool}`, "#!/bin/sh\nexit 0\n");
+    await chmod(join(fake, "bin/prettier"), 0o755);
+    await chmod(join(fake, "bin/npx"), 0o755);
+    // A prettier module that answers with whatever the head holds, so any change would pass.
+    await writeIn(fake, "modules/prettier/package.json", JSON.stringify({ name: "prettier", version: formatter.version, main: "index.js" }));
+    await writeIn(
+      fake,
+      "modules/prettier/index.js",
+      `module.exports = { version: ${JSON.stringify(formatter.version)}, getFileInfo: async () => ({ ignored: false, inferredParser: "typescript" }),
+  format: async (_, o) => require("node:child_process").execFileSync("git", ["show", "HEAD:" + o.filepath.slice(o.filepath.lastIndexOf("/src/") + 1)], { encoding: "utf8" }) };\n`,
+    );
+    const env = { PATH: `${join(fake, "bin")}:${process.env.PATH}`, NODE_PATH: join(fake, "modules") };
+    const flipped = [{ write: "src/a.ts", text: tidy.replace("b: 1", "b: 2") }];
+    const bad = await style(flipped, landed(), undefined, env);
+    expect(bad.status).toBe(1);
+    expect(bad.out).toContain("- src/a.ts (differs from the formatter's output)\n");
+    expect((await style([{ write: "src/a.ts", text: tidy }], landed(), undefined, env)).status).toBe(0);
+    const none = await style(flipped, landed(), undefined, env, false);
+    expect(none.status).toBe(1);
+    expect(none.out).toContain("- the formatter (could not run: Cannot find module");
   });
 
   it("fails a change to a link, even when its target is the formatter's output", async () => {
