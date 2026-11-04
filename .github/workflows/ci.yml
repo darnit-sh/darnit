@@ -18,6 +18,9 @@ concurrency:
 
 # Each limit is twice the job's slowest of its latest successful runs, rounded up to 5 minutes
 # (test/workflow-limits.test.ts): test 9m41s on ubuntu and 8m53s on macOS, package 2m02s, lint 1m19s.
+# A job's wait for a runner counts toward its limit: macOS test jobs were cancelled at 15 minutes with no
+# runner and no step run. macOS jobs get 30 minutes more. The merge queue's status check timeout (60 minutes)
+# must stay above every limit here and in golden.yml.
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -51,7 +54,7 @@ jobs:
         # Pull requests skip macOS on Node 24 and 26; main runs all six.
         exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24},{"os":"macos-latest","node":26}]') || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 50 || 20 }}
     env:
       npm_config_script_shell: /bin/sh
     steps:
@@ -87,7 +90,7 @@ jobs:
         # Pull requests skip macOS on Node 24 and 26; main runs all six.
         exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"macos-latest","node":24},{"os":"macos-latest","node":26}]') || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 35 || 5 }}
     env:
       npm_config_script_shell: /bin/sh
     steps:

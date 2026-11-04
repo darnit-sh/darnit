@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { minutesOn } from "./helpers.js";
 
 type Job = { "timeout-minutes"?: unknown; uses?: string; if?: unknown; name?: unknown; env?: Record<string, string>; strategy?: { matrix?: unknown } };
 type Workflow = { on?: unknown; jobs?: Record<string, Job>; concurrency?: { group?: unknown } };
@@ -38,7 +39,8 @@ const readsEvent = (v: unknown) => v !== undefined && /event_name|github\.event\
 function jobProblem(workflows: Workflows, at: string, job: Job): string | undefined {
   const limit = job["timeout-minutes"];
   if (job.uses === undefined) {
-    if (typeof limit === "number" && Number.isInteger(limit) && limit > 0 && limit <= MAX_MINUTES) return undefined;
+    const each = ["ubuntu-latest", "macos-latest"].map((os) => minutesOn(limit, os));
+    if (each.every((n) => n !== undefined && Number.isInteger(n) && n > 0 && n <= MAX_MINUTES)) return undefined;
     return `${at} has no timeout-minutes from 1 to ${MAX_MINUTES} (it reads ${JSON.stringify(limit)})`;
   }
   // GitHub refuses timeout-minutes on a job that calls a workflow; the called workflow's own jobs carry the limits.
@@ -81,7 +83,8 @@ describe("the workflows in .github/workflows", () => {
   });
 
   it("fail a new job without timeout-minutes, or with a limit GitHub would not keep", async () => {
-    for (const limit of [undefined, 0, -5, 2.5, 361, "15", "${{ inputs.minutes }}"]) {
+    const byOs = (n: number) => `\${{ matrix.os == 'macos-latest' && ${n} || 20 }}`;
+    for (const limit of [undefined, 0, -5, 2.5, 361, "15", "${{ inputs.minutes }}", byOs(0), byOs(361), "${{ matrix.os == 'macos-latest' && 50 }}"]) {
       const workflows = await copy();
       workflows["corpus.yml"]!.jobs!.extra = { "timeout-minutes": limit };
       expect(problems(workflows)).toEqual([`corpus.yml job extra has no timeout-minutes from 1 to 360 (it reads ${JSON.stringify(limit)})`]);

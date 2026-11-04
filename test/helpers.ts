@@ -85,3 +85,12 @@ export function matchersAtDarnit(steps: { uses?: string; run?: string }[]): stri
   }
   throw new Error("no step runs darnit");
 }
+
+// timeout-minutes set per runner, the one form of expression the workflows use for it.
+const BY_OS = /^\$\{\{ matrix\.os == '([\w.-]+)' && (\d+) \|\| (\d+) \}\}$/;
+/** A job's timeout-minutes on runner `os`: a number, or `${{ matrix.os == '<os>' && <n> || <m> }}`; undefined for any other form. */
+export function minutesOn(limit: unknown, os: string): number | undefined {
+  if (typeof limit === "number") return limit;
+  const m = typeof limit === "string" ? BY_OS.exec(limit) : null;
+  return m ? Number(m[1] === os ? m[2] : m[3]) : undefined;
+}
