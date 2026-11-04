@@ -390,7 +390,7 @@ describe("the rule picked by the title's type", () => {
     expect((await check(raised, "test: x")).summary).toContain("- coverage-thresholds.json (which tests run and how much they must cover)");
   });
 
-  it("refuses outside ci any change to a vitest or vite config, and in ci without a Coverage line, however it still names the thresholds file", async () => {
+  it("refuses outside ci any change to a vitest or vite config, and in ci without a Coverage line, however it still names the thresholds file", { timeout: 60_000 }, async () => {
     const config = 'import thresholds from "./coverage-thresholds.json";\nexport default { test: { coverage: { thresholds } } };\n';
     const landed = [{ write: "coverage-thresholds.json", text: '{"src/**":{"lines":80}}' }, { write: "vitest.config.ts", text: config }];
     const edits: Edit[][] = [

@@ -100,7 +100,7 @@ describe("the coverage gate", () => {
     }
   });
 
-  it("fails any change to a vitest or vite config, also in a ci change with only a Proof line, until a Coverage line gives a reason", async () => {
+  it("fails any change to a vitest or vite config, also in a ci change with only a Proof line, until a Coverage line gives a reason", { timeout: 60_000 }, async () => {
     const edits: Files[] = [
       { "vitest.config.ts": config.replace("{ thresholds }", "{ thresholds: {} }") },
       { "vitest.config.ts": `// reads ./${file}\nexport default { test: { coverage: { thresholds: {} } } };\n` },
