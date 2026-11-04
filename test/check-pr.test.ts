@@ -178,17 +178,17 @@ afterAll(async () => {
   await Promise.all(jobDirs.map((d) => rm(d, { recursive: true, force: true })));
 });
 
-type PullRequest = { dir: string; base: string; head: string; title: string; decoy: string };
+// `event` merge_group runs it as a merge queue would, with no pull request.
+type PullRequest = { dir: string; base: string; head: string; title: string; decoy: string; event?: string };
 
 /**
  * Runs pr.yml's job `id` on `pr` as the runner would. Each run step gets the job's env, then what earlier steps
  * wrote to $GITHUB_ENV, then its own env, with the folders written to $GITHUB_PATH put before its PATH, and its
  * shell looked up on that PATH unless named by an absolute path. Action steps do nothing: the repo is the
  * checkout, and node is on PATH. The install has nothing to install, so this repo's node_modules stands in after
- * it. `after`, when given, runs right after the install, as code of the change would if it had run there. With
- * `event` merge_group there is no pull request, and the queued commits stand in for base and head.
+ * it. `after`, when given, runs right after the install, as code of the change would if it had run there.
  */
-async function runJob(id: string, pr: PullRequest, after?: string, event = "pull_request") {
+async function runJob(id: string, pr: PullRequest, after?: string) {
   const job = (await workflow("pr")).jobs[id]!;
   const temp = await mkdtemp(join(tmpdir(), "darnit-runner-"));
   jobDirs.push(temp);
@@ -198,24 +198,8 @@ async function runJob(id: string, pr: PullRequest, after?: string, event = "pull
   const files = { GITHUB_ENV: join(temp, "env"), GITHUB_PATH: join(temp, "path"), GITHUB_STEP_SUMMARY: join(temp, "summary") };
   for (const f of Object.values(files)) await writeFile(f, "");
   const outputs: Record<string, Record<string, string>> = {};
-  const queued = event === "merge_group";
-  const context: Record<string, string> = {
-    "github.event_name": event,
-    "github.event.pull_request.base.sha": queued ? "" : pr.base,
-    "github.event.pull_request.head.sha": queued ? "" : pr.head,
-    "github.event.pull_request.title": queued ? "" : pr.title,
-    "github.event.pull_request.body": "",
-    "github.event.merge_group.base_sha": queued ? pr.base : "",
-    "github.event.merge_group.head_sha": queued ? pr.head : "",
-  };
-  // One value, or the first that is not empty of several joined by ||.
-  const value = (expr: string): string => {
-    if (expr.includes("||")) return expr.split("||").map((e) => value(e.trim())).find(Boolean) ?? "";
-    const out = /^steps\.([\w-]+)\.outputs\.([\w-]+)$/.exec(expr);
-    if (out) return outputs[out[1]!]?.[out[2]!] ?? "";
-    if (expr in context) return context[expr]!;
-    throw new Error(`no value for ${expr}`);
-  };
+  const context = contextFor(pr);
+  const value = (expr: string) => read(expr, outputs, context);
   const expand = (s: string) => s.replace(/\$\{\{\s*(.+?)\s*\}\}/g, (_, e: string) => value(e));
   const vars = (env: Record<string, string> = {}) => Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expand(String(v))]));
   const machine = {
@@ -251,6 +235,32 @@ async function runJob(id: string, pr: PullRequest, after?: string, event = "pull
     }
   }
   return { status: 0, ...(await verdict(temp)), log };
+}
+
+/** The github.* values the steps read: a pull request's, or in a merge queue run, the queued commits and no pull request. */
+function contextFor(pr: PullRequest): Record<string, string> {
+  const event = pr.event ?? "pull_request";
+  const commits = { base: pr.base, head: pr.head, title: pr.title };
+  const none = { base: "", head: "", title: "" };
+  const [pull, queue] = event === "merge_group" ? [none, commits] : [commits, none];
+  return {
+    "github.event_name": event,
+    "github.event.pull_request.base.sha": pull.base,
+    "github.event.pull_request.head.sha": pull.head,
+    "github.event.pull_request.title": pull.title,
+    "github.event.pull_request.body": "",
+    "github.event.merge_group.base_sha": queue.base,
+    "github.event.merge_group.head_sha": queue.head,
+  };
+}
+
+/** An expression's value: a step output, a context value, or the first that is not empty of several joined by ||. */
+function read(expr: string, outputs: Record<string, Record<string, string>>, context: Record<string, string>): string {
+  if (expr.includes("||")) return expr.split("||").map((e) => read(e.trim(), outputs, context)).find(Boolean) ?? "";
+  const out = /^steps\.([\w-]+)\.outputs\.([\w-]+)$/.exec(expr);
+  if (out) return outputs[out[1]!]?.[out[2]!] ?? "";
+  if (expr in context) return context[expr]!;
+  throw new Error(`no value for ${expr}`);
 }
 
 /** The verdict lines of a job's summary, and whether breach.sh ran. */
@@ -346,7 +356,7 @@ describe("the refactor and proof jobs", { timeout: 240_000 }, () => {
     it.concurrent(`${id}: passes a merge queue run with the summary line, installing and running nothing of the change`, async () => {
       const c = cases[id as keyof typeof cases];
       const pr = await pullRequest(c.title, c.head, c.decoy, () => "");
-      const r = await runJob(id, pr, undefined, "merge_group");
+      const r = await runJob(id, { ...pr, event: "merge_group" });
       expect(r.status, r.log).toBe(0);
       expect(r.log).toContain("Judged on the pull request; the merge queue admits only pull requests that passed it.");
       expect(r.summary).toEqual([]);
