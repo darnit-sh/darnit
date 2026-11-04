@@ -1,7 +1,9 @@
 # The workflows and scripts that decide whether a pull request can merge.
 /.github/ @alexcsh0
 /scripts/ @alexcsh0
-# What npm installs and runs: dependencies, the lock and npm's settings.
+# What npm installs and runs: dependencies, the lock files and package manager settings.
 /package.json @alexcsh0
 /package-lock.json @alexcsh0
+/npm-shrinkwrap.json @alexcsh0
 .npmrc @alexcsh0
+.yarnrc* @alexcsh0
