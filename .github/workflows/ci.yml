@@ -44,6 +44,13 @@ jobs:
       - run: "! git config --name-only --get-regexp '^http\\..*\\.extraheader$'"
       - run: npm run lint
       - run: npm run typecheck
+      # Unused files, exports and dependencies, and duplicated blocks, each checked against its list in scripts/allow/.
+      # Each limit is the rule above applied to the step: it took 1s (knip) and under 1s (duplicates) in this job's
+      # last run with them, so twice that rounded up to 5 minutes is 5. The job's limit stays 5.
+      - run: npm run knip
+        timeout-minutes: 5
+      - run: npm run duplicates
+        timeout-minutes: 5
 
   test:
     strategy:

@@ -311,8 +311,11 @@ gates() {
   gate '^"?\.github/' "the workflows and settings that run and review every pull request"
   gate '^"?\.(npmrc|yarnrc[^/]*)"?$' "npm and yarn config, which decides what every npm command runs"
   gate '^"?test/no-credentials\.ts"?$' "what vitest runs in every worker before the tests"
-  gate '^"?scripts/(accounting|golden|fixtures)\.ts"?$' "a runner behind a required check" "$edited"
-  gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*|allow/.*)"?$' "the pull request checks"
+  gate '^"?scripts/(accounting|golden|fixtures|allowlist|unseen)\.ts"?$' "a runner behind a required check" "$edited"
+  gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*)"?$' "the pull request checks"
+  # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
+  shrunk=$(git diff --no-renames --text --numstat --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' | awk '$1 == 0 { print $3 }')
+  gate '^"?scripts/allow/' "the lists the pull request checks accept" "$(printf '%s\n' "$all" | grep -vixF -- "${shrunk:-//}" || true)"
   gate '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
   gate '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' "what the typecheck and lint steps check"
   gate '^"?(\.?knip(\.config)?\.[^/]*|\.jscpd\.json)"?$' "what the unused code and duplicate checks report"
@@ -340,6 +343,28 @@ if [ "$type" != ci ] && [ -n "$gated" ]; then
   say "**Failed:** how the checks run changes only in a ci change with a \`Proof: none, <reason>\` line, so that no other change can switch a check off. Touched:"
   list "$gated"
   exit 1
+fi
+
+# What lets a finding of the unused or duplicate code checks pass besides the paths gates() lists: a line added to a
+# list under scripts/allow/ (one edited in place counts as added), or an added line anywhere with a tag knip skips an
+# export for (@public, @beta, @alias) or a jscpd:ignore marker. These are lines, not paths, so they are not entries in
+# gates(): a marker lands in code, and growing a list takes its own reason beside the ci one. Names match in any case.
+grown=$(
+  git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" |
+    awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next }
+      /^\+/ && (tolower(f) ~ /^scripts\/allow\/.*\.tsv"?$/ || /@(public|beta|alias)([^A-Za-z0-9_]|$)/ || tolower($0) ~ /jscpd:ignore-(start|end)/) { print f ": " substr($0, 2) }'
+)
+if [ -n "$grown" ]; then
+  reason=
+  if [ "$type" = ci ]; then body_reason "Allowlist: " Allowlist; fi
+  if [ -z "$reason" ]; then
+    say "**Failed:** only a \`ci\` change with an \`Allowlist: <reason>\` line in the pull request body may add to an allowlist under scripts/allow/ or add a knip tag or jscpd:ignore marker. Added or changed:"
+    list "$grown"
+    exit 1
+  fi
+  echo "::warning::adds to an allowlist or a way past the unused and duplicate code checks, allowed by an 'Allowlist:' line in the pull request body; the reason is in the job summary"
+  say "**Allowlist grown** under the Allowlist line in the pull request body. Reason given: \`$reason\`"
+  list "$grown"
 fi
 
 case $type in

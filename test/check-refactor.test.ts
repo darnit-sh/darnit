@@ -106,7 +106,7 @@ const lock = (packages: Record<string, object> = {}) =>
 /** package.json with `deps` merged over base's dependency fields. */
 const withDeps = (deps: object) => `${JSON.stringify({ ...JSON.parse(pkg()), ...deps })}\n`;
 
-type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; revert?: boolean; chmod?: string; mode?: string };
+type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; symlink?: [string, string]; revert?: boolean; chmod?: string; mode?: string };
 
 const gitIn =
   (dir: string) =>
@@ -157,6 +157,11 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
       if (e.link) {
         await rm(join(dir, e.link));
         await symlink("../src/a.ts", join(dir, e.link));
+      }
+      if (e.symlink) {
+        await rm(join(dir, e.symlink[0]), { recursive: true, force: true });
+        await mkdir(dirname(join(dir, e.symlink[0])), { recursive: true });
+        await symlink(e.symlink[1], join(dir, e.symlink[0]));
       }
       if (e.revert) git("revert", "--no-commit", "HEAD");
     }
@@ -1109,6 +1114,91 @@ describe("the rule picked by the title's type", () => {
     expect(failed.status).toBe(1);
     expect(failed.stdout).toContain("(b) failed:** a test from base");
     expect(failed.stdout).toContain("(b) failed:** a pack fixture from base");
+  });
+});
+
+describe("lines added to an allowlist under scripts/allow/", () => {
+  const LIST = "scripts/allow/unused.tsv";
+  const kept = "exports\tsrc/a.ts\told\tkept for now\ntypes\tsrc/a.ts\tT\tkept for now\n";
+  const landed: Edit[] = [{ write: LIST, text: kept }];
+  const added = `${kept}exports\tsrc/a.ts\tfresh\tkept too\n`;
+  const why = "Proof: none, a ci change that grows a list\n\nAllowlist: the new export stays until the cleanup\n";
+  const proof = "Proof: none, a ci change that grows a list\n";
+  const grow = (title: string, edits: Edit[], body = why) => rule(title, edits, body, {}, landed);
+
+  it("fails a fix that adds a breach and its allowlist line, and a refactor that adds a line", async () => {
+    const fix = await grow("fix(scan): x", [{ write: "src/a.ts" }, { write: LIST, text: added }]);
+    expect(fix.status).toBe(1);
+    expect(fix.out).toContain("- scripts/allow/unused.tsv (the lists the pull request checks accept)");
+    expect((await grow("refactor: x", [{ write: LIST, text: added }])).status).toBe(1);
+  });
+
+  it("lets a ci change add a line only with an Allowlist line a reader sees, and shows the reason", async () => {
+    const edits: Edit[] = [{ write: LIST, text: added }];
+    const passed = await grow("ci: x", edits);
+    expect(passed.status).toBe(0);
+    expect(passed.summary).toContain("Reason given: `the new export stays until the cleanup`");
+    expect(passed.summary).toContain("- scripts/allow/unused.tsv: exports\tsrc/a.ts\tfresh\tkept too");
+    for (const body of ["", "```\nAllowlist: hidden in a code block\n```\n", "<!-- Allowlist: hidden in a comment -->\n", "Allowlist: short\n"]) {
+      const r = await grow("ci: x", edits, proof + body);
+      expect(r.status, body).toBe(1);
+      expect(r.out).toContain("only a `ci` change with an `Allowlist: <reason>` line");
+    }
+  });
+
+  it("counts a line changed in place as added, in any file under scripts/allow/ and in any case", async () => {
+    const reason = kept.replace("old\tkept for now", "old\tkept for a while");
+    const swapped = kept.replace("\told\t", "\tother\t");
+    for (const text of [reason, swapped]) {
+      const r = await grow("ci: x", [{ write: LIST, text }], proof);
+      expect(r.status, text).toBe(1);
+      expect(r.out).toContain(`- ${LIST}: ${text.split("\n")[0]}`);
+    }
+    // A macOS disk keeps the folder's existing case, so the name is compared in any case.
+    expect((await grow("ci: x", [{ write: "scripts/Allow/Duplicates.TSV", text: "a\tb\twhy\n" }], proof)).out.toLowerCase()).toContain("- scripts/allow/duplicates.tsv: a\tb\twhy");
+    expect((await grow("ci: x", [{ write: ".gitattributes", text: "*.tsv -diff\n" }, { write: LIST, text: added }], proof)).out).toContain(`- ${LIST}: exports\tsrc/a.ts\tfresh`);
+  });
+
+  it("leaves links alone, which the reader refuses for the lists, so a test can add a fixture link", async () => {
+    expect((await grow("test: x", [{ symlink: ["test/samples/loop/up", "../../.."] }], "")).status).toBe(0);
+  });
+
+  it("fails a way past the checks under any type but ci with the Allowlist line, which cannot touch src/ either", async () => {
+    const withKey = (key: string) => `${JSON.stringify({ ...JSON.parse(pkg()), [key]: { ignore: ["src/orphan.ts"] } })}\n`;
+    const routes: [Edit[], string][] = [
+      [[{ write: "package.json", text: withKey("knip") }], '- package.json "knip" (the config a check reads from package.json)'],
+      [[{ write: "package.json", text: withKey("jscpd") }], '- package.json "jscpd" (the config a check reads from package.json)'],
+      [[{ write: "src/a.ts", text: "/** @public */\nexport const leftOver = 1;\n" }], "- src/a.ts: /** @public */"],
+      [[{ write: "src/a.ts", text: "// @beta\nexport const leftOver = 1;\n" }], "- src/a.ts: // @beta"],
+      [[{ write: "src/b.ts", text: "/* jscpd:ignore-start */\nconst copy = 1;\n/* JSCPD:ignore-end */\n" }], "- src/b.ts: /* jscpd:ignore-start */"],
+    ];
+    for (const [edits, line] of routes) {
+      const r = await grow("fix(scan): x", edits, "");
+      expect(r.status, line).toBe(1);
+      expect(r.out).toContain(line);
+      expect((await grow("ci: x", edits)).status, line).toBe(edits[0]!.write!.startsWith("src/") ? 1 : 0);
+    }
+    expect((await grow("ci: x", [{ write: "scripts/x.sh", text: "# jscpd:ignore-start\n" }])).status).toBe(0);
+    expect((await grow("fix(scan): x", [{ write: "src/a.ts", text: "// @publicity is not a tag\nexport const a = 1;\n" }], "")).status).toBe(0);
+  });
+
+  it("gates what reads the lists and configures the tools, through the one list of how the checks run", async () => {
+    for (const file of ["scripts/allowlist.ts", "scripts/unseen.ts", "knip.json", "Knip.JSON", ".knip.jsonc", "knip.config.ts", ".jscpd.json"]) {
+      const edits: Edit[] = [{ write: file, text: "changed again\n" }];
+      const r = await rule("fix: x", edits, "", {}, [...landed, { write: file }]);
+      expect(r.status, file).toBe(1);
+      expect(r.out).toContain(`- ${file} (`);
+      expect((await rule("ci: x", edits, proof, {}, [...landed, { write: file }])).status, file).toBe(0);
+    }
+  });
+
+  it("always lets a change remove lines, so the change that removes dead code drops its line too", async () => {
+    for (const title of ["fix: x", "refactor: x", "ci: x"]) {
+      const code: Edit[] = title.startsWith("ci") ? [] : [{ write: "src/a.ts" }];
+      expect((await grow(title, [...code, { write: LIST, text: kept.split("\n")[0] + "\n" }], "")).status, title).toBe(0);
+    }
+    const other = await grow("refactor: x", [{ write: "scripts/allow/models.txt", text: "gone\n" }], "");
+    expect(other.out).toContain("- scripts/allow/models.txt (the lists the pull request checks accept)");
   });
 });
 
