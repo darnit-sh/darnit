@@ -106,7 +106,7 @@ if [ -z "$found" ]; then
   exit 0
 fi
 reason=
-[ "$(title_type)" = ci ] && opt_out "Coverage: "
+[ "$(title_type)" = ci ] && body_reason "Coverage: " Coverage
 if [ -n "$reason" ]; then
   echo "::warning::coverage settings change, allowed by a 'Coverage:' line in the pull request body; the reason is in the job summary"
   say "**Coverage settings changed** under the \`Coverage:\` line in the pull request body. Reason given: \`$reason\`"
