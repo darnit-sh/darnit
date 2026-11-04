@@ -309,6 +309,7 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
 const breaches: Record<string, (decoy: string) => string> = {
   "rewrites the scripts the table step extracted to exit 0": () => `for f in "$RUNNER_TEMP"/scripts/*.sh; do echo 'exit 0' > "$f"; done\n`,
   "writes EVENT and BASE to $GITHUB_ENV": (decoy) => `printf 'EVENT=merge_group\\nBASE=%s\\n' ${decoy} >> "$GITHUB_ENV"\n`,
+  "writes EVENT=merge_group to $GITHUB_ENV, so the scripts would take the merge queue pass": () => `echo EVENT=merge_group >> "$GITHUB_ENV"\n`,
   "puts a folder of fake git, sh, bash, node and npx first on $GITHUB_PATH": () =>
     `mkdir "$RUNNER_TEMP/fake"\nfor t in git sh bash node npx; do printf '#!/bin/sh\\nexit 0\\n' > "$RUNNER_TEMP/fake/$t"; chmod +x "$RUNNER_TEMP/fake/$t"; done\necho "$RUNNER_TEMP/fake" >> "$GITHUB_PATH"\n`,
 };
@@ -339,6 +340,18 @@ describe("the refactor and proof jobs", { timeout: 240_000 }, () => {
         expect(installed.ran).toBe(false);
       });
     }
+  }
+
+  for (const id of Object.keys(cases)) {
+    it.concurrent(`${id}: passes a merge queue run with the summary line, installing and running nothing of the change`, async () => {
+      const c = cases[id as keyof typeof cases];
+      const pr = await pullRequest(c.title, c.head, c.decoy, () => "");
+      const r = await runJob(id, pr, undefined, "merge_group");
+      expect(r.status, r.log).toBe(0);
+      expect(r.log).toContain("Judged on the pull request; the merge queue admits only pull requests that passed it.");
+      expect(r.summary).toEqual([]);
+      expect(r.ran).toBe(false);
+    });
   }
 
   it("takes no input the scripts trust from the job's env, and installs no change's scripts", async () => {
