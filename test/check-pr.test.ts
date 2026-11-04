@@ -16,6 +16,7 @@ const workflow = async (name: string) =>
   parse(await readFile(`.github/workflows/${name}.yml`, "utf8")) as { jobs: Record<string, Job> };
 const step = (await workflow("pr")).jobs.title!.steps!.find((s) => s.run)!.run!;
 const checker = await readFile("scripts/check-pr.sh", "utf8");
+const common = await readFile("scripts/pr-common.sh", "utf8");
 
 /**
  * Runs the title job's step on a repo whose base holds `base` as scripts/check-pr.sh (none for null) and
@@ -30,6 +31,7 @@ async function titleJob(title: string, base: string | null, head: string) {
   git("init", "-q");
   await mkdir(join(dir, "scripts"));
   await writeFile(join(dir, "scripts/other.sh"), "");
+  await writeFile(join(dir, "scripts/pr-common.sh"), common);
   if (base !== null) await writeFile(join(dir, "scripts/check-pr.sh"), base);
   git("add", ".");
   git("commit", "-q", "-m", "ci: base");
@@ -182,7 +184,8 @@ afterAll(async () => {
   await Promise.all(jobDirs.map((d) => rm(d, { recursive: true, force: true })));
 });
 
-type PullRequest = { dir: string; base: string; head: string; title: string; decoy: string };
+// `event` merge_group runs it as a merge queue would, with no pull request.
+type PullRequest = { dir: string; base: string; head: string; title: string; decoy: string; event?: string };
 
 /**
  * Runs pr.yml's job `id` on `pr` as the runner would. Each run step gets the job's env, then what earlier steps
@@ -201,19 +204,8 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
   const files = { GITHUB_ENV: join(temp, "env"), GITHUB_PATH: join(temp, "path"), GITHUB_STEP_SUMMARY: join(temp, "summary") };
   for (const f of Object.values(files)) await writeFile(f, "");
   const outputs: Record<string, Record<string, string>> = {};
-  const context: Record<string, string> = {
-    "github.event_name": "pull_request",
-    "github.event.pull_request.base.sha": pr.base,
-    "github.event.pull_request.head.sha": pr.head,
-    "github.event.pull_request.title": pr.title,
-    "github.event.pull_request.body": "",
-  };
-  const value = (expr: string) => {
-    const out = /^steps\.([\w-]+)\.outputs\.([\w-]+)$/.exec(expr);
-    if (out) return outputs[out[1]!]?.[out[2]!] ?? "";
-    if (expr in context) return context[expr]!;
-    throw new Error(`no value for ${expr}`);
-  };
+  const context = contextFor(pr);
+  const value = (expr: string) => read(expr, outputs, context);
   const expand = (s: string) => s.replace(/\$\{\{\s*(.+?)\s*\}\}/g, (_, e: string) => value(e));
   const vars = (env: Record<string, string> = {}) => Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expand(String(v))]));
   const machine = {
@@ -249,6 +241,32 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
     }
   }
   return { status: 0, ...(await verdict(temp)), log };
+}
+
+/** The github.* values the steps read: a pull request's, or in a merge queue run, the queued commits and no pull request. */
+function contextFor(pr: PullRequest): Record<string, string> {
+  const event = pr.event ?? "pull_request";
+  const commits = { base: pr.base, head: pr.head, title: pr.title };
+  const none = { base: "", head: "", title: "" };
+  const [pull, queue] = event === "merge_group" ? [none, commits] : [commits, none];
+  return {
+    "github.event_name": event,
+    "github.event.pull_request.base.sha": pull.base,
+    "github.event.pull_request.head.sha": pull.head,
+    "github.event.pull_request.title": pull.title,
+    "github.event.pull_request.body": "",
+    "github.event.merge_group.base_sha": queue.base,
+    "github.event.merge_group.head_sha": queue.head,
+  };
+}
+
+/** An expression's value: a step output, a context value, or the first that is not empty of several joined by ||. */
+function read(expr: string, outputs: Record<string, Record<string, string>>, context: Record<string, string>): string {
+  if (expr.includes("||")) return expr.split("||").map((e) => read(e.trim(), outputs, context)).find(Boolean) ?? "";
+  const out = /^steps\.([\w-]+)\.outputs\.([\w-]+)$/.exec(expr);
+  if (out) return outputs[out[1]!]?.[out[2]!] ?? "";
+  if (expr in context) return context[expr]!;
+  throw new Error(`no value for ${expr}`);
 }
 
 /** The verdict lines of a job's summary, and whether breach.sh ran. */
@@ -309,6 +327,7 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
 const breaches: Record<string, (decoy: string) => string> = {
   "rewrites the scripts the table step extracted to exit 0": () => `for f in "$RUNNER_TEMP"/scripts/*.sh; do echo 'exit 0' > "$f"; done\n`,
   "writes EVENT and BASE to $GITHUB_ENV": (decoy) => `printf 'EVENT=merge_group\\nBASE=%s\\n' ${decoy} >> "$GITHUB_ENV"\n`,
+  "writes EVENT=merge_group to $GITHUB_ENV, so the scripts would take the merge queue pass": () => `echo EVENT=merge_group >> "$GITHUB_ENV"\n`,
   "puts a folder of fake git, sh, bash, node, npx and prettier first on $GITHUB_PATH": () =>
     `mkdir "$RUNNER_TEMP/fake"\nfor t in git sh bash node npx prettier; do printf '#!/bin/sh\\nexit 0\\n' > "$RUNNER_TEMP/fake/$t"; chmod +x "$RUNNER_TEMP/fake/$t"; done\necho "$RUNNER_TEMP/fake" >> "$GITHUB_PATH"\n`,
 };
@@ -362,6 +381,17 @@ describe("the refactor, style and proof jobs", { timeout: 240_000 }, () => {
         }
       });
     }
+  }
+
+  for (const [id, c] of Object.entries(cases)) {
+    it.concurrent(`${id}: passes a merge queue run with the summary line, installing and running nothing of the change`, async () => {
+      const pr = await pullRequest(c.title, c.head, c.decoy, () => "", c.style);
+      const r = await runJob(c.job, { ...pr, event: "merge_group" });
+      expect(r.status, r.log).toBe(0);
+      expect(r.log).toContain("Judged on the pull request; the merge queue admits only pull requests that passed it.");
+      expect(r.summary).toEqual([]);
+      expect(r.ran).toBe(false);
+    });
   }
 
   it("takes no input the scripts trust from the job's env, and installs no change's scripts", async () => {

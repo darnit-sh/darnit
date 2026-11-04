@@ -3,13 +3,16 @@ name: pr
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
+  # A merge queue waits for every required check. Each job here passes there without reading anything
+  # (scripts/pr-common.sh), as the queue admits only pull requests whose own run passed.
+  merge_group:
 
 permissions:
   contents: read
 
-# A new push or edit cancels the older run for the same pull request.
+# A new push or edit cancels the older run for the same pull request. Each merge queue run gets its own group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -17,6 +20,7 @@ jobs:
   # Base's copy of the script decides when base has one, so a change cannot loosen the check it is judged by.
   title:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -25,8 +29,9 @@ jobs:
       - env:
           TITLE: ${{ github.event.pull_request.title }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          EVENT: ${{ github.event_name }}
         run: |
           if git cat-file -e "$BASE:scripts/check-pr.sh" 2>/dev/null; then
             git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
@@ -42,7 +47,7 @@ jobs:
   # Base's copy of the scripts decides, so a change cannot loosen the rule it is checked by.
   refactor:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       # npm runs scripts and npx with this shell whatever an .npmrc in the change says: npm reads
       # npm_config_* variables after project config, so they win.
@@ -56,8 +61,9 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          EVENT: ${{ github.event_name }}
         run: |
           git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
           printf "Rule from base's scripts/check-refactor.sh\n\n" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -91,7 +97,8 @@ jobs:
       - if: steps.table.outputs.base-tests == 'true'
         shell: /bin/sh -e {0}
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          EVENT: ${{ github.event_name }}
           NODE: ${{ steps.node.outputs.dir }}
         run: |
           PATH=$NODE:/usr/bin:/bin
@@ -102,8 +109,9 @@ jobs:
       - if: steps.table.outputs.style == 'true'
         shell: /bin/sh -e {0}
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          EVENT: ${{ github.event_name }}
           NODE: ${{ steps.node.outputs.dir }}
         run: |
           PATH=$NODE:/usr/bin:/bin
@@ -127,8 +135,9 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          EVENT: ${{ github.event_name }}
         run: |
           if git cat-file -e "$BASE:scripts/check-proof.sh" 2>/dev/null; then
             git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
@@ -162,8 +171,9 @@ jobs:
         shell: /bin/sh -e {0}
         env:
           TITLE: ${{ github.event.pull_request.title }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          EVENT: ${{ github.event_name }}
           NODE: ${{ steps.node.outputs.dir }}
         run: |
           PATH=$NODE:/usr/bin:/bin

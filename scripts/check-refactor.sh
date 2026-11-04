@@ -11,6 +11,7 @@
 # The second form overwrites test/ and the fixtures in the working tree.
 set -eu
 . "$(dirname "$0")/pr-common.sh"
+if queued; then exit 0; fi
 
 # Fails a style change that touches anything but edits to existing .ts, .js, .mjs and .cjs files that keep
 # their mode. An added or removed file shows mode 000000 on one side. Workflow actions and formatter config

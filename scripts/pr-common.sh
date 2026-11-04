@@ -1,6 +1,12 @@
-# Shared by check-refactor.sh and check-proof.sh, which source it from their own folder.
+# Shared by check-pr.sh, check-refactor.sh and check-proof.sh, which source it from their own folder.
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 say() { printf '%s\n' "$1"; printf '%s\n\n' "$1" >>"$summary"; }
+# A merge queue run (EVENT=merge_group) has no pull request to read. Each check passes there and does
+# nothing else, which is safe because the queue admits only pull requests whose own run of it passed.
+queued() {
+  [ "${EVENT:-}" = merge_group ] || return 1
+  say "Judged on the pull request; the merge queue admits only pull requests that passed it."
+}
 list() { printf '%s\n' "$1" | sed 's/^/- /' | tee -a "$summary"; echo >>"$summary"; }
 title_type() { printf '%s\n' "${TITLE:-}" | sed -nE '1s/^([a-z]+)(\([a-z0-9-]+\))?!?: .*/\1/p'; }
 # Code and rule packs: what a fix or feat needs a proof for and what a test, docs or tooling change leaves alone.
