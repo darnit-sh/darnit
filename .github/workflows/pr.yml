@@ -44,8 +44,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      BASE: ${{ github.event.pull_request.base.sha }}
-      HEAD: ${{ github.event.pull_request.head.sha }}
       # npm runs scripts and npx with this shell whatever an .npmrc in the change says: npm reads
       # npm_config_* variables after project config, so they win.
       npm_config_script_shell: /bin/sh
@@ -58,6 +56,8 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
           printf "Rule from base's scripts/check-refactor.sh\n\n" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -67,18 +67,49 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Found before any code of this change runs, for the step that judges it.
       - if: steps.table.outputs.base-tests == 'true' || steps.table.outputs.style == 'true'
-        run: npm ci
+        id: node
+        run: echo "dir=$(dirname "$(command -v node)")" >> "$GITHUB_OUTPUT"
+      # No install script of this change runs. The one darnit's dependencies need comes from the registry
+      # package the lock names, which the dependency source check holds to what the registry published;
+      # --node-options= drops any an .npmrc in the change sets for it. A style change leaves the lock as its
+      # merge base has it, so this installs the registry's prettier at the version the merge base pins, and
+      # --style refuses unless that is the version base pins.
+      - if: steps.table.outputs.base-tests == 'true' || steps.table.outputs.style == 'true'
+        run: |
+          npm ci --ignore-scripts
+          npm rebuild @ast-grep/cli --node-options=
       - if: steps.table.outputs.base-tests == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/darnit
           key: oasdiff-${{ runner.os }}-${{ hashFiles('src/corpus/oasdiff.ts') }}
+      # Judged by base's scripts, taken fresh into a new folder, run by absolute path with system tools and
+      # inputs set on this step. The runner puts what earlier steps wrote to $GITHUB_PATH before any PATH set
+      # here, so PATH is set in the script, and the shell is named by path.
       - if: steps.table.outputs.base-tests == 'true'
-        run: sh "$RUNNER_TEMP/scripts/check-refactor.sh" --base-tests "$BASE"
-      # A style change does not change the lock, so npm ci installs the prettier base pins.
+        shell: /bin/sh -e {0}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          NODE: ${{ steps.node.outputs.dir }}
+        run: |
+          PATH=$NODE:/usr/bin:/bin
+          dir=$(mktemp -d)
+          git archive "$BASE" scripts | tar -x -C "$dir"
+          /bin/sh "$dir/scripts/check-refactor.sh" --base-tests "$BASE"
+      # As above. --style loads prettier from node_modules by path.
       - if: steps.table.outputs.style == 'true'
-        run: sh "$RUNNER_TEMP/scripts/check-refactor.sh" --style "$BASE" "$HEAD"
+        shell: /bin/sh -e {0}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          NODE: ${{ steps.node.outputs.dir }}
+        run: |
+          PATH=$NODE:/usr/bin:/bin
+          dir=$(mktemp -d)
+          git archive "$BASE" scripts | tar -x -C "$dir"
+          /bin/sh "$dir/scripts/check-refactor.sh" --style "$BASE" "$HEAD"
 
   # A fix or feat that changes code or a rule pack brings a test that fails without it (scripts/check-proof.sh).
   # Runs again when the title or body is edited, with base's copy of the scripts when base has one.
@@ -86,9 +117,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      BASE: ${{ github.event.pull_request.base.sha }}
-      HEAD: ${{ github.event.pull_request.head.sha }}
-      TITLE: ${{ github.event.pull_request.title }}
       npm_config_script_shell: /bin/sh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,7 +125,10 @@ jobs:
           persist-credentials: false
       - id: table
         env:
+          TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           if git cat-file -e "$BASE:scripts/check-proof.sh" 2>/dev/null; then
             git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
@@ -114,11 +145,30 @@ jobs:
           node-version: 22
           cache: npm
       - if: steps.table.outputs.run == 'true'
-        run: npm ci
+        id: node
+        run: echo "dir=$(dirname "$(command -v node)")" >> "$GITHUB_OUTPUT"
+      # As in the refactor job.
+      - if: steps.table.outputs.run == 'true'
+        run: |
+          npm ci --ignore-scripts
+          npm rebuild @ast-grep/cli --node-options=
       - if: steps.table.outputs.run == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/darnit
           key: oasdiff-${{ runner.os }}-${{ hashFiles('src/corpus/oasdiff.ts') }}
+      # As in the refactor job, with this change's scripts when base has none.
       - if: steps.table.outputs.run == 'true'
-        run: sh "$RUNNER_TEMP/scripts/check-proof.sh" --run "$BASE" "$HEAD"
+        shell: /bin/sh -e {0}
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          NODE: ${{ steps.node.outputs.dir }}
+        run: |
+          PATH=$NODE:/usr/bin:/bin
+          dir=$(mktemp -d)
+          rev=$BASE
+          git cat-file -e "$BASE:scripts/check-proof.sh" 2>/dev/null || rev=$HEAD
+          git archive "$rev" scripts | tar -x -C "$dir"
+          /bin/sh "$dir/scripts/check-proof.sh" --run "$BASE" "$HEAD"

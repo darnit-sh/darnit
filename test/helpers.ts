@@ -28,6 +28,18 @@ export async function cpuTime(f: () => unknown, runs = 1, budget?: number): Prom
 }
 
 /**
+ * The CPU time `f` takes over that of `baseline`, each the least of `runs`. A busy machine slows both, so the ratio
+ * holds where a fixed number of milliseconds does not. It stops early as `cpuTime` does around `bound` times the
+ * baseline, and measures the baseline again when `f` lands over that, in case the machine got busier in between.
+ */
+export async function slowdown(f: () => unknown, baseline: () => unknown, bound: number, runs = 3): Promise<number> {
+  let base = await cpuTime(baseline, runs);
+  const time = await cpuTime(f, runs, bound * base);
+  if (time >= bound * base) base = Math.max(base, await cpuTime(baseline, runs));
+  return time / base;
+}
+
+/**
  * The problem matchers `actions/setup-node@v7` registers on every run, by owner: the patterns in its .github/tsc.json,
  * eslint-stylish.json and eslint-compact.json at 949feb2413d6458794dcd2491c4babbbce0c15c1 (v7.1.0), the commit v7 names.
  */

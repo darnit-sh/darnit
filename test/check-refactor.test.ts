@@ -607,23 +607,32 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("reads a large lock file in a CPU budget, and asks the registry only for the entry this change alters", async () => {
-    const many = Object.fromEntries(Array.from({ length: 50_000 }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")]));
-    const altered = { ...many, "node_modules/p49999": entry("p49999", "1.0.0", { integrity: undefined }) };
-    const { dir, base, head } = await repo([{ write: "package-lock.json", text: lock(altered) }], [{ write: "package-lock.json", text: lock(many) }]);
-    const summary = await scratch("summary");
-    asked.length = 0;
-    const run = await sh("timed.sh", base, head, dir, {
-      ...process.env,
-      LC_ALL: "C",
-      TITLE: "chore(deps): x",
-      GITHUB_STEP_SUMMARY: summary,
-      DARNIT_TEST_REGISTRY: registry,
-    });
-    const [user, system] = run.stdout.trim().split("\n").at(-1)!.split(/\s+/).map((t) => {
-      const [, m, sec] = /^(\d+)m([\d.,]+)s$/.exec(t)!;
-      return (Number(m) * 60 + Number(sec!.replace(",", "."))) * 1000;
-    });
-    expect(user! + system!).toBeLessThan(3000);
+    // The CPU time the guard's processes take, from `times`, with the last of `n` entries altered.
+    const cost = async (n: number) => {
+      const many = Object.fromEntries(Array.from({ length: n }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")]));
+      const altered = { ...many, [`node_modules/p${n - 1}`]: entry(`p${n - 1}`, "1.0.0", { integrity: undefined }) };
+      const { dir, base, head } = await repo([{ write: "package-lock.json", text: lock(altered) }], [{ write: "package-lock.json", text: lock(many) }]);
+      const summary = await scratch("summary");
+      asked.length = 0;
+      const run = await sh("timed.sh", base, head, dir, {
+        ...process.env,
+        LC_ALL: "C",
+        TITLE: "chore(deps): x",
+        GITHUB_STEP_SUMMARY: summary,
+        DARNIT_TEST_REGISTRY: registry,
+      });
+      const [user, system] = run.stdout.trim().split("\n").at(-1)!.split(/\s+/).map((t) => {
+        const [, m, sec] = /^(\d+)m([\d.,]+)s$/.exec(t)!;
+        return (Number(m) * 60 + Number(sec!.replace(",", "."))) * 1000;
+      });
+      return { run, summary, ms: user! + system! };
+    };
+    // Against 50 entries, which cost about what starting git and node does, so any cost per entry shows.
+    // Each the least of two runs, as noise only adds time.
+    const small = Math.min((await cost(50)).ms, (await cost(50)).ms);
+    const { run, summary, ms } = await cost(50_000);
+    const least = Math.min(ms, (await cost(50_000)).ms);
+    expect(least / small).toBeLessThan(15);
     expect(run.status).toBe(1);
     expect(asked).toEqual(["/p49999/1.0.0"]);
     const text = await readFile(summary, "utf8");

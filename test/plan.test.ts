@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { git, patch as gitPatch } from "../src/git.js";
 import { CAPS, parsePlan, serializePlan, type Plan } from "../src/plan.js";
 import { loadRecords } from "../src/records/load.js";
-import { cpuTime } from "./helpers.js";
+import { cpuTime, slowdown } from "./helpers.js";
 
 const ids = new Set((await loadRecords()).map((l) => l.record.id));
 const ID = [...ids][0]!;
@@ -137,15 +137,20 @@ describe("parsePlan", () => {
     let plan = text({ ...valid(), groups });
     while (Buffer.byteLength(plan) > CAPS.plan) plan = text({ ...valid(), groups: (groups.pop(), groups) });
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan / 2);
-    expect(await cpuTime(() => parsePlan(plan, ids), 3, 200)).toBeLessThan(200);
+    expect(parsePlan(plan, ids).groups).toHaveLength(groups.length);
+    // About nine times JSON.parse of the same text, which it starts with and which allocates as the rest of it does.
+    // Each the least of five runs, as one run of parsePlan varies by half with what the heap holds.
+    const ratio = (await cpuTime(() => parsePlan(plan, ids), 5)) / (await cpuTime(() => JSON.parse(plan), 5));
+    expect(ratio).toBeLessThan(16);
   });
 
   it("stays fast on paths of thousands of parts", async () => {
-    const deep = Array(2048).fill("a").join("/");
-    const plan = text({ ...valid(), groups: [...ids].slice(0, 2).map((id) => ({ ...valid().groups[0]!, id, files: Array(CAPS.files).fill(deep) })) });
+    const planOf = (path: string) => text({ ...valid(), groups: [...ids].slice(0, 2).map((id) => ({ ...valid().groups[0]!, id, files: Array(CAPS.files).fill(path) })) });
+    const plan = planOf(Array(2048).fill("a").join("/"));
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan * 0.95);
-    const reject = () => expect(() => parsePlan(plan, ids)).toThrow(/patch is not a git diff/);
-    expect(await cpuTime(reject, 3, 200)).toBeLessThan(200);
+    const reject = (p: string) => () => expect(() => parsePlan(p, ids)).toThrow(/patch is not a git diff/);
+    // About what paths of one part as long cost.
+    expect(await slowdown(reject(plan), reject(planOf("a".repeat(4095))), 2.5)).toBeLessThan(2.5);
   });
 
   it("accepts git's own patches for names it quotes or ends with a tab, and for binary files", async () => {
