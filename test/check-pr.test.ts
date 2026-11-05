@@ -210,7 +210,7 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
   const expand = (s: string) => s.replace(/\$\{\{\s*(.+?)\s*\}\}/g, (_, e: string) => value(e));
   const vars = (env: Record<string, string> = {}) => Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expand(String(v))]));
   const machine = {
-    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_config_|GITHUB_|RUNNER_)/i.test(k))),
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_config_|GITHUB_|RUNNER_|GIT_)/i.test(k))),
     npm_config_audit: "false",
     npm_config_fund: "false",
   };
