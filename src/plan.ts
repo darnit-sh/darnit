@@ -58,10 +58,11 @@ const BINARY = /^(?:literal|delta) \d+$/;
 const BASE85 = /^[A-Za-z][0-9A-Za-z!#$%&()*+;<=>?@^_`{|}~-]+$/;
 
 const C_ESCAPES: Record<string, string> = { "\u0007": "\\a", "\b": "\\b", "\t": "\\t", "\n": "\\n", "\v": "\\v", "\f": "\\f", "\r": "\\r", '"': '\\"', "\\": "\\\\" };
+// eslint-disable-next-line no-control-regex
+const GIT_QUOTED = /[\u0000-\u001f"\\\u007f]/g;
 /** A path as git prints it in a diff with core.quotePath off: in quotes, escaped C-style, when it holds `"`, `\` or a control character. */
 const gitName = (p: string) =>
-  // eslint-disable-next-line no-control-regex
-  /[\u0000-\u001f"\\\u007f]/.test(p) ? `"${p.replace(/[\u0000-\u001f"\\\u007f]/g, (c) => C_ESCAPES[c] ?? `\\${c.charCodeAt(0).toString(8).padStart(3, "0")}`)}"` : p;
+  p.search(GIT_QUOTED) < 0 ? p : `"${p.replace(GIT_QUOTED, (c) => C_ESCAPES[c] ?? `\\${c.charCodeAt(0).toString(8).padStart(3, "0")}`)}"`;
 
 /**
  * Whether `patch` is a `git diff --binary --full-index` of changes to each of `files` and nothing else, read line by

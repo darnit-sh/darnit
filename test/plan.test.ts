@@ -198,10 +198,11 @@ describe("parsePlan", () => {
       errorOf(text(valid()).replace('{"version":1,', '{"\\n::warning::x":1,"\\n::warning::x":1,"version":1,')),
       errorOf({ ...valid(), groups: Array.from({ length: 20 }, () => ({ ...valid().groups[0], [`\n::x${"y".repeat(100)}`]: 1 })) }),
     ];
+    // eslint-disable-next-line no-control-regex
+    const unsafe = /^::|[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]/;
     for (const m of messages) {
       expect(m.length).toBeLessThan(600);
-      // eslint-disable-next-line no-control-regex
-      expect(m.split("\n").every((line) => !line.includes("::") || !/^::|[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]/.test(line))).toBe(true);
+      expect(m.split("\n").every((line) => !line.includes("::") || !unsafe.test(line))).toBe(true);
     }
     expect(messages[0]).toContain('unknown field "\\n::warning::pwned\\u2028\\u0085"');
     expect(messages[1]).toMatch(/^invalid plan:\nplan: unknown field "k{64}…"$/);
