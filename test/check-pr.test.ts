@@ -198,9 +198,10 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
   const job = (await workflow("pr")).jobs[id]!;
   const temp = await mkdtemp(join(tmpdir(), "darnit-runner-"));
   jobDirs.push(temp);
-  // A checkout of its own, as npm ci would empty the node_modules another run links in.
+  // A clone of its own, as each job has: nothing one run writes to node_modules or .git reaches another.
   const dir = join(temp, "checkout");
-  execFileSync("git", ["worktree", "add", "-q", "--detach", dir, pr.head], { cwd: pr.dir });
+  execFileSync("git", ["clone", "-q", "--no-checkout", pr.dir, dir]);
+  execFileSync("git", ["checkout", "-q", "--detach", pr.head], { cwd: dir });
   const files = { GITHUB_ENV: join(temp, "env"), GITHUB_PATH: join(temp, "path"), GITHUB_STEP_SUMMARY: join(temp, "summary") };
   for (const f of Object.values(files)) await writeFile(f, "");
   const outputs: Record<string, Record<string, string>> = {};
@@ -209,7 +210,7 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
   const expand = (s: string) => s.replace(/\$\{\{\s*(.+?)\s*\}\}/g, (_, e: string) => value(e));
   const vars = (env: Record<string, string> = {}) => Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expand(String(v))]));
   const machine = {
-    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_config_|GITHUB_|RUNNER_)/i.test(k))),
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_config_|GITHUB_|RUNNER_|GIT_)/i.test(k))),
     npm_config_audit: "false",
     npm_config_fund: "false",
   };
@@ -330,6 +331,10 @@ const breaches: Record<string, (decoy: string) => string> = {
   "writes EVENT=merge_group to $GITHUB_ENV, so the scripts would take the merge queue pass": () => `echo EVENT=merge_group >> "$GITHUB_ENV"\n`,
   "puts a folder of fake git, sh, bash, node, npx and prettier first on $GITHUB_PATH": () =>
     `mkdir "$RUNNER_TEMP/fake"\nfor t in git sh bash node npx prettier; do printf '#!/bin/sh\\nexit 0\\n' > "$RUNNER_TEMP/fake/$t"; chmod +x "$RUNNER_TEMP/fake/$t"; done\necho "$RUNNER_TEMP/fake" >> "$GITHUB_PATH"\n`,
+  "swaps base for a commit of the decoy's files with a replace ref": (decoy) =>
+    `git -c user.name=t -c user.email=t@t replace -f "$(git rev-parse HEAD^)" "$(git -c user.name=t -c user.email=t@t commit-tree -m d ${decoy}^{tree})"\n`,
+  "makes the head's files the merge base with a graft file": () =>
+    `t=$(git -c user.name=t -c user.email=t@t commit-tree -m t "HEAD^{tree}")\nprintf '%s %s\\n' "$(git rev-parse HEAD^)" "$t" "$(git rev-parse HEAD)" "$t" > "$(git rev-parse --git-path info/grafts)"\n`,
 };
 // The prettier this repository pins, and its lock entry, which npm ci finds in npm's cache.
 const prettier = {
@@ -399,5 +404,14 @@ describe("the refactor, style and proof jobs", { timeout: 240_000 }, () => {
       expect(Object.keys(job.env ?? {}).filter((k) => ["EVENT", "BASE", "HEAD", "TITLE", "BODY", "PATH"].includes(k)), id).toEqual([]);
       for (const s of job.steps ?? []) if (/\bnpm ci\b/.test(s.run ?? "")) expect(s.run, id).toMatch(/\bnpm ci --ignore-scripts\b/);
     }
+  });
+
+  // The breaches above hold the replace ref on all three steps and the graft file on the style step. No graft found
+  // changes the other two verdicts, so this holds both settings on all three.
+  it("judges with no replace ref or graft file in every step that runs after the install", async () => {
+    const jobs = Object.values((await workflow("pr")).jobs);
+    const judging = jobs.flatMap((j) => j.steps ?? []).filter((s) => /check-(proof|refactor)\.sh" --/.test(s.run ?? ""));
+    expect(judging).toHaveLength(3);
+    for (const s of judging) expect([s.env?.GIT_NO_REPLACE_OBJECTS, s.env?.GIT_GRAFT_FILE], s.run!.trim().split("\n").at(-1)).toEqual(["1", "/dev/null/grafts"]);
   });
 });
