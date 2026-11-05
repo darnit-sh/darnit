@@ -22,6 +22,7 @@ const SLOWEST: Record<string, number> = {
 // Jobs whose slow path no sampled run took, with the limit each keeps and why.
 const UNMEASURED: Record<string, [number, string]> = {
   "ci.yml answer-key": [45, "reads golden's cached clones; after repos.tsv changes it clones every pinned repository, which no sampled run did"],
+  "ci.yml watchdog": [25, "a passing run never kills a case; one that does takes up to 10 minutes more (the case killed at 5, and one started just before it), on top of a passing run of 5m18s and its install and build"],
   "golden.yml compare": [45, "after repos.tsv changes it clones every pinned repository, which no sampled run did"],
   "pr.yml refactor": [20, "no sampled run reached its base tests, which run the whole suite (twice ci.yml's slowest test run), or its style step, which formats the changed files once"],
   "pr.yml proof": [20, "no sampled run reached its test runs, which run the changed tests twice"],
