@@ -34,7 +34,8 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if git cat-file -e "$BASE:scripts/check-pr.sh" 2>/dev/null; then
-            git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
+            git archive -o "$RUNNER_TEMP/scripts.tar" "$BASE" scripts
+            tar -x -f "$RUNNER_TEMP/scripts.tar" -C "$RUNNER_TEMP"
             copy="base's scripts/check-pr.sh"
           else
             cp -R scripts "$RUNNER_TEMP/"
@@ -65,7 +66,8 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           EVENT: ${{ github.event_name }}
         run: |
-          git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
+          git archive -o "$RUNNER_TEMP/scripts.tar" "$BASE" scripts
+          tar -x -f "$RUNNER_TEMP/scripts.tar" -C "$RUNNER_TEMP"
           printf "Rule from base's scripts/check-refactor.sh\n\n" | tee -a "$GITHUB_STEP_SUMMARY"
           sh "$RUNNER_TEMP/scripts/check-refactor.sh" "$BASE" "$HEAD"
       - if: steps.table.outputs.base-tests == 'true' || steps.table.outputs.style == 'true'
@@ -106,7 +108,8 @@ jobs:
         run: |
           PATH=$NODE:/usr/bin:/bin
           dir=$(mktemp -d)
-          git archive "$BASE" scripts | tar -x -C "$dir"
+          git archive -o "$dir/scripts.tar" "$BASE" scripts
+          tar -x -f "$dir/scripts.tar" -C "$dir"
           /bin/sh "$dir/scripts/check-refactor.sh" --base-tests "$BASE"
       # As above. --style loads prettier from node_modules by path.
       - if: steps.table.outputs.style == 'true'
@@ -121,7 +124,8 @@ jobs:
         run: |
           PATH=$NODE:/usr/bin:/bin
           dir=$(mktemp -d)
-          git archive "$BASE" scripts | tar -x -C "$dir"
+          git archive -o "$dir/scripts.tar" "$BASE" scripts
+          tar -x -f "$dir/scripts.tar" -C "$dir"
           /bin/sh "$dir/scripts/check-refactor.sh" --style "$BASE" "$HEAD"
 
   # A fix or feat that changes code or a rule pack brings a test that fails without it (scripts/check-proof.sh).
@@ -145,7 +149,8 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if git cat-file -e "$BASE:scripts/check-proof.sh" 2>/dev/null; then
-            git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
+            git archive -o "$RUNNER_TEMP/scripts.tar" "$BASE" scripts
+            tar -x -f "$RUNNER_TEMP/scripts.tar" -C "$RUNNER_TEMP"
             copy="base's scripts/check-proof.sh"
           else
             cp -R scripts "$RUNNER_TEMP/"
@@ -187,5 +192,6 @@ jobs:
           dir=$(mktemp -d)
           rev=$BASE
           git cat-file -e "$BASE:scripts/check-proof.sh" 2>/dev/null || rev=$HEAD
-          git archive "$rev" scripts | tar -x -C "$dir"
+          git archive -o "$dir/scripts.tar" "$rev" scripts
+          tar -x -f "$dir/scripts.tar" -C "$dir"
           /bin/sh "$dir/scripts/check-proof.sh" --run "$BASE" "$HEAD"

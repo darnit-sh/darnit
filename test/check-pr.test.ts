@@ -184,15 +184,17 @@ afterAll(async () => {
   await Promise.all(jobDirs.map((d) => rm(d, { recursive: true, force: true })));
 });
 
-// `event` merge_group runs it as a merge queue would, with no pull request.
-type PullRequest = { dir: string; base: string; head: string; title: string; decoy: string; event?: string };
+// `event` merge_group runs it as a merge queue would, with no pull request. `path` goes first on the machine's PATH.
+type PullRequest = { dir: string; base: string; head: string; title: string; decoy: string; event?: string; path?: string };
 
 /**
  * Runs pr.yml's job `id` on `pr` as the runner would. Each run step gets the job's env, then what earlier steps
  * wrote to $GITHUB_ENV, then its own env, with the folders written to $GITHUB_PATH put before its PATH, and its
- * shell looked up on that PATH unless named by an absolute path. Action steps do nothing: the repo is the
- * checkout, and node is on PATH. The install has nothing to install, so this repo's node_modules stands in after
- * it. `after`, when given, runs right after the install, as code of the change would if it had run there.
+ * shell looked up on that PATH unless named by an absolute path. A step that names no shell runs with pipefail, on
+ * purpose stricter than the runner's `bash -e`, so a failing command in a pipe fails it. Action steps do nothing:
+ * the repo is the checkout, and node is on PATH. The install has nothing to install, so this repo's node_modules
+ * stands in after it. `after`, when given, runs right after the install, as code of the change would if it had run
+ * there.
  */
 async function runJob(id: string, pr: PullRequest, after?: string) {
   const job = (await workflow("pr")).jobs[id]!;
@@ -211,6 +213,7 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
   const vars = (env: Record<string, string> = {}) => Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expand(String(v))]));
   const machine = {
     ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_config_|GITHUB_|RUNNER_|GIT_)/i.test(k))),
+    ...(pr.path && { PATH: [pr.path, process.env.PATH].join(delimiter) }),
     npm_config_audit: "false",
     npm_config_fund: "false",
   };
@@ -235,7 +238,7 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
     child.stderr.setEncoding("utf8").on("data", (d: string) => (log += d));
     const status = await new Promise<number | null>((done) => child.on("close", done));
     if (step.id) outputs[step.id] = commands(await readFile(output, "utf8"));
-    if (status !== 0) return { status, ...(await verdict(temp)), log };
+    if (status !== 0) return { status, ...(await verdict(temp)), log: `${log}\nexit ${status} from the step:\n${step.run}` };
     if (/\bnpm ci\b/.test(step.run)) {
       await rm(join(dir, "node_modules"), { recursive: true, force: true });
       await symlink(resolve("node_modules"), join(dir, "node_modules"));
@@ -312,6 +315,8 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
     "packs/v/p/rules/r.yml": "old\n",
     "packs/v/p/fixtures/basic/want": "old\n",
     "scripts/fixtures.ts": "export {};\n",
+    // More than a pipe holds, so git archive of scripts is still writing when a tar that stops reading exits.
+    "scripts/pad": "\n".repeat(1 << 17),
     ...Object.fromEntries(await Promise.all(scripts.map(async (s) => [`scripts/${s}`, await readFile(`scripts/${s}`, "utf8")] as const))),
     ...(style && { ...style, ...script('"$(git rev-parse decoy)"') }),
   });
@@ -398,6 +403,23 @@ describe("the refactor, style and proof jobs", { timeout: 240_000 }, () => {
       expect(r.ran).toBe(false);
     });
   }
+
+  it("judges the same with a tar that stops reading early, as bsdtar does at the end-of-archive marker", async () => {
+    const fake = await mkdtemp(join(tmpdir(), "darnit-tar-"));
+    jobDirs.push(fake);
+    const tar = await which("tar", process.env.PATH!);
+    await writeFile(join(fake, "tar"), `#!/bin/sh\ncase " $* " in *" -f "*) exec '${tar}' "$@";; esac\nexit 0\n`, { mode: 0o755 });
+    for (const c of [cases.refactor!, cases.proof!]) {
+      const pr = await pullRequest(c.title, c.head, c.decoy, () => "");
+      const r = await runJob(c.job, { ...pr, path: fake });
+      expect(r.status, r.log).toBe(1);
+      expect(r.summary.join("\n")).toContain(c.fails);
+    }
+    // The fake is not on the PATH the /bin/sh steps set, and the title job's test runs none, so no step may pipe into tar.
+    for (const [id, job] of Object.entries((await workflow("pr")).jobs)) {
+      for (const s of job.steps ?? []) expect(s.run ?? "", id).not.toMatch(/\|\s*tar\b/);
+    }
+  });
 
   it("takes no input the scripts trust from the job's env, and installs no change's scripts", async () => {
     for (const [id, job] of Object.entries((await workflow("pr")).jobs)) {
