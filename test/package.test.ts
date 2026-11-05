@@ -32,6 +32,14 @@ describe("runtime dependencies", () => {
   });
 });
 
+// Detection runs @ast-grep/napi and rule application @ast-grep/cli, which must parse code alike.
+describe("the two ast-grep packages", () => {
+  it("are pinned to one version", async () => {
+    const { dependencies } = (await read("package.json")) as { dependencies: Record<string, string> };
+    expect(dependencies["@ast-grep/cli"]).toBe(dependencies["@ast-grep/napi"]);
+  });
+});
+
 // The plugin runs inside vitest, so the two are bumped together.
 describe("the coverage plugin", () => {
   it("is pinned to the vitest version package-lock.json installs", async () => {
