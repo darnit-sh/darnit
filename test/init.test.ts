@@ -366,7 +366,7 @@ describe("init never writes outside the repository", () => {
     expect(await readdir(out)).toEqual(["config.yml", "workflows"]);
   });
 
-  it("stops on a workflow folder it cannot read, and writes nothing there", async () => {
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("stops on a workflow folder it cannot read, and writes nothing there", async () => {
     const dir = await scratchCopy("small");
     const folder = join(dir, ".github", "workflows");
     await mkdir(folder, { recursive: true });
