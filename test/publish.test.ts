@@ -389,6 +389,9 @@ describe("fix --publish", () => {
     await chmod(join(lab, "bin", "git"), 0o755);
     expect(await onPath("git", ":.:node_modules/.bin")).toBeUndefined();
     expect(await onPath("git", join(lab, "d"))).toBeUndefined();
+    await mkdir(join(lab, "plain"));
+    await writeFile(join(lab, "plain", "git"), "#!/bin/sh\n"); // not executable
+    expect(await onPath("git", join(lab, "plain"))).toBeUndefined();
     expect(await onPath("git", `${join(lab, "d")}:${join(lab, "bin")}`)).toBe(join(lab, "bin", "git"));
   });
 
