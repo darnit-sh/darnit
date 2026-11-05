@@ -34,7 +34,8 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if git cat-file -e "$BASE:scripts/check-pr.sh" 2>/dev/null; then
-            git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
+            git archive -o "$RUNNER_TEMP/scripts.tar" "$BASE" scripts
+            tar -x -f "$RUNNER_TEMP/scripts.tar" -C "$RUNNER_TEMP"
             copy="base's scripts/check-pr.sh"
           else
             cp -R scripts "$RUNNER_TEMP/"
@@ -65,7 +66,8 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           EVENT: ${{ github.event_name }}
         run: |
-          git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
+          git archive -o "$RUNNER_TEMP/scripts.tar" "$BASE" scripts
+          tar -x -f "$RUNNER_TEMP/scripts.tar" -C "$RUNNER_TEMP"
           printf "Rule from base's scripts/check-refactor.sh\n\n" | tee -a "$GITHUB_STEP_SUMMARY"
           sh "$RUNNER_TEMP/scripts/check-refactor.sh" "$BASE" "$HEAD"
       - if: steps.table.outputs.base-tests == 'true' || steps.table.outputs.style == 'true'
@@ -93,17 +95,21 @@ jobs:
           key: oasdiff-${{ runner.os }}-${{ hashFiles('src/corpus/oasdiff.ts') }}
       # Judged by base's scripts, taken fresh into a new folder, run by absolute path with system tools and
       # inputs set on this step. The runner puts what earlier steps wrote to $GITHUB_PATH before any PATH set
-      # here, so PATH is set in the script, and the shell is named by path.
+      # here, so PATH is set in the script, and the shell is named by path. git reads commits as they are:
+      # no replace ref, and no graft file, as no file can be made under /dev/null.
       - if: steps.table.outputs.base-tests == 'true'
         shell: /bin/sh -e {0}
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           EVENT: ${{ github.event_name }}
           NODE: ${{ steps.node.outputs.dir }}
+          GIT_NO_REPLACE_OBJECTS: "1"
+          GIT_GRAFT_FILE: /dev/null/grafts
         run: |
           PATH=$NODE:/usr/bin:/bin
           dir=$(mktemp -d)
-          git archive "$BASE" scripts | tar -x -C "$dir"
+          git archive -o "$dir/scripts.tar" "$BASE" scripts
+          tar -x -f "$dir/scripts.tar" -C "$dir"
           /bin/sh "$dir/scripts/check-refactor.sh" --base-tests "$BASE"
       # As above. --style loads prettier from node_modules by path.
       - if: steps.table.outputs.style == 'true'
@@ -113,10 +119,13 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           EVENT: ${{ github.event_name }}
           NODE: ${{ steps.node.outputs.dir }}
+          GIT_NO_REPLACE_OBJECTS: "1"
+          GIT_GRAFT_FILE: /dev/null/grafts
         run: |
           PATH=$NODE:/usr/bin:/bin
           dir=$(mktemp -d)
-          git archive "$BASE" scripts | tar -x -C "$dir"
+          git archive -o "$dir/scripts.tar" "$BASE" scripts
+          tar -x -f "$dir/scripts.tar" -C "$dir"
           /bin/sh "$dir/scripts/check-refactor.sh" --style "$BASE" "$HEAD"
 
   # A fix or feat that changes code or a rule pack brings a test that fails without it (scripts/check-proof.sh).
@@ -140,7 +149,8 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if git cat-file -e "$BASE:scripts/check-proof.sh" 2>/dev/null; then
-            git archive "$BASE" scripts | tar -x -C "$RUNNER_TEMP"
+            git archive -o "$RUNNER_TEMP/scripts.tar" "$BASE" scripts
+            tar -x -f "$RUNNER_TEMP/scripts.tar" -C "$RUNNER_TEMP"
             copy="base's scripts/check-proof.sh"
           else
             cp -R scripts "$RUNNER_TEMP/"
@@ -175,10 +185,13 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           EVENT: ${{ github.event_name }}
           NODE: ${{ steps.node.outputs.dir }}
+          GIT_NO_REPLACE_OBJECTS: "1"
+          GIT_GRAFT_FILE: /dev/null/grafts
         run: |
           PATH=$NODE:/usr/bin:/bin
           dir=$(mktemp -d)
           rev=$BASE
           git cat-file -e "$BASE:scripts/check-proof.sh" 2>/dev/null || rev=$HEAD
-          git archive "$rev" scripts | tar -x -C "$dir"
+          git archive -o "$dir/scripts.tar" "$rev" scripts
+          tar -x -f "$dir/scripts.tar" -C "$dir"
           /bin/sh "$dir/scripts/check-proof.sh" --run "$BASE" "$HEAD"

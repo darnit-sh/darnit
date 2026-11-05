@@ -199,7 +199,8 @@ async function samples(file: Doc, text: string, covered: [number, number][], pro
 }
 
 describe("numbers in the docs match the code", () => {
-  it.each(["README.md", "SECURITY.md", "RELEASING.md"] as Doc[])("every number in %s is checked against its source or listed with a reason", async (file) => {
+  // README's checks start the CLI five times, one after another: about 20 seconds on a busy macOS runner.
+  it.each(["README.md", "SECURITY.md", "RELEASING.md"] as Doc[])("every number in %s is checked against its source or listed with a reason", { timeout: 120_000 }, async (file) => {
     const text = await read(file);
     const covered: [number, number][] = [];
     const problems: string[] = [];

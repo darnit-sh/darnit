@@ -184,23 +184,26 @@ afterAll(async () => {
   await Promise.all(jobDirs.map((d) => rm(d, { recursive: true, force: true })));
 });
 
-// `event` merge_group runs it as a merge queue would, with no pull request.
-type PullRequest = { dir: string; base: string; head: string; title: string; decoy: string; event?: string };
+// `event` merge_group runs it as a merge queue would, with no pull request. `path` goes first on the machine's PATH.
+type PullRequest = { dir: string; base: string; head: string; title: string; decoy: string; event?: string; path?: string };
 
 /**
  * Runs pr.yml's job `id` on `pr` as the runner would. Each run step gets the job's env, then what earlier steps
  * wrote to $GITHUB_ENV, then its own env, with the folders written to $GITHUB_PATH put before its PATH, and its
- * shell looked up on that PATH unless named by an absolute path. Action steps do nothing: the repo is the
- * checkout, and node is on PATH. The install has nothing to install, so this repo's node_modules stands in after
- * it. `after`, when given, runs right after the install, as code of the change would if it had run there.
+ * shell looked up on that PATH unless named by an absolute path. A step that names no shell runs with pipefail, on
+ * purpose stricter than the runner's `bash -e`, so a failing command in a pipe fails it. Action steps do nothing:
+ * the repo is the checkout, and node is on PATH. The install has nothing to install, so this repo's node_modules
+ * stands in after it. `after`, when given, runs right after the install, as code of the change would if it had run
+ * there.
  */
 async function runJob(id: string, pr: PullRequest, after?: string) {
   const job = (await workflow("pr")).jobs[id]!;
   const temp = await mkdtemp(join(tmpdir(), "darnit-runner-"));
   jobDirs.push(temp);
-  // A checkout of its own, as npm ci would empty the node_modules another run links in.
+  // A clone of its own, as each job has: nothing one run writes to node_modules or .git reaches another.
   const dir = join(temp, "checkout");
-  execFileSync("git", ["worktree", "add", "-q", "--detach", dir, pr.head], { cwd: pr.dir });
+  execFileSync("git", ["clone", "-q", "--no-checkout", pr.dir, dir]);
+  execFileSync("git", ["checkout", "-q", "--detach", pr.head], { cwd: dir });
   const files = { GITHUB_ENV: join(temp, "env"), GITHUB_PATH: join(temp, "path"), GITHUB_STEP_SUMMARY: join(temp, "summary") };
   for (const f of Object.values(files)) await writeFile(f, "");
   const outputs: Record<string, Record<string, string>> = {};
@@ -209,7 +212,8 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
   const expand = (s: string) => s.replace(/\$\{\{\s*(.+?)\s*\}\}/g, (_, e: string) => value(e));
   const vars = (env: Record<string, string> = {}) => Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expand(String(v))]));
   const machine = {
-    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_config_|GITHUB_|RUNNER_)/i.test(k))),
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_config_|GITHUB_|RUNNER_|GIT_)/i.test(k))),
+    ...(pr.path && { PATH: [pr.path, process.env.PATH].join(delimiter) }),
     npm_config_audit: "false",
     npm_config_fund: "false",
   };
@@ -234,7 +238,7 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
     child.stderr.setEncoding("utf8").on("data", (d: string) => (log += d));
     const status = await new Promise<number | null>((done) => child.on("close", done));
     if (step.id) outputs[step.id] = commands(await readFile(output, "utf8"));
-    if (status !== 0) return { status, ...(await verdict(temp)), log };
+    if (status !== 0) return { status, ...(await verdict(temp)), log: `${log}\nexit ${status} from the step:\n${step.run}` };
     if (/\bnpm ci\b/.test(step.run)) {
       await rm(join(dir, "node_modules"), { recursive: true, force: true });
       await symlink(resolve("node_modules"), join(dir, "node_modules"));
@@ -311,6 +315,8 @@ async function pullRequest(title: string, head: Record<string, string>, decoy: R
     "packs/v/p/rules/r.yml": "old\n",
     "packs/v/p/fixtures/basic/want": "old\n",
     "scripts/fixtures.ts": "export {};\n",
+    // More than a pipe holds, so git archive of scripts is still writing when a tar that stops reading exits.
+    "scripts/pad": "\n".repeat(1 << 17),
     ...Object.fromEntries(await Promise.all(scripts.map(async (s) => [`scripts/${s}`, await readFile(`scripts/${s}`, "utf8")] as const))),
     ...(style && { ...style, ...script('"$(git rev-parse decoy)"') }),
   });
@@ -330,6 +336,10 @@ const breaches: Record<string, (decoy: string) => string> = {
   "writes EVENT=merge_group to $GITHUB_ENV, so the scripts would take the merge queue pass": () => `echo EVENT=merge_group >> "$GITHUB_ENV"\n`,
   "puts a folder of fake git, sh, bash, node, npx and prettier first on $GITHUB_PATH": () =>
     `mkdir "$RUNNER_TEMP/fake"\nfor t in git sh bash node npx prettier; do printf '#!/bin/sh\\nexit 0\\n' > "$RUNNER_TEMP/fake/$t"; chmod +x "$RUNNER_TEMP/fake/$t"; done\necho "$RUNNER_TEMP/fake" >> "$GITHUB_PATH"\n`,
+  "swaps base for a commit of the decoy's files with a replace ref": (decoy) =>
+    `git -c user.name=t -c user.email=t@t replace -f "$(git rev-parse HEAD^)" "$(git -c user.name=t -c user.email=t@t commit-tree -m d ${decoy}^{tree})"\n`,
+  "makes the head's files the merge base with a graft file": () =>
+    `t=$(git -c user.name=t -c user.email=t@t commit-tree -m t "HEAD^{tree}")\nprintf '%s %s\\n' "$(git rev-parse HEAD^)" "$t" "$(git rev-parse HEAD)" "$t" > "$(git rev-parse --git-path info/grafts)"\n`,
 };
 // The prettier this repository pins, and its lock entry, which npm ci finds in npm's cache.
 const prettier = {
@@ -394,10 +404,36 @@ describe("the refactor, style and proof jobs", { timeout: 240_000 }, () => {
     });
   }
 
+  it("judges the same with a tar that stops reading early, as bsdtar does at the end-of-archive marker", async () => {
+    const fake = await mkdtemp(join(tmpdir(), "darnit-tar-"));
+    jobDirs.push(fake);
+    const tar = await which("tar", process.env.PATH!);
+    await writeFile(join(fake, "tar"), `#!/bin/sh\ncase " $* " in *" -f "*) exec '${tar}' "$@";; esac\nexit 0\n`, { mode: 0o755 });
+    for (const c of [cases.refactor!, cases.proof!]) {
+      const pr = await pullRequest(c.title, c.head, c.decoy, () => "");
+      const r = await runJob(c.job, { ...pr, path: fake });
+      expect(r.status, r.log).toBe(1);
+      expect(r.summary.join("\n")).toContain(c.fails);
+    }
+    // The fake is not on the PATH the /bin/sh steps set, and the title job's test runs none, so no step may pipe into tar.
+    for (const [id, job] of Object.entries((await workflow("pr")).jobs)) {
+      for (const s of job.steps ?? []) expect(s.run ?? "", id).not.toMatch(/\|\s*tar\b/);
+    }
+  });
+
   it("takes no input the scripts trust from the job's env, and installs no change's scripts", async () => {
     for (const [id, job] of Object.entries((await workflow("pr")).jobs)) {
       expect(Object.keys(job.env ?? {}).filter((k) => ["EVENT", "BASE", "HEAD", "TITLE", "BODY", "PATH"].includes(k)), id).toEqual([]);
       for (const s of job.steps ?? []) if (/\bnpm ci\b/.test(s.run ?? "")) expect(s.run, id).toMatch(/\bnpm ci --ignore-scripts\b/);
     }
+  });
+
+  // The breaches above hold the replace ref on all three steps and the graft file on the style step. No graft found
+  // changes the other two verdicts, so this holds both settings on all three.
+  it("judges with no replace ref or graft file in every step that runs after the install", async () => {
+    const jobs = Object.values((await workflow("pr")).jobs);
+    const judging = jobs.flatMap((j) => j.steps ?? []).filter((s) => /check-(proof|refactor)\.sh" --/.test(s.run ?? ""));
+    expect(judging).toHaveLength(3);
+    for (const s of judging) expect([s.env?.GIT_NO_REPLACE_OBJECTS, s.env?.GIT_GRAFT_FILE], s.run!.trim().split("\n").at(-1)).toEqual(["1", "/dev/null/grafts"]);
   });
 });
