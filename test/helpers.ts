@@ -1,5 +1,6 @@
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
+import { TestRunner } from "vitest";
 
 // Each run holds its syntax trees until they are collected, so a repeat collects them first.
 setFlagsFromString("--expose-gc");
@@ -11,6 +12,9 @@ const collect = runInNewContext("gc") as () => void;
  * first run under it, so a healthy check runs once, or once a run is over 1.5 times it, so a regression fails quickly.
  */
 export async function cpuTime(f: () => unknown, runs = 1, budget?: number): Promise<number> {
+  // Coverage slows the code it times, so CI runs these tests in a pass of their own, picked by the tag.
+  const test = TestRunner.getCurrentTest();
+  if (!test?.tags?.includes("cpu-time")) throw new Error(`tag "${test?.name ?? "this test"}" cpu-time, as it measures CPU time`);
   let least = Infinity;
   for (let i = 0; i < runs; i++) {
     if (i > 0) {

@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -58,6 +58,7 @@ afterAll(() => new Promise<void>((done) => server.close(() => done())));
 const guard = {
   "check-refactor.sh": readFileSync(script, "utf8"),
   "pr-common.sh": readFileSync("scripts/pr-common.sh", "utf8"),
+  "check-coverage.sh": readFileSync("scripts/check-coverage.sh", "utf8"),
   "timed.sh": 'sh "$(dirname "$0")/check-refactor.sh" "$@"\ns=$?\ntimes\nexit $s\n',
 };
 
@@ -216,6 +217,22 @@ const suiteEdits: Edit[] = [
   { write: "package.json", text: pkg().replace(',"check":"npm test"', "") },
 ];
 
+/** What base and head hold for a row of the gated config table, once the row's file or key is checked to be as stated. */
+function gatedEdit(row: string, kind: "file" | "absent" | "script" | "key", added: string) {
+  const real = JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> };
+  if (kind === "script") {
+    expect(Object.keys(real.scripts)).toContain("test");
+    return { f: "package.json", base: pkg(), head: pkg(undefined, `vitest run${added}`) };
+  }
+  if (kind === "key") {
+    expect(Object.keys(real)).not.toContain("prettier");
+    return { f: "package.json", base: pkg(), head: `${JSON.stringify({ ...(JSON.parse(pkg()) as object), prettier: {} })}\n` };
+  }
+  expect(existsSync(row), row).toBe(kind === "file");
+  const base = kind === "file" ? readFileSync(row, "utf8") : undefined;
+  return { f: row, base, head: `${base ?? ""}${added}` };
+}
+
 /** Runs the rule for `title` and `body`, given base's head commit, on a crafted repo. */
 async function rule(
   title: string,
@@ -353,6 +370,83 @@ describe("the rule picked by the title's type", () => {
       expect(r, title).toMatchObject({ status: 0, baseTests: false });
       expect(r.out).toContain("**Passed:**");
     }
+  });
+
+  it("fails any type that lowers a coverage threshold or adds an ignore comment, judged from base, unless a ci change gives a reason", async () => {
+    const thresholds = (lines: number) => ({ write: "coverage-thresholds.json", text: JSON.stringify({ "src/**": { lines } }) });
+    const landed = [thresholds(80), { write: "vitest.config.ts", text: 'import t from "./coverage-thresholds.json";\n' }];
+    const lowered = await repo([thresholds(79), { write: "src/a.ts", text: "/* v8 ignore next */\n" }], landed);
+    for (const type of ["fix", "refactor", "docs", "ci"]) {
+      const r = await check(lowered, `${type}: x`, "Proof: none, lowers the threshold\n");
+      expect(r.status, type).toBe(1);
+      expect(r.summary, type).toContain("- src/** lines 80 to 79\n- src/a.ts: 1 ignore hints, base has 0: v8 ignore next");
+    }
+    const reason = await check(lowered, "ci: x", "Proof: none, moves a folder\nCoverage: the folder moves and keeps its tests\n");
+    expect(reason.status).toBe(1);
+    expect(reason.summary).toContain("Reason given: `the folder moves and keeps its tests`");
+    expect(reason.summary).toContain("- src/a.ts\n");
+    const raised = await repo([thresholds(81)], landed);
+    expect((await check(raised, "ci: x", "Proof: none, raises the threshold\n")).status).toBe(0);
+    expect((await check(raised, "test: x")).summary).toContain("- coverage-thresholds.json (which tests run and how much they must cover)");
+  });
+
+  it("refuses outside ci any change to a vitest or vite config, and in ci without a Coverage line, however it still names the thresholds file", { timeout: 60_000 }, async () => {
+    const config = 'import thresholds from "./coverage-thresholds.json";\nexport default { test: { coverage: { thresholds } } };\n';
+    const landed = [{ write: "coverage-thresholds.json", text: '{"src/**":{"lines":80}}' }, { write: "vitest.config.ts", text: config }];
+    const edits: Edit[][] = [
+      [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", "{ thresholds: {} }") }],
+      [{ write: "vitest.config.ts", text: "// reads ./coverage-thresholds.json\nexport default { test: { coverage: { thresholds: {} } } };\n" }],
+      [{ write: "vitest.config.ts", text: config.replace("./coverage", "./test/coverage") }, { write: "test/coverage-thresholds.json", text: '{"src/**":{"lines":0}}' }],
+      [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", '{ thresholds: { ...thresholds, "src/packs/**": { lines: 0, branches: 0 } } }') }],
+      [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", '{ thresholds, exclude: ["src/packs/**"] }') }],
+      [{ remove: "vitest.config.ts" }],
+      [{ write: "vite.config.ts" }],
+      [{ write: "vitest.config.mts" }],
+      [{ write: "vitest.workspace.json" }],
+    ];
+    const proof = "Proof: none, changes the test runner config\n";
+    for (const edit of edits) {
+      const pr = await repo(edit, landed);
+      const f = Object.values(edit[0]!)[0] as string;
+      const r = await check(pr, "fix: x");
+      expect(r.status, f).toBe(1);
+      expect(r.summary, f).toContain(`- ${f} (which tests run and how much they must cover)`);
+      const ci = await check(pr, "ci: x", proof);
+      expect(ci.status, f).toBe(1);
+      expect(ci.summary, f).toContain(`- ${f} (coverage settings)`);
+      expect((await check(pr, "ci: x", `${proof}Coverage: the runner moves to a new config\n`)).status, f).toBe(0);
+    }
+  });
+
+  // Every config file a gate on this branch reads, the reason check-refactor.sh's list gives for it, and what an edit
+  // adds. Each exists here, so a rename breaks this test rather than the guard. .jscpd.json and a "prettier" key do
+  // not (jscpd gets an empty config, prettier reads .prettierrc.json), but either would be read once added.
+  const coverage = "Coverage: the runner moves to a new config\n";
+  it.each([
+    ["vitest.config.ts", "which tests run and how much they must cover", "file", "\n", coverage],
+    ["coverage-thresholds.json", "which tests run and how much they must cover", "file", "\n", ""],
+    ["eslint.config.js", "what the typecheck and lint steps check", "file", "\n", ""],
+    ["tsconfig.json", "what the typecheck and lint steps check", "file", "\n", ""],
+    ["tsconfig.build.json", "what the typecheck and lint steps check", "file", "\n", ""],
+    ["test/no-credentials.ts", "what vitest runs in every worker before the tests", "file", "\n", ""],
+    [".github/workflows/ci.yml", "the workflows and settings that run and review every pull request", "file", "\n", ""],
+    ["knip.json", "what the unused code and duplicate checks report", "file", "\n", ""],
+    [".jscpd.json", "what the unused code and duplicate checks report", "absent", "{}\n", ""],
+    [".prettierrc.json", "what the format check accepts", "file", "\n", ""],
+    [".prettierignore", "what the format check accepts", "file", "dist/\n", ""],
+    ["scripts/allow/duplicates.tsv", "the lists the pull request checks accept", "file", "a\tb\twhy\n", "Allowlist: a block both files need\n"],
+    ['package.json script "test"', "what npm run runs", "script", " --coverage.enabled=false", ""],
+    ['package.json "prettier"', "the config a check reads from package.json", "key", "", ""],
+  ] as const)("refuses a change to %s outside ci, as %s", { timeout: 60_000 }, async (row, why, kind, added, body) => {
+    const { f, base, head } = gatedEdit(row, kind, added);
+    const landed = ["coverage-thresholds.json", "vitest.config.ts"].map((c) => ({ write: c, text: readFileSync(c, "utf8") }));
+    const pr = await repo([{ write: f, text: head }], base === undefined ? landed : [...landed, { write: f, text: base }]);
+    for (const type of ["fix", "feat", "refactor", "test", "docs", "chore", "build", "perf", "style"]) {
+      const r = await check(pr, `${type}: x`);
+      expect(r.status, type).toBe(1);
+      expect(r.summary, type).toContain(`- ${row} (${why})`);
+    }
+    expect((await check(pr, "ci: x", `Proof: none, edits the check config\n${body}`)).status).toBe(0);
   });
 
   it("fails any type that adds or changes a dependency npm would fetch from outside the registry", async () => {

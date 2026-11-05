@@ -8,7 +8,7 @@ import { afterEach, expect } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..");
 const tsx = join(ROOT, "node_modules", ".bin", "tsx");
-const COPIED = ["src", "scripts", "test", ".gitignore", "package.json", "knip.json", "tsconfig.json", "tsconfig.build.json", "vitest.config.ts", "eslint.config.js"];
+const COPIED = ["src", "scripts", "test", ".gitignore", "package.json", "knip.json", "tsconfig.json", "tsconfig.build.json", "vitest.config.ts", "coverage-thresholds.json", "eslint.config.js"];
 
 export const tempDirs: string[] = [];
 afterEach(async () => {

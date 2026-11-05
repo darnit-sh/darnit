@@ -545,7 +545,7 @@ describe("npm run accounting", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("accounts for many enum values the records set, on the operations they name, within its time budget", async () => {
+  it("accounts for many enum values the records set, on the operations they name, within its time budget", { tags: ["cpu-time"] }, async () => {
     // 143 model names on each of 140 schemas: 20,020 deprecated values, each set by a record that names all 80
     // operations sending them, so every value is checked against every operation before it counts as covered.
     const names = Array.from({ length: 143 }, (_, i) => `model-${i}`);
@@ -561,7 +561,7 @@ describe("npm run accounting", () => {
     expect(await slowdown(run(records), run([]), 10)).toBeLessThan(10);
   });
 
-  it("accounts for a large spec within its time budget", async () => {
+  it("accounts for a large spec within its time budget", { tags: ["cpu-time"] }, async () => {
     // 2,000 schemas of 20 properties each, chained by $ref into one cycle, behind 500 operations that each reach all of them.
     const schemas: Record<string, unknown> = {};
     for (let i = 0; i < 2000; i++) {

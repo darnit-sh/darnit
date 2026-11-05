@@ -32,6 +32,17 @@ describe("runtime dependencies", () => {
   });
 });
 
+// The plugin runs inside vitest, so the two are bumped together.
+describe("the coverage plugin", () => {
+  it("is pinned to the vitest version package-lock.json installs", async () => {
+    const { devDependencies } = (await read("package.json")) as { devDependencies: Record<string, string> };
+    const lock = (await read("package-lock.json")) as Lock;
+    const vitest = lock.packages["node_modules/vitest"]?.version;
+    expect(vitest).toMatch(/^\d+\.\d+\.\d+$/);
+    expect({ spec: devDependencies["@vitest/coverage-v8"], locked: lock.packages["node_modules/@vitest/coverage-v8"]?.version }).toEqual({ spec: vitest, locked: vitest });
+  });
+});
+
 describe("package-lock.json", () => {
   it("is what npm ci accepts for package.json", async () => {
     const dir = await mkdtemp(join(tmpdir(), "darnit-lock-"));

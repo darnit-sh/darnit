@@ -53,6 +53,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
     "@typescript/native": "npm:typescript@^7.0.2",
+    "@vitest/coverage-v8": "5.0.5",
     "eslint": "^10.13.0",
     "jscpd": "5.4.2",
     "knip": "6.42.1",
