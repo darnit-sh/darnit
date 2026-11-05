@@ -14,9 +14,15 @@ updates:
       runtime:
         dependency-type: production
         update-types: [minor, patch]
+      # vitest and its coverage plugin must stay on the same version, so they move together, majors too.
+      vitest:
+        patterns: [vitest, "@vitest/*"]
       tooling:
         dependency-type: development
         update-types: [minor, patch]
+        # The tools behind a check (formatter, unused code, duplicates) change what the check reports
+        # between versions, so each comes alone, where its findings and breach tests can be rerun.
+        exclude-patterns: [prettier, knip, jscpd]
     ignore:
       # Types must match the oldest Node we support, not the newest.
       - dependency-name: "@types/node"
