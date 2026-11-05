@@ -128,10 +128,10 @@ export const readIn =
     return new RegExp(`^  ${name}[: ]`, "m").test(out) ? undefined : `its output names ${file} among no results`;
   };
 
-/** `head`, then `open` as many times as fit with as many `close` after `middle`, padded with spaces to exactly MAX_FILE_BYTES. */
-function sized(head: string, open: string, close = "", middle = ""): string {
-  const n = Math.floor((MAX_FILE_BYTES - head.length - middle.length) / (open.length + close.length));
-  return `${head}${open.repeat(n)}${middle}${close.repeat(n)}`.padEnd(MAX_FILE_BYTES, " ");
+/** `head`, then `unit` as many times as fit with as many `close` after `middle`, padded with spaces to exactly MAX_FILE_BYTES. */
+function sized(head: string, unit: string, close = "", middle = ""): string {
+  const n = Math.floor((MAX_FILE_BYTES - head.length - middle.length) / (unit.length + close.length));
+  return `${head}${unit.repeat(n)}${middle}${close.repeat(n)}`.padEnd(MAX_FILE_BYTES, " ");
 }
 
 /** darnit check on a folder holding one file, `file`, of `text()`, which its report must name. */
