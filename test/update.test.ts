@@ -1,12 +1,13 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createServer as createTlsServer } from "node:https";
 import { createServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { get, updateNotice } from "../src/update.js";
 
 type Fetch = typeof get;
@@ -121,6 +122,24 @@ describe("updateNotice", () => {
 });
 
 describe("get", () => {
+  it("hands back a real response's status and body", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "darnit-tls-"));
+    onTestFinished(() => rm(dir, { recursive: true, force: true }));
+    const [key, cert] = [join(dir, "key.pem"), join(dir, "cert.pem")];
+    execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-keyout", key, "-out", cert, "-subj", "/CN=localhost", "-days", "1"], { stdio: "ignore" });
+    const server = createTlsServer({ key: await readFile(key), cert: await readFile(cert) }, (_, res) => {
+      res.statusCode = 203;
+      res.end("hello");
+    }).listen(0, "127.0.0.1");
+    onTestFinished(() => void server.close());
+    await once(server, "listening");
+    vi.stubEnv("NODE_TLS_REJECT_UNAUTHORIZED", "0");
+    onTestFinished(() => void vi.unstubAllEnvs());
+    const { status, body } = await get(`https://127.0.0.1:${(server.address() as AddressInfo).port}/`, AbortSignal.timeout(5000));
+    expect(status).toBe(203);
+    expect(Buffer.concat(await body.toArray()).toString()).toBe("hello");
+  });
+
   it("closes the connection when the time runs out, so a stalled server cannot keep the run open", async () => {
     const server = createServer().listen(0, "127.0.0.1");
     await once(server, "listening");

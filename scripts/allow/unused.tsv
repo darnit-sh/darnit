@@ -4,6 +4,7 @@
 binaries	test/fix.test.ts	chattr	a system program the test runs, not an npm package
 binaries	test/init.test.ts	mkfifo	a system program the test runs, not an npm package
 binaries	test/tests.test.ts	mkfifo	a system program the test runs, not an npm package
+binaries	test/update.test.ts	openssl	a system program the test runs, not an npm package
 devDependencies	package.json	jscpd	scripts/allowlist.ts runs it from node_modules/.bin, which knip does not trace
 exports	src/corpus/oasdiff.ts	OASDIFF_VERSION	used only in its own file; the export goes with the dead code cleanup
 exports	src/corpus/replacements.ts	fold	used only in its own file; the export goes with the dead code cleanup

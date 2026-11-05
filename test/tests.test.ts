@@ -243,4 +243,12 @@ describe("runTests", () => {
     // Waiting on the escaped process would take 10 seconds.
     expect(Date.now() - start).toBeLessThan(5000);
   }, 20_000);
+
+  it.skipIf(process.platform === "win32")("returns at the timeout when the command's group is gone and an escaped process holds the output open", async () => {
+    const dir = await dirWith({});
+    const start = Date.now();
+    const run = await runTests(dir, "perl -MPOSIX -e 'if (fork() == 0) { POSIX::setsid(); sleep 10; exit } print \"left\\n\"'", 500);
+    expect(run).toMatchObject({ passed: false, timedOut: true, output: "left" });
+    expect(Date.now() - start).toBeLessThan(5000);
+  }, 20_000);
 });

@@ -366,6 +366,17 @@ describe("init never writes outside the repository", () => {
     expect(await readdir(out)).toEqual(["config.yml", "workflows"]);
   });
 
+  it("stops on a workflow folder it cannot read, and writes nothing there", async () => {
+    const dir = await scratchCopy("small");
+    const folder = join(dir, ".github", "workflows");
+    await mkdir(folder, { recursive: true });
+    await chmod(folder, 0o000);
+    const refused = await init(dir).then(() => undefined, (err: NodeJS.ErrnoException) => err.code);
+    await chmod(folder, 0o755);
+    expect(refused).toBe("EACCES");
+    expect(await readdir(folder)).toEqual([]);
+  });
+
   it("says a darnit.yml link that points nowhere is a link, and leaves it", async () => {
     const [dir, out] = [await scratchCopy("small"), await outside()];
     await symlink(join(out, "missing.yml"), join(dir, "darnit.yml"));
