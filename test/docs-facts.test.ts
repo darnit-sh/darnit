@@ -15,8 +15,8 @@ import { modelNames } from "../src/scan/astgrep.js";
 import { LONG_LINE } from "../src/scan/mentions.js";
 import { TIME_LIMIT_MINUTES } from "../src/tests.js";
 import { atLeast } from "../src/versions.js";
+import { exists, read, where } from "./docs.js";
 
-const read = (file: string) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 // A constant's value as its declaration in a source file reads; undefined once the declaration changes shape.
 const declared = async (file: string, at: RegExp) => at.exec(await read(file))?.slice(1);
 const pkg = async () => JSON.parse(await read("package.json")) as { version: string; engines: { node: string } };
@@ -68,7 +68,37 @@ const config = cached(async () => {
   return (await readFile(join(dir, "darnit.yml"), "utf8")).replace(/^#.*\n/gm, "");
 });
 
-type Doc = "README.md" | "SECURITY.md" | "RELEASING.md";
+type Doc = "README.md" | "SECURITY.md" | "RELEASING.md" | "ARCHITECTURE.md" | "CONTRIBUTING.md";
+// The groups of the module map in test/architecture.test.ts, in its order: each one's floor ("islands" or "scripts"
+// off the floors), the highest floor one off the floors may import, and its paths.
+const groups = cached(async () =>
+  (await read("test/architecture.test.ts"))
+    .split("\n")
+    .filter((l) => /^ {2}\w+: (at\(|\{ floor: NaN)/.test(l))
+    .map((l) => ({
+      floor: /: at\((\d+),/.exec(l)?.[1] ?? (l.includes('kind: "island"') ? "islands" : "scripts"),
+      reach: /reach: (\d+)/.exec(l)?.[1],
+      paths: [...(/(?:at\(\d+, |paths: )\[([^\]]*)\]/.exec(l)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((p) => p[1]!),
+    })),
+);
+const group = async (path: string) => (await groups()).find((g) => g.paths.includes(path));
+const floor = async (path: string) => ((await group(path))?.floor === "islands" ? "island" : (await group(path))?.floor);
+// The paths the map puts on a floor that git tracks, in the map's order, as the floors table lists them.
+const onFloor = async (at: string) =>
+  (await groups())
+    .filter((g) => g.floor === at)
+    .flatMap((g) => g.paths)
+    .filter(exists)
+    .map((p) => `\`${p}\``)
+    .join(", ");
+// "a, b and c"
+const listed = (items: string[]) => [items.slice(0, -1).join(", "), items.at(-1)].filter(Boolean).join(" and ");
+// The npm scripts ci.yml runs that npm run check does not.
+const ciOnly = async () => {
+  const check = (JSON.parse(await read("package.json")) as { scripts: { check: string } }).scripts.check.split(" && ");
+  const runs = [...(await read(".github/workflows/ci.yml")).matchAll(/^ *(?:- )?run: (?:time )?(npm run [\w:-]+)$/gm)].map((m) => m[1]!);
+  return listed([...new Set(runs)].filter((r) => !check.includes(r)).map((r) => `\`${r}\``));
+};
 // A space in a pattern matches any run of spaces and line breaks, so rewrapping a paragraph keeps its match.
 const loose = (at: RegExp, flags: string) => new RegExp(at.source.replaceAll(" ", "\\s+"), flags);
 // The major versions of an action this repository's own workflows use, pinned as `<sha> # vN.x.y`.
@@ -84,7 +114,7 @@ const workflow = (at: RegExp) => ({ in: ["README.md"] as Doc[], at, is: () => [a
 // Each match's capture groups must read what `is` returns, from the code or config itself, with runs of whitespace
 // counted as one space unless `raw`. One phrase per entry, so deleting any phrase fails the test.
 const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) => unknown[] | Promise<unknown[]> }[] = [
-  { in: ["README.md"], at: /Needs Node (\S+) or newer/, is: async () => [/^>=(\d+(?:\.\d+)*)$/.exec((await pkg()).engines.node)?.[1]] },
+  { in: ["README.md", "CONTRIBUTING.md"], at: /Needs Node (\S+) or newer/, is: async () => [/^>=(\d+(?:\.\d+)*)$/.exec((await pkg()).engines.node)?.[1]] },
   { in: ["README.md", "SECURITY.md"], at: /git (\S+) or newer/, is: async () => [(await declared("src/git.ts", /^const MIN_GIT: \[number, number\] = \[(\d+), (\d+)\];$/m))?.join(".")] },
   { in: ["README.md", "RELEASING.md"], at: /Node ((?:\d+, )*\d+ and \d+)/, is: async () => [await nodes()] },
   {
@@ -140,6 +170,20 @@ const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) 
   },
   { in: ["RELEASING.md"], at: /from \S+ on the major \(`npx darnit@(\S+) check`\)/, is: (m) => [pinned(/from (\S+)/.exec(m[0])![1]!)] },
   { in: ["RELEASING.md"], at: /`check` to exit (\d+) with a hit/, is: async () => [/"\$status" != (\d+)/.exec(await read("scripts/verify-release.sh"))?.[1]] },
+  { in: ["CONTRIBUTING.md"], at: /what changed`, (\d+) characters at most/, is: async () => [(await declared("scripts/check-pr.sh", /^\[ "\$\{#TITLE\}" -le (\d+) \]/m))?.[0]] },
+  { in: ["ARCHITECTURE.md"], at: /^\| `(src\/[^`]+)` \| (\w+) \|/, is: async (m) => [m[1], await floor(m[1]!)] },
+  // A floor's row lists every tracked path the map puts on that floor, and no other.
+  { in: ["ARCHITECTURE.md"], at: /^\| (\w+) \| ((?:`[^`]+`(?:, )?)+) \|/, is: async (m) => [m[1], await onFloor(m[1]!)] },
+  { in: ["ARCHITECTURE.md"], at: /They may use floors (\d+) to (\d+)/, is: async () => ["0", (await group("src/corpus/"))?.reach] },
+  { in: ["ARCHITECTURE.md"], at: /`scripts\/` may import islands and floors (\d+) to (\d+)/, is: async () => ["0", (await group("scripts/"))?.reach] },
+  {
+    in: ["ARCHITECTURE.md"],
+    at: /^\| Coverage per folder of `src\/` \| at or above each line and branch percent in `([^`]+)`, measured by `([^`]+)`/,
+    is: async () => [/^import thresholds from "\.\/([^"]+)"/m.exec(await read("vitest.config.ts"))?.[1], /^ *(?:- )?run: (npm test -- --coverage)\b/m.exec(await read(".github/workflows/ci.yml"))?.[1]],
+  },
+  { in: ["CONTRIBUTING.md"], at: /CI also runs ([^]*?), measures coverage/, is: async () => [await ciOnly()] },
+  { in: ["ARCHITECTURE.md"], at: /without a stack and exits (\d+)/, is: async () => [await refused()] },
+  { in: ["ARCHITECTURE.md"], at: /none of (\d+) tokens or more/, is: async () => [(await declared("scripts/allowlist.ts", /^const MIN_TOKENS = "(\d+)";$/m))?.[0]] },
 ];
 
 // Numbers no code or config holds. Each match accounts for every number inside it.
@@ -158,20 +202,22 @@ const UNCHECKED: { in: Doc[]; at: RegExp; why: string }[] = [
   { in: ["RELEASING.md"], at: /From 1\.0 on, `init` pins the major/, why: "the 1.0 boundary of the pin rule" },
   { in: ["RELEASING.md"], at: /\(X\.Y\.0\) before 1\.0, README\.md's workflow examples/, why: "the 1.0 boundary of the pin rule" },
   { in: ["RELEASING.md"], at: /`rc\.N\+1`/, why: "the next candidate number" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Lines per file in `src\/` \| 300 \|$/, why: "a limit a change holds to; no lint rule checks it" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Lines per function \| 50 \|$/, why: "a limit a change holds to; no lint rule checks it" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Complexity per function \| 10 \|$/, why: "a limit a change holds to; no lint rule checks it" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Nesting depth \| 3 \|$/, why: "a limit a change holds to; no lint rule checks it" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Parameters \| 4 \(an options object beyond\) \|$/, why: "a limit a change holds to; no lint rule checks it" },
+  { in: ["CONTRIBUTING.md"], at: /about 300 changed source lines at most/, why: "a size a change holds to, not a setting" },
+  { in: ["CONTRIBUTING.md"], at: /^[1-4]\. \*\*/, why: "step number" },
 ];
 
 // Each `$ npx darnit check` block, in order, run for real on test/samples/<name>, then each later command in the
 // block on the same copy. Every line the block shows must be printed, in that order.
-const SAMPLES: Record<Doc, string[]> = { "README.md": ["readme", "readme-models"], "SECURITY.md": [], "RELEASING.md": [] };
+const SAMPLES: Record<Doc, string[]> = { "README.md": ["readme", "readme-models"], "SECURITY.md": [], "RELEASING.md": [], "ARCHITECTURE.md": [], "CONTRIBUTING.md": [] };
 
 // A number, with any unit or hyphen after it (20MB, 15-minute, 2020-10-05), a v before it (v7), and after a dot or
 // underscore that follows no letter or digit (.5, _20 MB_), but not inside a name such as gpt-4, gpt-4.1, o1 or TS2322.
 const NUMBER = /(?<![\p{L}\p{N}]|[\p{L}\p{N}_][.-])v?\d+(?:[.,]\d+)*/gu;
-
-const where = (text: string, file: string, at: number) => {
-  const n = text.slice(0, at).split("\n").length;
-  return `${file}:${n}: ${text.split("\n")[n - 1]!.trim()}`;
-};
 
 async function samples(file: Doc, text: string, covered: [number, number][], problems: string[]) {
   const blocks = [...text.matchAll(/^```\n(\$ npx darnit check\n[^]*?)^```$/gm)];
@@ -200,7 +246,7 @@ async function samples(file: Doc, text: string, covered: [number, number][], pro
 
 describe("numbers in the docs match the code", () => {
   // README's checks start the CLI five times, one after another: about 20 seconds on a busy macOS runner.
-  it.each(["README.md", "SECURITY.md", "RELEASING.md"] as Doc[])("every number in %s is checked against its source or listed with a reason", { timeout: 120_000 }, async (file) => {
+  it.each(Object.keys(SAMPLES) as Doc[])("every number in %s is checked against its source or listed with a reason", { timeout: 120_000 }, async (file) => {
     const text = await read(file);
     const covered: [number, number][] = [];
     const problems: string[] = [];
@@ -227,6 +273,11 @@ describe("numbers in the docs match the code", () => {
       if (!covered.some(([s, e]) => s <= m.index && end <= e)) problems.push(`${where(text, file, m.index)}: ${m[0]} is neither checked nor listed in test/docs-facts.test.ts`);
     }
     expect(problems).toEqual([]);
+  });
+
+  it("ARCHITECTURE.md's floors table has one row per floor of the module map, in its order", async () => {
+    const rows = [...(await read("ARCHITECTURE.md")).matchAll(/^\| (\w+) \| `/gm)].map((m) => m[1]);
+    expect(rows).toEqual([...new Set((await groups()).map((g) => g.floor).filter((f) => f !== "scripts"))]);
   });
 
   it("finds every number, with or without a unit, but not inside names", () => {
