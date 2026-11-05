@@ -1,0 +1,17 @@
+# Code only: every other file stays as it is.
+*
+!*/
+!*.ts
+!*.js
+!*.mjs
+!*.cjs
+# As eslint.config.js ignores, plus test data and generated records.
+dist/
+node_modules/
+coverage/
+packs/**/fixtures/**
+test/fixtures/**
+test/samples/**
+test/e2e/**
+test/golden/**
+corpus/**

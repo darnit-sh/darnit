@@ -7,6 +7,7 @@
 # The second form overwrites src/ and packs/ in the working tree and puts them back at the end.
 set -eu
 . "$(dirname "$0")/pr-common.sh"
+if queued; then exit 0; fi
 mode=check
 if [ "${1:-}" = --run ]; then mode=run && shift; fi
 base=$1 head=$2
