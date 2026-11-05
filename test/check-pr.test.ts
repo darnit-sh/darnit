@@ -103,7 +103,7 @@ describe("npm in CI", () => {
   it("runs scripts with /bin/sh in every job that runs npm, whatever an .npmrc in the change says", async () => {
     const jobs = await npmJobs();
     expect(jobs.map(([id]) => id).sort()).toEqual(
-      ["ci/answer-key", "ci/lint", "ci/package", "ci/test", "corpus/refresh", "golden/compare", "pr/proof", "pr/refactor", "publish/build", "publish/publish", "publish/verify"],
+      ["ci/answer-key", "ci/lint", "ci/package", "ci/test", "ci/watchdog", "corpus/refresh", "golden/compare", "pr/proof", "pr/refactor", "publish/build", "publish/publish", "publish/verify"],
     );
     for (const [id, job] of jobs) expect(job.env?.npm_config_script_shell, id).toBe("/bin/sh");
     // npm reads npm_config_* variables after a project .npmrc, so the job's setting wins.

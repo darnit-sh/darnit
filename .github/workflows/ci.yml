@@ -125,6 +125,26 @@ jobs:
       # init, check and fix against every scenario in test/e2e.
       - run: npm run test:e2e
 
+  # The built CLI on the largest input it accepts, each case a child killed at 5 minutes (scripts/watchdog.ts):
+  # a test's own time limit cannot stop a synchronous loop, so a hang fails here and names its input. The limit
+  # covers a whole run, one case killed, and a case started just before it running to the kill too.
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      npm_config_script_shell: /bin/sh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx tsx scripts/watchdog.ts
+
   # Compares scan results on pinned real repositories with their stored files (golden.yml).
   golden:
     uses: ./.github/workflows/golden.yml
