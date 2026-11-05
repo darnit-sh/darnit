@@ -59,7 +59,8 @@ Coverage only goes up. Whatever the type, a change fails when it lowers or remov
 `coverage-thresholds.json`, changes a vitest config, changes the pin of `vitest` or `@vitest/coverage-v8`, or adds a
 coverage ignore hint under `src/`, unless it has a `Coverage: <reason>` line in the description, which counts only in
 a `ci` change and goes beside the `Proof: none, <reason>` line those files need there. Raising a threshold, or adding
-one for a folder at or above what CI measures, needs no `Coverage:` line.
+one for a folder at or above what CI measures, needs no `Coverage:` line, but it is still a change to
+`coverage-thresholds.json`, so it must be a `ci` change with a `Proof: none, <reason>` line.
 
 A change a user can see is never a `refactor`, even a small one: it is a `fix` or `feat` with a CHANGELOG line.
 

@@ -88,9 +88,11 @@ new class is listed here, with its invariant, by the change that adds it.
   in `LOOKALIKES` beside it. For the corpus, its specification address and endpoint-to-SDK map in `vendors.yml`.
   `npm run accounting` reads `corpus/<vendor>/openapi.yaml` for every vendor there and stops on one without it, so
   the same change runs `npm run corpus`, which stores the first snapshot as `corpus/<vendor>/openapi.yaml` and
-  `corpus/<vendor>/snapshot.json`, and commits both. Every item that spec marks deprecated then needs a record or an
-  entry with its reason in `packs/<vendor>/not-covered.yaml`, or `npm run accounting` fails. Nothing checks that
-  `VENDORS` and `vendors.yml` name the same vendors.
+  `corpus/<vendor>/snapshot.json`, and commits both. It fetches every vendor's spec, so it can also change another
+  vendor's corpus files, and accounting then fails on that vendor's new removals: keep only the new vendor's files
+  and restore the rest (`git checkout -- corpus/<other-vendor>/`). Every item the new vendor's spec marks deprecated
+  then needs a record or an entry with its reason in `packs/<vendor>/not-covered.yaml`, or `npm run accounting`
+  fails. Nothing checks that `VENDORS` and `vendors.yml` name the same vendors.
 
 ## Limits
 The checks below run in CI. Anything that broke one before it existed is listed in its file under `scripts/allow/`
