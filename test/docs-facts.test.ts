@@ -15,7 +15,7 @@ import { modelNames } from "../src/scan/astgrep.js";
 import { LONG_LINE } from "../src/scan/mentions.js";
 import { TIME_LIMIT_MINUTES } from "../src/tests.js";
 import { atLeast } from "../src/versions.js";
-import { read, where } from "./docs.js";
+import { exists, read, where } from "./docs.js";
 
 // A constant's value as its declaration in a source file reads; undefined once the declaration changes shape.
 const declared = async (file: string, at: RegExp) => at.exec(await read(file))?.slice(1);
@@ -69,14 +69,36 @@ const config = cached(async () => {
 });
 
 type Doc = "README.md" | "SECURITY.md" | "RELEASING.md" | "ARCHITECTURE.md" | "CONTRIBUTING.md";
-// A path's floor, or "island", as its group in the module map of test/architecture.test.ts reads.
-const map = async (path: string) => (await read("test/architecture.test.ts")).split("\n").find((l) => /^ {2}\w+: /.test(l) && l.includes(`"${path}"`));
-const floor = async (path: string) => {
-  const group = await map(path);
-  return /: at\((\d+),/.exec(group ?? "")?.[1] ?? (group?.includes("floor: NaN") ? "island" : undefined);
+// The groups of the module map in test/architecture.test.ts, in its order: each one's floor ("islands" or "scripts"
+// off the floors), the highest floor one off the floors may import, and its paths.
+const groups = cached(async () =>
+  (await read("test/architecture.test.ts"))
+    .split("\n")
+    .filter((l) => /^ {2}\w+: (at\(|\{ floor: NaN)/.test(l))
+    .map((l) => ({
+      floor: /: at\((\d+),/.exec(l)?.[1] ?? (l.includes('kind: "island"') ? "islands" : "scripts"),
+      reach: /reach: (\d+)/.exec(l)?.[1],
+      paths: [...(/(?:at\(\d+, |paths: )\[([^\]]*)\]/.exec(l)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((p) => p[1]!),
+    })),
+);
+const group = async (path: string) => (await groups()).find((g) => g.paths.includes(path));
+const floor = async (path: string) => ((await group(path))?.floor === "islands" ? "island" : (await group(path))?.floor);
+// The paths the map puts on a floor that git tracks, in the map's order, as the floors table lists them.
+const onFloor = async (at: string) =>
+  (await groups())
+    .filter((g) => g.floor === at)
+    .flatMap((g) => g.paths)
+    .filter(exists)
+    .map((p) => `\`${p}\``)
+    .join(", ");
+// "a, b and c"
+const listed = (items: string[]) => [items.slice(0, -1).join(", "), items.at(-1)].filter(Boolean).join(" and ");
+// The npm scripts ci.yml runs that npm run check does not.
+const ciOnly = async () => {
+  const check = (JSON.parse(await read("package.json")) as { scripts: { check: string } }).scripts.check.split(" && ");
+  const runs = [...(await read(".github/workflows/ci.yml")).matchAll(/^ *(?:- )?run: (?:time )?(npm run [\w:-]+)$/gm)].map((m) => m[1]!);
+  return listed([...new Set(runs)].filter((r) => !check.includes(r)).map((r) => `\`${r}\``));
 };
-// The highest floor a group outside the floors may import.
-const reach = async (path: string) => /reach: (\d+)/.exec((await map(path)) ?? "")?.[1];
 // A space in a pattern matches any run of spaces and line breaks, so rewrapping a paragraph keeps its match.
 const loose = (at: RegExp, flags: string) => new RegExp(at.source.replaceAll(" ", "\\s+"), flags);
 // The major versions of an action this repository's own workflows use, pinned as `<sha> # vN.x.y`.
@@ -150,14 +172,16 @@ const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) 
   { in: ["RELEASING.md"], at: /`check` to exit (\d+) with a hit/, is: async () => [/"\$status" != (\d+)/.exec(await read("scripts/verify-release.sh"))?.[1]] },
   { in: ["CONTRIBUTING.md"], at: /what changed`, (\d+) characters at most/, is: async () => [(await declared("scripts/check-pr.sh", /^\[ "\$\{#TITLE\}" -le (\d+) \]/m))?.[0]] },
   { in: ["ARCHITECTURE.md"], at: /^\| `(src\/[^`]+)` \| (\w+) \|/, is: async (m) => [m[1], await floor(m[1]!)] },
-  // Each file a floor's row lists sits on that floor.
+  // A floor's row lists every tracked path the map puts on that floor, and no other.
+  { in: ["ARCHITECTURE.md"], at: /^\| (\w+) \| ((?:`[^`]+`(?:, )?)+) \|/, is: async (m) => [m[1], await onFloor(m[1]!)] },
+  { in: ["ARCHITECTURE.md"], at: /They may use floors (\d+) to (\d+)/, is: async () => ["0", (await group("src/corpus/"))?.reach] },
+  { in: ["ARCHITECTURE.md"], at: /`scripts\/` may import islands and floors (\d+) to (\d+)/, is: async () => ["0", (await group("scripts/"))?.reach] },
   {
     in: ["ARCHITECTURE.md"],
-    at: /^\| (\d+) \| ((?:`[^`]+`(?:, )?)+) \|/,
-    is: async (m) => [[...new Set(await Promise.all([...m[2]!.matchAll(/`([^`]+)`/g)].map((p) => floor(p[1]!))))].join(", "), m[2]],
+    at: /^\| Coverage per folder of `src\/` \| at or above each line and branch percent in `([^`]+)`, measured by `([^`]+)`/,
+    is: async () => [/^import thresholds from "\.\/([^"]+)"/m.exec(await read("vitest.config.ts"))?.[1], /^ *(?:- )?run: (npm test -- --coverage)\b/m.exec(await read(".github/workflows/ci.yml"))?.[1]],
   },
-  { in: ["ARCHITECTURE.md"], at: /They may use floors (\d+) to (\d+)/, is: async () => ["0", await reach("src/corpus/")] },
-  { in: ["ARCHITECTURE.md"], at: /`scripts\/` may import islands and floors (\d+) to (\d+)/, is: async () => ["0", await reach("scripts/")] },
+  { in: ["CONTRIBUTING.md"], at: /CI also runs ([^]*?), measures coverage/, is: async () => [await ciOnly()] },
   { in: ["ARCHITECTURE.md"], at: /without a stack and exits (\d+)/, is: async () => [await refused()] },
   { in: ["ARCHITECTURE.md"], at: /none of (\d+) tokens or more/, is: async () => [(await declared("scripts/allowlist.ts", /^const MIN_TOKENS = "(\d+)";$/m))?.[0]] },
 ];
@@ -178,11 +202,11 @@ const UNCHECKED: { in: Doc[]; at: RegExp; why: string }[] = [
   { in: ["RELEASING.md"], at: /From 1\.0 on, `init` pins the major/, why: "the 1.0 boundary of the pin rule" },
   { in: ["RELEASING.md"], at: /\(X\.Y\.0\) before 1\.0, README\.md's workflow examples/, why: "the 1.0 boundary of the pin rule" },
   { in: ["RELEASING.md"], at: /`rc\.N\+1`/, why: "the next candidate number" },
-  { in: ["ARCHITECTURE.md"], at: /^\| Lines per file in `src\/` \| 300 \|$/, why: "a limit a change holds to; no lint rule checks it yet" },
-  { in: ["ARCHITECTURE.md"], at: /^\| Lines per function \| 50 \|$/, why: "a limit a change holds to; no lint rule checks it yet" },
-  { in: ["ARCHITECTURE.md"], at: /^\| Complexity per function \| 10 \|$/, why: "a limit a change holds to; no lint rule checks it yet" },
-  { in: ["ARCHITECTURE.md"], at: /^\| Nesting depth \| 3 \|$/, why: "a limit a change holds to; no lint rule checks it yet" },
-  { in: ["ARCHITECTURE.md"], at: /^\| Parameters \| 4 \(an options object beyond\) \|$/, why: "a limit a change holds to; no lint rule checks it yet" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Lines per file in `src\/` \| 300 \|$/, why: "a limit a change holds to; no lint rule checks it" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Lines per function \| 50 \|$/, why: "a limit a change holds to; no lint rule checks it" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Complexity per function \| 10 \|$/, why: "a limit a change holds to; no lint rule checks it" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Nesting depth \| 3 \|$/, why: "a limit a change holds to; no lint rule checks it" },
+  { in: ["ARCHITECTURE.md"], at: /^\| Parameters \| 4 \(an options object beyond\) \|$/, why: "a limit a change holds to; no lint rule checks it" },
   { in: ["CONTRIBUTING.md"], at: /about 300 changed source lines at most/, why: "a size a change holds to, not a setting" },
   { in: ["CONTRIBUTING.md"], at: /^[1-4]\. \*\*/, why: "step number" },
 ];
@@ -249,6 +273,11 @@ describe("numbers in the docs match the code", () => {
       if (!covered.some(([s, e]) => s <= m.index && end <= e)) problems.push(`${where(text, file, m.index)}: ${m[0]} is neither checked nor listed in test/docs-facts.test.ts`);
     }
     expect(problems).toEqual([]);
+  });
+
+  it("ARCHITECTURE.md's floors table has one row per floor of the module map, in its order", async () => {
+    const rows = [...(await read("ARCHITECTURE.md")).matchAll(/^\| (\w+) \| `/gm)].map((m) => m[1]);
+    expect(rows).toEqual([...new Set((await groups()).map((g) => g.floor).filter((f) => f !== "scripts"))]);
   });
 
   it("finds every number, with or without a unit, but not inside names", () => {

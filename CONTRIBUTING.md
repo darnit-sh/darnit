@@ -10,8 +10,9 @@ git config core.hooksPath .githooks
 npm run check
 ```
 Needs Node 22.12 or newer. `npm run check` runs lint, typecheck, the tests and the record fixtures; the pre-commit
-hook runs it too. CI also runs `npm run knip`, `npm run duplicates`, `npm run accounting` and `npm run test:e2e`,
-and compares scans of pinned real repositories with their stored results.
+hook runs it too. CI also runs `npm run knip`, `npm run duplicates`, `npm run accounting`, `npm run test:e2e` and
+`npm run answer-key`, measures coverage with `npm test -- --coverage` against `coverage-thresholds.json`, and,
+through golden.yml, compares scans of pinned real repositories with their stored results.
 
 ## What a finished change looks like
 Write these down in the pull request before the results:
@@ -44,7 +45,7 @@ co-author line. Each type has a rule CI checks:
 | `style` | only edits to existing `.ts`, `.js`, `.mjs` and `.cjs` files, each exactly what the pinned formatter writes over the base's copy |
 | `test`, `ci` | leaves the code and the rule packs alone; a change to the suite (its runners, shared test modules, dependencies, the lock file, npm config) needs a `Proof: none, <reason>` line in the description |
 | `docs` | leaves the code, the rule packs, the suite, the dependencies and the lock file alone |
-| `chore`, `build` | leaves the code, the rule packs and the suite alone; only `build` may change which files the package ships |
+| `chore`, `build` | leaves the code, the rule packs and the suite alone; may change dependency versions, apart from the pins of `vitest` and `@vitest/coverage-v8`; only `build` may change which files the package ships |
 | `revert` | exactly the inverse of one commit, named on a `This reverts commit <sha>` line |
 
 Only a `ci` change may change how the checks run (the workflows, the pull request checks, the tools' settings,
@@ -53,6 +54,12 @@ needs a `ci` change with an `Allowlist: <reason>` line as well; any change may r
 A `Proof: none, <reason>` line also lets a `fix` or `feat` through the proof check, and skips the run of the base's
 tests for a `refactor` or `perf`, with the reason shown on the pull request. Whatever the type, a dependency or lock
 entry a change adds or alters must be what the npm registry published.
+
+Coverage only goes up. Whatever the type, a change fails when it lowers or removes a threshold in
+`coverage-thresholds.json`, changes a vitest config, changes the pin of `vitest` or `@vitest/coverage-v8`, or adds a
+coverage ignore hint under `src/`, unless it has a `Coverage: <reason>` line in the description, which counts only in
+a `ci` change and goes beside the `Proof: none, <reason>` line those files need there. Raising a threshold, or adding
+one for a folder at or above what CI measures, needs no `Coverage:` line.
 
 A change a user can see is never a `refactor`, even a small one: it is a `fix` or `feat` with a CHANGELOG line.
 

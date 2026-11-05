@@ -1,14 +1,8 @@
-import { readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { escapeRegExp } from "../src/detect.js";
-import { read, where } from "./docs.js";
-
-const ROOT = fileURLToPath(new URL("../", import.meta.url));
+import { exists, read, where } from "./docs.js";
 
 // A path from the repository root: names joined by slashes, a trailing slash for a folder, or one file name with its
-// extension. `*` and a placeholder such as `<vendor>` stand for any one name.
+// extension, with `**`, `*` and placeholders such as `<vendor>` as test/docs.ts reads them.
 const SHAPE = /^\/?[\w.*<>-]+(\/[\w.*<>-]*)*$/;
 const FILE = /[\w-]\.(md|ts|js|mjs|cjs|json|ya?ml|tsv|sh|txt)$/;
 const looksLikePath = (word: string) => SHAPE.test(word) && (word.includes("/") || FILE.test(word));
@@ -35,32 +29,8 @@ function namedPaths(md: string): { path: string; at: number }[] {
   return found;
 }
 
-const glob = (name: string) =>
-  new RegExp(
-    `^${name
-      .split(/\*|<[^>]*>/)
-      .map(escapeRegExp)
-      .join(".+")}$`,
-  );
-
-/** Whether a path names a file or folder under the root; with a trailing slash it must be a folder. */
-function exists(path: string): boolean {
-  const names = path.replace(/\/$/, "").split("/");
-  if (names.some((n) => n === "" || n === "." || n === "..")) return false;
-  const walk = (dir: string, i: number): boolean => {
-    const name = names[i]!;
-    const matches = /[*<]/.test(name) ? readdirSync(dir).filter((n) => glob(name).test(n)) : [name];
-    return matches.some((n) => {
-      const info = statSync(join(dir, n), { throwIfNoEntry: false });
-      if (i < names.length - 1) return info?.isDirectory() === true && walk(join(dir, n), i + 1);
-      return info !== undefined && (!path.endsWith("/") || info.isDirectory());
-    });
-  };
-  return walk(ROOT, 0);
-}
-
 describe("the paths ARCHITECTURE.md names", () => {
-  it("all exist", async () => {
+  it("are all tracked", async () => {
     const text = await read("ARCHITECTURE.md");
     const named = namedPaths(text);
     expect(named.map((n) => n.path)).toEqual(
@@ -74,7 +44,7 @@ describe("the paths ARCHITECTURE.md names", () => {
     expect(
       named
         .filter((n) => !exists(n.path))
-        .map((n) => `${where(text, "ARCHITECTURE.md", n.at)}: names ${n.path}, which does not exist`),
+        .map((n) => `${where(text, "ARCHITECTURE.md", n.at)}: names ${n.path}, which git does not track`),
     ).toEqual([]);
   });
 
@@ -109,13 +79,16 @@ describe("the paths ARCHITECTURE.md names", () => {
     expect(namedPaths(md)).toEqual([]);
   });
 
-  it("must exist as named: a folder as a folder, a glob or placeholder matching something, inside the repository", () => {
+  it("must be tracked as named: a folder as a folder, a glob or placeholder matching something, inside the repository", () => {
     for (const path of [
       "src/cli.ts",
       "src/scan/",
       "src/scan",
       "scripts/allow/*.tsv",
       "packs/<vendor>/<record>/rules/js/",
+      "packs/**/change.json",
+      "packs/**/fixtures/",
+      "./src/cli.ts",
       "ARCHITECTURE.md",
     ])
       expect(exists(path), path).toBe(true);
@@ -128,6 +101,10 @@ describe("the paths ARCHITECTURE.md names", () => {
       "src/./cli.ts",
       "/etc/hosts",
       "src//cli.ts",
+      "packs/**/nope.json",
+      "src/CLI.ts",
+      "node_modules/vitest/package.json",
+      "dist/cli.js",
     ])
       expect(exists(path), path).toBe(false);
   });

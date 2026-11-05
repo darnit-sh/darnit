@@ -15,30 +15,31 @@ adding code; CONTRIBUTING.md says what a finished change looks like.
   and propose or check records. They are not part of the published package.
 
 ## Floors
-`src/` is arranged in floors. A file imports only from floors below its own, never above and never sideways across
-the rules below. Type-only imports follow the same rules. `test/architecture.test.ts` holds the map and checks every
-import in `src/` and `scripts/` against it. A new import cycle fails it; the one cycle today and every other import
-that broke the map before it was checked are listed in `scripts/allow/imports.tsv`.
+`src/` is arranged in floors. A file may import only from floors below its own, never above and never sideways
+across the rules below. Type-only imports follow the same rules. `test/architecture.test.ts` holds the map and checks
+every import in `src/` and `scripts/` against it. The imports that broke these rules before the map was checked,
+among them the one import cycle, are listed in `scripts/allow/imports.tsv`, and each rule below holds apart from
+those lines; any other break, or a new cycle, fails the test.
 
 | Floor | Files today | Job |
 |---|---|---|
 | 4 | `src/cli.ts`, `src/init.ts`, `src/update.ts` | The command line: arguments, commands, what it prints and exits with. |
 | 3 | `src/check.ts`, `src/fix.ts`, `src/plan.ts`, `src/tests.ts`, `src/packs/apply.ts` | The two flows. The fix files may use `src/check.ts`; `src/check.ts` never uses them. `src/packs/apply.ts` stands apart: `src/fix.ts` uses it only through its line in the allowlist. |
-| 2 | `src/scan/`, `src/records/`, `src/git.ts`, `src/github.ts`, `src/versions.ts` | What the flows are built from. `src/scan/` may use `src/records/`; nothing else on this floor uses another group on it. |
+| 2 | `src/scan/`, `src/records/`, `src/git.ts`, `src/github.ts`, `src/versions.ts` | What the flows are built from. `src/scan/` may use `src/records/`; nothing else on this floor uses another group on it, apart from the listed lines. |
 | 1 | `src/detect.ts` | Vendor facts, files and processes, text out. |
 | 0 | `src/refusal.ts` | The error type darnit throws when it declines to act. |
 | islands | `src/corpus/`, `src/packs/fixtures.ts` | Tooling. They may use floors 0 to 2 (and `src/packs/apply.ts` for fixtures); only `scripts/` imports them, and the build leaves them out. |
 
-The map also gives each floor folders that do not exist yet, one per job, so a file keeps its floor when it moves
+The map also gives each floor folders that do not exist, one per job, so a file keeps its floor when it moves
 into one. New code goes into the folder the map gives its job, or next to the code it extends while that code has
 not moved; `test/architecture.test.ts` fails on a file under `src/` that the map does not place.
 
-`scripts/` may import islands and floors 0 to 3, never the command line. Tests may import anything. There are no
-barrel files (an index file that re-exports a folder), and the map test fails on one.
+`scripts/` may import islands and floors 0 to 3, never the command line apart from the listed lines. Tests may
+import anything. There are no barrel files (an index file that re-exports a folder), and the map test fails on one.
 
 ## Where things live
-Every path below exists today; `test/docs-paths.test.ts` checks that every path this file names exists. When a file
-moves to its folder, the same change updates its row.
+Every path below exists today; `test/docs-paths.test.ts` checks that every path this file names is a file or folder
+git tracks. When a file moves to its folder, the same change updates its row.
 
 | Path | Floor | Job |
 |---|---|---|
@@ -82,9 +83,14 @@ new class is listed here, with its invariant, by the change that adds it.
   all fail CI.
 - **A rewrite rule:** an ast-grep rule file (YAML, applied in name order) under
   `packs/<vendor>/<record>/rules/<language>/`, with a fixture case for every form it handles.
-- **A vendor:** its runtime facts (packages, hosts, tier) in `VENDORS` in `src/detect.ts`, and its look-alikes in
-  `LOOKALIKES` beside it; its specification address and endpoint-to-SDK map in `vendors.yml`, which the corpus
-  reads. Nothing checks that the two lists name the same vendors.
+- **A vendor:** its runtime facts (packages, hosts, tier) in `VENDORS` in `src/detect.ts`, with the tier
+  `supported` once a rule pack for it exists in `packs/` and `recognized` while it is only named, and its look-alikes
+  in `LOOKALIKES` beside it. For the corpus, its specification address and endpoint-to-SDK map in `vendors.yml`.
+  `npm run accounting` reads `corpus/<vendor>/openapi.yaml` for every vendor there and stops on one without it, so
+  the same change runs `npm run corpus`, which stores the first snapshot as `corpus/<vendor>/openapi.yaml` and
+  `corpus/<vendor>/snapshot.json`, and commits both. Every item that spec marks deprecated then needs a record or an
+  entry with its reason in `packs/<vendor>/not-covered.yaml`, or `npm run accounting` fails. Nothing checks that
+  `VENDORS` and `vendors.yml` name the same vendors.
 
 ## Limits
 The checks below run in CI. Anything that broke one before it existed is listed in its file under `scripts/allow/`
@@ -95,13 +101,21 @@ change with an `Allowlist: <reason>` line in its description may add a line to a
 makes knip skip an export or a `jscpd:ignore` marker, and only a `ci` change with a `Proof: none, <reason>` line may
 change a tool's settings (`scripts/check-refactor.sh`).
 
+Coverage has a floor rather than a list: each threshold in `coverage-thresholds.json`, which `vitest.config.ts`
+reads, only goes up. Whatever its type, a change fails when it lowers or removes a threshold, changes a vitest
+config, changes the pin of `vitest` or `@vitest/coverage-v8`, or adds a coverage ignore hint under `src/`
+(`scripts/check-coverage.sh`). Only a `ci` change passes with a `Coverage: <reason>` line in its description, on top
+of the `Proof: none, <reason>` line those files need; a `ci` change cannot touch `src/`, so no change adds an ignore
+hint there. A folder a change adds to the thresholds must start at or above what CI measures for it, rounded down.
+
 | Check | Value |
 |---|---|
 | Import floors and cycles | the map above, checked by `npm test` |
 | Unused files, exports and dependencies | none, checked by `npm run knip` |
 | Duplicated blocks in `src/` and `scripts/` | none of 50 tokens or more, checked by `npm run duplicates` |
+| Coverage per folder of `src/` | at or above each line and branch percent in `coverage-thresholds.json`, measured by `npm test -- --coverage` on one CI runner |
 
-These limits hold for any code a change writes or touches. No lint rule enforces them yet, so the change holds to
+These limits hold for any code a change writes or touches. No lint rule enforces them, so the change holds to
 them itself, and does not make an existing breach worse.
 
 | Limit | Value |
