@@ -1294,6 +1294,19 @@ describe("lines added to an allowlist under scripts/allow/", () => {
     const other = await grow("refactor: x", [{ write: "scripts/allow/models.txt", text: "gone\n" }], "");
     expect(other.out).toContain("- scripts/allow/models.txt (the lists the pull request checks accept)");
   });
+
+  it("holds the module map's import list to the same rule: a fix or refactor may remove a line, not add one", async () => {
+    const IMPORTS = "scripts/allow/imports.tsv";
+    const listed = "src/a.ts\tsrc/b.ts\tkept for now\nsrc/b.ts\tsrc/a.ts\tkept for now\n";
+    const landedImports: Edit[] = [{ write: IMPORTS, text: listed }];
+    for (const title of ["fix: x", "refactor: x"]) {
+      const added = await rule(title, [{ write: "src/a.ts" }, { write: IMPORTS, text: `${listed}src/a.ts\tsrc/c.ts\tnew\n` }], "", {}, landedImports);
+      expect(added.status, title).toBe(1);
+      expect(added.out).toContain(`- ${IMPORTS} (the lists the pull request checks accept)`);
+      const removed = await rule(title, [{ write: "src/a.ts" }, { write: IMPORTS, text: listed.split("\n")[0] + "\n" }], "", {}, landedImports);
+      expect(removed.status, title).toBe(0);
+    }
+  });
 });
 
 describe("the style rule", () => {
