@@ -230,7 +230,8 @@ describe("runTests", () => {
 
   it("kills a hung command after the timeout", async () => {
     const dir = await dirWith({});
-    const run = await runTests(dir, "node -e \"setTimeout(() => {}, 60000)\"", 300);
+    // Outlives the test's own limit, so the test fails if the command is not killed.
+    const run = await runTests(dir, "node -e \"setTimeout(() => {}, 300000)\"", 300);
     expect(run).toMatchObject({ passed: false, timedOut: true });
   });
 

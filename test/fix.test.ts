@@ -965,9 +965,10 @@ describe("fix", () => {
   });
 });
 
-const HANGS = "node -e \"setTimeout(() => {}, 60000)\"";
+// Each outlives the test's own limit, so a test fails if the run is not killed.
+const HANGS = "node -e \"setTimeout(() => {}, 300000)\"";
 // Fails at once on the rewritten file and hangs on the original, so only the second run times out.
-const GATE = "if (require('fs').readFileSync('sdk.js', 'utf8').includes('max_completion_tokens')) process.exit(1); setTimeout(() => {}, 60000);\n";
+const GATE = "if (require('fs').readFileSync('sdk.js', 'utf8').includes('max_completion_tokens')) process.exit(1); setTimeout(() => {}, 300000);\n";
 const gated = (kind: "build" | "tests") =>
   kind === "build"
     ? { files: { "sdk.js": SDK_CALL, "gate.cjs": GATE, "package.json": JSON.stringify({ scripts: { typecheck: "node gate.cjs" } }) }, test: "node -e 0" }
