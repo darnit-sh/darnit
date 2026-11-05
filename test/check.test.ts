@@ -1228,7 +1228,7 @@ describe("model shutdowns", () => {
     expect(text).toContain("    use x?y? instead (OpenAI's recommendation)\n");
   });
 
-  it("prints thousands of call sites with their replacements quickly", async () => {
+  it("prints thousands of call sites with their replacements quickly", { tags: ["cpu-time"] }, async () => {
     const { hits } = await checkReport(await scratch({ "app.py": 'from openai import OpenAI\nclient = OpenAI()\nclient.responses.create(model="o3-2025-04-16")\n' }));
     const many = Array.from({ length: 200_000 }, (_, i) => ({ ...hits[0]!, line: i + 1 }));
     let text = "";
@@ -1298,7 +1298,7 @@ describe("model names set as values", () => {
     expect(["src/latest.py", "contest.py", "testing.ts", "src/attest/a.py"].filter(isTestPath)).toEqual([]);
   });
 
-  it("takes about as long with tokenizer calls in the file as without", async () => {
+  it("takes about as long with tokenizer calls in the file as without", { timeout: 60_000, tags: ["cpu-time"] }, async () => {
     const grammar = grammarFor("app.py")!.grammar;
     // Both files hold the same calls and both get the tokenizer pass, so a healthy run is about 1x. CPU
     // time on shared runners still varies by up to half, so the bound is loose: checking every tokenizer
@@ -1310,7 +1310,7 @@ describe("model names set as values", () => {
     const bound = 2.5 * (await time("count_things"));
     // A second run only when the first lands over the bound, as each run takes seconds.
     expect(await time("count_tokens", 2, bound)).toBeLessThan(bound);
-  }, 60_000);
+  });
 
   it("finds the range around a value in a few steps however many ranges there are", () => {
     const ranges = Array.from({ length: 2000 }, (_, i) => ({ start: 10 * i, end: 10 * i + 5 }));
@@ -1326,13 +1326,13 @@ describe("model names set as values", () => {
     expect(reads).toBeLessThan(2 * 2000 * 50);
   });
 
-  it("reads long call chains in linear time", async () => {
+  it("reads long call chains in linear time", { timeout: 60_000, tags: ["cpu-time"] }, async () => {
     for (const [file, link] of ["app.py", "app.ts"].flatMap((f) => [".a()", ".token", ".token()"].map((l) => [f, l] as const))) {
       expect(await growth(file, (n) => `model = "gpt-4"; x${link.repeat(40_000 * n)}\n`)).toBeLessThan(24);
     }
-  }, 60_000);
+  });
 
-  it("reads calls with many arguments about as fast as parsing them", async () => {
+  it("reads calls with many arguments about as fast as parsing them", { timeout: 60_000, tags: ["cpu-time"] }, async () => {
     const cases = [
       ["app.ts", '"gpt-4", '],
       ["app.py", '"gpt-4", '],
@@ -1345,9 +1345,9 @@ describe("model names set as values", () => {
       const parsing = await cpuTime(() => parse(grammar, source), 3);
       expect(await cpuTime(() => findModelValues(file, source, grammar, new Set(["gpt-4"])), 3)).toBeLessThan(10 * parsing + 500);
     }
-  }, 60_000);
+  });
 
-  it("reads long names, long lines and deep code in linear time", async () => {
+  it("reads long names, long lines and deep code in linear time", { timeout: 60_000, tags: ["cpu-time"] }, async () => {
     const defaults = (n: number) => 'default="gpt-4", '.repeat(5000 * n);
     const cases = [
       ["app.py", (n: number) => `${"a.".repeat(50_000 * n)}model = f(${defaults(n)})\n`],
@@ -1360,7 +1360,7 @@ describe("model names set as values", () => {
     const slow = [];
     for (const [file, source] of cases) if ((await growth(file, source)) > 24) slow.push(source(1).slice(0, 20));
     expect(slow).toEqual([]);
-  }, 60_000);
+  });
 
   it("does not list a call's model fallback again when it wraps to the next line", async () => {
     const dir = await scratch({
@@ -1402,7 +1402,7 @@ describe("model names set as values", () => {
     }
   });
 
-  it("prints a long list of values quickly", async () => {
+  it("prints a long list of values quickly", { tags: ["cpu-time"] }, async () => {
     const { values } = await checkReport(await scratch({ "app.py": 'MODEL = "gpt-4"\n' }));
     const many = Array.from({ length: 200_000 }, (_, i) => ({ ...values[0]!, line: i + 1 }));
     // A tenth of a second on a laptop; comparing each value with every other takes 40 seconds.
@@ -1596,7 +1596,7 @@ describe("other mentions of model names", () => {
     expect(text).toContain("  and 3 more files\n  276 mentions in 23 files.");
   });
 
-  it("reads a padded file in linear time", async () => {
+  it("reads a padded file in linear time", { tags: ["cpu-time"] }, async () => {
     const names = new Set(["gpt-4", "o1", "ada"]);
     for (const unit of ["a", ".", "gpt-4.gpt-4x", "x y ", "o1\n", "model= ada ", '\\"ada\\"x ', "engine: \t"]) {
       const text = unit.repeat(Math.ceil(2_000_000 / unit.length));
@@ -1712,7 +1712,7 @@ describe("check on a repository built to slow it down", () => {
     ["an import padded with thousands of spaces", "app.js", `import {${" ".repeat(3000)}OpenAI } from "openai";\nconst client = new OpenAI();\nclient.chat.completions.create({ max_tokens: 5 });\n`, 3, 2],
     // Mostly blank lines, which cost about a tenth of plain code as long.
     ["a function with thousands of blank lines", "app.py", py(`from groq import Groq\ndef setup():\n    client = Groq()${"\n".repeat(150_000)}    return client`), 150_004, 0.3],
-  ])("finishes quickly on %s", async (_, name, text, line, bound) => {
+  ])("finishes quickly on %s", { tags: ["cpu-time"] }, async (_, name, text, line, bound) => {
     expect(maxTokens(await quickly(name, text, bound))).toEqual([`${name}:${line}`]);
   });
 
@@ -1727,11 +1727,11 @@ describe("check on a repository built to slow it down", () => {
     ["a thousand calls and a thousand functions setting the client", "app.py", `from openai import OpenAI\n${times(1000, (i) => `def f${i}():\n    client = OpenAI()\n`)}${times(1000, () => call)}`, 1000, 3.5],
     ["an assignment chained thousands of names long", "app.py", py(`from openai import OpenAI\n${times(4000, (i) => `a${i} = `)}1\nclient = OpenAI()`), 1, 3.5],
     ["calls on clients whose address is set in 50 nested blocks", "app.js", `import OpenAI from "openai";\n${times(50, (i) => `{\nconst baseURL = "http://localhost:${i}";\nvar client = new OpenAI({ baseURL });\n`)}${times(20, () => "client.chat.completions.create({ max_tokens: 5 });\n")}${"}\n".repeat(50)}`, 20, 3.5],
-  ])("finishes quickly on %s", { timeout: 300_000 }, async (_, name, text, count, bound) => {
+  ])("finishes quickly on %s", { timeout: 300_000, tags: ["cpu-time"] }, async (_, name, text, count, bound) => {
     expect(maxTokens(await quickly(name, text, bound))).toHaveLength(count);
   });
 
-  it("checks thousands of realtime class calls, and as many on a look-alike class, within a CPU budget", { timeout: 60_000 }, async () => {
+  it("checks thousands of realtime class calls, and as many on a look-alike class, within a CPU budget", { timeout: 60_000, tags: ["cpu-time"] }, async () => {
     const create = (cls: string, client: string) => `${cls}.create(${client}, { model: "gpt-4o-realtime-preview-2024-10-01" });\n`;
     const text = [
       'import OpenAI from "openai";\nimport { OpenAIRealtimeWS } from "openai/realtime/ws";\nimport { OpenAIRealtimeWebSocket } from "other";\n',
@@ -1740,7 +1740,7 @@ describe("check on a repository built to slow it down", () => {
     expect(new Set((await quickly("app.ts", text, 3.5)).map((h) => h.line)).size).toBe(3000);
   });
 
-  it("checks thousands of models written as template strings, and as many with code in them, within a CPU and memory budget", { timeout: 60_000 }, async () => {
+  it("checks thousands of models written as template strings, and as many with code in them, within a CPU and memory budget", { timeout: 60_000, tags: ["cpu-time"] }, async () => {
     const text = `import OpenAI from "openai";\nconst c = new OpenAI();\n${times(3000, (i) => `c.chat.completions.create({ model: o.model ?? \`gpt-4\` });\nc.chat.completions.create({ model: \`gpt-4\${s${i}}\` });\n`)}`;
     const dir = await scratch({ "app.ts": text });
     let hits: Hit[] = [];
@@ -1750,7 +1750,7 @@ describe("check on a repository built to slow it down", () => {
     if (process.platform === "linux") expect(peakOf(dir).peak).toBeLessThan(400);
   });
 
-  it("checks a class name imported from thousands of packages, with as many calls, within a CPU budget", { timeout: 60_000 }, async () => {
+  it("checks a class name imported from thousands of packages, with as many calls, within a CPU budget", { timeout: 60_000, tags: ["cpu-time"] }, async () => {
     const text = [
       times(16000, (i) => `import { OpenAIRealtimeWS } from "pkg${i}/realtime/ws";\n`),
       times(16000, () => 'OpenAIRealtimeWS.create(c, { model: "gpt-4o-realtime-preview-2024-10-01" });\n'),
@@ -1776,7 +1776,7 @@ describe("check on a repository built to slow it down", () => {
   it.each([
     ["SDK calls nested 2000 deep", "app.py", `from openai import OpenAI\nclient = OpenAI()\nx = ${"client.chat.completions.create(max_tokens=5, x=".repeat(2000)}1${")".repeat(2000)}\n`, 2000, 2.5],
     ["calls in functions nested 2000 deep", "app.js", `import OpenAI from "openai";\nconst client = new OpenAI();\n${times(2000, (i) => `function f${i}(a) {\n  client.chat.completions.create({ max_tokens: 5 });\n`)}${"}\n".repeat(2000)}`, 2000, 8],
-  ])("finishes quickly on %s", { timeout: 300_000 }, async (_, name, text, count, bound) => {
+  ])("finishes quickly on %s", { timeout: 300_000, tags: ["cpu-time"] }, async (_, name, text, count, bound) => {
     expect(maxTokens(await quickly(name, text, bound))).toHaveLength(count);
   });
 
@@ -1786,7 +1786,7 @@ describe("check on a repository built to slow it down", () => {
     ["a request with thousands of keyword arguments", `import requests\n${request("max_tokens=5, ".repeat(2000))}\n`, 2000, 4],
     ["a request body with thousands of quoted keys", `import requests\n${request(`json={${'"max_tokens": 5, '.repeat(2000)}}`)}\n`, 2000, 4],
     ["a request inside calls nested 1500 deep", `import requests\nx = ${"f(max_tokens=5, ".repeat(1500)}${request("max_tokens=5")}${")".repeat(1500)}\n`, 1, 6],
-  ])("finishes quickly on %s", async (_, text, count, bound) => {
+  ])("finishes quickly on %s", { tags: ["cpu-time"] }, async (_, text, count, bound) => {
     expect(maxTokens(await quickly("app.py", text, bound))).toHaveLength(count);
   });
 
@@ -1811,7 +1811,7 @@ describe("check on a repository built to slow it down", () => {
     expect(maxTokens(await check(await scratch({ [name]: text })))).toEqual([at]);
   });
 
-  it.each(["app.js", "app.py", "App.kt"])("finds strings and comments in a crafted 10 MB %s in linear time", { timeout: 60_000 }, async (file) => {
+  it.each(["app.js", "app.py", "App.kt"])("finds strings and comments in a crafted 10 MB %s in linear time", { timeout: 60_000, tags: ["cpu-time"] }, async (file) => {
     const names = new Set(["o1", "gpt-4"]);
     for (const unit of ["\"o1 '\\\n", "/*o1\n", "'''o1\\\n", '\\\\"o1"\n', '`o1 #o1 """\n', "o1 o1\n"]) {
       const text = unit.repeat(Math.floor(MAX_FILE_BYTES / unit.length));
@@ -1854,7 +1854,7 @@ describe("check on a file built to overflow the stack", () => {
       return `${name}:${line + 1}:${lines[line]!.indexOf("max_tokens") + 1}`;
     });
 
-  it.each([3000, 100_000])("finds the call site in a URL built from %i concatenations within a CPU budget", { timeout: 60_000 }, async (n) => {
+  it.each([3000, 100_000])("finds the call site in a URL built from %i concatenations within a CPU budget", { timeout: 60_000, tags: ["cpu-time"] }, async (n) => {
     const files = deep(n);
     const dir = await scratch(files);
     let hits: Hit[] = [];
@@ -1880,7 +1880,7 @@ describe("check on a file built to overflow the stack", () => {
     ["calls nested in a Python URL", "app.py", `import requests\nr = ${`requests.post(${helper}`.repeat(3000)}requests.post("b", json=dict(max_tokens=5))${")".repeat(3000)}\n`, 0],
     ["requests nested in a URL with no endpoint", "app.js", `export const r = ${'fetch("a" + '.repeat(10_000)}fetch("b", { body: JSON.stringify({ max_tokens: 5 }) })${")".repeat(10_000)};\n`, 0],
     ["a request nested in each request's URL", "app.js", `export const r = ${`fetch(${U} + `.repeat(6000)}"x"${", { max_tokens: 5 })".repeat(6000)};\n`, 6000],
-  ])("checks %s within a CPU and memory budget", { timeout: 120_000 }, async (_, name, text, count) => {
+  ])("checks %s within a CPU and memory budget", { timeout: 120_000, tags: ["cpu-time"] }, async (_, name, text, count) => {
     const dir = await scratch({ [name]: text, "small.js": "export const x = 1;\n" });
     let hits: Hit[] = [];
     expect(await cpuTime(async () => ({ hits } = await checkReport(dir)), 3, 3000)).toBeLessThan(3000);

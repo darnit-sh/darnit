@@ -206,7 +206,7 @@ describe("deriveCandidates", () => {
     expect(candidates.map((c) => c.record.id)).toEqual(["openai:2026-01-01:max-tokens-deprecated", "openai:2026-01-01:functions-deprecated"]);
   });
 
-  it("resolves each referenced schema once across many fields within a CPU budget", async () => {
+  it("resolves each referenced schema once across many fields within a CPU budget", { tags: ["cpu-time"] }, async () => {
     const fields = Array.from({ length: 60 }, (_, i) => `f${i}`);
     const schemas: Record<string, Schema> = {};
     for (let i = 0; i < 100_000; i++) schemas[`C${i}`] = ref(`C${i + 1}`);
@@ -237,7 +237,7 @@ function synthetic(properties: Record<string, Schema>, entries: ChangeEntry[], s
 }
 
 describe("requestProperty", () => {
-  it("stops at $ref cycles and follows long chains within a CPU budget, reading each schema about once", async () => {
+  it("stops at $ref cycles and follows long chains within a CPU budget, reading each schema about once", { tags: ["cpu-time"] }, async () => {
     const all: Record<string, Schema> = { A: ref("B"), B: ref("A"), Self: ref("Self") };
     for (let i = 0; i < 100_000; i++) all[`C${i}`] = ref(`C${i + 1}`);
     all["C100000"] = { properties: { max_tokens: ref("Self") } };

@@ -129,7 +129,7 @@ describe("parsePlan", () => {
     expect(() => parsePlan("{", ids)).toThrow("plan is not JSON");
   });
 
-  it("stays fast on the largest plan it accepts", async () => {
+  it("stays fast on the largest plan it accepts", { tags: ["cpu-time"] }, async () => {
     const files = Array.from({ length: CAPS.files }, (_, i) => `src/${"d".repeat(150)}/f${i}.js`);
     const one = (f: string) => PATCH.replaceAll("app.py", f).replace("-max_tokens=5\n", `-${"x".repeat(200)}\n`);
     const patch = files.map(one).join("");
@@ -144,7 +144,7 @@ describe("parsePlan", () => {
     expect(ratio).toBeLessThan(16);
   });
 
-  it("stays fast on paths of thousands of parts", async () => {
+  it("stays fast on paths of thousands of parts", { tags: ["cpu-time"] }, async () => {
     const planOf = (path: string) => text({ ...valid(), groups: [...ids].slice(0, 2).map((id) => ({ ...valid().groups[0]!, id, files: Array(CAPS.files).fill(path) })) });
     const plan = planOf(Array(2048).fill("a").join("/"));
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan * 0.95);

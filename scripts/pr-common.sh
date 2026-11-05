@@ -12,6 +12,8 @@ title_type() { printf '%s\n' "${TITLE:-}" | sed -nE '1s/^([a-z]+)(\([a-z0-9-]+\)
 # Code and rule packs: what a fix or feat needs a proof for and what a test, docs or tooling change leaves alone.
 # Matched in any case (grep -i), as names are on a macOS runner's disk.
 CODE='^"?(src/|packs/[^/]+/[^/]+/rules/)|(^|/)change\.json"?$'
+# The config files vitest reads, which decide which tests run and what coverage they must reach. Matched in any case.
+VITEST_CONFIG='(vitest\.config|vite\.config|vitest\.workspace)\.[^/]*'
 # No rename detection: a renamed file shows as its old path deleted and its new path added.
 paths() { git diff --no-renames --name-only "$@" "$base...$head"; }
 # The body as a reader sees it: HTML comments and fenced code blocks taken out.

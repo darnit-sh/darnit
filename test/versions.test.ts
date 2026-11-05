@@ -101,7 +101,7 @@ describe("pypiVersions", () => {
 });
 
 describe("versions on a repository built to slow it down", () => {
-  it("finishes quickly on a requirements line padded with spaces", async () => {
+  it("finishes quickly on a requirements line padded with spaces", { tags: ["cpu-time"] }, async () => {
     const dir = await dirWith({ "requirements.txt": `openai${" ".repeat(100_000)}\nopenai==1.50.0\n` });
     const time = await cpuTime(async () => expect(await pypiVersions(dir, "openai")).toEqual([{ version: "1.50.0", from: "requirements.txt" }]), 3, 2000);
     expect(time).toBeLessThan(2000);

@@ -105,6 +105,10 @@ base=$1 head=$2
 type=$(title_type)
 
 mb=$(git merge-base "$base" "$head")
+# Every type: nothing that decides coverage goes down (scripts/check-coverage.sh). Its failure ends the run after
+# the list of what decides how the checks run and the allowlist check, so each says what it found.
+coverage=0
+sh "$(dirname "$0")/check-coverage.sh" "$mb" "$head" || coverage=1
 # npm and yarn config anywhere, which can send every npm run and npx in CI through a script of its own.
 # Names match in any case, as they do on a macOS runner's disk.
 config=$(paths | grep -iE '(^|/)\.(npmrc|yarnrc[^/]*)"?$' || true)
@@ -316,7 +320,7 @@ gates() {
   # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
   shrunk=$(git diff --no-renames --text --numstat --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' | awk '$1 == 0 { print $3 }')
   gate '^"?scripts/allow/' "the lists the pull request checks accept" "$(printf '%s\n' "$all" | grep -vixF -- "${shrunk:-//}" || true)"
-  gate '^"?((vitest\.config|vite\.config|vitest\.workspace)\.[^/]*|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
+  gate '^"?('"$VITEST_CONFIG"'|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
   gate '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' "what the typecheck and lint steps check"
   gate '^"?(\.?knip(\.config)?\.[^/]*|\.jscpd\.json)"?$' "what the unused code and duplicate checks report"
   gate '(^|/)(\.prettierrc[^/]*|prettier\.config\.[^/]*|\.prettierignore|\.editorconfig|package\.yaml)"?$' "what the format check accepts"
@@ -366,6 +370,7 @@ if [ -n "$grown" ]; then
   say "**Allowlist grown** under the Allowlist line in the pull request body. Reason given: \`$reason\`"
   list "$grown"
 fi
+[ "$coverage" = 0 ] || exit 1
 
 case $type in
 refactor | perf)
