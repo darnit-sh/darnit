@@ -10,9 +10,11 @@ git config core.hooksPath .githooks
 npm run check
 ```
 Needs Node 22.12 or newer. `npm run check` runs lint, typecheck, the tests and the record fixtures; the pre-commit
-hook runs it too. CI also runs `npm run knip`, `npm run duplicates`, `npm run accounting`, `npm run test:e2e` and
-`npm run answer-key`, measures coverage with `npm test -- --coverage` against `coverage-thresholds.json`, and,
-through golden.yml, compares scans of pinned real repositories with their stored results.
+hook runs it too. CI also runs `npm run knip`, `npm run duplicates`, `npm run accounting`, `npm run test:e2e`,
+`npm run build` and `npm run answer-key`, measures coverage with `npm test -- --coverage` against
+`coverage-thresholds.json`, and, through golden.yml, compares scans of pinned real repositories with their stored
+results. After the build, `scripts/watchdog.ts` runs the built CLI on the largest inputs it accepts, and kills and
+names any run that hangs.
 
 ## What a finished change looks like
 Write these down in the pull request before the results:
