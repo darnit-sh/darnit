@@ -32,7 +32,9 @@ try {
     for (const [i, commit] of commits.entries()) {
       await writeFile(join(tmp, `${i}.yaml`), await git("show", `${commit}:${spec}`));
       if (i === 0) continue;
-      const { fetchedAt } = JSON.parse(await git("show", `${commit}:corpus/${vendor}/snapshot.json`)) as { fetchedAt: string };
+      const { fetchedAt } = JSON.parse(await git("show", `${commit}:corpus/${vendor}/snapshot.json`)) as {
+        fetchedAt: string;
+      };
       removals.push(...removalsFrom(await changelog(join(tmp, `${i - 1}.yaml`), join(tmp, `${i}.yaml`)), fetchedAt));
     }
     await writeFile(join(ROOT, "corpus", vendor, "removals.json"), `${JSON.stringify(removals, null, 2)}\n`);

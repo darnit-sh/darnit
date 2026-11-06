@@ -69,8 +69,16 @@ function commentsAndStrings(text: string, { hash, multiline, raw, apostrophe }: 
     while (i < at) {
       const c = text[i]!;
       if (close === "") {
-        const comment = hash ? (c === "#" ? "#" : undefined) : c === "/" && (text[i + 1] === "/" || text[i + 1] === "*") ? text.slice(i, i + 2) : undefined;
-        const quote = comment ? undefined : (multiline.find((q) => text.startsWith(q, i)) ?? (c === '"' || (apostrophe && c === "'") ? c : undefined));
+        const comment = hash
+          ? c === "#"
+            ? "#"
+            : undefined
+          : c === "/" && (text[i + 1] === "/" || text[i + 1] === "*")
+            ? text.slice(i, i + 2)
+            : undefined;
+        const quote = comment
+          ? undefined
+          : (multiline.find((q) => text.startsWith(q, i)) ?? (c === '"' || (apostrophe && c === "'") ? c : undefined));
         if (comment || quote) {
           close = comment === "/*" ? "*/" : (quote ?? "\n");
           oneLine = close === "\n" || (quote !== undefined && !multiline.includes(close));

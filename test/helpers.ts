@@ -14,7 +14,8 @@ const collect = runInNewContext("gc") as () => void;
 export async function cpuTime(f: () => unknown, runs = 1, budget?: number): Promise<number> {
   // Coverage slows the code it times, so CI runs these tests in a pass of their own, picked by the tag.
   const test = TestRunner.getCurrentTest();
-  if (!test?.tags?.includes("cpu-time")) throw new Error(`tag "${test?.name ?? "this test"}" cpu-time, as it measures CPU time`);
+  if (!test?.tags?.includes("cpu-time"))
+    throw new Error(`tag "${test?.name ?? "this test"}" cpu-time, as it measures CPU time`);
   let least = Infinity;
   for (let i = 0; i < runs; i++) {
     if (i > 0) {

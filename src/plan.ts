@@ -9,13 +9,24 @@ export const PLAN_VERSION = 1 as const;
 export const PLAN_FILE = "plan.json";
 
 /** Caps: `plan` in bytes of the file, the rest in characters of each string or entries of each list. */
-export const CAPS = { plan: 8 * 1024 * 1024, darnit: 64, groups: 64, files: 1000, path: 4096, patch: 1024 * 1024, command: 4096, note: 1024, output: TAIL_CHARS };
+export const CAPS = {
+  plan: 8 * 1024 * 1024,
+  darnit: 64,
+  groups: 64,
+  files: 1000,
+  path: 4096,
+  patch: 1024 * 1024,
+  command: 4096,
+  note: 1024,
+  output: TAIL_CHARS,
+};
 
 const capped = (max: number) => z.string().max(max, `over the cap of ${max} characters`);
 const list = <T extends z.ZodType>(item: T, max: number) => z.array(item).max(max, `over the cap of ${max} entries`);
 
 /** Text with every DEL, C1 or line separator character written as a JSON escape. */
-const escaped = (text: string) => text.replace(/[\u007f-\u009f\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+const escaped = (text: string) =>
+  text.replace(/[\u007f-\u009f\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 /** Plan text in a message: quoted, escaped and cut short, since it came from the repository's code. */
 const shown = (value: string) => escaped(JSON.stringify(value.length > 64 ? `${value.slice(0, 64)}…` : value));
 
@@ -57,12 +68,24 @@ const HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 const BINARY = /^(?:literal|delta) \d+$/;
 const BASE85 = /^[A-Za-z][0-9A-Za-z!#$%&()*+;<=>?@^_`{|}~-]+$/;
 
-const C_ESCAPES: Record<string, string> = { "\u0007": "\\a", "\b": "\\b", "\t": "\\t", "\n": "\\n", "\v": "\\v", "\f": "\\f", "\r": "\\r", '"': '\\"', "\\": "\\\\" };
+const C_ESCAPES: Record<string, string> = {
+  "\u0007": "\\a",
+  "\b": "\\b",
+  "\t": "\\t",
+  "\n": "\\n",
+  "\v": "\\v",
+  "\f": "\\f",
+  "\r": "\\r",
+  '"': '\\"',
+  "\\": "\\\\",
+};
 // eslint-disable-next-line no-control-regex
 const GIT_QUOTED = /[\u0000-\u001f"\\\u007f]/g;
 /** A path as git prints it in a diff with core.quotePath off: in quotes, escaped C-style, when it holds `"`, `\` or a control character. */
 const gitName = (p: string) =>
-  p.search(GIT_QUOTED) < 0 ? p : `"${p.replace(GIT_QUOTED, (c) => C_ESCAPES[c] ?? `\\${c.charCodeAt(0).toString(8).padStart(3, "0")}`)}"`;
+  p.search(GIT_QUOTED) < 0
+    ? p
+    : `"${p.replace(GIT_QUOTED, (c) => C_ESCAPES[c] ?? `\\${c.charCodeAt(0).toString(8).padStart(3, "0")}`)}"`;
 
 /**
  * Whether `patch` is a `git diff --binary --full-index` of changes to each of `files` and nothing else, read line by
@@ -90,7 +113,8 @@ function wellFormed(patch: string, files: readonly string[]): boolean {
     }
     // git ends these two lines with a tab when the name holds a space.
     const tab = f.includes(" ") ? "\t" : "";
-    if (lines[i++] !== `--- ${gitName(`a/${f}`)}${tab}` || lines[i++] !== `+++ ${gitName(`b/${f}`)}${tab}`) return false;
+    if (lines[i++] !== `--- ${gitName(`a/${f}`)}${tab}` || lines[i++] !== `+++ ${gitName(`b/${f}`)}${tab}`)
+      return false;
     let hunks = 0;
     for (let m = HUNK.exec(lines[i] ?? ""); m; m = HUNK.exec(lines[i] ?? ""), hunks++) {
       i++;
@@ -124,7 +148,10 @@ const GroupSchema = z
     message: "a note says why a check did not run, so it goes with no result",
     path: ["testsNote"],
   })
-  .refine((g) => wellFormed(g.patch, g.files), { message: "patch is not a git diff of exactly these files", path: ["patch"] });
+  .refine((g) => wellFormed(g.patch, g.files), {
+    message: "patch is not a git diff of exactly these files",
+    path: ["patch"],
+  });
 
 const PlanSchema = z.strictObject({
   version: z.literal(PLAN_VERSION),
@@ -138,7 +165,25 @@ export type PlanGroup = z.infer<typeof GroupSchema>;
 export type Plan = z.infer<typeof PlanSchema>;
 
 // Every key in the order it is written, so the same plan is always the same bytes.
-const KEYS = ["version", "darnit", "base", "groups", "id", "files", "patch", "build", "buildNote", "tests", "testsNote", "command", "passed", "attributed", "notChecked", "timedOut", "output"];
+const KEYS = [
+  "version",
+  "darnit",
+  "base",
+  "groups",
+  "id",
+  "files",
+  "patch",
+  "build",
+  "buildNote",
+  "tests",
+  "testsNote",
+  "command",
+  "passed",
+  "attributed",
+  "notChecked",
+  "timedOut",
+  "output",
+];
 
 /** The first key any object in `text`, which JSON.parse has read, holds twice; JSON.parse keeps only the last. */
 function duplicateKey(text: string): string | undefined {
@@ -169,8 +214,15 @@ function duplicateKey(text: string): string | undefined {
 /** What zod found, in messages that never repeat more than a short, escaped piece of the plan. */
 function problems(error: z.ZodError): string {
   const lines = error.issues.slice(0, 5).map((issue) => {
-    const where = issue.path.map((p) => (typeof p === "number" ? `[${p}]` : `.${String(p)}`)).join("").replace(/^\./, "") || "plan";
-    const what = issue.code === "unrecognized_keys" ? `unknown field ${issue.keys.slice(0, 3).map(shown).join(", ")}${issue.keys.length > 3 ? " and more" : ""}` : issue.message;
+    const where =
+      issue.path
+        .map((p) => (typeof p === "number" ? `[${p}]` : `.${String(p)}`))
+        .join("")
+        .replace(/^\./, "") || "plan";
+    const what =
+      issue.code === "unrecognized_keys"
+        ? `unknown field ${issue.keys.slice(0, 3).map(shown).join(", ")}${issue.keys.length > 3 ? " and more" : ""}`
+        : issue.message;
     return `${where}: ${what}`;
   });
   return [...lines, ...(error.issues.length > 5 ? [`and ${error.issues.length - 5} more`] : [])].join("\n");

@@ -15,7 +15,15 @@ export async function onPath(name: string, path = process.env.PATH ?? ""): Promi
     for (const n of names) {
       const p = join(dir, n);
       // An executable regular file: a directory named `git` has X_OK too, so it is skipped rather than run.
-      const ok = (await stat(p).then((s) => s.isFile(), () => false)) && (await access(p, constants.X_OK).then(() => true, () => false));
+      const ok =
+        (await stat(p).then(
+          (s) => s.isFile(),
+          () => false,
+        )) &&
+        (await access(p, constants.X_OK).then(
+          () => true,
+          () => false,
+        ));
       if (ok) return p;
     }
   }
@@ -34,8 +42,20 @@ export function cleanEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 // Known vendors. "supported" = a rule pack exists in packs/; "recognized" = named
 // in config only. Extend by adding a row.
 export const VENDORS = {
-  openai: { name: "OpenAI", npm: ["openai"], pypi: ["openai"], hosts: ["api.openai.com", "openai.azure.com"], tier: "supported" },
-  anthropic: { name: "Anthropic", npm: ["@anthropic-ai/sdk"], pypi: ["anthropic"], hosts: ["api.anthropic.com"], tier: "recognized" },
+  openai: {
+    name: "OpenAI",
+    npm: ["openai"],
+    pypi: ["openai"],
+    hosts: ["api.openai.com", "openai.azure.com"],
+    tier: "supported",
+  },
+  anthropic: {
+    name: "Anthropic",
+    npm: ["@anthropic-ai/sdk"],
+    pypi: ["anthropic"],
+    hosts: ["api.anthropic.com"],
+    tier: "recognized",
+  },
   stripe: { name: "Stripe", npm: ["stripe"], pypi: ["stripe"], hosts: ["api.stripe.com"], tier: "recognized" },
   twilio: { name: "Twilio", npm: ["twilio"], pypi: ["twilio"], hosts: ["api.twilio.com"], tier: "recognized" },
 } as const;
@@ -50,7 +70,12 @@ export function vendorClients(id: string): VendorClients | undefined {
   const v = (VENDORS as Partial<Record<string, (typeof VENDORS)[Vendor]>>)[id];
   if (!v) return undefined;
   const look = LOOKALIKES[id as Vendor];
-  return { packages: [...v.npm, ...v.pypi], hosts: [...v.hosts], lookalikePackages: look?.packages ?? [], lookalikeHosts: look?.hosts ?? [] };
+  return {
+    packages: [...v.npm, ...v.pypi],
+    hosts: [...v.hosts],
+    lookalikePackages: look?.packages ?? [],
+    lookalikeHosts: look?.hosts ?? [],
+  };
 }
 
 /**
@@ -109,10 +134,13 @@ export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" :
 const HIDDEN = /[\p{Default_Ignorable_Code_Point}\u007f-\u009f\u2028\u2029]/gu;
 // Extended_Pictographic as of Unicode 16.0, written out: Unicode 17.0 dropped 689 symbols from it (other dingbats,
 // playing cards, mahjong tiles), so `\p{Extended_Pictographic}` answers differently with Unicode 16.0 and 17.0 data.
-const PICTOGRAPH = /[\u00A9\u00AE\u203C\u2049\u2122\u2139\u2194-\u2199\u21A9\u21AA\u231A\u231B\u2328\u2388\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u2605\u2607-\u2612\u2614-\u2685\u2690-\u2705\u2708-\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763-\u2767\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299\u{1F000}-\u{1F0FF}\u{1F10D}-\u{1F10F}\u{1F12F}\u{1F16C}-\u{1F171}\u{1F17E}\u{1F17F}\u{1F18E}\u{1F191}-\u{1F19A}\u{1F1AD}-\u{1F1E5}\u{1F201}-\u{1F20F}\u{1F21A}\u{1F22F}\u{1F232}-\u{1F23A}\u{1F23C}-\u{1F23F}\u{1F249}-\u{1F3FA}\u{1F400}-\u{1F53D}\u{1F546}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F774}-\u{1F77F}\u{1F7D5}-\u{1F7FF}\u{1F80C}-\u{1F80F}\u{1F848}-\u{1F84F}\u{1F85A}-\u{1F85F}\u{1F888}-\u{1F88F}\u{1F8AE}-\u{1F8FF}\u{1F90C}-\u{1F93A}\u{1F93C}-\u{1F945}\u{1F947}-\u{1FAFF}\u{1FC00}-\u{1FFFD}]/u;
+const PICTOGRAPH =
+  /[\u00A9\u00AE\u203C\u2049\u2122\u2139\u2194-\u2199\u21A9\u21AA\u231A\u231B\u2328\u2388\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u2605\u2607-\u2612\u2614-\u2685\u2690-\u2705\u2708-\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763-\u2767\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299\u{1F000}-\u{1F0FF}\u{1F10D}-\u{1F10F}\u{1F12F}\u{1F16C}-\u{1F171}\u{1F17E}\u{1F17F}\u{1F18E}\u{1F191}-\u{1F19A}\u{1F1AD}-\u{1F1E5}\u{1F201}-\u{1F20F}\u{1F21A}\u{1F22F}\u{1F232}-\u{1F23A}\u{1F23C}-\u{1F23F}\u{1F249}-\u{1F3FA}\u{1F400}-\u{1F53D}\u{1F546}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F774}-\u{1F77F}\u{1F7D5}-\u{1F7FF}\u{1F80C}-\u{1F80F}\u{1F848}-\u{1F84F}\u{1F85A}-\u{1F85F}\u{1F888}-\u{1F88F}\u{1F8AE}-\u{1F8FF}\u{1F90C}-\u{1F93A}\u{1F93C}-\u{1F945}\u{1F947}-\u{1FAFF}\u{1FC00}-\u{1FFFD}]/u;
 // The only subdivision flags Unicode lists, England, Scotland and Wales: any other tag characters, even in the shape
 // of a flag, could spell letters nobody sees.
-const FLAGS = ["gbeng", "gbsct", "gbwls"].map((code) => `\u{1F3F4}${[...code].map((c) => String.fromCodePoint(0xe0000 + c.charCodeAt(0))).join("")}\u{E007F}`);
+const FLAGS = ["gbeng", "gbsct", "gbwls"].map(
+  (code) => `\u{1F3F4}${[...code].map((c) => String.fromCodePoint(0xe0000 + c.charCodeAt(0))).join("")}\u{E007F}`,
+);
 
 /**
  * Whether the invisible character `c` at `at` is part of an emoji: a joiner between two pictographs (a family, or a
@@ -128,11 +156,13 @@ function inEmoji(text: string, at: number, c: string): boolean {
     if (tone !== undefined && tone >= 0x1f3fb && tone <= 0x1f3ff) end -= 2;
     return isPictograph(pointBefore(text, end)) && isPictograph(text.codePointAt(at + 1));
   }
-  if (c === "\uFE0F") return isPictograph(pointBefore(text, at)) || (/[0-9#*]/.test(text[at - 1] ?? "") && text[at + 1] === "\u20E3");
+  if (c === "\uFE0F")
+    return isPictograph(pointBefore(text, at)) || (/[0-9#*]/.test(text[at - 1] ?? "") && text[at + 1] === "\u20E3");
   const point = c.codePointAt(0)!;
   if (point < 0xe0000 || point > 0xe007f) return false;
   // Each flag is 14 units long, its tag characters 2 to 13 units after its start.
-  for (let start = at - 2; start >= Math.max(0, at - 12); start -= 2) if (FLAGS.some((flag) => text.startsWith(flag, start))) return true;
+  for (let start = at - 2; start >= Math.max(0, at - 12); start -= 2)
+    if (FLAGS.some((flag) => text.startsWith(flag, start))) return true;
   return false;
 }
 
@@ -170,7 +200,7 @@ const PIECE = 8_192;
  * between surrogate pairs, and each character is judged by what is next to it in the whole text, as in `escapeHidden`.
  */
 export function* escapedPieces(text: string): Generator<string> {
-  for (let start = 0; start < text.length; ) {
+  for (let start = 0; start < text.length;) {
     let end = Math.min(start + PIECE, text.length);
     const last = text.charCodeAt(end - 1);
     if (end < text.length && last >= 0xd800 && last <= 0xdbff) end--;
@@ -187,23 +217,33 @@ export function* escapedPieces(text: string): Generator<string> {
 export const shown = (name: string) => escapeHidden(name.replace(/[\u0000-\u001f]/g, "?"));
 
 /** "a, b, c, d, e and 2 more", each item through `shown` */
-export const firstFive = (items: readonly string[]) => `${items.slice(0, 5).map(shown).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;
+export const firstFive = (items: readonly string[]) =>
+  `${items.slice(0, 5).map(shown).join(", ")}${items.length > 5 ? ` and ${items.length - 5} more` : ""}`;
 
 /** The report line for files too large to read, if any. */
 export const tooLargeNote = (files: readonly string[] = []) =>
-  files.length > 0 ? [`Not checked: ${plural(files.length, "file")} over ${MAX_FILE_BYTES / 1024 / 1024} MB: ${firstFive(files)}.`] : [];
+  files.length > 0
+    ? [`Not checked: ${plural(files.length, "file")} over ${MAX_FILE_BYTES / 1024 / 1024} MB: ${firstFive(files)}.`]
+    : [];
 
 /** A folder or file the scan did not read, and why. "." is the repository folder. */
 export type Skipped = {
   path: string;
-  reason: "dependency or build folder" | "bundled SDK copy" | "symbolic link outside the repository" | "could not be read" | "could not be scanned";
+  reason:
+    | "dependency or build folder"
+    | "bundled SDK copy"
+    | "symbolic link outside the repository"
+    | "could not be read"
+    | "could not be scanned";
 };
 
 const SKIPPED_LINE: Record<Skipped["reason"], (paths: string[]) => string> = {
   "dependency or build folder": (p) => `${plural(p.length, "dependency or build folder")}: ${firstFive(p)}`,
   "bundled SDK copy": (p) => `${plural(p.length, "folder")} with a bundled copy of an SDK: ${firstFive(p)}`,
-  "symbolic link outside the repository": (p) => `${plural(p.length, "symbolic link")} to outside the repository: ${firstFive(p)}`,
-  "could not be read": (p) => `could not read ${firstFive(p.map((path) => (path === "." ? "the repository folder" : path)))}`,
+  "symbolic link outside the repository": (p) =>
+    `${plural(p.length, "symbolic link")} to outside the repository: ${firstFive(p)}`,
+  "could not be read": (p) =>
+    `could not read ${firstFive(p.map((path) => (path === "." ? "the repository folder" : path)))}`,
   "could not be scanned": (p) => `${plural(p.length, "file")} darnit failed to scan: ${firstFive(p)}`,
 };
 
@@ -242,7 +282,8 @@ export async function readText(path: string, tooLarge?: (start: string) => void)
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** A generated Python SDK (OpenAI's and its siblings) keeps all of these at its package root. */
-const isBundledSdk = (names: Set<string>) => ["_base_client.py", "_client.py", "_exceptions.py"].every((n) => names.has(n));
+const isBundledSdk = (names: Set<string>) =>
+  ["_base_client.py", "_client.py", "_exceptions.py"].every((n) => names.has(n));
 
 /**
  * Every regular file under root as a sorted, forward-slash relative path.
@@ -260,14 +301,17 @@ export async function listFiles(root: string, skipped: Skipped[] = []): Promise<
   const walk = async (rel: string): Promise<void> => {
     const entries = await readdir(join(root, rel), { withFileTypes: true }).catch(() => undefined);
     if (!entries) return void skipped.push({ path: rel || ".", reason: "could not be read" });
-    if (rel && isBundledSdk(new Set(entries.filter((e) => e.isFile()).map((e) => e.name)))) return void skipped.push({ path: rel, reason: "bundled SDK copy" });
+    if (rel && isBundledSdk(new Set(entries.filter((e) => e.isFile()).map((e) => e.name))))
+      return void skipped.push({ path: rel, reason: "bundled SDK copy" });
     for (const entry of entries) {
       const path = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory() && entry.name === ".git") continue;
-      if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) skipped.push({ path, reason: "dependency or build folder" });
+      if (entry.isDirectory() && SKIP_DIRS.has(entry.name))
+        skipped.push({ path, reason: "dependency or build folder" });
       else if (entry.isDirectory()) await walk(path);
       else if (entry.isFile()) files.push(path);
-      else if (entry.isSymbolicLink() && (await outside(path))) skipped.push({ path, reason: "symbolic link outside the repository" });
+      else if (entry.isSymbolicLink() && (await outside(path)))
+        skipped.push({ path, reason: "symbolic link outside the repository" });
     }
   };
   await walk("");
@@ -277,7 +321,10 @@ export async function listFiles(root: string, skipped: Skipped[] = []): Promise<
 /** Direct dependencies from a package.json, both prod and dev. Unparseable files count as none. */
 function npmDeps(json: string): string[] {
   try {
-    const pkg = JSON.parse((json.charCodeAt(0) === 0xfeff ? json.slice(1) : json)) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const pkg = JSON.parse(json.charCodeAt(0) === 0xfeff ? json.slice(1) : json) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
     return [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})];
   } catch {
     return [];
@@ -318,11 +365,13 @@ export async function detectApis(root: string, tooLarge: string[] = [], skipped:
     }
     for (const [vendor, spec] of Object.entries(VENDORS) as [Vendor, (typeof VENDORS)[Vendor]][]) {
       if (name === "package.json") {
-        for (const dep of npmDeps(text)) if ((spec.npm as readonly string[]).includes(dep)) add(vendor, `${shown(file)}: ${dep}`);
+        for (const dep of npmDeps(text))
+          if ((spec.npm as readonly string[]).includes(dep)) add(vendor, `${shown(file)}: ${dep}`);
       } else if (isManifest) {
         for (const pkg of spec.pypi) if (pythonDeclares(text, pkg)) add(vendor, `${shown(file)}: ${pkg}`);
       } else if (lang) {
-        for (const pkg of lang === "py" ? spec.pypi : spec.npm) if (importsPackage(text, pkg, lang)) add(vendor, `${shown(file)}: import ${pkg}`);
+        for (const pkg of lang === "py" ? spec.pypi : spec.npm)
+          if (importsPackage(text, pkg, lang)) add(vendor, `${shown(file)}: import ${pkg}`);
         for (const host of spec.hosts) if (text.includes(host)) add(vendor, `${shown(file)}: ${host}`);
       }
     }

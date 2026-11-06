@@ -21,14 +21,26 @@ type Item = {
 };
 
 /** A removal as the corpus run logs it: an oasdiff entry and the day it was seen. */
-export const RemovalSchema = z.object({ observedAt: z.iso.date(), id: z.string(), text: z.string(), operation: z.string().optional(), path: z.string().optional() });
+export const RemovalSchema = z.object({
+  observedAt: z.iso.date(),
+  id: z.string(),
+  text: z.string(),
+  operation: z.string().optional(),
+  path: z.string().optional(),
+});
 export type Removal = z.infer<typeof RemovalSchema>;
 
 /** The removals among one corpus run's oasdiff entries, as the corpus logs them. */
 export const removalsFrom = (entries: ChangeEntry[], observedAt: string): Removal[] =>
   entries
     .filter((e) => e.id.includes("removed"))
-    .map((e) => ({ observedAt, id: e.id, ...(e.operation ? { operation: e.operation } : {}), ...(e.path ? { path: e.path } : {}), text: e.text }));
+    .map((e) => ({
+      observedAt,
+      id: e.id,
+      ...(e.operation ? { operation: e.operation } : {}),
+      ...(e.path ? { path: e.path } : {}),
+      text: e.text,
+    }));
 
 /** A file's text, or undefined when it does not exist; any other failure throws. */
 export const readOptional = (file: string, read = (f: string) => readFile(f, "utf8")): Promise<string | undefined> =>
@@ -51,7 +63,12 @@ export async function appendRemovals(file: string, removed: Removal[]): Promise<
 export const NotCoveredSchema = z
   .array(
     z
-      .object({ items: z.array(z.string().min(1)).min(1), reason: z.string().min(1).optional(), "needs-record": z.string().min(1).optional(), date: z.iso.date().optional() })
+      .object({
+        items: z.array(z.string().min(1)).min(1),
+        reason: z.string().min(1).optional(),
+        "needs-record": z.string().min(1).optional(),
+        date: z.iso.date().optional(),
+      })
       .strict()
       .refine((e) => !e.reason !== !e["needs-record"], "each entry gives either a reason or needs-record")
       .refine((e) => !e.date || e["needs-record"], "only a needs-record entry takes a date"),
@@ -89,7 +106,12 @@ function eachNode(root: unknown, visit: (n: Node) => void): void {
 function target(label: string[], value?: string): Omit<Item, "key"> {
   const [first, second, third, fourth] = label;
   const prop = label.lastIndexOf("property");
-  if (value !== undefined) return { value, ...(first === "schema" ? { schema: second } : {}), ...(prop > 0 ? { field: label[prop + 1] } : {}) };
+  if (value !== undefined)
+    return {
+      value,
+      ...(first === "schema" ? { schema: second } : {}),
+      ...(prop > 0 ? { field: label[prop + 1] } : {}),
+    };
   if (first === "schema" && label.length === 2) return { schema: second };
   if (first === "schema" && third === "property" && label.length === 4) return { schema: second, field: fourth };
   if (label.length === 2 && METHODS.has(first!.toLowerCase())) return { method: first, path: second };
@@ -119,7 +141,8 @@ export function deprecatedItems(spec: unknown): Item[] {
       if (within === "properties") walk(child, [...label, "property", k]);
       else if (within === "allOf") walk(child, label);
       else if (within === "anyOf" || within === "oneOf") walk(child, [...label, within, refName(child) ?? k]);
-      else if (within === "parameters") walk(child, [...label, "parameter", isNode(child) && typeof child.name === "string" ? child.name : k]);
+      else if (within === "parameters")
+        walk(child, [...label, "parameter", isNode(child) && typeof child.name === "string" ? child.name : k]);
       else if (GROUPS.has(k)) walk(child, label, k);
       else walk(child, [...label, k]);
     }
@@ -135,7 +158,8 @@ export function deprecatedItems(spec: unknown): Item[] {
         }
       }
     } else if (k === "components" && isNode(v)) {
-      for (const [t, group] of Object.entries(v)) for (const [n, s] of Object.entries(isNode(group) ? group : {})) walk(s, [t === "schemas" ? "schema" : t, n]);
+      for (const [t, group] of Object.entries(v))
+        for (const [n, s] of Object.entries(isNode(group) ? group : {})) walk(s, [t === "schemas" ? "schema" : t, n]);
     } else walk(v, [k]);
   }
   return [...items.values()];
@@ -152,8 +176,11 @@ export function removalItems(removals: Removal[]): Item[] {
     const names = [...r.text.matchAll(/`([^`]*)`/g)].map((m) => m[1]!);
     const media = /\(media type: ([^)]*)\)/.exec(r.text)?.[1];
     const endpoint = r.operation && r.path ? `${r.operation} ${r.path}` : undefined;
-    const key = [r.observedAt, endpoint, r.id, ...names.map((n) => `\`${n}\``), media && `(${media})`].filter(Boolean).join(" ");
-    const name = r.id === "request-property-removed" ? names[0] : r.id === "request-parameter-removed" ? names.at(-1) : undefined;
+    const key = [r.observedAt, endpoint, r.id, ...names.map((n) => `\`${n}\``), media && `(${media})`]
+      .filter(Boolean)
+      .join(" ");
+    const name =
+      r.id === "request-property-removed" ? names[0] : r.id === "request-parameter-removed" ? names.at(-1) : undefined;
     const field = endpoint && name && /^[^/\s]+$/.test(name) ? name : undefined;
     const at = endpoint && (field || ENDPOINT_GONE.test(r.id)) ? { method: r.operation, path: r.path } : {};
     if (!items.has(key)) items.set(key, { key, ...at, field, change: r.id });
@@ -209,20 +236,24 @@ function requestSchemas(spec: unknown): Map<string, { method: string; path: stri
 /** For each component schema, the names of the properties whose value can be it: by $ref, directly or through anyOf, oneOf or allOf. */
 function holders(spec: unknown): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
-  const schemas = isNode(spec) && isNode(spec.components) && isNode(spec.components.schemas) ? spec.components.schemas : {};
+  const schemas =
+    isNode(spec) && isNode(spec.components) && isNode(spec.components.schemas) ? spec.components.schemas : {};
   const valueOf = (node: unknown, found: Set<string>): Set<string> => {
     if (!isNode(node)) return found;
-    const name = typeof node.$ref === "string" && node.$ref.startsWith("#/components/schemas/") ? refName(node) : undefined;
+    const name =
+      typeof node.$ref === "string" && node.$ref.startsWith("#/components/schemas/") ? refName(node) : undefined;
     if (name !== undefined && Object.hasOwn(schemas, name) && !found.has(name)) {
       found.add(name);
       valueOf(schemas[name], found);
     }
-    for (const k of ["anyOf", "oneOf", "allOf"]) if (Array.isArray(node[k])) for (const part of node[k] as unknown[]) valueOf(part, found);
+    for (const k of ["anyOf", "oneOf", "allOf"])
+      if (Array.isArray(node[k])) for (const part of node[k] as unknown[]) valueOf(part, found);
     return found;
   };
   eachNode(spec, (n) => {
     if (isNode(n.properties))
-      for (const [field, value] of Object.entries(n.properties)) for (const s of valueOf(value, new Set())) out.set(s, (out.get(s) ?? new Set()).add(field));
+      for (const [field, value] of Object.entries(n.properties))
+        for (const s of valueOf(value, new Set())) out.set(s, (out.get(s) ?? new Set()).add(field));
   });
   return out;
 }
@@ -280,7 +311,13 @@ export function account(input: {
   const coveredBy = (item: Item): ChangeRecord[] => {
     if (item.value !== undefined) {
       const fields = item.field !== undefined ? [item.field] : [...(held.get(item.schema ?? "") ?? [])];
-      const candidates = records.filter((r) => r.vendor === vendor && fields.some((f) => r.surface.fields?.includes(f) && settingsOf(r).some((s) => s.key === f && s.value === item.value)));
+      const candidates = records.filter(
+        (r) =>
+          r.vendor === vendor &&
+          fields.some(
+            (f) => r.surface.fields?.includes(f) && settingsOf(r).some((s) => s.key === f && s.value === item.value),
+          ),
+      );
       // As for a property: every operation whose request reaches the schema needs a record that names it.
       const found = new Set<ChangeRecord>();
       for (const op of reach.get(item.schema ?? "") ?? []) {
@@ -290,7 +327,8 @@ export function account(input: {
       }
       return [...found];
     }
-    if (item.method !== undefined && item.path !== undefined) return records.filter((r) => coversOp(r, item.method!, item.path!, item.field));
+    if (item.method !== undefined && item.path !== undefined)
+      return records.filter((r) => coversOp(r, item.method!, item.path!, item.field));
     if (item.schema === undefined) return [];
     const found = new Set<ChangeRecord>();
     for (const op of reach.get(item.schema) ?? []) {
@@ -310,12 +348,25 @@ export function account(input: {
       const schema = item.key.startsWith("schema ") ? item.key.split(" ")[1] : undefined;
       return schema !== undefined && !reach.has(schema);
     }
-    return !/\bspec\b/.test(reason) || [...reason.matchAll(/"([^"]+)"/g)].every((m) => (specText ??= JSON.stringify(spec)).includes(m[1]!));
+    return (
+      !/\bspec\b/.test(reason) ||
+      [...reason.matchAll(/"([^"]+)"/g)].every((m) => (specText ??= JSON.stringify(spec)).includes(m[1]!))
+    );
   };
 
   const entries = new Map<string, NotCovered[number]>();
   for (const e of input.notCovered) for (const key of e.items) entries.set(key, e);
-  const result: Accounting = { deprecated: deprecated.length, removals: removals.length, covered: new Map(), reasons: [], needsRecord: [], unaccounted: [], stale: [], redundant: [], contradicted: [] };
+  const result: Accounting = {
+    deprecated: deprecated.length,
+    removals: removals.length,
+    covered: new Map(),
+    reasons: [],
+    needsRecord: [],
+    unaccounted: [],
+    stale: [],
+    redundant: [],
+    contradicted: [],
+  };
   const known = new Set<string>();
   for (const item of [...deprecated, ...removals]) {
     known.add(item.key);
@@ -327,8 +378,8 @@ export function account(input: {
     } else if (entry?.reason) {
       result.reasons.push(item.key);
       if (!holds(entry.reason, item)) result.contradicted.push(item.key);
-    }
-    else if (entry?.["needs-record"]) result.needsRecord.push({ key: item.key, proposal: entry["needs-record"], date: entry.date });
+    } else if (entry?.["needs-record"])
+      result.needsRecord.push({ key: item.key, proposal: entry["needs-record"], date: entry.date });
     else result.unaccounted.push(item.key);
   }
   result.stale = [...entries.keys()].filter((k) => !known.has(k));
@@ -336,11 +387,19 @@ export function account(input: {
 }
 
 /** Open items grouped by proposal, soonest date first and undated last; `past` when the date is before `today`. */
-export function openItems(open: Open[], today: string): { proposal: string; date?: string | undefined; past: boolean; keys: string[] }[] {
+export function openItems(
+  open: Open[],
+  today: string,
+): { proposal: string; date?: string | undefined; past: boolean; keys: string[] }[] {
   const groups = new Map<string, { proposal: string; date?: string | undefined; past: boolean; keys: string[] }>();
   for (const o of open) {
     const id = `${o.date ?? ""}\n${o.proposal}`;
-    const group = groups.get(id) ?? { proposal: o.proposal, date: o.date, past: o.date !== undefined && o.date < today, keys: [] };
+    const group = groups.get(id) ?? {
+      proposal: o.proposal,
+      date: o.date,
+      past: o.date !== undefined && o.date < today,
+      keys: [],
+    };
     group.keys.push(o.key);
     groups.set(id, group);
   }

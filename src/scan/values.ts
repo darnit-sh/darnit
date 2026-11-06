@@ -10,17 +10,31 @@ const TOKEN = /token/i;
 const ENV_READ = /process\.env|import\.meta\.env|os\.environ|getenv|\benv\.get|environ\.get/;
 const ENV_CALL = /(getenv|environ\.get|environ\.setdefault|env\.get)$/;
 const FALLBACK = new Set(["||", "??", "or"]);
-const PASS = new Set(["parenthesized_expression", "as_expression", "satisfies_expression", "non_null_expression", "ternary_expression", "conditional_expression"]);
+const PASS = new Set([
+  "parenthesized_expression",
+  "as_expression",
+  "satisfies_expression",
+  "non_null_expression",
+  "ternary_expression",
+  "conditional_expression",
+]);
 
 /** Test code: test folders, test files by name, fixtures and mocks. */
 export const isTestPath = (file: string) =>
-  /(^|\/)(tests?|__tests__|spec|specs|fixtures?|mocks?|__mocks__|testdata|e2e)(\/|$)|(^|\/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)conftest\.py$/i.test(file);
+  /(^|\/)(tests?|__tests__|spec|specs|fixtures?|mocks?|__mocks__|testdata|e2e)(\/|$)|(^|\/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)conftest\.py$/i.test(
+    file,
+  );
 
 /** `self.model` → "model", `"model"` → "model". */
-const lastName = (text: string) => text.replace(/^["'`]|["'`]$/g, "").split(/[.\s]/).pop() ?? "";
+const lastName = (text: string) =>
+  text
+    .replace(/^["'`]|["'`]$/g, "")
+    .split(/[.\s]/)
+    .pop() ?? "";
 
 /** A node's text when it is short, so a crafted file cannot make each lookup read the whole file. */
-const short = (n: SgNode | null | undefined) => (n && n.range().end.index - n.range().start.index < 200 ? n.text() : "");
+const short = (n: SgNode | null | undefined) =>
+  n && n.range().end.index - n.range().start.index < 200 ? n.text() : "";
 
 const same = (a: SgNode | null | undefined, b: SgNode) => a?.id() === b.id();
 
@@ -31,7 +45,8 @@ type Frame = { node: SgNode; kids: SgNode[]; first?: SgNode[] };
 function firstArgs(f: Frame): SgNode[] {
   if (!f.first) {
     f.first = [];
-    for (let i = 0; i < f.kids.length && f.first.length < 2; i++) if (!f.kids[i]!.is("comment")) f.first.push(f.kids[i]!);
+    for (let i = 0; i < f.kids.length && f.first.length < 2; i++)
+      if (!f.kids[i]!.is("comment")) f.first.push(f.kids[i]!);
   }
   return f.first;
 }
@@ -98,7 +113,10 @@ function isModelValue(str: SgNode, up: readonly Frame[]): boolean {
       return /\.get$/.test(fn) && key.is("string") && NAMED.test(short(key));
     }
     if (env) return true;
-    const isDefault = kind === "keyword_argument" ? short(parent.field("name")) === "default" : kind === "pair" && /^["']?default["']?$/.test(short(parent.field("key")));
+    const isDefault =
+      kind === "keyword_argument"
+        ? short(parent.field("name")) === "default"
+        : kind === "pair" && /^["']?default["']?$/.test(short(parent.field("key")));
     if (isDefault && !same(parent.field("key"), node)) return namedOption(up, at);
     return NAMED.test(boundName(parent, node) ?? "");
   }
@@ -120,7 +138,14 @@ const TOKEN_FIELDS: Record<string, string> = {
 };
 const TOKEN_KINDS = {
   py: ["call", "function_definition", "keyword_argument", "assignment"],
-  js: ["call_expression", "function_declaration", "function_expression", "method_definition", "variable_declarator", "assignment_expression"],
+  js: [
+    "call_expression",
+    "function_declaration",
+    "function_expression",
+    "method_definition",
+    "variable_declarator",
+    "assignment_expression",
+  ],
 };
 
 /** Whether [start, end) sits inside one of `ranges`, which are sorted and do not overlap. */
@@ -151,7 +176,13 @@ export function joined(ranges: readonly Span[]): Span[] {
  * engine: a constant, a default, a keyword argument, an object or dict entry, an env read's default.
  * Comments, dict keys, comparisons, list items and types are left out by the parser.
  */
-export function findModelValues(file: string, source: string, grammar: Grammar, names: ReadonlySet<string>, parsed = () => parse(grammar, source).root()): ModelValue[] {
+export function findModelValues(
+  file: string,
+  source: string,
+  grammar: Grammar,
+  names: ReadonlySet<string>,
+  parsed = () => parse(grammar, source).root(),
+): ModelValue[] {
   if (TOKEN.test(basename(file)) || ![...names].some((n) => source.includes(n))) return [];
   const root = parsed();
   const lines = source.split("\n");
@@ -197,7 +228,13 @@ export function findModelValues(file: string, source: string, grammar: Grammar, 
         const { line, column } = range.start;
         // Trimmed once per line: a long line can hold many values.
         if (line !== textLine) [textLine, text] = [line, lines[line]!.trim().slice(0, 200)];
-        out.push({ line: line + 1, column: column + 1, text, span: { start, end: range.end.index }, model: name.model });
+        out.push({
+          line: line + 1,
+          column: column + 1,
+          text,
+          span: { start, end: range.end.index },
+          model: name.model,
+        });
       }
       continue;
     }
@@ -205,7 +242,8 @@ export function findModelValues(file: string, source: string, grammar: Grammar, 
     up.push({ node, kids });
     for (let k = kids.length - 1; k >= 0; k--) {
       const { start, end } = kids[k]!.range();
-      if ((found[next(start.index)]?.start ?? Infinity) < end.index) todo.push({ node: kids[k]!, depth: depth + 1, start: start.index });
+      if ((found[next(start.index)]?.start ?? Infinity) < end.index)
+        todo.push({ node: kids[k]!, depth: depth + 1, start: start.index });
     }
   }
   return out;

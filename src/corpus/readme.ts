@@ -7,4 +7,6 @@ export const retiringModels = (records: readonly ChangeRecord[]) =>
 
 /** The README with its counts of change records and retiring models set from `records`, so a new record updates them in the same pull request. */
 export const readmeCounts = (readme: string, records: readonly ChangeRecord[]) =>
-  readme.replace(/(against )\d+( change records)/g, `$1${records.length}$2`).replace(/(OpenAI: )\d+( retiring models)/g, `$1${retiringModels(records)}$2`);
+  readme
+    .replace(/(against )\d+( change records)/g, `$1${records.length}$2`)
+    .replace(/(OpenAI: )\d+( retiring models)/g, `$1${retiringModels(records)}$2`);

@@ -17,7 +17,12 @@ describe("githubToken", () => {
   it("takes GH_TOKEN when GITHUB_TOKEN is set but empty or blank, as a missing secret leaves it, and trims either", async () => {
     // No gh on PATH, so only the environment can answer.
     vi.stubEnv("PATH", "");
-    for (const [github, gh] of [["", "gho_fake_for_test"], ["  \n", "gho_fake_for_test"], ["gho_fake_for_test\n", ""], ["", " gho_fake_for_test\n"]]) {
+    for (const [github, gh] of [
+      ["", "gho_fake_for_test"],
+      ["  \n", "gho_fake_for_test"],
+      ["gho_fake_for_test\n", ""],
+      ["", " gho_fake_for_test\n"],
+    ]) {
       vi.stubEnv("GITHUB_TOKEN", github);
       vi.stubEnv("GH_TOKEN", gh);
       expect(await githubToken(), JSON.stringify([github, gh])).toBe("gho_fake_for_test");
@@ -27,13 +32,43 @@ describe("githubToken", () => {
   it("refuses a token with any character outside printable ASCII inside, without quoting it", async () => {
     vi.stubEnv("PATH", "");
     const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
-    for (const inner of ["\n", "\r", " ", "\t", "\v", "\f", "\x01", "\x1f", "\x7f", "\x85", "\x9f", "\u00a0", "\u1680", "\u2003", "\u2028", "\u2029", "\u3000", "\ufeff", "\u200b", "\u180e", "\u202e", "\u00e9", "\u0100", "\u{1f511}"]) {
-      for (const [name, other] of [["GITHUB_TOKEN", "GH_TOKEN"], ["GH_TOKEN", "GITHUB_TOKEN"]] as const) {
+    for (const inner of [
+      "\n",
+      "\r",
+      " ",
+      "\t",
+      "\v",
+      "\f",
+      "\x01",
+      "\x1f",
+      "\x7f",
+      "\x85",
+      "\x9f",
+      "\u00a0",
+      "\u1680",
+      "\u2003",
+      "\u2028",
+      "\u2029",
+      "\u3000",
+      "\ufeff",
+      "\u200b",
+      "\u180e",
+      "\u202e",
+      "\u00e9",
+      "\u0100",
+      "\u{1f511}",
+    ]) {
+      for (const [name, other] of [
+        ["GITHUB_TOKEN", "GH_TOKEN"],
+        ["GH_TOKEN", "GITHUB_TOKEN"],
+      ] as const) {
         vi.stubEnv(name, ` ${token}${inner}X `);
         vi.stubEnv(other, "");
         const err = await githubToken().catch((e: unknown) => e);
         expect(err, JSON.stringify([name, inner])).toBeInstanceOf(Refusal);
-        expect((err as Error).message).toBe("the GitHub token holds a character other than printable ASCII (a space, control or zero-width character, or a letter outside ASCII); set it again without one");
+        expect((err as Error).message).toBe(
+          "the GitHub token holds a character other than printable ASCII (a space, control or zero-width character, or a letter outside ASCII); set it again without one",
+        );
       }
     }
   });
@@ -88,11 +123,18 @@ describe("GitHub API calls", () => {
     const repo = { owner: "o", repo: "r" };
     expect(await defaultBranch("tok", repo)).toBe("trunk");
     expect(await findOpenPr("tok", repo, "darnit/x")).toBe("https://github.com/o/r/pull/7");
-    expect(await createPr("tok", repo, { title: "t", head: "darnit/x", base: "trunk", body: "b" })).toBe("https://github.com/o/r/pull/8");
+    expect(await createPr("tok", repo, { title: "t", head: "darnit/x", base: "trunk", body: "b" })).toBe(
+      "https://github.com/o/r/pull/8",
+    );
 
     expect(calls[1]?.url).toContain(`head=${encodeURIComponent("o:darnit/x")}`);
     expect(calls[2]?.init?.method).toBe("POST");
-    expect(JSON.parse(calls[2]?.init?.body as string)).toEqual({ title: "t", head: "darnit/x", base: "trunk", body: "b" });
+    expect(JSON.parse(calls[2]?.init?.body as string)).toEqual({
+      title: "t",
+      head: "darnit/x",
+      base: "trunk",
+      body: "b",
+    });
     for (const c of calls) expect((c.init?.headers as Record<string, string>).authorization).toBe("Bearer tok");
   });
 
@@ -114,12 +156,23 @@ describe("GitHub API calls", () => {
 
   it("takes the token out of an error that quotes it, from fetch or from the response", async () => {
     const token = "ghp_fake0123456789abcdefghijklmnopqrstuv";
-    const failed = async () => (await defaultBranch(token, { owner: "o", repo: "r" }).catch((e: unknown) => e)) as Error;
-    vi.stubGlobal("fetch", () => Promise.reject(new TypeError(`Headers.append: "Bearer ${token}" is an invalid header value`, { cause: new Error(`sent ${token}`) })));
+    const failed = async () =>
+      (await defaultBranch(token, { owner: "o", repo: "r" }).catch((e: unknown) => e)) as Error;
+    vi.stubGlobal("fetch", () =>
+      Promise.reject(
+        new TypeError(`Headers.append: "Bearer ${token}" is an invalid header value`, {
+          cause: new Error(`sent ${token}`),
+        }),
+      ),
+    );
     let err = await failed();
-    expect(err.message).toBe('GitHub GET /repos/o/r failed: Headers.append: "Bearer ***" is an invalid header value (sent ***)');
+    expect(err.message).toBe(
+      'GitHub GET /repos/o/r failed: Headers.append: "Bearer ***" is an invalid header value (sent ***)',
+    );
     expect(inspect(err)).not.toContain(token);
-    vi.stubGlobal("fetch", () => Promise.resolve(new Response(`echo: authorization: Bearer ${token}`, { status: 400 })));
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(new Response(`echo: authorization: Bearer ${token}`, { status: 400 })),
+    );
     err = await failed();
     expect(err.message).toBe("GitHub GET /repos/o/r failed: 400 echo: authorization: Bearer ***");
     // Hidden before the body is cut to 300 characters, so no piece of it is left at the end.
@@ -134,12 +187,16 @@ describe("GitHub API calls", () => {
     const connected = once(server, "connection") as Promise<[Socket]>;
     const local = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const send = fetch;
-    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => send(url.replace("https://api.github.com", local), init));
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
+      send(url.replace("https://api.github.com", local), init),
+    );
     // The real limit, shortened so the test does not wait it out.
     const timeout = AbortSignal.timeout.bind(AbortSignal);
     const limit = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => timeout(50));
     try {
-      await expect(defaultBranch("tok", { owner: "o", repo: "r" })).rejects.toThrow("GitHub GET /repos/o/r timed out after 30 seconds");
+      await expect(defaultBranch("tok", { owner: "o", repo: "r" })).rejects.toThrow(
+        "GitHub GET /repos/o/r timed out after 30 seconds",
+      );
       expect(limit).toHaveBeenCalledWith(30_000);
       const [socket] = await connected;
       socket.resume();
@@ -152,7 +209,8 @@ describe("GitHub API calls", () => {
   it("gives up on a call GitHub never answers, and closes the connection", { timeout: 10_000 }, () => stall(""));
 
   it("gives up on a response whose body stops arriving, and closes the connection", { timeout: 10_000 }, () =>
-    stall('HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\n\r\n1\r\n{\r\n'));
+    stall("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\n\r\n1\r\n{\r\n"),
+  );
 
   it("names the call when the connection never comes up", async () => {
     const server = createServer().listen(0, "127.0.0.1");
@@ -160,7 +218,11 @@ describe("GitHub API calls", () => {
     const { port } = server.address() as AddressInfo;
     await new Promise((done) => server.close(done));
     const send = fetch;
-    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => send(url.replace("https://api.github.com", `http://127.0.0.1:${port}`), init));
-    await expect(defaultBranch("tok", { owner: "o", repo: "r" })).rejects.toThrow(/^GitHub GET \/repos\/o\/r failed: fetch failed \(.*ECONNREFUSED/);
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
+      send(url.replace("https://api.github.com", `http://127.0.0.1:${port}`), init),
+    );
+    await expect(defaultBranch("tok", { owner: "o", repo: "r" })).rejects.toThrow(
+      /^GitHub GET \/repos\/o\/r failed: fetch failed \(.*ECONNREFUSED/,
+    );
   });
 });

@@ -21,9 +21,13 @@ export type AstGrepPattern = z.infer<typeof AstGrepPatternSchema>;
 const IsoDate = z.iso.date();
 const Version = z.string().regex(/^\d+\.\d+\.\d+$/, "versions are x.y.z");
 // Rendered into pull requests and commit messages, so plain https only.
-const Url = z.url({ protocol: /^https$/ }).regex(/^[^\s<>[\]()`]+$/, "url must not contain spaces, brackets or backticks");
+const Url = z
+  .url({ protocol: /^https$/ })
+  .regex(/^[^\s<>[\]()`]+$/, "url must not contain spaces, brackets or backticks");
 // A model as a call names it: no spaces, wildcards or prose.
-export const ModelId = z.string().regex(/^[a-z0-9][a-z0-9._:-]{0,99}$/, "a model id is lowercase letters, digits and . _ : -");
+export const ModelId = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9._:-]{0,99}$/, "a model id is lowercase letters, digits and . _ : -");
 
 /** The vendor's recommended replacement for a model: a plain rename, or why the swap needs a person. */
 export const ReplacementSchema = z.union([
@@ -31,16 +35,22 @@ export const ReplacementSchema = z.union([
   // Written by darnit from fixed words and model ids, never copied from a page: one line of printable ASCII, with no
   // quote, backtick, angle or square bracket, ampersand or URL, so it reads the same as plain text, Markdown or HTML.
   z
-    .object({ human: z.string().regex(/^(?!.*:\/\/)(?:(?!["&'<>[\]`])[ -~]){1,200}$/, "human is one line of plain ASCII words, without quotes, brackets or links"), source: Url })
+    .object({
+      human: z
+        .string()
+        .regex(
+          /^(?!.*:\/\/)(?:(?!["&'<>[\]`])[ -~]){1,200}$/,
+          "human is one line of plain ASCII words, without quotes, brackets or links",
+        ),
+      source: Url,
+    })
     .strict(),
 ]);
 export type Replacement = z.infer<typeof ReplacementSchema>;
 
 export const ChangeRecordSchema = z
   .object({
-    id: z
-      .string()
-      .regex(/^[a-z0-9-]+:\d{4}-\d{2}-\d{2}:[a-z0-9-]+$/, "id must be <vendor>:<YYYY-MM-DD>:<slug>"),
+    id: z.string().regex(/^[a-z0-9-]+:\d{4}-\d{2}-\d{2}:[a-z0-9-]+$/, "id must be <vendor>:<YYYY-MM-DD>:<slug>"),
     /** One human sentence, used for report headings, commit subjects and pull request titles. */
     title: z.string().min(1).max(100).optional(),
     /**
@@ -60,7 +70,10 @@ export const ChangeRecordSchema = z
         fields: z.array(z.string().min(1)).optional(),
       })
       .strict()
-      .refine((s) => s.sdkSymbols?.length || s.endpoints?.length, "surface needs sdkSymbols or endpoints, or matches are not tied to the vendor"),
+      .refine(
+        (s) => s.sdkSymbols?.length || s.endpoints?.length,
+        "surface needs sdkSymbols or endpoints, or matches are not tied to the vendor",
+      ),
     classification: z.enum(["mechanical", "semantic", "unfixable"]),
     sources: z
       .array(
@@ -96,7 +109,10 @@ export const ChangeRecordSchema = z
         /** Each model the record detects, mapped to its replacement. */
         // zod drops a "__proto__" key without a word, so it is refused before the record is read.
         models: z
-          .custom<unknown>((v) => !(v !== null && typeof v === "object" && Object.hasOwn(v, "__proto__")), "fix.models must not hold a __proto__ key")
+          .custom<unknown>(
+            (v) => !(v !== null && typeof v === "object" && Object.hasOwn(v, "__proto__")),
+            "fix.models must not hold a __proto__ key",
+          )
           .pipe(z.record(ModelId, ReplacementSchema))
           .optional(),
       })
@@ -127,7 +143,8 @@ export const recordModels = (r: { detection: { astGrepPatterns: Partial<Record<L
   ...new Set(Object.values(r.detection.astGrepPatterns).flatMap((p) => modelNames(p))),
 ];
 
-const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && new Set([...a, ...b]).size === a.length;
+const sameSet = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && new Set([...a, ...b]).size === a.length;
 
 export type ChangeRecord = z.infer<typeof ChangeRecordSchema>;
 

@@ -28,7 +28,10 @@ const changelog = (unreleased: string, older = `- First release.`) =>
 
 describe("check-release.sh changelog links", () => {
   it("fails a candidate naming each bullet in [Unreleased] with no pull request link", async () => {
-    const r = await release("0.2.0-rc.1", changelog(`- Linked. (${pr(12)})\n- Not linked.\n\n### Fixed\n\n- Also not linked (#13)`));
+    const r = await release(
+      "0.2.0-rc.1",
+      changelog(`- Linked. (${pr(12)})\n- Not linked.\n\n### Fixed\n\n- Also not linked (#13)`),
+    );
     expect(r.status).toBe(1);
     expect(r.err).toContain("CHANGELOG.md [Unreleased] has a line with no pull request link: - Not linked.");
     expect(r.err).toContain("no pull request link: - Also not linked (#13)");
@@ -75,9 +78,9 @@ describe("check-release.sh changelog links", () => {
   });
 
   it("reads Windows line endings and fails plainly with no CHANGELOG.md", async () => {
-    expect((await release("0.2.0-rc.1", changelog(`- One. (${pr(12)})\n- Two.`).replaceAll("\n", "\r\n"))).err).toContain(
-      "no pull request link: - Two.",
-    );
+    expect(
+      (await release("0.2.0-rc.1", changelog(`- One. (${pr(12)})\n- Two.`).replaceAll("\n", "\r\n"))).err,
+    ).toContain("no pull request link: - Two.");
     const dir = await mkdtemp(join(tmpdir(), "darnit-release-"));
     tempDirs.push(dir);
     await writeFile(join(dir, "package.json"), JSON.stringify({ version: "0.2.0-rc.1" }));

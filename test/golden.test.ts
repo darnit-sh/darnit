@@ -22,7 +22,13 @@ describe("golden result lines", () => {
 
   it("writes plain paths as they are, with a short hash of the matched code", () => {
     expect(lines(1, report("src/app.ts"))).toBe(
-      ["exit 1", "scanned files=1 records=2 otherFiles=0 foreign=0 tooLarge=0 skipped=0", "H src/app.ts:3:4 #a4d75be4 r", "M src/app.ts:3 gpt-4 r", ""].join("\n"),
+      [
+        "exit 1",
+        "scanned files=1 records=2 otherFiles=0 foreign=0 tooLarge=0 skipped=0",
+        "H src/app.ts:3:4 #a4d75be4 r",
+        "M src/app.ts:3 gpt-4 r",
+        "",
+      ].join("\n"),
     );
   });
 });
@@ -53,7 +59,9 @@ describe("golden repos a branch stops comparing", () => {
 });
 
 describe("golden workflow scope", () => {
-  const workflow = parse(readFileSync(".github/workflows/golden.yml", "utf8")) as { jobs: { compare: { steps: { id?: string; run?: string }[] } } };
+  const workflow = parse(readFileSync(".github/workflows/golden.yml", "utf8")) as {
+    jobs: { compare: { steps: { id?: string; run?: string }[] } };
+  };
   const run = workflow.jobs.compare.steps.find((s) => s.id === "scope")?.run ?? "";
 
   /** The set the scope step picks for a pull request that adds `files`, and its summary line. Actions runs a step with no `shell:` as `bash -e`. */
@@ -61,7 +69,8 @@ describe("golden workflow scope", () => {
     const tmp = mkdtempSync(join(tmpdir(), "darnit-golden-scope-"));
     const dir = join(tmp, "repo");
     mkdirSync(dir);
-    const git = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir, encoding: "utf8" }).trim();
+    const git = (...a: string[]) =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir, encoding: "utf8" }).trim();
     try {
       git("init", "-q");
       git("commit", "-q", "--allow-empty", "-m", "base");
@@ -72,7 +81,14 @@ describe("golden workflow scope", () => {
       }
       git("add", ".");
       git("commit", "-q", "-m", "head");
-      const env = { ...process.env, BASE: base, HEAD: git("rev-parse", "HEAD"), EVENT: "pull_request", GITHUB_OUTPUT: join(tmp, "out"), GITHUB_STEP_SUMMARY: join(tmp, "summary") };
+      const env = {
+        ...process.env,
+        BASE: base,
+        HEAD: git("rev-parse", "HEAD"),
+        EVENT: "pull_request",
+        GITHUB_OUTPUT: join(tmp, "out"),
+        GITHUB_STEP_SUMMARY: join(tmp, "summary"),
+      };
       execFileSync("bash", [...shell, "-c", run], { cwd: dir, env, stdio: "ignore" });
       return [readFileSync(env.GITHUB_OUTPUT, "utf8").trim(), readFileSync(env.GITHUB_STEP_SUMMARY, "utf8").trim()];
     } finally {
@@ -89,14 +105,29 @@ describe("golden workflow scope", () => {
   });
 
   it("compares all repos when detection code, the stored results or the parser version changes, and says which file", () => {
-    const files = ["src/scan/detect.ts", "packs/openai/x/rules/é.yml", "test/golden/a_b.txt", "scripts/golden.ts", ".github/workflows/golden.yml", "package-lock.json", "tsconfig.build.json"];
-    for (const f of files) expect(scope(["README.md", f])).toEqual(["set=all", `Golden compares all pinned repositories: this pull request changes ${f}, which can change scan results.`]);
+    const files = [
+      "src/scan/detect.ts",
+      "packs/openai/x/rules/é.yml",
+      "test/golden/a_b.txt",
+      "scripts/golden.ts",
+      ".github/workflows/golden.yml",
+      "package-lock.json",
+      "tsconfig.build.json",
+    ];
+    for (const f of files)
+      expect(scope(["README.md", f])).toEqual([
+        "set=all",
+        `Golden compares all pinned repositories: this pull request changes ${f}, which can change scan results.`,
+      ]);
     expect(scope(["README.md", 'src/a"b.ts'])[0]).toBe("set=all");
     expect(scope(['docs/a"b.md'])[0]).toBe("set=slice");
   });
 
   it("never skips a long change list that holds code before its Markdown, also with pipefail on", () => {
-    const files = [".github/workflows/ci.yml", ...Array.from({ length: 3000 }, (_, i) => `docs/${String(i).padStart(40, "0")}.md`)];
+    const files = [
+      ".github/workflows/ci.yml",
+      ...Array.from({ length: 3000 }, (_, i) => `docs/${String(i).padStart(40, "0")}.md`),
+    ];
     expect(scope(files)[0]).toBe("set=slice");
     expect(scope(files, ["-eo", "pipefail"])[0]).toBe("set=slice");
   });

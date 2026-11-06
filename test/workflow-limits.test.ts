@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { minutesOn } from "./helpers.js";
 
-type Job = { "timeout-minutes"?: unknown; uses?: string; "runs-on"?: string; strategy?: { matrix?: { os?: string[] } } };
+type Job = {
+  "timeout-minutes"?: unknown;
+  uses?: string;
+  "runs-on"?: string;
+  strategy?: { matrix?: { os?: string[] } };
+};
 type Workflows = Record<string, { jobs?: Record<string, Job> }>;
 
 // The slowest of each job's latest successful runs, in seconds (completed minus started, as the API reports it):
@@ -21,12 +26,24 @@ const SLOWEST: Record<string, number> = {
 };
 // Jobs whose slow path no sampled run took, with the limit each keeps and why.
 const UNMEASURED: Record<string, [number, string]> = {
-  "ci.yml answer-key": [45, "reads golden's cached clones; after repos.tsv changes it clones every pinned repository, which no sampled run did"],
-  "ci.yml watchdog": [25, "a passing run never kills a case; one that does takes up to 10 minutes more (the case killed at 5, and one started just before it), on top of a passing run of 5m18s and its install and build"],
+  "ci.yml answer-key": [
+    45,
+    "reads golden's cached clones; after repos.tsv changes it clones every pinned repository, which no sampled run did",
+  ],
+  "ci.yml watchdog": [
+    25,
+    "a passing run never kills a case; one that does takes up to 10 minutes more (the case killed at 5, and one started just before it), on top of a passing run of 5m18s and its install and build",
+  ],
   "golden.yml compare": [45, "after repos.tsv changes it clones every pinned repository, which no sampled run did"],
-  "pr.yml refactor": [20, "no sampled run reached its base tests, which run the whole suite (twice ci.yml's slowest test run), or its style step, which formats the changed files once"],
+  "pr.yml refactor": [
+    20,
+    "no sampled run reached its base tests, which run the whole suite (twice ci.yml's slowest test run), or its style step, which formats the changed files once",
+  ],
   "pr.yml proof": [20, "no sampled run reached its test runs, which run the changed tests twice"],
-  "publish.yml build": [30, "never run; it runs npm run check, about ci.yml's slowest test and lint runs together, doubled"],
+  "publish.yml build": [
+    30,
+    "never run; it runs npm run check, about ci.yml's slowest test and lint runs together, doubled",
+  ],
   "publish.yml publish": [10, "never run; it installs npm and publishes one tarball"],
   "publish.yml verify": [15, "never run; scripts/verify-release.sh waits up to 5 minutes for npm, doubled"],
 };
@@ -41,12 +58,20 @@ const REQUIRED = ["ci.yml", "pr.yml", "golden.yml"];
 const DIR = new URL("../.github/workflows/", import.meta.url);
 const ours = async (): Promise<Workflows> => {
   const files = (await readdir(DIR)).filter((f) => /\.ya?ml$/.test(f));
-  return Object.fromEntries(await Promise.all(files.map(async (f): Promise<[string, Workflows[string]]> => [f, parse(await readFile(new URL(f, DIR), "utf8")) as Workflows[string]])));
+  return Object.fromEntries(
+    await Promise.all(
+      files.map(async (f): Promise<[string, Workflows[string]]> => [
+        f,
+        parse(await readFile(new URL(f, DIR), "utf8")) as Workflows[string],
+      ]),
+    ),
+  );
 };
 
 /** Twice the slowest run, rounded up to whole 5 minutes, and never under 5. */
 const measured = (seconds: number) => Math.max(5, Math.ceil((2 * seconds) / 300) * 5);
-const runners = (job: Job) => (job["runs-on"] === "${{ matrix.os }}" ? (job.strategy?.matrix?.os ?? []) : [job["runs-on"] ?? ""]);
+const runners = (job: Job) =>
+  job["runs-on"] === "${{ matrix.os }}" ? (job.strategy?.matrix?.os ?? []) : [job["runs-on"] ?? ""];
 
 /** Every job, on every runner it runs on, whose limit differs from what its measured runs or stated reason set. */
 function unmeasured(workflows: Workflows): string[] {
@@ -54,14 +79,18 @@ function unmeasured(workflows: Workflows): string[] {
   const entries = Object.entries(workflows).flatMap(([file, workflow]) =>
     Object.entries(workflow.jobs ?? {})
       .filter(([, job]) => job.uses === undefined)
-      .flatMap(([name, job]) => runners(job).map((os) => ({ at: `${file} ${name}`, os, limit: minutesOn(job["timeout-minutes"], os) }))),
+      .flatMap(([name, job]) =>
+        runners(job).map((os) => ({ at: `${file} ${name}`, os, limit: minutesOn(job["timeout-minutes"], os) })),
+      ),
   );
   for (const { at, os, limit } of entries) {
     const seconds = SLOWEST[`${at} ${os}`] ?? SLOWEST[at];
-    const want = seconds === undefined ? UNMEASURED[at]?.[0] : measured(seconds) + (os === "macos-latest" ? MACOS_QUEUE : 0);
+    const want =
+      seconds === undefined ? UNMEASURED[at]?.[0] : measured(seconds) + (os === "macos-latest" ? MACOS_QUEUE : 0);
     const job = at.replace(" ", " job ");
     if (want === undefined) found.push(`${job} on ${os} has no measured run time or stated reason`);
-    else if (limit !== want) found.push(`${job} on ${os} has a limit of ${String(limit)} minutes; its runs set ${want}`);
+    else if (limit !== want)
+      found.push(`${job} on ${os} has a limit of ${String(limit)} minutes; its runs set ${want}`);
   }
   return found;
 }
@@ -71,9 +100,16 @@ function pastStatusTimeout(workflows: Workflows): string[] {
   return REQUIRED.flatMap((file) =>
     Object.entries(workflows[file]?.jobs ?? {})
       .filter(([, job]) => job.uses === undefined)
-      .flatMap(([name, job]) => runners(job).map((os) => [`${file} job ${name} on ${os}`, minutesOn(job["timeout-minutes"], os) ?? Infinity] as const))
+      .flatMap(([name, job]) =>
+        runners(job).map(
+          (os) => [`${file} job ${name} on ${os}`, minutesOn(job["timeout-minutes"], os) ?? Infinity] as const,
+        ),
+      )
       .filter(([, minutes]) => minutes >= STATUS_CHECK_TIMEOUT)
-      .map(([at, minutes]) => `${at} may run ${minutes} minutes, not under the ${STATUS_CHECK_TIMEOUT} minute status check timeout`),
+      .map(
+        ([at, minutes]) =>
+          `${at} may run ${minutes} minutes, not under the ${STATUS_CHECK_TIMEOUT} minute status check timeout`,
+      ),
   );
 }
 
@@ -97,9 +133,13 @@ describe("the workflows' time limits", () => {
 
   it("give macOS jobs room for the wait for a runner, and fail one without it", async () => {
     const workflows = structuredClone(await ours());
-    expect(minutesOn(workflows["ci.yml"]!.jobs!.test!["timeout-minutes"], "macos-latest")).toBe(measured(533) + MACOS_QUEUE);
+    expect(minutesOn(workflows["ci.yml"]!.jobs!.test!["timeout-minutes"], "macos-latest")).toBe(
+      measured(533) + MACOS_QUEUE,
+    );
     workflows["ci.yml"]!.jobs!.test!["timeout-minutes"] = 20;
-    expect(unmeasured(workflows)).toEqual(["ci.yml job test on macos-latest has a limit of 20 minutes; its runs set 50"]);
+    expect(unmeasured(workflows)).toEqual([
+      "ci.yml job test on macos-latest has a limit of 20 minutes; its runs set 50",
+    ]);
   });
 
   it("stay under the merge queue's status check timeout for every required job, and fail one that does not", async () => {

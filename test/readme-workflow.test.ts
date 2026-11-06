@@ -3,14 +3,23 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { matchersAtDarnit } from "./helpers.js";
 
-type Step = { uses?: string; run?: string; if?: string; with?: Record<string, unknown>; env?: Record<string, unknown>; "working-directory"?: string };
+type Step = {
+  uses?: string;
+  run?: string;
+  if?: string;
+  with?: Record<string, unknown>;
+  env?: Record<string, unknown>;
+  "working-directory"?: string;
+};
 type Job = { needs?: string; if?: string; permissions?: unknown; env?: unknown; defaults?: unknown; steps: Step[] };
 
 const read = (file: string) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 const { version } = JSON.parse(await read("package.json")) as { version: string };
 
 // The README's pull request workflow: --prepare in a job with no token, --publish in a job that runs none of the repository's code.
-const block = [...(await read("README.md")).matchAll(/^```yaml\n([^]*?)^```$/gm)].map((m) => m[1]!).find((b) => /fix --publish/.test(b));
+const block = [...(await read("README.md")).matchAll(/^```yaml\n([^]*?)^```$/gm)]
+  .map((m) => m[1]!)
+  .find((b) => /fix --publish/.test(b));
 const workflow = () => {
   if (!block) throw new Error("README has no workflow that runs fix --publish");
   return parse(block) as { env?: unknown; jobs: { prepare: Job; publish: Job } };
@@ -38,7 +47,9 @@ describe("the README's two-job fix workflow", () => {
 
   it("runs the pinned darnit from $RUNNER_TEMP in the prepare job and uploads the plan, even when a change fails its tests", () => {
     const { prepare, publish } = jobs();
-    expect(runs(prepare).filter((r) => /darnit/.test(r))).toEqual([`cd "\${RUNNER_TEMP:?}" && npx darnit@${version} fix --prepare "\${RUNNER_TEMP:?}/plan" "\${GITHUB_WORKSPACE:?}"`]);
+    expect(runs(prepare).filter((r) => /darnit/.test(r))).toEqual([
+      `cd "\${RUNNER_TEMP:?}" && npx darnit@${version} fix --prepare "\${RUNNER_TEMP:?}/plan" "\${GITHUB_WORKSPACE:?}"`,
+    ]);
     const upload = prepare.steps.at(-1)!;
     expect(upload.uses).toMatch(/^actions\/upload-artifact@/);
     expect(upload.with).toEqual({ name: "darnit-plan", path: "${{ runner.temp }}/plan", "if-no-files-found": "error" });
@@ -58,13 +69,20 @@ describe("the README's two-job fix workflow", () => {
   it("never checks out, installs or runs the repository in the job that holds the write token", () => {
     const { publish } = jobs();
     expect(publish.permissions).toEqual({ contents: "write", "pull-requests": "write" });
-    expect(publish.steps.map((s) => s.uses?.split("@")[0]).filter(Boolean)).toEqual(["actions/setup-node", "actions/download-artifact"]);
-    expect(JSON.stringify(publish)).not.toMatch(/GITHUB_WORKSPACE|github\.workspace|working-directory|\bnpx\b|\bnpm ci\b/);
+    expect(publish.steps.map((s) => s.uses?.split("@")[0]).filter(Boolean)).toEqual([
+      "actions/setup-node",
+      "actions/download-artifact",
+    ]);
+    expect(JSON.stringify(publish)).not.toMatch(
+      /GITHUB_WORKSPACE|github\.workspace|working-directory|\bnpx\b|\bnpm ci\b/,
+    );
     expect(publish.defaults).toBeUndefined();
     for (const run of runs(publish)) {
       if (!matchersOnly(run)) expect(run).toMatch(/^cd "\$\{RUNNER_TEMP:\?\}"(?: &&|\n)/);
     }
-    expect(runs(publish).flatMap((r) => r.match(/\bnpm install\b.*/g) ?? [])).toEqual([`npm install ./darnit-${version}.tgz`]);
+    expect(runs(publish).flatMap((r) => r.match(/\bnpm install\b.*/g) ?? [])).toEqual([
+      `npm install ./darnit-${version}.tgz`,
+    ]);
     expect(runs(publish).at(-1)).toBe('cd "${RUNNER_TEMP:?}" && darnit/node_modules/.bin/darnit fix --publish plan');
     expect(publish.steps.at(-1)!.env).toEqual({ GITHUB_TOKEN: "${{ github.token }}" });
   });
@@ -92,7 +110,10 @@ describe("the README's two-job fix workflow", () => {
 
   it("reads no user .npmrc and no npm cache an earlier job could have left", () => {
     const { env, jobs } = workflow();
-    expect(install()!.env).toMatchObject({ NPM_CONFIG_USERCONFIG: "/dev/null", NPM_CONFIG_CACHE: "${{ runner.temp }}/npm-cache" });
+    expect(install()!.env).toMatchObject({
+      NPM_CONFIG_USERCONFIG: "/dev/null",
+      NPM_CONFIG_CACHE: "${{ runner.temp }}/npm-cache",
+    });
     expect(Object.keys(install()!.env!).sort()).toEqual(["INTEGRITY", "NPM_CONFIG_CACHE", "NPM_CONFIG_USERCONFIG"]);
     expect(JSON.stringify([env, jobs.publish.env])).not.toMatch(/npm_config/i);
   });
@@ -101,7 +122,9 @@ describe("the README's two-job fix workflow", () => {
     const { prepare, publish } = jobs();
     expect(matchersAtDarnit(prepare.steps)).toEqual([]);
     // matchersAtDarnit finds darnit by `npx darnit`; the publish job runs it from node_modules/.bin.
-    const fromBin = publish.steps.map((s) => (s.run ? { ...s, run: s.run.replace(/\S*\/\.bin\/darnit\b/, "npx darnit") } : s));
+    const fromBin = publish.steps.map((s) =>
+      s.run ? { ...s, run: s.run.replace(/\S*\/\.bin\/darnit\b/, "npx darnit") } : s,
+    );
     expect(matchersAtDarnit(fromBin)).toEqual([]);
   });
 });

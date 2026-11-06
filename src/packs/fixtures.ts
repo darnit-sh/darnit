@@ -124,7 +124,8 @@ async function checkRewrite(packDir: string, caseDir: string, problems: string[]
         readFile(join(work, file), "utf8"),
         readFile(join(beforeDir, file), "utf8"),
       ]);
-      if (want !== got) problems.push(`after/${file} does not match rules applied to before/${file}: ${firstDifference(want, got)}`);
+      if (want !== got)
+        problems.push(`after/${file} does not match rules applied to before/${file}: ${firstDifference(want, got)}`);
       const lang = grammarFor(file)?.lang;
       if (!lang) continue;
       present.add(lang);
@@ -166,6 +167,13 @@ export async function runPackFixtures(packDir: string, record: ChangeRecord): Pr
     }
     results.push({ pack, case: name, problems });
   }
-  for (const lang of untested) results.push({ pack, case: "-", problems: [`${record.id}: no fixture case has a ${lang} file in before/, so its ${lang} patterns and rules are never run`] });
+  for (const lang of untested)
+    results.push({
+      pack,
+      case: "-",
+      problems: [
+        `${record.id}: no fixture case has a ${lang} file in before/, so its ${lang} patterns and rules are never run`,
+      ],
+    });
   return results;
 }

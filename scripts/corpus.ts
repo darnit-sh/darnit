@@ -55,15 +55,28 @@ for (const [vendor, config] of Object.entries(vendors)) {
     try {
       const entries = await changelog(specPath, fresh);
       removed.push(...removalsFrom(entries, today));
-      const { candidates, ignored, unmapped } = deriveCandidates({ vendor, config, entries, spec: parseSpec(text), existing, observedAt: today });
+      const { candidates, ignored, unmapped } = deriveCandidates({
+        vendor,
+        config,
+        entries,
+        spec: parseSpec(text),
+        existing,
+        observedAt: today,
+      });
       console.log(`## ${vendor}: ${entries.length} spec changes, ${candidates.length} candidate records`);
       for (const c of candidates) {
         console.log(`- ${c.record.id}: ${prose(c.record.title ?? "")}`);
         if (!dryRun) await writeCandidate(join(ROOT, "packs"), c);
       }
-      if (unmapped.length > 0) console.log(`\nEndpoints with no SDK symbol in vendors.yml (add one so SDK calls are found too): ${prose(unmapped.join(", "))}`);
+      if (unmapped.length > 0)
+        console.log(
+          `\nEndpoints with no SDK symbol in vendors.yml (add one so SDK calls are found too): ${prose(unmapped.join(", "))}`,
+        );
       const ignoredLines = Object.entries(ignored).sort((a, b) => b[1] - a[1]);
-      if (ignoredLines.length > 0) console.log(`\nNot turned into records:\n${ignoredLines.map(([why, n]) => `- ${n} × ${prose(why)}`).join("\n")}`);
+      if (ignoredLines.length > 0)
+        console.log(
+          `\nNot turned into records:\n${ignoredLines.map(([why, n]) => `- ${n} × ${prose(why)}`).join("\n")}`,
+        );
     } finally {
       await rm(fresh, { force: true });
     }
@@ -74,11 +87,20 @@ for (const [vendor, config] of Object.entries(vendors)) {
     // Before the new spec replaces the old one, so a failed append leaves the diff to be taken again.
     if (removed.length > 0) await appendRemovals(join(dir, "removals.json"), removed);
     await writeFile(specPath, text);
-    await writeFile(snapshotPath, `${JSON.stringify({ source: config.spec, sha256: sha, fetchedAt: today }, null, 2)}\n`);
+    await writeFile(
+      snapshotPath,
+      `${JSON.stringify({ source: config.spec, sha256: sha, fetchedAt: today }, null, 2)}\n`,
+    );
   }
 }
 
 const readme = await readFile(join(ROOT, "README.md"), "utf8").catch(() => undefined);
 if (!dryRun && readme !== undefined) {
-  await writeFile(join(ROOT, "README.md"), readmeCounts(readme, (await loadRecords(join(ROOT, "packs"))).map((l) => l.record)));
+  await writeFile(
+    join(ROOT, "README.md"),
+    readmeCounts(
+      readme,
+      (await loadRecords(join(ROOT, "packs"))).map((l) => l.record),
+    ),
+  );
 }

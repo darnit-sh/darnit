@@ -8,8 +8,18 @@ import { givenTarball, installTarball, integrity, notUser, userEnv } from "../sc
 
 describe("the environment end-to-end scenarios run with", () => {
   it("drops CI's npm script-shell setting in every spelling npm reads, and keeps the rest", () => {
-    const shells = ["npm_config_script_shell", "NPM_CONFIG_SCRIPT_SHELL", "npm_config_script-shell", "Npm_Config_Script_Shell"];
-    const env = { PATH: "/bin", npm_config_cache: "/c", NPM_CONFIG_SCRIPT: "x", ...Object.fromEntries(shells.map((k) => [k, "/bin/sh"])) };
+    const shells = [
+      "npm_config_script_shell",
+      "NPM_CONFIG_SCRIPT_SHELL",
+      "npm_config_script-shell",
+      "Npm_Config_Script_Shell",
+    ];
+    const env = {
+      PATH: "/bin",
+      npm_config_cache: "/c",
+      NPM_CONFIG_SCRIPT: "x",
+      ...Object.fromEntries(shells.map((k) => [k, "/bin/sh"])),
+    };
     expect(userEnv(env)).toEqual({ PATH: "/bin", npm_config_cache: "/c", NPM_CONFIG_SCRIPT: "x" });
     expect(notUser(env)).toEqual(shells);
     expect(notUser(userEnv(env))).toEqual([]);
@@ -25,7 +35,9 @@ describe("the tarball end-to-end scenarios install", () => {
   mkdirSync(pkg);
   writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "e2e-pack", version: "1.0.0" }));
   writeFileSync(join(pkg, "index.js"), "export {};\n");
-  const [packed] = JSON.parse(execFileSync("npm", ["pack", "--json", "--silent", "--pack-destination", dir], { cwd: pkg, encoding: "utf8" })) as {
+  const [packed] = JSON.parse(
+    execFileSync("npm", ["pack", "--json", "--silent", "--pack-destination", dir], { cwd: pkg, encoding: "utf8" }),
+  ) as {
     filename: string;
     integrity: string;
   }[];
@@ -47,10 +59,16 @@ describe("the tarball end-to-end scenarios install", () => {
     vi.stubEnv("INIT_CWD", "");
     expect(givenTarball([])).toBeUndefined();
     expect(givenTarball([`--tarball=${tarball}`, "--integrity=sha512-x"])).toEqual({ tarball, integrity: "sha512-x" });
-    expect(givenTarball(["--tarball", relative(process.cwd(), tarball), "--integrity", "sha512-x"])).toEqual({ tarball, integrity: "sha512-x" });
+    expect(givenTarball(["--tarball", relative(process.cwd(), tarball), "--integrity", "sha512-x"])).toEqual({
+      tarball,
+      integrity: "sha512-x",
+    });
     // npm run starts the script in the package folder; the path is relative to where npm was run.
     vi.stubEnv("INIT_CWD", dir);
-    expect(givenTarball(["--tarball", packed!.filename, "--integrity", "sha512-x"])).toEqual({ tarball, integrity: "sha512-x" });
+    expect(givenTarball(["--tarball", packed!.filename, "--integrity", "sha512-x"])).toEqual({
+      tarball,
+      integrity: "sha512-x",
+    });
   });
 
   // npm as the scenarios run it: `pack` writes a tarball, `install` records what it installed in the lockfile.
@@ -63,12 +81,16 @@ describe("the tarball end-to-end scenarios install", () => {
     };
     const install = (t: string, d: string) => {
       installs.push(t);
-      writeFileSync(join(d, "package-lock.json"), JSON.stringify({ packages: { "node_modules/darnit": { integrity: lockSri ?? integrity(t) } } }));
+      writeFileSync(
+        join(d, "package-lock.json"),
+        JSON.stringify({ packages: { "node_modules/darnit": { integrity: lockSri ?? integrity(t) } } }),
+      );
       return "1.0.0";
     };
     return { packs, installs, pack, install };
   };
-  const sh = (cmd: string, env: NodeJS.ProcessEnv) => spawnSync("sh", ["-c", cmd], { encoding: "utf8", env: { ...process.env, ...env } }).stdout;
+  const sh = (cmd: string, env: NodeJS.ProcessEnv) =>
+    spawnSync("sh", ["-c", cmd], { encoding: "utf8", env: { ...process.env, ...env } }).stdout;
 
   it("installs and runs only a checked copy of the given file, so swapping the file later changes nothing", () => {
     // Quotes, spaces, $ patterns and a backslash in the path reach npx as one literal word, through the environment.
@@ -91,14 +113,24 @@ describe("the tarball end-to-end scenarios install", () => {
 
   it("installs nothing when the given file's integrity differs, and fails when npm's lockfile shows another", () => {
     const wrong = npm();
-    expect(() => installTarball(mkdtempSync(join(dir, "work-")), { tarball: changed, integrity: packed!.integrity }, wrong.pack, wrong.install)).toThrow(
-      `${changed} has integrity ${integrity(changed)}, expected ${packed!.integrity}`,
-    );
+    expect(() =>
+      installTarball(
+        mkdtempSync(join(dir, "work-")),
+        { tarball: changed, integrity: packed!.integrity },
+        wrong.pack,
+        wrong.install,
+      ),
+    ).toThrow(`${changed} has integrity ${integrity(changed)}, expected ${packed!.integrity}`);
     expect(wrong.installs).toEqual([]);
     const other = npm(integrity(changed));
-    expect(() => installTarball(mkdtempSync(join(dir, "work-")), { tarball, integrity: packed!.integrity }, other.pack, other.install)).toThrow(
-      `npm installed darnit with integrity ${integrity(changed)}, expected ${packed!.integrity}`,
-    );
+    expect(() =>
+      installTarball(
+        mkdtempSync(join(dir, "work-")),
+        { tarball, integrity: packed!.integrity },
+        other.pack,
+        other.install,
+      ),
+    ).toThrow(`npm installed darnit with integrity ${integrity(changed)}, expected ${packed!.integrity}`);
   });
 
   it("installs the tarball it packs into the work folder without flags", () => {
@@ -125,8 +157,14 @@ describe("the tarball end-to-end scenarios install", () => {
       [["--tarball", join(dir, "pkg.tar"), "--integrity", packed!.integrity], "is not a .tgz"],
       [["--tarball", tarball, "--integrity", packed!.integrity, "--tarbal", "x"], "Unknown option"],
       [["--tarball", tarball, "--integrity", packed!.integrity, "extra"], "Unexpected argument"],
-      [["--tarball", tarball, "--tarball", changed, "--integrity", packed!.integrity], "--tarball is given more than once"],
-      [["--tarball", tarball, "--integrity", "sha512-x", "--integrity", packed!.integrity], "--integrity is given more than once"],
+      [
+        ["--tarball", tarball, "--tarball", changed, "--integrity", packed!.integrity],
+        "--tarball is given more than once",
+      ],
+      [
+        ["--tarball", tarball, "--integrity", "sha512-x", "--integrity", packed!.integrity],
+        "--integrity is given more than once",
+      ],
     ] as const) {
       const r = e2e(...args);
       expect(r.status, args.join(" ")).toBe(2);

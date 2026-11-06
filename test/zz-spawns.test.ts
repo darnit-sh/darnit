@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 // Record every child process darnit spawns, then run it for real, so one --publish run can be checked spawn by spawn.
-const spawns = vi.hoisted(() => [] as { file: string; args: string[]; cwd?: string | undefined; env?: NodeJS.ProcessEnv | undefined }[]);
+const spawns = vi.hoisted(
+  () => [] as { file: string; args: string[]; cwd?: string | undefined; env?: NodeJS.ProcessEnv | undefined }[],
+);
 vi.mock("node:child_process", async (orig) => {
   const real = await orig<typeof import("node:child_process")>();
   const util = await import("node:util");
@@ -15,11 +17,19 @@ vi.mock("node:child_process", async (orig) => {
     spawns.push({ file, args: Array.isArray(args) ? (args as string[]) : [], cwd: o.cwd, env: o.env });
   };
   const execFile = function (file: string, ...rest: unknown[]) {
-    note(file, rest[0], rest.find((r) => r && typeof r === "object" && !Array.isArray(r)));
+    note(
+      file,
+      rest[0],
+      rest.find((r) => r && typeof r === "object" && !Array.isArray(r)),
+    );
     return (real.execFile as unknown as (...a: unknown[]) => unknown)(file, ...rest);
   } as unknown as typeof real.execFile & { [k: symbol]: unknown };
   const realCustom = (real.execFile as unknown as { [k: symbol]: (...a: unknown[]) => unknown })[util.promisify.custom];
-  (execFile as unknown as { [k: symbol]: unknown })[util.promisify.custom] = (file: string, args: unknown, opts: unknown) => {
+  (execFile as unknown as { [k: symbol]: unknown })[util.promisify.custom] = (
+    file: string,
+    args: unknown,
+    opts: unknown,
+  ) => {
     note(file, args, opts);
     return realCustom!(file, args, opts);
   };
@@ -47,7 +57,16 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 beforeEach(() => {
-  for (const k of ["GITHUB_TOKEN", "GH_TOKEN", "SSH_AUTH_SOCK", "GITHUB_ACTIONS", "GITHUB_SHA", "GITHUB_SERVER_URL", "GITHUB_REPOSITORY"]) vi.stubEnv(k, "");
+  for (const k of [
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "SSH_AUTH_SOCK",
+    "GITHUB_ACTIONS",
+    "GITHUB_SHA",
+    "GITHUB_SERVER_URL",
+    "GITHUB_REPOSITORY",
+  ])
+    vi.stubEnv(k, "");
 });
 
 it("runs every --publish spawn with the expected arguments and an allowlisted environment", async () => {
@@ -82,7 +101,12 @@ it("runs every --publish spawn with the expected arguments and an allowlisted en
     req.on("data", (c: Buffer) => (data += c.toString()));
     req.on("end", () => {
       if (req.method === "POST") posts.push(JSON.parse(data) as Record<string, string>);
-      const reply = req.url === "/repos/o/r" ? { default_branch: branch } : req.method === "POST" ? { html_url: `https://github.com/o/r/pull/${posts.length}` } : [];
+      const reply =
+        req.url === "/repos/o/r"
+          ? { default_branch: branch }
+          : req.method === "POST"
+            ? { html_url: `https://github.com/o/r/pull/${posts.length}` }
+            : [];
       res.writeHead(req.method === "POST" ? 201 : 200).end(JSON.stringify(reply));
     });
   });
@@ -90,7 +114,9 @@ it("runs every --publish spawn with the expected arguments and an allowlisted en
   await once(server, "listening");
   const port = (server.address() as { port: number }).port;
   const realFetch = globalThis.fetch;
-  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => realFetch(String(url).replace("https://api.github.com/", `http://127.0.0.1:${port}/`), init));
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
+    realFetch(String(url).replace("https://api.github.com/", `http://127.0.0.1:${port}/`), init),
+  );
 
   spawns.length = 0;
   // A sensitive variable the job holds: it must reach none of the spawns (the allowlist drops it).
@@ -113,7 +139,9 @@ it("runs every --publish spawn with the expected arguments and an allowlisted en
 
   // The version check and every clone command ran a resolved absolute git, outside the work tree, with no credential.
   expect(version).toHaveLength(1);
-  expect(new Set(clone.map(sub))).toEqual(new Set(["init", "ls-remote", "fetch", "checkout", "diff", "add", "commit", "push"]));
+  expect(new Set(clone.map(sub))).toEqual(
+    new Set(["init", "ls-remote", "fetch", "checkout", "diff", "add", "commit", "push"]),
+  );
   for (const s of [...version, ...clone]) {
     expect(s.file.startsWith("/")).toBe(true);
     expect(s.env).toBeDefined();

@@ -38,7 +38,10 @@ export function cellModels(text: string): string[] | undefined {
   const open = text.indexOf(" (");
   const name = text.slice(0, open).toLowerCase().replaceAll(" ", "-");
   if (open === -1 || !text.endsWith(")") || !isModel(name) || !/\d/.test(name)) return undefined;
-  const inner = text.slice(open + 2, -1).replace(/^including /, "").replace(/,? which point to this snapshot$/, "");
+  const inner = text
+    .slice(open + 2, -1)
+    .replace(/^including /, "")
+    .replace(/,? which point to this snapshot$/, "");
   const ids = allModels(inner.split(/,\s*|\s+and\s+/));
   return ids && [name, ...ids];
 }
@@ -62,21 +65,43 @@ const attr = (e: T.Element, name: string) => e.attrs.find((a) => a.name === name
 const hides = (style: string) =>
   style.split(";").some((declaration) => {
     const at = declaration.indexOf(":");
-    const [name, value] = [declaration.slice(0, at), declaration.slice(at + 1)].map((s) => s.trim().toLowerCase().replace(/\s*!\s*important$/, ""));
-    return at !== -1 && ((name === "display" && value === "none") || (name === "visibility" && (value === "hidden" || value === "collapse")));
+    const [name, value] = [declaration.slice(0, at), declaration.slice(at + 1)].map((s) =>
+      s
+        .trim()
+        .toLowerCase()
+        .replace(/\s*!\s*important$/, ""),
+    );
+    return (
+      at !== -1 &&
+      ((name === "display" && value === "none") ||
+        (name === "visibility" && (value === "hidden" || value === "collapse")))
+    );
   });
 /** Whether an element's own attributes hide it. Hiding through a CSS class is not seen. */
-const unshown = (e: T.Element) => attr(e, "hidden") !== undefined || hides(attr(e, "style") ?? "") || attr(e, "aria-hidden") === "true";
+const unshown = (e: T.Element) =>
+  attr(e, "hidden") !== undefined || hides(attr(e, "style") ?? "") || attr(e, "aria-hidden") === "true";
 /**
  * The text a node shows: its text nodes, a <br> as a line break, and a <sup> as a word of its own, as a footnote mark
  * reads, so "o1-mini" with a footnote is not the model "o1-mini2". Comments and template content are not shown.
  */
 const text = (n: T.ChildNode): string =>
-  n.nodeName === "#text" ? (n as T.TextNode).value : !isElement(n) ? "" : n.tagName === "br" ? "\n" : n.tagName === "sup" ? ` ${n.childNodes.map(text).join("")} ` : n.childNodes.map(text).join("");
+  n.nodeName === "#text"
+    ? (n as T.TextNode).value
+    : !isElement(n)
+      ? ""
+      : n.tagName === "br"
+        ? "\n"
+        : n.tagName === "sup"
+          ? ` ${n.childNodes.map(text).join("")} `
+          : n.childNodes.map(text).join("");
 /** HTML's whitespace collapsing: ASCII whitespace only, so a no-break space stays a character. */
 const collapse = (s: string) => s.replace(/[\t\n\f\r ]+/g, " ").replace(/^ | $/g, "");
 /** Whether a cell's elements are all ones a deprecation table may hold, with only the attributes each may carry. */
-const plain = (n: T.ChildNode): boolean => !isElement(n) || (Object.hasOwn(INLINE, n.tagName) && n.attrs.every((a) => INLINE[n.tagName]!.includes(a.name)) && n.childNodes.every(plain));
+const plain = (n: T.ChildNode): boolean =>
+  !isElement(n) ||
+  (Object.hasOwn(INLINE, n.tagName) &&
+    n.attrs.every((a) => INLINE[n.tagName]!.includes(a.name)) &&
+    n.childNodes.every(plain));
 
 /** The letters and digits a person reads in text, lower case. */
 export const fold = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -91,7 +116,7 @@ function shownTables(page: T.Document): T.Element[] {
   const todo: T.ParentNode[] = [page];
   for (let node = todo.pop(); node !== undefined; node = todo.pop()) {
     if ("tagName" in node && node.tagName === "table") out.push(node);
-    else todo.push(...node.childNodes.filter((c) => isElement(c) && !unshown(c)).reverse() as T.Element[]);
+    else todo.push(...(node.childNodes.filter((c) => isElement(c) && !unshown(c)).reverse() as T.Element[]));
   }
   return out;
 }
@@ -103,7 +128,10 @@ function shownTables(page: T.Document): T.Element[] {
 function rowsOf(table: T.Element): { rows: T.Element[]; error?: string } {
   const rows: T.Element[] = [];
   const odd = (e: T.Element, kinds: string[]) => !kinds.includes(e.tagName) || e.attrs.some((a) => a.name !== "class");
-  const error = (e: T.Element) => ({ rows, error: `it holds a <${e.tagName}> with ${e.attrs.map((a) => a.name).join(", ") || "no attributes"} where darnit reads only a table, its sections, rows and cells, each with at most a class` });
+  const error = (e: T.Element) => ({
+    rows,
+    error: `it holds a <${e.tagName}> with ${e.attrs.map((a) => a.name).join(", ") || "no attributes"} where darnit reads only a table, its sections, rows and cells, each with at most a class`,
+  });
   if (odd(table, ["table"])) return error(table);
   for (const part of children(table)) {
     if (odd(part, ["thead", "tbody", "tr"])) return error(part);
@@ -121,18 +149,44 @@ function rowsOf(table: T.Element): { rows: T.Element[]; error?: string } {
  * One row of a table on the page, folded, with the models darnit read from it and, for a fine-tuning row, its model.
  * A model row also has the models of its model cell and its shutdown date, when darnit reads the date.
  */
-export type Row = { label: string; folded: string; read: string[]; exempt?: string; models?: string[]; shutdown?: string };
+export type Row = {
+  label: string;
+  folded: string;
+  read: string[];
+  exempt?: string;
+  models?: string[];
+  shutdown?: string;
+};
 
-const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const MONTHS = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
 /** A shutdown date cell as YYYY-MM-DD: "Dec 11, 2026", "December 11, 2026" or "2026-12-11". Undefined for anything else. */
 export function shutdownDate(cell: string): string | undefined {
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cell.replaceAll("\u2011", "-"));
   const named = /^([A-Za-z]{3,9})\.? (\d{1,2}), (\d{4})$/.exec(cell);
   const month = named ? MONTHS.findIndex((m) => m.startsWith(named[1]!.toLowerCase())) + 1 : 0;
-  const [y, m, d] = iso ? [iso[1], iso[2], iso[3]].map(Number) : named && month > 0 ? [Number(named[3]), month, Number(named[2])] : [];
+  const [y, m, d] = iso
+    ? [iso[1], iso[2], iso[3]].map(Number)
+    : named && month > 0
+      ? [Number(named[3]), month, Number(named[2])]
+      : [];
   if (y === undefined || m === undefined || d === undefined) return undefined;
   const date = new Date(Date.UTC(y, m - 1, d));
-  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d ? date.toISOString().slice(0, 10) : undefined;
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
+    ? date.toISOString().slice(0, 10)
+    : undefined;
 }
 
 /** A table of the page, folded, and why darnit does not read it as a person would, if it does not. */
@@ -155,10 +209,23 @@ export function readPage(html: string): Page {
     const cells = trs.map(children);
     const texts = cells.map((row) => row.map((c) => collapse(text(c))));
     const [head = []] = texts;
-    const to = head[0]?.toLowerCase() === "shutdown date" ? head.findIndex((h) => REPLACEMENT.has(h.toLowerCase())) : -1;
-    const strict = to < 2 ? undefined : cells.find((row) => row.length !== head.length) ? "a row has a different number of cells from its header" : undefined;
-    const markup = to >= 2 && cells.some((row) => row.some((c) => !c.childNodes.every(plain))) ? "a cell holds markup darnit does not read in a deprecation table" : undefined;
-    const error = structure ?? strict ?? markup ?? (NON_ASCII.test(text(table)) ? "it holds a letter, digit or mark outside ASCII" : undefined);
+    const to =
+      head[0]?.toLowerCase() === "shutdown date" ? head.findIndex((h) => REPLACEMENT.has(h.toLowerCase())) : -1;
+    const strict =
+      to < 2
+        ? undefined
+        : cells.find((row) => row.length !== head.length)
+          ? "a row has a different number of cells from its header"
+          : undefined;
+    const markup =
+      to >= 2 && cells.some((row) => row.some((c) => !c.childNodes.every(plain)))
+        ? "a cell holds markup darnit does not read in a deprecation table"
+        : undefined;
+    const error =
+      structure ??
+      strict ??
+      markup ??
+      (NON_ASCII.test(text(table)) ? "it holds a letter, digit or mark outside ASCII" : undefined);
     tables.push({ label, folded: fold(text(table)), ...(error ? { error } : {}) });
     if (error) continue;
     for (const [i, row] of texts.entries()) {
@@ -173,7 +240,14 @@ export function readPage(html: string): Page {
         if (models || exempt) read = [...(models ?? []), ...offered(row[to]!)];
       }
       const shutdown = models && shutdownDate(row[0]!);
-      rows.push({ label: `${label} row ${i + 1}`, folded: fold(text(trs[i]!)), read, ...(exempt ? { exempt } : {}), ...(models ? { models } : {}), ...(shutdown ? { shutdown } : {}) });
+      rows.push({
+        label: `${label} row ${i + 1}`,
+        folded: fold(text(trs[i]!)),
+        read,
+        ...(exempt ? { exempt } : {}),
+        ...(models ? { models } : {}),
+        ...(shutdown ? { shutdown } : {}),
+      });
     }
   }
   return { replacements, tables, rows };
@@ -182,34 +256,51 @@ export function readPage(html: string): Page {
 // One model id and one setting such as "(reasoning.mode: pro)"; any other words get the fixed reason.
 const SETTING = /^(\S+) \(([a-z_.]{1,40}: [a-z0-9_.-]{1,40})\)$/;
 const isListed = (s: string) => isModel(s) || (s.endsWith("*") && isModel(s.slice(0, -1)));
-const either = (ids: string[]) => (ids.length < 3 ? ids.join(" or ") : `${ids.slice(0, -1).join(", ")}, or ${ids.at(-1)}`);
+const either = (ids: string[]) =>
+  ids.length < 3 ? ids.join(" or ") : `${ids.slice(0, -1).join(", ")}, or ${ids.at(-1)}`;
 /** The model ids a replacement cell offers as a choice, "a or b" or "a, b, or c", or undefined for any other cell. */
 const choice = (text: string) => {
   const ids = text.split(/,? or |, /);
   return ids.length > 1 && ids.every(isListed) ? ids : undefined;
 };
 /** Every model id a replacement cell names, a family without its "*". */
-const offered = (text: string) => (isModel(text) ? [text] : (choice(text) ?? [SETTING.exec(text)?.[1] ?? ""].filter(isModel)).map((id) => id.replace(/\*$/, "")));
+const offered = (text: string) =>
+  isModel(text)
+    ? [text]
+    : (choice(text) ?? [SETTING.exec(text)?.[1] ?? ""].filter(isModel)).map((id) => id.replace(/\*$/, ""));
 
 /**
  * A replacement cell as fix.models holds it: one model id is a rename. Model ids joined by commas or "or", or one
  * model id with a setting, become a reason built from those parts, each model followed by `retiring` first and none
  * of `selves`, the models being replaced, offered. Any other cell gets a fixed reason, never its text.
  */
-function entry(record: ChangeRecord, text: string, retiring: (id: string) => string[], selves: ReadonlySet<string>): Replacement {
+function entry(
+  record: ChangeRecord,
+  text: string,
+  retiring: (id: string) => string[],
+  selves: ReadonlySet<string>,
+): Replacement {
   const vendor = vendorName(record.vendor);
   const source = record.sources[0]!.url;
   if (isModel(text)) return { model: text, source };
   if (text === EM_DASH) return { human: `${vendor} names no replacement`, source };
-  const other = (ids: string[]) => [...new Set(ids.flatMap((id) => retiring(id)))].filter((o) => !selves.has(o.replace(/\*? \(retiring too\)$|\*$/, "")));
+  const other = (ids: string[]) =>
+    [...new Set(ids.flatMap((id) => retiring(id)))].filter(
+      (o) => !selves.has(o.replace(/\*? \(retiring too\)$|\*$/, "")),
+    );
   const loop = { human: `the recommended replacements loop back to ${[...selves].at(-1)}`, source };
   const setting = SETTING.exec(text);
   if (setting && isModel(setting[1]!)) {
     const ids = other([setting[1]!]);
-    return ids.length > 0 ? { human: `not a plain swap: ${vendor} recommends ${ids.join(" or ")} with ${setting[2]}`, source } : loop;
+    return ids.length > 0
+      ? { human: `not a plain swap: ${vendor} recommends ${ids.join(" or ")} with ${setting[2]}`, source }
+      : loop;
   }
   const ids = choice(text);
-  if (ids) return other(ids).length > 0 ? { human: `not a plain swap: ${vendor} recommends ${either(other(ids))}`, source } : loop;
+  if (ids)
+    return other(ids).length > 0
+      ? { human: `not a plain swap: ${vendor} recommends ${either(other(ids))}`, source }
+      : loop;
   return { human: `${vendor} names no single replacement model`, source };
 }
 
@@ -220,7 +311,10 @@ function entry(record: ChangeRecord, text: string, retiring: (id: string) => str
 function listed(r: Replacement, known: ReadonlySet<string>, vendor: string): Replacement {
   if (!("model" in r) || known.has(r.model)) return r;
   if (known.has(`${r.model}-latest`)) return { ...r, model: `${r.model}-latest` };
-  return { human: `not a plain swap: ${vendor} recommends ${r.model}, which its API spec does not list`, source: r.source };
+  return {
+    human: `not a plain swap: ${vendor} recommends ${r.model}, which its API spec does not list`,
+    source: r.source,
+  };
 }
 
 const flat = (id: string) => id.replace(/[^a-z0-9]/g, "");
@@ -271,10 +365,15 @@ export function replacementsFor(
     while ("model" in at) {
       const text = newest(at.model);
       if (text === undefined) return at;
-      if (selves.has(at.model)) return { human: `the recommended replacements loop back to ${at.model}`, source: at.source };
+      if (selves.has(at.model))
+        return { human: `the recommended replacements loop back to ${at.model}`, source: at.source };
       selves.add(at.model);
       const after = entry(record, text, retiring, selves);
-      if ("human" in after) return { human: `${vendorName(record.vendor)} recommends ${at.model}, which also shuts down; ${after.human}`, source: after.source };
+      if ("human" in after)
+        return {
+          human: `${vendorName(record.vendor)} recommends ${at.model}, which also shuts down; ${after.human}`,
+          source: after.source,
+        };
       at = after;
     }
     return at;
@@ -282,16 +381,23 @@ export function replacementsFor(
   const detected = [...new Set(records.flatMap(recordModels))];
   const real = new Set([...detected, ...known]);
   const onPage = new Set([...page.tables, ...page.rows].map((r) => r.folded));
-  const problems = [...notModels].filter((n) => !onPage.has(n)).map((n) => `the known non-model table or row ${n} is no longer on the page; take it off the list`);
-  for (const table of page.tables.filter((t) => t.error !== undefined && !notModels.has(t.folded))) problems.push(`${table.label} (folded: ${table.folded.slice(0, 200)}): ${table.error}`);
+  const problems = [...notModels]
+    .filter((n) => !onPage.has(n))
+    .map((n) => `the known non-model table or row ${n} is no longer on the page; take it off the list`);
+  for (const table of page.tables.filter((t) => t.error !== undefined && !notModels.has(t.folded)))
+    problems.push(`${table.label} (folded: ${table.folded.slice(0, 200)}): ${table.error}`);
   const unread = new Set<string>();
   for (const row of page.rows.filter((r) => !notModels.has(r.folded))) {
     // What darnit read from the row is taken out, longest first, so only names it did not read are left.
-    const read = [...row.read, ...(row.exempt && real.has(row.exempt) ? [row.exempt] : [])].map(flat).sort((a, b) => b.length - a.length);
+    const read = [...row.read, ...(row.exempt && real.has(row.exempt) ? [row.exempt] : [])]
+      .map(flat)
+      .sort((a, b) => b.length - a.length);
     const rest = read.reduce((text, id) => text.replaceAll(id, " "), row.folded);
     for (const m of detected.filter((d) => rest.includes(flat(d)))) {
       unread.add(m);
-      problems.push(`${row.label} (folded: ${row.folded.slice(0, 200)}) may name ${m}, which darnit did not read from it`);
+      problems.push(
+        `${row.label} (folded: ${row.folded.slice(0, 200)}) may name ${m}, which darnit did not read from it`,
+      );
     }
   }
   const models = new Map<string, Record<string, Replacement>>();
@@ -303,7 +409,8 @@ export function replacementsFor(
     const vendor = vendorName(r.vendor);
     const entries = ids.map((m) => [m, ReplacementSchema.safeParse(listed(resolve(r, m), known, vendor))] as const);
     const long = entries.filter(([, e]) => !e.success).map(([m]) => m);
-    if (long.length > 0) problems.push(`${r.id}: the reason for ${long.join(", ")} is not one line of plain words under 200 characters`);
+    if (long.length > 0)
+      problems.push(`${r.id}: the reason for ${long.join(", ")} is not one line of plain words under 200 characters`);
     else models.set(r.id, Object.fromEntries(entries.map(([m, e]) => [m, e.data!])));
   }
   return { models, problems };
@@ -330,9 +437,18 @@ export function pageMismatches(records: readonly ChangeRecord[], page: Page): st
  * A row with no such record, or more than one, a model another record detects, and a date no row has are problems.
  * Models of rows on other dates that no record detects are `later`, by shutdown date, for the next batches.
  */
-export function wholeRows(records: readonly ChangeRecord[], page: Page, dates: ReadonlySet<string>): { models: Map<string, string[]>; problems: string[]; later: Map<string, string[]> } {
+export function wholeRows(
+  records: readonly ChangeRecord[],
+  page: Page,
+  dates: ReadonlySet<string>,
+): { models: Map<string, string[]>; problems: string[]; later: Map<string, string[]> } {
   const detected = new Set(records.flatMap(recordModels));
-  const [rowsOf, later, problems, met] = [new Map<string, string[][]>(), new Map<string, string[]>(), [] as string[], new Set<string>()];
+  const [rowsOf, later, problems, met] = [
+    new Map<string, string[][]>(),
+    new Map<string, string[]>(),
+    [] as string[],
+    new Set<string>(),
+  ];
   for (const { label, models, shutdown = "an unread date" } of page.rows) {
     if (!models) continue;
     if (!dates.has(shutdown)) {
@@ -343,30 +459,49 @@ export function wholeRows(records: readonly ChangeRecord[], page: Page, dates: R
     met.add(shutdown);
     const owners = records.filter((r) => r.effectiveAt === shutdown && recordModels(r).some((m) => models.includes(m)));
     if (owners.length === 1) rowsOf.set(owners[0]!.id, [...(rowsOf.get(owners[0]!.id) ?? []), models]);
-    else problems.push(`${label} (${models.join(", ")}): ${owners.length === 0 ? `no record shutting down on ${shutdown} detects any of its models; darnit does not make that record yet` : `${owners.map((r) => r.id).join(" and ")} each detect some of its models`}`);
+    else
+      problems.push(
+        `${label} (${models.join(", ")}): ${owners.length === 0 ? `no record shutting down on ${shutdown} detects any of its models; darnit does not make that record yet` : `${owners.map((r) => r.id).join(" and ")} each detect some of its models`}`,
+      );
   }
-  problems.push(...[...dates].filter((d) => !met.has(d)).map((d) => `no model row on the page shuts down on ${d}; take it off the list`));
+  problems.push(
+    ...[...dates]
+      .filter((d) => !met.has(d))
+      .map((d) => `no model row on the page shuts down on ${d}; take it off the list`),
+  );
   const models = new Map<string, string[]>();
   for (const r of records.filter((r) => rowsOf.has(r.id))) {
     const rows = rowsOf.get(r.id)!;
     const ids = [...new Set([...rows.map((row) => row[0]!), ...rows.flat(), ...recordModels(r)])];
     const elsewhere = ids.filter((m) => detected.has(m) && !recordModels(r).includes(m));
-    if (elsewhere.length > 0) problems.push(`${r.id}: the page lists ${elsewhere.join(", ")} in its rows, but another record detects them`);
+    if (elsewhere.length > 0)
+      problems.push(`${r.id}: the page lists ${elsewhere.join(", ")} in its rows, but another record detects them`);
     else models.set(r.id, ids);
   }
   return { models, problems, later };
 }
 
 const quoted = (ids: readonly string[], lang: "js" | "py") =>
-  ids.flatMap((m) => ['"', "'"].map((q) => (lang === "js" ? { context: `({ model: ${q}${m}${q} })`, selector: "pair" } : { context: `f(model=${q}${m}${q})`, selector: "keyword_argument" })));
+  ids.flatMap((m) =>
+    ['"', "'"].map((q) =>
+      lang === "js"
+        ? { context: `({ model: ${q}${m}${q} })`, selector: "pair" }
+        : { context: `f(model=${q}${m}${q})`, selector: "keyword_argument" },
+    ),
+  );
 
 /** A model record's detection: each model as the call's model, in both quote styles, in JavaScript and Python. */
-export const modelDetection = (ids: readonly string[]) => ({ astGrepPatterns: { js: quoted(ids, "js"), py: quoted(ids, "py") } });
+export const modelDetection = (ids: readonly string[]) => ({
+  astGrepPatterns: { js: quoted(ids, "js"), py: quoted(ids, "py") },
+});
 
 /** A model record's title: its first models, the rest counted, and the shutdown date, in at most 100 characters. */
 export function modelTitle(ids: readonly string[], date: string): string {
   for (let n = Math.min(ids.length, 6); ; n--) {
-    const named = n === ids.length ? `${n > 1 ? `${ids.slice(0, -1).join(", ")} and ` : ""}${ids.at(-1)}` : `${ids.slice(0, n).join(", ")} and ${ids.length - n} more`;
+    const named =
+      n === ids.length
+        ? `${n > 1 ? `${ids.slice(0, -1).join(", ")} and ` : ""}${ids.at(-1)}`
+        : `${ids.slice(0, n).join(", ")} and ${ids.length - n} more`;
     if (named.length <= 75 || n === 1) return `${named} shut down on ${date}`.slice(0, 100);
   }
 }
@@ -374,19 +509,32 @@ export function modelTitle(ids: readonly string[], date: string): string {
 /** A model record's migration notes, naming each model and the replacement cell of its newest row. */
 export function modelNotes(vendor: string, ids: readonly string[], date: string, page: Page): string {
   const cells = ids.map((m) => page.replacements.get(m)?.[0] ?? EM_DASH);
-  const offers = cells.every((c) => c === EM_DASH) ? `${vendor} names no replacement` : `Recommended replacements: ${ids.map((m, i) => `${m} to ${cells[i] === EM_DASH ? NONE : cells[i]}`).join("; ")}`;
+  const offers = cells.every((c) => c === EM_DASH)
+    ? `${vendor} names no replacement`
+    : `Recommended replacements: ${ids.map((m, i) => `${m} to ${cells[i] === EM_DASH ? NONE : cells[i]}`).join("; ")}`;
   return `${vendor} removes these models from the API on ${date}: ${ids.join(", ")}. Calls that name them fail after that date. ${offers}${END}, so test the switch rather than only renaming.`;
 }
 
 const call = (m: string, i: number, lang: "js" | "py") =>
-  ['"', "'"].map((q, k) => (lang === "js" ? `export const ${"ab"[k]}${i} = await openai.chat.completions.create({ model: ${q}${m}${q}, messages });` : `${"ab"[k]}${i} = client.chat.completions.create(model=${q}${m}${q}, messages=messages)`));
+  ['"', "'"].map((q, k) =>
+    lang === "js"
+      ? `export const ${"ab"[k]}${i} = await openai.chat.completions.create({ model: ${q}${m}${q}, messages });`
+      : `${"ab"[k]}${i} = client.chat.completions.create(model=${q}${m}${q}, messages=messages)`,
+  );
 
 /** A model record's fixture: every model in both quote styles and a longer near miss, the same before and after. */
 export function modelFixtures(ids: readonly string[]): Record<string, string> {
   const near = `${ids[0]}-x`;
   const js = `import OpenAI from "openai";\n\nconst openai = new OpenAI();\n\n${ids.flatMap((m, i) => call(m, i, "js")).join("\n")}\n\n// Near miss: a longer name is a different model.\nexport const near = await openai.chat.completions.create({ model: "${near}", messages });\n`;
   const py = `from openai import OpenAI\n\nclient = OpenAI()\n\n${ids.flatMap((m, i) => call(m, i, "py")).join("\n")}\n\n# Near miss: a longer name is a different model.\nnear = client.chat.completions.create(model="${near}", messages=messages)\n`;
-  const note = "Report only: there are no rules, so after/ matches before/. Every listed model appears in both quote styles; the near miss at the end must not match.";
+  const note =
+    "Report only: there are no rules, so after/ matches before/. Every listed model appears in both quote styles; the near miss at the end must not match.";
   const expected = `${JSON.stringify({ note, matches: { "before/app.js": ids.length * 2, "before/app.py": ids.length * 2 } }, null, 2)}\n`;
-  return { "fixtures/basic/before/app.js": js, "fixtures/basic/before/app.py": py, "fixtures/basic/after/app.js": js, "fixtures/basic/after/app.py": py, "fixtures/basic/expected.json": expected };
+  return {
+    "fixtures/basic/before/app.js": js,
+    "fixtures/basic/before/app.py": py,
+    "fixtures/basic/after/app.js": js,
+    "fixtures/basic/after/app.py": py,
+    "fixtures/basic/expected.json": expected,
+  };
 }

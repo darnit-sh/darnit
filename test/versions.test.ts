@@ -55,13 +55,24 @@ describe("npmVersionFor", () => {
       "node_modules/openai/package.json": installed("4.20.0"),
       "apps/web/node_modules/openai/package.json": installed("4.70.0"),
     });
-    expect(await npmVersionFor(dir, "openai", "apps/web/src/chat.ts")).toEqual({ version: "4.70.0", from: "apps/web/node_modules/openai" });
-    expect(await npmVersionFor(dir, "openai", "apps/api/chat.ts")).toEqual({ version: "4.20.0", from: "node_modules/openai" });
+    expect(await npmVersionFor(dir, "openai", "apps/web/src/chat.ts")).toEqual({
+      version: "4.70.0",
+      from: "apps/web/node_modules/openai",
+    });
+    expect(await npmVersionFor(dir, "openai", "apps/api/chat.ts")).toEqual({
+      version: "4.20.0",
+      from: "node_modules/openai",
+    });
   });
 
   it("reads the nearest package-lock.json entry when nothing is installed", async () => {
-    const dir = await dirWith({ "package-lock.json": lock({ "node_modules/openai": "4.20.0", "apps/web/node_modules/openai": "4.70.0" }) });
-    expect(await npmVersionFor(dir, "openai", "apps/web/chat.ts")).toEqual({ version: "4.70.0", from: "package-lock.json" });
+    const dir = await dirWith({
+      "package-lock.json": lock({ "node_modules/openai": "4.20.0", "apps/web/node_modules/openai": "4.70.0" }),
+    });
+    expect(await npmVersionFor(dir, "openai", "apps/web/chat.ts")).toEqual({
+      version: "4.70.0",
+      from: "package-lock.json",
+    });
     expect(await npmVersionFor(dir, "openai", "chat.ts")).toEqual({ version: "4.20.0", from: "package-lock.json" });
   });
 
@@ -74,7 +85,8 @@ describe("pypiVersions", () => {
   it("reads exact pins, requirements.txt first, ignoring ranges, markers and other packages", async () => {
     const dir = await dirWith({
       "requirements-legacy.txt": "openai==0.28.1\n",
-      "requirements.txt": "openai-whisper==20231117\nhttpx>=0.27\nOpenAI[datalib] == 1.50.0 ; python_version >= '3.8'  # pinned\r\n",
+      "requirements.txt":
+        "openai-whisper==20231117\nhttpx>=0.27\nOpenAI[datalib] == 1.50.0 ; python_version >= '3.8'  # pinned\r\n",
     });
     expect(await pypiVersions(dir, "openai")).toEqual([{ version: "1.50.0", from: "requirements.txt" }]);
     expect(await pypiVersions(await dirWith({ "requirements.txt": "openai>=1.0\n" }), "openai")).toEqual([]);
@@ -90,10 +102,15 @@ describe("pypiVersions", () => {
 
   it("reads every matching block in poetry.lock and uv.lock", async () => {
     const block = (name: string, version: string) => `[[package]]\nname = "${name}"\nversion = "${version}"\n`;
-    expect(await pypiVersions(await dirWith({ "poetry.lock": block("httpx", "0.27.0") + block("openai", "1.51.2") }), "openai")).toEqual([
-      { version: "1.51.2", from: "poetry.lock" },
-    ]);
-    expect(await pypiVersions(await dirWith({ "uv.lock": block("openai", "1.30.5") + block("openai", "1.52.0") }), "openai")).toEqual([
+    expect(
+      await pypiVersions(
+        await dirWith({ "poetry.lock": block("httpx", "0.27.0") + block("openai", "1.51.2") }),
+        "openai",
+      ),
+    ).toEqual([{ version: "1.51.2", from: "poetry.lock" }]);
+    expect(
+      await pypiVersions(await dirWith({ "uv.lock": block("openai", "1.30.5") + block("openai", "1.52.0") }), "openai"),
+    ).toEqual([
       { version: "1.30.5", from: "uv.lock" },
       { version: "1.52.0", from: "uv.lock" },
     ]);
@@ -103,7 +120,11 @@ describe("pypiVersions", () => {
 describe("versions on a repository built to slow it down", () => {
   it("finishes quickly on a requirements line padded with spaces", { tags: ["cpu-time"] }, async () => {
     const dir = await dirWith({ "requirements.txt": `openai${" ".repeat(100_000)}\nopenai==1.50.0\n` });
-    const time = await cpuTime(async () => expect(await pypiVersions(dir, "openai")).toEqual([{ version: "1.50.0", from: "requirements.txt" }]), 3, 2000);
+    const time = await cpuTime(
+      async () => expect(await pypiVersions(dir, "openai")).toEqual([{ version: "1.50.0", from: "requirements.txt" }]),
+      3,
+      2000,
+    );
     expect(time).toBeLessThan(2000);
   });
 

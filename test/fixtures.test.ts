@@ -62,7 +62,14 @@ describe("pack fixtures", () => {
     // matches nothing: exactly the mistake the runner exists to catch.
     await writeFile(
       join(dir, "rules", "js", "01-rename.yml"),
-      ["id: broken", "language: javascript", "rule:", "  pattern: 'max_tokens: $N'", "fix: 'max_completion_tokens: $N'", ""].join("\n"),
+      [
+        "id: broken",
+        "language: javascript",
+        "rule:",
+        "  pattern: 'max_tokens: $N'",
+        "fix: 'max_completion_tokens: $N'",
+        "",
+      ].join("\n"),
     );
 
     const [result] = await runPackFixtures(dir, record);
@@ -75,7 +82,10 @@ describe("pack fixtures", () => {
     const { dir, record } = await packCopy();
     tempDirs.push(dir);
     const afterPath = join(dir, "fixtures", "basic", "after", "app.py");
-    await writeFile(afterPath, (await readFile(afterPath, "utf8")).replace("max_completion_tokens=256", "max_completion_tokens=512"));
+    await writeFile(
+      afterPath,
+      (await readFile(afterPath, "utf8")).replace("max_completion_tokens=256", "max_completion_tokens=512"),
+    );
 
     const [result] = await runPackFixtures(dir, record);
     expect(result?.problems.join("\n")).toMatch(/after\/app\.py does not match rules applied/);
@@ -93,7 +103,9 @@ describe("pack fixtures", () => {
   it("fails a record with no fixture file for a language it has patterns for", async () => {
     const record = parseChangeRecord(JSON.parse(await readFile(join(BAD_PACK, "change.json"), "utf8")), "change.json");
     const problems = (await runPackFixtures(BAD_PACK, record)).flatMap((r) => r.problems);
-    expect(problems).toEqual(["openai:2026-01-01:bad-python-pattern: no fixture case has a py file in before/, so its py patterns and rules are never run"]);
+    expect(problems).toEqual([
+      "openai:2026-01-01:bad-python-pattern: no fixture case has a py file in before/, so its py patterns and rules are never run",
+    ]);
   });
 
   it("fails a pack with rules for a language no fixture covers", async () => {
@@ -103,12 +115,19 @@ describe("pack fixtures", () => {
       const caseDir = join(dir, "fixtures", c);
       await rm(join(caseDir, "before", "app.py"), { force: true });
       await rm(join(caseDir, "after", "app.py"), { force: true });
-      const expected = JSON.parse(await readFile(join(caseDir, "expected.json"), "utf8")) as { matches: Record<string, number> };
+      const expected = JSON.parse(await readFile(join(caseDir, "expected.json"), "utf8")) as {
+        matches: Record<string, number>;
+      };
       delete expected.matches["before/app.py"];
       await writeFile(join(caseDir, "expected.json"), JSON.stringify(expected));
     }
-    const results = await runPackFixtures(dir, { ...record, detection: { astGrepPatterns: { js: record.detection.astGrepPatterns.js! } } });
-    expect(results.flatMap((r) => r.problems)).toEqual([`${record.id}: no fixture case has a py file in before/, so its py patterns and rules are never run`]);
+    const results = await runPackFixtures(dir, {
+      ...record,
+      detection: { astGrepPatterns: { js: record.detection.astGrepPatterns.js! } },
+    });
+    expect(results.flatMap((r) => r.problems)).toEqual([
+      `${record.id}: no fixture case has a py file in before/, so its py patterns and rules are never run`,
+    ]);
   });
 });
 
@@ -129,9 +148,14 @@ describe("records whose patterns do not compile", () => {
     await cp(resolve("package.json"), join(dir, "package.json"));
     await symlink(resolve("node_modules"), join(dir, "node_modules"));
 
-    const run = spawnSync(join(dir, "node_modules", ".bin", "tsx"), ["scripts/fixtures.ts"], { cwd: dir, encoding: "utf8" });
+    const run = spawnSync(join(dir, "node_modules", ".bin", "tsx"), ["scripts/fixtures.ts"], {
+      cwd: dir,
+      encoding: "utf8",
+    });
     expect(run.status).toBe(1);
-    expect(run.stdout).toMatch(/^✗ invalid ChangeRecord at openai\/2026-01-01-bad-python-pattern\/change\.json:\nopenai:2026-01-01:bad-python-pattern: py pattern 1 does not compile for python: /);
+    expect(run.stdout).toMatch(
+      /^✗ invalid ChangeRecord at openai\/2026-01-01-bad-python-pattern\/change\.json:\nopenai:2026-01-01:bad-python-pattern: py pattern 1 does not compile for python: /,
+    );
     expect(run.stdout).toMatch(/upgrade darnit, or report it/);
     expect(run.stdout + run.stderr).not.toMatch(/\n\s+at /);
   });

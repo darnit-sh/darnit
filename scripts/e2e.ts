@@ -73,16 +73,27 @@ const EXPECT: Record<string, Expect> = {
   },
   "06-test-breaks": {
     check: { exit: 1, has: ["src/summarize.js:5:5"] },
-    fix: { exit: 1, has: ["✗ Rename max_tokens", "rewritten, then put back", "The change broke your tests."], lacks: ["✓"] },
+    fix: {
+      exit: 1,
+      has: ["✗ Rename max_tokens", "rewritten, then put back", "The change broke your tests."],
+      lacks: ["✓"],
+    },
     changed: [],
   },
   "07-already-red": {
     check: { exit: 1, has: ["src/summarize.js:5:5"] },
-    fix: { exit: 1, has: ["✗ Rename max_tokens", "They already fail without the change.", "rerun with --no-test"], lacks: ["✓"] },
+    fix: {
+      exit: 1,
+      has: ["✗ Rename max_tokens", "They already fail without the change.", "rerun with --no-test"],
+      lacks: ["✓"],
+    },
     changed: [],
   },
   "08-clean": {
-    check: { exit: 0, has: ["No known vendor changes affect this repository.", "Scanned 1 JavaScript, TypeScript or Python file"] },
+    check: {
+      exit: 0,
+      has: ["No known vendor changes affect this repository.", "Scanned 1 JavaScript, TypeScript or Python file"],
+    },
     fix: { exit: 0, has: ["Nothing to fix."] },
     changed: [],
   },
@@ -90,29 +101,57 @@ const EXPECT: Record<string, Expect> = {
     check: { exit: 1, has: ["src/draft.ts:9:5  max_tokens: 512"] },
     fix: {
       exit: 1,
-      has: ["✗ Rename max_tokens", "could not confirm openai >= 4.60.0 (npm)", "build: npm run typecheck failed; files put back. The change broke your build."],
+      has: [
+        "✗ Rename max_tokens",
+        "could not confirm openai >= 4.60.0 (npm)",
+        "build: npm run typecheck failed; files put back. The change broke your build.",
+      ],
       lacks: ["✓"],
     },
     changed: [],
   },
   "12-js-old-lock": {
     check: { exit: 1, has: ["src/summarize.js:5:5  max_tokens: 256"] },
-    fix: { exit: 0, has: ["found in 1 file, not rewritten: needs openai >= 4.60.0, this repo has 4.20.0 (package-lock.json); upgrade it first"] },
+    fix: {
+      exit: 0,
+      has: [
+        "found in 1 file, not rewritten: needs openai >= 4.60.0, this repo has 4.20.0 (package-lock.json); upgrade it first",
+      ],
+    },
     changed: [],
   },
   "13-groq-sdk": {
-    check: { exit: 0, has: ["No known vendor changes affect this repository.", "Left out 1 call made through another provider's client with the same methods: src/chat.js:9."] },
+    check: {
+      exit: 0,
+      has: [
+        "No known vendor changes affect this repository.",
+        "Left out 1 call made through another provider's client with the same methods: src/chat.js:9.",
+      ],
+    },
     fix: { exit: 0, has: ["Nothing to fix."] },
     changed: [],
   },
   "14-openrouter-baseurl": {
-    check: { exit: 0, has: ["No known vendor changes affect this repository.", "Left out 1 call made through another provider's client"] },
+    check: {
+      exit: 0,
+      has: [
+        "No known vendor changes affect this repository.",
+        "Left out 1 call made through another provider's client",
+      ],
+    },
     fix: { exit: 0, has: ["Nothing to fix."] },
     changed: [],
   },
   "15-mixed-clients": {
-    check: { exit: 1, has: ["src/chat.js:8:", "Left out 1 call made through another provider's client"], lacks: ["src/chat.js:11:"] },
-    fix: { exit: 0, has: ["found in 1 file, not rewritten: this file also calls another provider through the same methods"] },
+    check: {
+      exit: 1,
+      has: ["src/chat.js:8:", "Left out 1 call made through another provider's client"],
+      lacks: ["src/chat.js:11:"],
+    },
+    fix: {
+      exit: 0,
+      has: ["found in 1 file, not rewritten: this file also calls another provider through the same methods"],
+    },
     changed: [],
   },
   // Its .npmrc runs its own files under npm, as fix runs `npm test`; the run below checks the workflow line.
@@ -123,11 +162,19 @@ const EXPECT: Record<string, Expect> = {
   },
   "11-py-old-sdk": {
     check: { exit: 1, has: ["app/summarize.py:5:9  max_tokens=256"] },
-    fix: { exit: 0, has: ["found in 1 file, not rewritten: needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first"] },
+    fix: {
+      exit: 0,
+      has: [
+        "found in 1 file, not rewritten: needs openai >= 1.45.0, this repo has 1.40.0 (requirements.txt); upgrade it first",
+      ],
+    },
     changed: [],
   },
   "09-options-elsewhere": {
-    check: { exit: 0, has: ["No known vendor changes affect this repository.", "Not checked: request options built elsewhere"] },
+    check: {
+      exit: 0,
+      has: ["No known vendor changes affect this repository.", "Not checked: request options built elsewhere"],
+    },
     fix: { exit: 0, has: ["Nothing to fix."] },
     changed: [],
   },
@@ -148,7 +195,9 @@ function must(cmd: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv)
 // A scenario folder without expectations, or expectations without a folder, is a mistake, not a skip.
 const folders = readdirSync(SCENARIOS).sort();
 if (JSON.stringify(folders) !== JSON.stringify(Object.keys(EXPECT).sort())) {
-  throw new Error(`test/e2e folders [${folders.join(", ")}] do not match the expectations [${Object.keys(EXPECT).join(", ")}]`);
+  throw new Error(
+    `test/e2e folders [${folders.join(", ")}] do not match the expectations [${Object.keys(EXPECT).join(", ")}]`,
+  );
 }
 
 let given: ReturnType<typeof givenTarball>;
@@ -162,7 +211,12 @@ try {
 const work = mkdtempSync(join(tmpdir(), "darnit-e2e-"));
 let failures = 0;
 try {
-  const { install, line: installed, env: tarballEnv, packed } = installTarball(
+  const {
+    install,
+    line: installed,
+    env: tarballEnv,
+    packed,
+  } = installTarball(
     work,
     given,
     (dest) => must("npm", ["pack", "--silent", "--pack-destination", dest], ROOT),
@@ -181,11 +235,17 @@ try {
     console.log(`✗ usage error exited ${usage.exit}, expected 2\n${usage.out}`);
   } else console.log("✓ usage error exits 2");
   // An empty path must not fall back to the current folder: a workflow with an unset variable would pass green.
-  for (const args of [["check", join(work, "no-such-folder")], ["check", ""], ["check", "--json", " "]]) {
+  for (const args of [
+    ["check", join(work, "no-such-folder")],
+    ["check", ""],
+    ["check", "--json", " "],
+  ]) {
     const missing = run(darnit, args, install);
     if (missing.exit !== 2 || !missing.out.includes("is not a folder")) {
       failures++;
-      console.log(`✗ check ${JSON.stringify(args.slice(1))} exited ${missing.exit}, expected 2 and "is not a folder"\n${missing.out}`);
+      console.log(
+        `✗ check ${JSON.stringify(args.slice(1))} exited ${missing.exit}, expected 2 and "is not a folder"\n${missing.out}`,
+      );
     } else console.log(`✓ check ${JSON.stringify(args.slice(1))} exits 2`);
   }
 
@@ -196,13 +256,16 @@ try {
     // Outside GitHub Actions wherever this runs, so the output of two runs can be compared.
     let env: NodeJS.ProcessEnv = { ...USER_ENV, GITHUB_ACTIONS: "", GITHUB_WORKSPACE: dir };
     // Scenarios that list pytest get a virtualenv with it, so their suite can run.
-    const requirements = readdirSync(dir).includes("requirements.txt") ? readFileSync(join(dir, "requirements.txt"), "utf8") : "";
+    const requirements = readdirSync(dir).includes("requirements.txt")
+      ? readFileSync(join(dir, "requirements.txt"), "utf8")
+      : "";
     if (requirements.includes("pytest")) {
       must("python3", ["-m", "venv", ".venv"], dir);
       must(join(dir, ".venv", "bin", "python"), ["-m", "pip", "install", "--quiet", "pytest"], dir);
       env = { ...env, PATH: `${join(dir, ".venv", "bin")}${delimiter}${process.env.PATH ?? ""}` };
     }
-    const git = (...args: string[]) => must("git", ["-c", "user.name=e2e", "-c", "user.email=e2e@example.com", ...args], dir, env);
+    const git = (...args: string[]) =>
+      must("git", ["-c", "user.name=e2e", "-c", "user.email=e2e@example.com", ...args], dir, env);
     git("init", "-q");
     must(darnit, ["init"], dir, env);
     git("add", "-A");
@@ -217,7 +280,8 @@ try {
     const check = run(darnit, ["check"], dir, env);
     expectRun("check", check, want.check);
     const outside = run(darnit, ["check", dir], install, env);
-    if (outside.exit !== check.exit || outside.out !== check.out) problems.push(`check run from outside differs:\n${outside.out}`);
+    if (outside.exit !== check.exit || outside.out !== check.out)
+      problems.push(`check run from outside differs:\n${outside.out}`);
     const fix = run(darnit, ["fix"], dir, env);
     expectRun("fix", fix, want.fix);
 
@@ -233,13 +297,16 @@ try {
       if (!readFileSync(join(dir, file), "utf8").includes(text)) problems.push(`${file} should contain: ${text}`);
     }
     for (const [file, text] of want.drops ?? []) {
-      if (readFileSync(join(dir, file), "utf8").includes(text)) problems.push(`${file} should no longer contain: ${text}`);
+      if (readFileSync(join(dir, file), "utf8").includes(text))
+        problems.push(`${file} should no longer contain: ${text}`);
     }
 
     if (problems.length === 0) console.log(`✓ ${name}`);
     else {
       failures++;
-      console.log(`✗ ${name}\n${problems.map((p) => `    ${p}`).join("\n")}\n  check output:\n${check.out}\n  fix output:\n${fix.out}`);
+      console.log(
+        `✗ ${name}\n${problems.map((p) => `    ${p}`).join("\n")}\n  check output:\n${check.out}\n  fix output:\n${fix.out}`,
+      );
     }
   }
 
@@ -282,23 +349,47 @@ try {
   // [label, command, environment, exit, files that must run (none may run when empty)]
   const cases: [string, string, NodeJS.ProcessEnv, (exit: number, out: string) => boolean, string[]][] = [
     ["workflow line", packed(line), actions, (exit, out) => exit === 1 && out.includes(hit), []],
-    ["workflow line, GITHUB_WORKSPACE empty", packed(line), { ...actions, GITHUB_WORKSPACE: "" }, (exit) => exit !== 0, []],
-    ["workflow line, RUNNER_TEMP unset", packed(line), { ...actions, RUNNER_TEMP: undefined }, (exit) => exit !== 0, []],
+    [
+      "workflow line, GITHUB_WORKSPACE empty",
+      packed(line),
+      { ...actions, GITHUB_WORKSPACE: "" },
+      (exit) => exit !== 0,
+      [],
+    ],
+    [
+      "workflow line, RUNNER_TEMP unset",
+      packed(line),
+      { ...actions, RUNNER_TEMP: undefined },
+      (exit) => exit !== 0,
+      [],
+    ],
     // Controls: started inside the repository, an unpinned npx runs its planted bin, and any npx runs its .npmrc settings.
     ["npx darnit inside the repository", "npx darnit check", actions, () => true, ["ran-bin"]],
-    ["npx darnit@<pin> inside the repository", packed("npx darnit@pin check"), actions, () => true, ["ran-node-options", "ran-script-shell"]],
+    [
+      "npx darnit@<pin> inside the repository",
+      packed("npx darnit@pin check"),
+      actions,
+      () => true,
+      ["ran-node-options", "ran-script-shell"],
+    ],
   ];
   for (const [label, cmd, env, exitOk, want] of cases) {
     const r = run("sh", ["-c", cmd], hostile, env);
     const markers = ran();
     for (const f of markers) rmSync(join(hostile, f));
     const ok =
-      notUser(env).length === 0 && exitOk(r.exit, r.out) && (want.length ? want.every((f) => markers.includes(f)) : markers.length === 0);
+      notUser(env).length === 0 &&
+      exitOk(r.exit, r.out) &&
+      (want.length ? want.every((f) => markers.includes(f)) : markers.length === 0);
     if (ok) console.log(`✓ ${label}: exited ${r.exit}, the repository ran [${markers.join(", ")}]`);
     else {
       failures++;
-      const leaked = notUser(env).map((k) => `, with ${k} set, which a user's shell does not have`).join("");
-      console.log(`✗ ${label} (${cmd}): exited ${r.exit}, the repository ran [${markers.join(", ")}], expected [${want.join(", ")}]${leaked}\n${r.out}`);
+      const leaked = notUser(env)
+        .map((k) => `, with ${k} set, which a user's shell does not have`)
+        .join("");
+      console.log(
+        `✗ ${label} (${cmd}): exited ${r.exit}, the repository ran [${markers.join(", ")}], expected [${want.join(", ")}]${leaked}\n${r.out}`,
+      );
     }
   }
 } finally {
