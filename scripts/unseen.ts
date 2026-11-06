@@ -34,7 +34,9 @@ export function declarations(text: string): Map<string, string> {
 export function uses(body: string, name: string): boolean {
   const unkeyed = body.replace(new RegExp(`(^|[{,])(\\s*)${name}(\\s*\\??:)`, "gm"), "$1$2_$3");
   if (!new RegExp(`(?<![\\w$.])${name}(?![\\w$])`).test(unkeyed)) return false;
-  const own = new RegExp(`\\b(?:const|let|var|function)\\s+${name}\\b|\\b(?:const|let|var)\\s+[[{][^\\]}]*(?<![\\w$.])${name}\\b`);
+  const own = new RegExp(
+    `\\b(?:const|let|var|function)\\s+${name}\\b|\\b(?:const|let|var)\\s+[[{][^\\]}]*(?<![\\w$.])${name}\\b`,
+  );
   return !own.test(body.slice(body.indexOf("\n")));
 }
 
@@ -47,17 +49,29 @@ function sources(root: string, dir = ""): string[] {
 }
 
 /** The repository path an import in `from` names, a .js name read as the .ts file beside it. */
-const resolved = (from: string, spec: string) => posix.normalize(posix.join(posix.dirname(from), spec)).replace(/\.js$/, ".ts");
+const resolved = (from: string, spec: string) =>
+  posix.normalize(posix.join(posix.dirname(from), spec)).replace(/\.js$/, ".ts");
 
 /** The names other files take from `file`: imported or destructured by name, or read from a namespace import. */
 export function imported(root: string, file: string): Set<string> {
   const names = new Set<string>();
-  const add = (list: string) => list.split(",").forEach((n) => names.add(n.trim().replace(/^type\s+/, "").split(/\s|:/)[0]!));
+  const add = (list: string) =>
+    list.split(",").forEach((n) =>
+      names.add(
+        n
+          .trim()
+          .replace(/^type\s+/, "")
+          .split(/\s|:/)[0]!,
+      ),
+    );
   for (const other of sources(root).filter((f) => f !== file)) {
     const text = strip(readFileSync(join(root, other), "utf8"), true);
     const from = (spec: string) => spec.startsWith(".") && resolved(other, spec) === file;
-    for (const m of text.matchAll(/\{([^}]*)\}\s*(?:from\s*|=\s*await\s+import\(\s*)["']([^"']+)["']/g)) if (from(m[2]!)) add(m[1]!);
-    for (const m of text.matchAll(/(?:\*\s+as|const|let|var)\s+(\w+)\s*(?:from\s*|=\s*await\s+import\(\s*)["']([^"']+)["']/g)) {
+    for (const m of text.matchAll(/\{([^}]*)\}\s*(?:from\s*|=\s*await\s+import\(\s*)["']([^"']+)["']/g))
+      if (from(m[2]!)) add(m[1]!);
+    for (const m of text.matchAll(
+      /(?:\*\s+as|const|let|var)\s+(\w+)\s*(?:from\s*|=\s*await\s+import\(\s*)["']([^"']+)["']/g,
+    )) {
       if (!from(m[2]!)) continue;
       for (const use of strip(text).matchAll(new RegExp(`\\b${m[1]}\\s*\\.\\s*(\\w+)`, "g"))) names.add(use[1]!);
     }
@@ -76,7 +90,7 @@ export function stillUnused(root: string, file: string, names: readonly string[]
   const top = declarations(text);
   const taken = imported(root, file);
   let left = new Set(names.filter((n) => /^\w+$/.test(n) && top.has(n) && !taken.has(n)));
-  for (let size = -1; size !== left.size; ) {
+  for (let size = -1; size !== left.size;) {
     size = left.size;
     const users = [...top].filter(([owner]) => !left.has(owner));
     left = new Set([...left].filter((n) => !users.some(([, body]) => uses(body, n))));

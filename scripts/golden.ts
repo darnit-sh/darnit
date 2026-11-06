@@ -14,26 +14,50 @@ import { parseArgs } from "node:util";
 // lines, model names, record ids, a short hash of the matched code), never their code.
 
 export type Report = {
-  scanned: { files: number; records: number; otherFiles?: number; foreign?: number; foreignAt?: string[]; tooLarge?: string[]; skipped?: { path: string; reason: string }[] };
+  scanned: {
+    files: number;
+    records: number;
+    otherFiles?: number;
+    foreign?: number;
+    foreignAt?: string[];
+    tooLarge?: string[];
+    skipped?: { path: string; reason: string }[];
+  };
   hits: { id: string; file: string; line: number; column: number; text: string; localAddresses?: string[] }[];
-  possiblyAffected: { id: string; file: string; line: number; column: number; text: string; model: string; localAddresses?: string[] }[];
+  possiblyAffected: {
+    id: string;
+    file: string;
+    line: number;
+    column: number;
+    text: string;
+    model: string;
+    localAddresses?: string[];
+  }[];
   mentions: { id: string; file: string; line: number; model: string }[];
 };
 
 /** A path or address from their repo as it is, or quoted and escaped when it holds a line break or other control character. */
 export const esc = (s: string) =>
-  /[\p{Cc}\u2028\u2029]/u.test(s) ? JSON.stringify(s).replace(/[\u007f-\u009f\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`) : s;
+  /[\p{Cc}\u2028\u2029]/u.test(s)
+    ? JSON.stringify(s).replace(
+        /[\u007f-\u009f\u2028\u2029]/g,
+        (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+      )
+    : s;
 const hash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 8);
 
 /** One finding per line, in the order darnit reports them. */
 export function lines(exit: number, r: Report): string {
   const s = r.scanned;
-  const local = (h: { localAddresses?: string[] }) => (h.localAddresses ? ` local=${h.localAddresses.map(esc).join(",")}` : "");
+  const local = (h: { localAddresses?: string[] }) =>
+    h.localAddresses ? ` local=${h.localAddresses.map(esc).join(",")}` : "";
   return [
     `exit ${exit}`,
     `scanned files=${s.files} records=${s.records} otherFiles=${s.otherFiles ?? 0} foreign=${s.foreign ?? 0} tooLarge=${s.tooLarge?.length ?? 0} skipped=${s.skipped?.length ?? 0}`,
     ...r.hits.map((h) => `H ${esc(h.file)}:${h.line}:${h.column} #${hash(h.text)} ${h.id}${local(h)}`),
-    ...r.possiblyAffected.map((p) => `P ${esc(p.file)}:${p.line}:${p.column} #${hash(p.text)} ${p.model} ${p.id}${local(p)}`),
+    ...r.possiblyAffected.map(
+      (p) => `P ${esc(p.file)}:${p.line}:${p.column} #${hash(p.text)} ${p.model} ${p.id}${local(p)}`,
+    ),
     ...r.mentions.map((m) => `M ${esc(m.file)}:${m.line} ${m.model} ${m.id}`),
     ...(s.foreignAt ?? []).map((f) => `F ${esc(f)}`),
     ...(s.tooLarge ?? []).map((t) => `T ${esc(t)}`),
@@ -43,17 +67,27 @@ export function lines(exit: number, r: Report): string {
 }
 
 const git = (cwd: string, ...a: string[]) =>
-  spawnSync("git", a, { cwd, encoding: "utf8", timeout: 60_000, maxBuffer: 1 << 30, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" } });
+  spawnSync("git", a, {
+    cwd,
+    encoding: "utf8",
+    timeout: 60_000,
+    maxBuffer: 1 << 30,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" },
+  });
 
 export type Row = { repo: string; sha: string; slice: boolean; file: string };
 
 export function parseRows(text: string, where: string): Row[] {
-  return text.trimEnd().split("\n").slice(1).map((line, i) => {
-    const [repo = "", sha = "", slice = "", shape = ""] = line.split("\t");
-    if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !/^[0-9a-f]{40}$/.test(sha) || !/^(yes|no)$/.test(slice) || !shape)
-      throw new Error(`${where} line ${i + 2} is not repo, 40-character SHA, yes or no, shape: ${line}`);
-    return { repo, sha, slice: slice === "yes", file: `${repo.replace("/", "_")}.txt` };
-  });
+  return text
+    .trimEnd()
+    .split("\n")
+    .slice(1)
+    .map((line, i) => {
+      const [repo = "", sha = "", slice = "", shape = ""] = line.split("\t");
+      if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !/^[0-9a-f]{40}$/.test(sha) || !/^(yes|no)$/.test(slice) || !shape)
+        throw new Error(`${where} line ${i + 2} is not repo, 40-character SHA, yes or no, shape: ${line}`);
+      return { repo, sha, slice: slice === "yes", file: `${repo.replace("/", "_")}.txt` };
+    });
 }
 
 /** Repos a pull request body lets leave the slice: lines `Golden drop: owner/name, <reason>` outside HTML comments and code fences, reason at least 10 characters. */
@@ -70,7 +104,8 @@ export function drops(body: string): Map<string, string> {
 }
 
 /** Repos the base branch compares that this branch does not: gone from repos.tsv, or out of the slice. */
-export const shrunk = (base: Row[], head: Row[]) => base.filter((b) => !head.some((h) => h.repo === b.repo && (h.slice || !b.slice)));
+export const shrunk = (base: Row[], head: Row[]) =>
+  base.filter((b) => !head.some((h) => h.repo === b.repo && (h.slice || !b.slice)));
 
 /** Rows of repos.tsv at `base`; none when that commit has no repos.tsv. */
 function baseRows(base: string): Row[] {
@@ -88,7 +123,9 @@ const quiet = (dir: string, ...a: string[]) => {
 };
 // --ignored: a file their .gitignore hides is still scanned, so it must not be there either.
 const pinned = (dir: string, sha: string) =>
-  existsSync(join(dir, ".git")) && quiet(dir, "rev-parse", "HEAD") === sha && quiet(dir, "status", "--porcelain", "--ignored") === "";
+  existsSync(join(dir, ".git")) &&
+  quiet(dir, "rev-parse", "HEAD") === sha &&
+  quiet(dir, "status", "--porcelain", "--ignored") === "";
 
 /** Where clones are cached unless --dir says otherwise. */
 export const CLONES = join(homedir(), ".cache", "darnit-golden");
@@ -117,15 +154,26 @@ export function clone(root: string, repo: string, sha: string, recheck = false):
 
 /** The built CLI's `check --json` on `dir`: its exit code and report, or why darnit failed there. */
 export function runCheck(dir: string, repo: string): { exit: number; report: Report } | { error: string } {
-  const run = spawnSync(process.execPath, [resolve("dist/cli.js"), "check", "--json"], { cwd: dir, encoding: "utf8", maxBuffer: 1 << 30, env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" } });
-  if (run.status !== 0 && run.status !== 1) return { error: `darnit exited ${run.status ?? run.signal} on ${repo}: ${run.stderr || run.error?.message || ""}`.trim() };
+  const run = spawnSync(process.execPath, [resolve("dist/cli.js"), "check", "--json"], {
+    cwd: dir,
+    encoding: "utf8",
+    maxBuffer: 1 << 30,
+    env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" },
+  });
+  if (run.status !== 0 && run.status !== 1)
+    return {
+      error: `darnit exited ${run.status ?? run.signal} on ${repo}: ${run.stderr || run.error?.message || ""}`.trim(),
+    };
   if (run.stderr) return { error: `darnit wrote to stderr on ${repo}: ${run.stderr.trim()}` };
   try {
     const report = JSON.parse(run.stdout) as Report;
-    if (!report.scanned || ![report.hits, report.possiblyAffected, report.mentions].every(Array.isArray)) throw new Error("hits, possiblyAffected or mentions is missing");
+    if (!report.scanned || ![report.hits, report.possiblyAffected, report.mentions].every(Array.isArray))
+      throw new Error("hits, possiblyAffected or mentions is missing");
     return { exit: run.status, report };
   } catch (err) {
-    return { error: `darnit output on ${repo} is not a check report: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      error: `darnit output on ${repo} is not a check report: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 }
 
@@ -157,7 +205,9 @@ function main() {
     const from = slice ? "the slice" : "repos.tsv";
     const reason = allowed.get(repo);
     if (!reason) {
-      fail(`${repo} is in ${from} on the base branch and not on this branch. To drop it on purpose, add "Golden drop: ${repo}, <reason>" to the pull request body and push again; a re-run reads the old body`);
+      fail(
+        `${repo} is in ${from} on the base branch and not on this branch. To drop it on purpose, add "Golden drop: ${repo}, <reason>" to the pull request body and push again; a re-run reads the old body`,
+      );
       continue;
     }
     notes.push(`Dropped from ${from}: ${repo}, ${reason}`);
@@ -165,7 +215,8 @@ function main() {
   }
 
   const known = new Set(rows.map((r) => r.file));
-  for (const f of readdirSync(GOLDEN)) if (f.endsWith(".txt") && !known.has(f)) fail(`test/golden/${f} is for a repo not in repos.tsv`);
+  for (const f of readdirSync(GOLDEN))
+    if (f.endsWith(".txt") && !known.has(f)) fail(`test/golden/${f} is for a repo not in repos.tsv`);
 
   let compared = 0;
   const diffs: string[] = [];
@@ -174,7 +225,9 @@ function main() {
   for (const { repo, sha, file } of picked) {
     const dir = clone(args.dir, repo, sha, args.recheck);
     if (!dir) {
-      fail(`could not fetch ${repo} at ${sha}, not caused by this PR unless it changed repos.tsv. Rerun; if it keeps failing, the repo or commit is gone: replace it in repos.tsv`);
+      fail(
+        `could not fetch ${repo} at ${sha}, not caused by this PR unless it changed repos.tsv. Rerun; if it keeps failing, the repo or commit is gone: replace it in repos.tsv`,
+      );
       continue;
     }
     const run = runCheck(dir, repo);
@@ -189,14 +242,24 @@ function main() {
     else if (!existsSync(stored) || readFileSync(stored, "utf8") !== actual) {
       mkdirSync(args.out, { recursive: true });
       writeFileSync(join(args.out, file), actual);
-      const raw = git(".", "diff", "--no-index", "--no-color", "--", existsSync(stored) ? stored : "/dev/null", join(args.out, file)).stdout;
+      const raw = git(
+        ".",
+        "diff",
+        "--no-index",
+        "--no-color",
+        "--",
+        existsSync(stored) ? stored : "/dev/null",
+        join(args.out, file),
+      ).stdout;
       const diff = `--- test/golden/${file}\n+++ new ${file}\n${raw.slice(raw.indexOf("\n@@") + 1)}`;
       diffs.push(diff);
       added += diff.split("\n").filter((l) => /^\+[A-Za-z]/.test(l)).length;
       removed += diff.split("\n").filter((l) => /^-[A-Za-z]/.test(l)).length;
       fail(`${repo} result differs from test/golden/${file}`);
     }
-    console.log(`${repo}: ${actual.split("\n").filter((l) => /^[HPM] /.test(l)).length} call sites, values and mentions`);
+    console.log(
+      `${repo}: ${actual.split("\n").filter((l) => /^[HPM] /.test(l)).length} call sites, values and mentions`,
+    );
   }
 
   if (compared !== picked.length) fail(`compared ${compared} repos, repos.tsv lists ${picked.length}`);

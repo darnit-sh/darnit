@@ -35,7 +35,8 @@ export function parseAllowlist(text: string, fields: number) {
     if (raw.trim() === "" || raw.startsWith("#")) return;
     const parts = raw.split("\t");
     const finding = parts.slice(0, fields).join("\t");
-    if (parts.length !== fields + 1 || parts.some((p) => p.trim() === "")) errors.push(`line ${i + 1} needs ${fields} fields and a reason, tab separated`);
+    if (parts.length !== fields + 1 || parts.some((p) => p.trim() === ""))
+      errors.push(`line ${i + 1} needs ${fields} fields and a reason, tab separated`);
     else if (seen.has(finding)) errors.push(`line ${i + 1} repeats line ${seen.get(finding)}`);
     else {
       seen.set(finding, i + 1);
@@ -53,7 +54,12 @@ export function compare(found: Iterable<string>, lines: readonly Line[]) {
 }
 
 /** What is wrong with the allowlist `file` holds as `text`, given what a tool found, one message each. */
-export function problems(file: string, text: string, fields: number, find: (lines: readonly Line[]) => Found | readonly string[]): string[] {
+export function problems(
+  file: string,
+  text: string,
+  fields: number,
+  find: (lines: readonly Line[]) => Found | readonly string[],
+): string[] {
   const { lines, errors } = parseAllowlist(text, fields);
   const result = find(lines);
   const found: Found = Array.isArray(result) ? new Map(result.map((f) => [f, ""])) : (result as Found);
@@ -88,13 +94,19 @@ export function knipFindings(report: KnipReport): string[] {
 export function cloneFindings(report: CloneReport, root: string): Found {
   const pairs = new Map<string, string[]>();
   for (const d of report.duplicates) {
-    const sides = [d.firstFile, d.secondFile].map((p) => ({ file: relative(root, p.name), at: `${relative(root, p.name)}:${p.start}-${p.end}` }));
+    const sides = [d.firstFile, d.secondFile].map((p) => ({
+      file: relative(root, p.name),
+      at: `${relative(root, p.name)}:${p.start}-${p.end}`,
+    }));
     sides.sort((a, b) => a.file.localeCompare(b.file) || a.at.localeCompare(b.at, undefined, { numeric: true }));
     const key = sides.map((s) => s.file).join("\t");
     pairs.set(key, [...(pairs.get(key) ?? []), sides.map((s) => s.at).join(" and ")]);
   }
   const found = new Map<string, string>();
-  for (const [key, places] of pairs) places.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).forEach((at, i) => found.set(`${key}\t#${i + 1}`, `lines ${at}`));
+  for (const [key, places] of pairs)
+    places
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+      .forEach((at, i) => found.set(`${key}\t#${i + 1}`, `lines ${at}`));
   return found;
 }
 
@@ -102,11 +114,24 @@ export function cloneFindings(report: CloneReport, root: string): Found {
 function unseen(root: string, lines: readonly Line[]): string[] {
   const listed = lines.map((l) => l.finding.split("\t")).filter(([type]) => type === UNSEEN);
   const files = new Set(listed.map(([, file]) => file!));
-  return [...files].flatMap((file) => [...stillUnused(root, file, listed.filter(([, f]) => f === file).map(([, , n]) => n!))].map((n) => `${UNSEEN}\t${file}\t${n}`));
+  return [...files].flatMap((file) =>
+    [
+      ...stillUnused(
+        root,
+        file,
+        listed.filter(([, f]) => f === file).map(([, , n]) => n!),
+      ),
+    ].map((n) => `${UNSEEN}\t${file}\t${n}`),
+  );
 }
 
 function tool(name: string, args: string[], root: string) {
-  const r = spawnSync(join(root, "node_modules", ".bin", name), args, { cwd: root, encoding: "utf8", maxBuffer: 2 ** 28, timeout: 300_000 });
+  const r = spawnSync(join(root, "node_modules", ".bin", name), args, {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 2 ** 28,
+    timeout: 300_000,
+  });
   if (r.error) throw new Error(`${name} did not run: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`${name} exited ${r.status}; run npx ${name} to see why\n${r.stderr}`);
   return r.stdout;
@@ -125,9 +150,23 @@ function duplicates(root: string): Found {
   try {
     // An empty config in place of a .jscpd.json the folder might hold.
     writeFileSync(join(out, "config.json"), "{}\n");
-    const args = ["--config", join(out, "config.json"), "--no-gitignore", "--min-tokens", MIN_TOKENS, "--ignore-identifiers"];
-    tool("jscpd", [...args, "--reporters", "json", "--output", out, "--absolute", "--silent", "--no-tips", ...DUPLICATE_PATHS], root);
-    return cloneFindings(JSON.parse(readFileSync(join(out, "jscpd-report.json"), "utf8")) as CloneReport, realpathSync(root));
+    const args = [
+      "--config",
+      join(out, "config.json"),
+      "--no-gitignore",
+      "--min-tokens",
+      MIN_TOKENS,
+      "--ignore-identifiers",
+    ];
+    tool(
+      "jscpd",
+      [...args, "--reporters", "json", "--output", out, "--absolute", "--silent", "--no-tips", ...DUPLICATE_PATHS],
+      root,
+    );
+    return cloneFindings(
+      JSON.parse(readFileSync(join(out, "jscpd-report.json"), "utf8")) as CloneReport,
+      realpathSync(root),
+    );
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
@@ -142,10 +181,14 @@ export function check(kind: keyof typeof KINDS, root: string): string[] {
   const steps = ["scripts", "scripts/allow", file].map((p) => lstatSync(join(root, p), { throwIfNoEntry: false }));
   if (steps.some((step) => !step)) return [`${file} is missing; the check reads its list only from there`];
   const plain = steps.every((step, i) => (i < 2 ? step!.isDirectory() : step!.isFile()));
-  if (!plain || realpathSync(at) !== join(realpathSync(root), file)) return [`${file} is reached through a link or is not a file; it is read only as a file at that path`];
+  if (!plain || realpathSync(at) !== join(realpathSync(root), file))
+    return [`${file} is reached through a link or is not a file; it is read only as a file at that path`];
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as object;
   const keys = ["knip", "jscpd"].filter((k) => Object.hasOwn(pkg, k));
-  if (keys.length > 0) return keys.map((k) => `package.json has a "${k}" key, which would add to what knip.json and this check set; remove it`);
+  if (keys.length > 0)
+    return keys.map(
+      (k) => `package.json has a "${k}" key, which would add to what knip.json and this check set; remove it`,
+    );
   return problems(file, readFileSync(at, "utf8"), KINDS[kind].fields, (lines) => KINDS[kind].find(root, lines));
 }
 
