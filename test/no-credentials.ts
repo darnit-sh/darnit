@@ -5,7 +5,14 @@ import { afterAll } from "vitest";
 
 // No test, and no process a test starts, can read a credential of whoever runs the suite. A test that
 // needs a token sets a fake one itself.
-const TOKEN_VARS = ["GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "SSH_AUTH_SOCK"];
+const TOKEN_VARS = [
+  "GITHUB_TOKEN",
+  "GH_TOKEN",
+  "GH_ENTERPRISE_TOKEN",
+  "GITHUB_ENTERPRISE_TOKEN",
+  "GH_HOST",
+  "SSH_AUTH_SOCK",
+];
 
 const dir = mkdtempSync(join(tmpdir(), "darnit-no-credentials-"));
 for (const k of TOKEN_VARS) delete process.env[k];
