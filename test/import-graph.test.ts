@@ -14,17 +14,41 @@ describe("a require or createRequire the graph cannot follow fails", () => {
       `import { createRequire as makeRequire } from "node:module";\nconst load = makeRequire(import.meta.url);\nload("../check.js");`,
       ["createRequireasmakeRequire"],
     ],
-    ["createRequire imported by a string name", `import { "createRequire" as makeRequire } from "node:module";`, [`"createRequire"asmakeRequire`]],
+    [
+      "createRequire imported by a string name",
+      `import { "createRequire" as makeRequire } from "node:module";`,
+      [`"createRequire"asmakeRequire`],
+    ],
     ["require held in a variable", `const req = require;\nreq("../check.js");`, ["req=require"]],
-    ["createRequire through a namespace", `import * as nodeModule from "node:module";\nnodeModule.createRequire(import.meta.url)("./check.js");`, [`nodeModule.createRequire(import.meta.url)("./check.js")`]],
-    ["createRequire on another module object", `mod.createRequire(import.meta.url)("./check.js");`, [`mod.createRequire(import.meta.url)("./check.js")`]],
+    [
+      "createRequire through a namespace",
+      `import * as nodeModule from "node:module";\nnodeModule.createRequire(import.meta.url)("./check.js");`,
+      [`nodeModule.createRequire(import.meta.url)("./check.js")`],
+    ],
+    [
+      "createRequire on another module object",
+      `mod.createRequire(import.meta.url)("./check.js");`,
+      [`mod.createRequire(import.meta.url)("./check.js")`],
+    ],
     ["require in parentheses", `(require)("./check.js");`, [`(require)("./check.js")`]],
     ["module.require", `module.require("./check.js");`, [`module.require("./check.js")`]],
     ["globalThis.require", `globalThis.require("./check.js");`, [`globalThis.require("./check.js")`]],
     ["require by key", `globalThis["require"]("./check.js");`, [`globalThis["require"]("./check.js")`]],
-    ["createRequire assigned later", `let r;\nr = createRequire(import.meta.url);\nr("./check.js");`, ["createRequire(import.meta.url)"]],
-    ["createRequire held in a variable", `const load = createRequire(import.meta.url);\nload("./check.js");`, ["createRequire(import.meta.url)"]],
-    ["createRequire destructured", `const { createRequire: make } = await import("node:module");`, ["createRequire:make"]],
+    [
+      "createRequire assigned later",
+      `let r;\nr = createRequire(import.meta.url);\nr("./check.js");`,
+      ["createRequire(import.meta.url)"],
+    ],
+    [
+      "createRequire held in a variable",
+      `const load = createRequire(import.meta.url);\nload("./check.js");`,
+      ["createRequire(import.meta.url)"],
+    ],
+    [
+      "createRequire destructured",
+      `const { createRequire: make } = await import("node:module");`,
+      ["createRequire:make"],
+    ],
     ["require.resolve", `const at = require.resolve("./check.js");`, [`require.resolve("./check.js")`]],
     ["require named by a declaration", `const require = make(import.meta.url);`, ["require=make(import.meta.url)"]],
     ["require passed along", `run(require);`, ["run(require)"]],
@@ -49,7 +73,10 @@ describe("a require or createRequire the graph follows", () => {
   });
 
   it("with a computed path, as a computed call", () => {
-    expect(unfollowed("require(name);\ncreateRequire(import.meta.url)(dir + name);")).toEqual(["require(name)", "createRequire(import.meta.url)(dir+name)"]);
+    expect(unfollowed("require(name);\ncreateRequire(import.meta.url)(dir + name);")).toEqual([
+      "require(name)",
+      "createRequire(import.meta.url)(dir+name)",
+    ]);
   });
 
   it("only as code: comments, strings and regex literals that mention it are not uses", () => {

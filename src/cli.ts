@@ -6,7 +6,15 @@ import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { checkJson, checkReport, exitCodeForCheck, render } from "./check.js";
 import { escapedPieces } from "./detect.js";
-import { exitCodeFor, fix, forJson, forTerminal, forTerminalPieces, renderSummary, toJson as fixToJson } from "./fix.js";
+import {
+  exitCodeFor,
+  fix,
+  forJson,
+  forTerminal,
+  forTerminalPieces,
+  renderSummary,
+  toJson as fixToJson,
+} from "./fix.js";
 import { init } from "./init.js";
 import { updateNotice } from "./update.js";
 
@@ -18,7 +26,8 @@ const DIR = "the repository's folder (default: the current folder)";
  * as from an unset variable in a workflow, is refused rather than read as the current folder. */
 async function folder(dir = process.cwd()): Promise<string> {
   const abs = resolve(dir);
-  if (!dir.trim() || !(await stat(abs).catch(() => undefined))?.isDirectory()) throw new Error(`${dir.trim() ? dir : `"${dir}"`} is not a folder`);
+  if (!dir.trim() || !(await stat(abs).catch(() => undefined))?.isDirectory())
+    throw new Error(`${dir.trim() ? dir : `"${dir}"`} is not a folder`);
   return abs;
 }
 
@@ -69,7 +78,10 @@ program
     const root = await folder(dir);
     const update = updateNotice(version, { env: process.env, json });
     const { hits, coverage, values, mentions } = await checkReport(root);
-    if (json) await write(asJson(checkJson({ version, scanned: coverage }, { hits, possiblyAffected: values, mentions })), ["\n"]);
+    if (json)
+      await write(asJson(checkJson({ version, scanned: coverage }, { hits, possiblyAffected: values, mentions })), [
+        "\n",
+      ]);
     else {
       console.log(forTerminal(render(hits, coverage, values, mentions, all)));
       const notice = await update;
@@ -78,7 +90,17 @@ program
     process.exitCode = exitCodeForCheck(hits, coverage);
   });
 
-type FixFlags = { dryRun?: boolean; pr?: boolean; allowDirty?: boolean; repo?: string; only?: string[]; test?: string | false; json?: boolean; prepare?: string; publish?: string };
+type FixFlags = {
+  dryRun?: boolean;
+  pr?: boolean;
+  allowDirty?: boolean;
+  repo?: string;
+  only?: string[];
+  test?: string | false;
+  json?: boolean;
+  prepare?: string;
+  publish?: string;
+};
 
 program
   .command("fix")
@@ -86,8 +108,14 @@ program
   .argument("[dir]", DIR)
   .option("--dry-run", "show what would change without writing anything")
   .option("--pr", "commit on a branch, push, and open one pull request per change")
-  .option("--prepare <dir>", "verify each change as --pr does, then write a plan to <dir> instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md)")
-  .option("--publish <dir>", "open the pull requests a plan from --prepare holds, after making each change again and checking it matches the plan; runs none of the repository's code (see SECURITY.md)")
+  .option(
+    "--prepare <dir>",
+    "verify each change as --pr does, then write a plan to <dir> instead of committing; refuses to run where a token, saved credential or ssh key is reachable (see SECURITY.md)",
+  )
+  .option(
+    "--publish <dir>",
+    "open the pull requests a plan from --prepare holds, after making each change again and checking it matches the plan; runs none of the repository's code (see SECURITY.md)",
+  )
   .option("--allow-dirty", "let --pr or --prepare run with uncommitted changes present")
   .option("--repo <owner/name>", "GitHub repository, when origin is not a GitHub URL")
   .option("--only <id>", "restrict to one change record (repeatable)", (id: string, all: string[] = []) => [...all, id])
@@ -96,10 +124,13 @@ program
   .option("--json", "machine-readable output")
   .action(async (dir: string | undefined, flags: FixFlags) => {
     const plan = flags.prepare;
-    if (plan !== undefined && (!plan.trim() || plan.startsWith("-"))) throw new Error("--prepare needs the folder to write the plan to");
+    if (plan !== undefined && (!plan.trim() || plan.startsWith("-")))
+      throw new Error("--prepare needs the folder to write the plan to");
     const from = flags.publish;
-    if (from !== undefined && (!from.trim() || from.startsWith("-"))) throw new Error("--publish needs the folder that holds the plan");
-    if (plan !== undefined && flags.json) throw new Error("--prepare and --json can't be combined: the plan is the machine-readable output");
+    if (from !== undefined && (!from.trim() || from.startsWith("-")))
+      throw new Error("--publish needs the folder that holds the plan");
+    if (plan !== undefined && flags.json)
+      throw new Error("--prepare and --json can't be combined: the plan is the machine-readable output");
     const root = await folder(dir);
     const update = updateNotice(version, { env: process.env, json: flags.json });
     const result = await fix(root, {
@@ -114,7 +145,8 @@ program
       ...(flags.only ? { only: flags.only } : {}),
       ...(typeof flags.test === "string" ? { test: flags.test } : {}),
     });
-    if (flags.json) await write(asJson(escapedPieces(JSON.stringify({ version, ...fixToJson(result) }, null, 2))), ["\n"]);
+    if (flags.json)
+      await write(asJson(escapedPieces(JSON.stringify({ version, ...fixToJson(result) }, null, 2))), ["\n"]);
     else {
       if (result.diff) await write(forTerminalPieces(result.diff, process.stdout.isTTY ?? false), ["\n"]);
       console.log(forTerminal(renderSummary(result)));

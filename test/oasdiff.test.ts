@@ -38,7 +38,9 @@ describe("oasdiff", () => {
     vi.stubEnv("HOME", home);
     vi.stubEnv("OASDIFF", "");
     vi.stubEnv("PATH", "/usr/bin:/bin");
-    vi.stubGlobal("fetch", (url: string) => Promise.resolve(new Response(url.endsWith("checksums.txt") ? checksums : archive)));
+    vi.stubGlobal("fetch", (url: string) =>
+      Promise.resolve(new Response(url.endsWith("checksums.txt") ? checksums : archive)),
+    );
 
     await expect(oasdiffBinary()).rejects.toThrow(/checksum mismatch/);
     expect(existsSync(join(home, ".cache", "darnit"))).toBe(false);

@@ -11,9 +11,23 @@ const ids = new Set((await loadRecords()).map((l) => l.record.id));
 const ID = [...ids][0]!;
 const SHA = "a".repeat(40);
 const PATCH = `diff --git a/app.py b/app.py\nindex ${"1".repeat(40)}..${"2".repeat(40)} 100644\n--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-max_tokens=5\n+max_completion_tokens=5\n`;
-const outcome = { command: "npm test", passed: true, attributed: null, notChecked: false, timedOut: false, output: "ok" };
+const outcome = {
+  command: "npm test",
+  passed: true,
+  attributed: null,
+  notChecked: false,
+  timedOut: false,
+  output: "ok",
+};
 
-const valid = (): Plan => ({ version: 1, darnit: "0.2.0", base: SHA, groups: [{ id: ID, files: ["app.py"], patch: PATCH, build: null, buildNote: null, tests: { ...outcome }, testsNote: null }] });
+const valid = (): Plan => ({
+  version: 1,
+  darnit: "0.2.0",
+  base: SHA,
+  groups: [
+    { id: ID, files: ["app.py"], patch: PATCH, build: null, buildNote: null, tests: { ...outcome }, testsNote: null },
+  ],
+});
 const text = (plan: unknown) => JSON.stringify(plan);
 const group = (change: Record<string, unknown>) => ({ ...valid(), groups: [{ ...valid().groups[0], ...change }] });
 
@@ -21,7 +35,22 @@ describe("parsePlan", () => {
   it("accepts the plan darnit writes, and writes the same bytes whatever order its keys were set in", () => {
     const plan = valid();
     expect(parsePlan(serializePlan(plan, ids), ids)).toEqual(plan);
-    const reordered = { groups: [{ testsNote: null, tests: { ...outcome }, buildNote: null, build: null, patch: PATCH, files: ["app.py"], id: ID }], base: SHA, darnit: "0.2.0", version: 1 } as const;
+    const reordered = {
+      groups: [
+        {
+          testsNote: null,
+          tests: { ...outcome },
+          buildNote: null,
+          build: null,
+          patch: PATCH,
+          files: ["app.py"],
+          id: ID,
+        },
+      ],
+      base: SHA,
+      darnit: "0.2.0",
+      version: 1,
+    } as const;
     expect(serializePlan(reordered as unknown as Plan, ids)).toBe(serializePlan(plan, ids));
   });
 
@@ -53,12 +82,27 @@ describe("parsePlan", () => {
     const why = /a note says why a check did not run/;
     expect(() => parsePlan(text(group({ testsNote: "skipped with --no-test" })), ids)).toThrow(why);
     expect(() => parsePlan(text(group({ tests: null })), ids)).toThrow(why);
-    expect(() => parsePlan(text(group({ build: { ...outcome }, buildNote: "skipped with --no-test" })), ids)).toThrow(why);
-    expect(parsePlan(text(group({ tests: null, testsNote: "no test command found in this repository", buildNote: "package.json could not be read" })), ids).groups[0]).toMatchObject({ build: null, tests: null });
+    expect(() => parsePlan(text(group({ build: { ...outcome }, buildNote: "skipped with --no-test" })), ids)).toThrow(
+      why,
+    );
+    expect(
+      parsePlan(
+        text(
+          group({
+            tests: null,
+            testsNote: "no test command found in this repository",
+            buildNote: "package.json could not be read",
+          }),
+        ),
+        ids,
+      ).groups[0],
+    ).toMatchObject({ build: null, tests: null });
   });
 
   it("rejects a change record darnit does not have, or one named twice", () => {
-    expect(() => parsePlan(text(group({ id: "openai:2024-01-01:made-up" })), ids)).toThrow(/does not have: "openai:2024-01-01:made-up"/);
+    expect(() => parsePlan(text(group({ id: "openai:2024-01-01:made-up" })), ids)).toThrow(
+      /does not have: "openai:2024-01-01:made-up"/,
+    );
     expect(() => parsePlan(text({ ...valid(), groups: [valid().groups[0], valid().groups[0]] }), ids)).toThrow(/twice/);
   });
 
@@ -80,12 +124,27 @@ describe("parsePlan", () => {
     ["with no hunk", PATCH.replace(/@@[^]*$/, "")],
     ["with the same file twice", PATCH + PATCH],
     ["with a space name missing git's tab", PATCH.replaceAll("app.py", "a p.py")],
-    ["with a binary patch missing its blank line", PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nliteral 3\nCcmZ\n\n")],
-    ["with a binary patch holding a stray line", PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nrename to x\nliteral 3\nCcmZ\n\n")],
-    ["with more context lines than its hunk counts before", PATCH.replace(/@@ -1 \+1 @@\n[^]*$/, "@@ -1,1 +1,2 @@\n a\n b\n")],
-    ["with a binary patch holding a line that is not base85", PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nrm -rf /\n\nliteral 3\nCcmZ\n\n")],
+    [
+      "with a binary patch missing its blank line",
+      PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nliteral 3\nCcmZ\n\n"),
+    ],
+    [
+      "with a binary patch holding a stray line",
+      PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nrename to x\nliteral 3\nCcmZ\n\n"),
+    ],
+    [
+      "with more context lines than its hunk counts before",
+      PATCH.replace(/@@ -1 \+1 @@\n[^]*$/, "@@ -1,1 +1,2 @@\n a\n b\n"),
+    ],
+    [
+      "with a binary patch holding a line that is not base85",
+      PATCH.replace(/--- [^]*$/, "GIT binary patch\nliteral 3\nCcmZ\nrm -rf /\n\nliteral 3\nCcmZ\n\n"),
+    ],
     ["for a symbolic link", PATCH.replace(" 100644\n", " 120000\n")],
-    ["with a binary patch missing its size", PATCH.replace(/--- [^]*$/, "GIT binary patch\nCcmZ\n\nliteral 3\nCcmZ\n\n")],
+    [
+      "with a binary patch missing its size",
+      PATCH.replace(/--- [^]*$/, "GIT binary patch\nCcmZ\n\nliteral 3\nCcmZ\n\n"),
+    ],
   ])("rejects a patch %s", (_, patch) => {
     expect(() => parsePlan(text(group({ patch })), ids)).toThrow(/patch is not a git diff of exactly these files/);
   });
@@ -94,18 +153,28 @@ describe("parsePlan", () => {
   const quoted = (f: string) => {
     // The patch git prints for a name with a backslash: quoted, with each backslash doubled.
     const q = (p: string) => (p.includes("\\") ? `"${p.replaceAll("\\", "\\\\")}"` : p);
-    return PATCH.replace("diff --git a/app.py b/app.py", `diff --git ${q(`a/${f}`)} ${q(`b/${f}`)}`).replace("--- a/app.py", `--- ${q(`a/${f}`)}`).replace("+++ b/app.py", `+++ ${q(`b/${f}`)}`);
+    return PATCH.replace("diff --git a/app.py b/app.py", `diff --git ${q(`a/${f}`)} ${q(`b/${f}`)}`)
+      .replace("--- a/app.py", `--- ${q(`a/${f}`)}`)
+      .replace("+++ b/app.py", `+++ ${q(`b/${f}`)}`);
   };
-  it.each(["..\\..\\etc\\passwd", "a\\..\\..\\x", "\\abs", "\\\\server\\share\\x", "sub\\app.py", ".git\\config", "sub\\.git\\hooks\\pre-commit", "GIT~1\\config"])(
-    "rejects the path %j, whose backslashes Windows reads as separators",
-    (file) => {
-      expect(() => parsePlan(text(group({ files: [file], patch: quoted(file) })), ids)).toThrow(/holds a backslash/);
-    },
-  );
+  it.each([
+    "..\\..\\etc\\passwd",
+    "a\\..\\..\\x",
+    "\\abs",
+    "\\\\server\\share\\x",
+    "sub\\app.py",
+    ".git\\config",
+    "sub\\.git\\hooks\\pre-commit",
+    "GIT~1\\config",
+  ])("rejects the path %j, whose backslashes Windows reads as separators", (file) => {
+    expect(() => parsePlan(text(group({ files: [file], patch: quoted(file) })), ids)).toThrow(/holds a backslash/);
+  });
 
   // A one-letter name before a colon, such as a:b, reads as a drive too.
   it.each(["C:\\Windows\\x", "C:x", "c:/x", "a:b"])("rejects the path %j, which starts with a drive letter", (file) => {
-    expect(() => parsePlan(text(group({ files: [file], patch: quoted(file) })), ids)).toThrow(/starts with a drive letter/);
+    expect(() => parsePlan(text(group({ files: [file], patch: quoted(file) })), ids)).toThrow(
+      /starts with a drive letter/,
+    );
   });
 
   it.each(["ab:c", "sub/a:b", "sub/C:x", "app.py"])("accepts the path %j", (file) => {
@@ -116,12 +185,31 @@ describe("parsePlan", () => {
     expect(() => parsePlan(text(group({ files: ["app.py", "b.py"] })), ids)).toThrow(/patch is not a git diff/);
   });
 
-  it.each(["../app.py", "/etc/passwd", "a/../../app.py", ".git/config", "sub/.GIT/hooks/pre-commit", "a//b", "./app.py", ".git ", ".git.", "sub/.GIT. ./x", "git~1/config", "GIT~1", ".g\u200cit/hooks", "a/.git\ufeff/x", ".git::$INDEX_ALLOCATION/config", ".git:x/config", "sub/GIT~1:x/y", "a\0b", ""])(
-    "rejects the path %j as not inside the repository",
-    (file) => {
-      expect(() => parsePlan(text(group({ files: [file], patch: PATCH.replaceAll("app.py", file) })), ids)).toThrow(/not a path inside the repository/);
-    },
-  );
+  it.each([
+    "../app.py",
+    "/etc/passwd",
+    "a/../../app.py",
+    ".git/config",
+    "sub/.GIT/hooks/pre-commit",
+    "a//b",
+    "./app.py",
+    ".git ",
+    ".git.",
+    "sub/.GIT. ./x",
+    "git~1/config",
+    "GIT~1",
+    ".g\u200cit/hooks",
+    "a/.git\ufeff/x",
+    ".git::$INDEX_ALLOCATION/config",
+    ".git:x/config",
+    "sub/GIT~1:x/y",
+    "a\0b",
+    "",
+  ])("rejects the path %j as not inside the repository", (file) => {
+    expect(() => parsePlan(text(group({ files: [file], patch: PATCH.replaceAll("app.py", file) })), ids)).toThrow(
+      /not a path inside the repository/,
+    );
+  });
 
   it("rejects another format version, a base that is not a commit id, and text that is not JSON", () => {
     expect(() => parsePlan(text({ ...valid(), version: 2 }), ids)).toThrow(/invalid plan/);
@@ -145,7 +233,11 @@ describe("parsePlan", () => {
   });
 
   it("stays fast on paths of thousands of parts", { tags: ["cpu-time"] }, async () => {
-    const planOf = (path: string) => text({ ...valid(), groups: [...ids].slice(0, 2).map((id) => ({ ...valid().groups[0]!, id, files: Array(CAPS.files).fill(path) })) });
+    const planOf = (path: string) =>
+      text({
+        ...valid(),
+        groups: [...ids].slice(0, 2).map((id) => ({ ...valid().groups[0]!, id, files: Array(CAPS.files).fill(path) })),
+      });
     const plan = planOf(Array(2048).fill("a").join("/"));
     expect(Buffer.byteLength(plan)).toBeGreaterThan(CAPS.plan * 0.95);
     const reject = (p: string) => () => expect(() => parsePlan(p, ids)).toThrow(/patch is not a git diff/);
@@ -163,7 +255,11 @@ describe("parsePlan", () => {
     for (const n of names) await writeFile(join(dir, n), n === "two hunks.js" ? long : "a\n");
     await git(dir, ["add", "."]);
     await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "i"]);
-    for (const n of names) await writeFile(join(dir, n), n === "two hunks.js" ? long.replace("line 1\n", "one\n").replace("line 19", "last") : "b\n");
+    for (const n of names)
+      await writeFile(
+        join(dir, n),
+        n === "two hunks.js" ? long.replace("line 1\n", "one\n").replace("line 19", "last") : "b\n",
+      );
     const patch = await gitPatch(dir, names);
     expect(patch).toContain("GIT binary patch");
     expect(patch).toContain("--- a/sp ace.js\t\n");
@@ -175,8 +271,12 @@ describe("parsePlan", () => {
 
   it("rejects a field given twice, which JSON.parse would quietly read as the last one", () => {
     const plan = text(valid());
-    expect(() => parsePlan(plan.replace('{"version":1,', '{"version":1,"version":1,'), ids)).toThrow('plan holds the field "version" twice');
-    expect(() => parsePlan(plan.replace('"build":null,', '"build":null,"build":null,'), ids)).toThrow('plan holds the field "build" twice');
+    expect(() => parsePlan(plan.replace('{"version":1,', '{"version":1,"version":1,'), ids)).toThrow(
+      'plan holds the field "version" twice',
+    );
+    expect(() => parsePlan(plan.replace('"build":null,', '"build":null,"build":null,'), ids)).toThrow(
+      'plan holds the field "build" twice',
+    );
     // The same text inside a string is no field.
     const quoted = PATCH.replace("+max_completion_tokens=5", '+x = {"a": 1, "a": 2}');
     expect(parsePlan(text(group({ patch: quoted })), ids).groups[0]!.patch).toBe(quoted);
@@ -196,7 +296,10 @@ describe("parsePlan", () => {
       errorOf({ ...valid(), ["k".repeat(7 * 1024 * 1024)]: 1 }),
       errorOf(group({ id: "openai:2024-01-01:x\n::error::pwned\u0085" })),
       errorOf(text(valid()).replace('{"version":1,', '{"\\n::warning::x":1,"\\n::warning::x":1,"version":1,')),
-      errorOf({ ...valid(), groups: Array.from({ length: 20 }, () => ({ ...valid().groups[0], [`\n::x${"y".repeat(100)}`]: 1 })) }),
+      errorOf({
+        ...valid(),
+        groups: Array.from({ length: 20 }, () => ({ ...valid().groups[0], [`\n::x${"y".repeat(100)}`]: 1 })),
+      }),
     ];
     // eslint-disable-next-line no-control-regex
     const unsafe = /^::|[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]/;

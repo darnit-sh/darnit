@@ -7,9 +7,18 @@ import { childEnv, CREDENTIALS } from "./git.js";
 
 export type TestRun = { command: string; passed: boolean; output: string; timedOut: boolean };
 
-const exists = (path: string) => access(path).then(() => true, () => false);
+const exists = (path: string) =>
+  access(path).then(
+    () => true,
+    () => false,
+  );
 /** A file that is there, even as a broken link, but that readText turned away. */
-const unread = async (path: string, text: string | undefined) => text === undefined && (await lstat(path).then(() => true, () => false));
+const unread = async (path: string, text: string | undefined) =>
+  text === undefined &&
+  (await lstat(path).then(
+    () => true,
+    () => false,
+  ));
 
 const NPM_PLACEHOLDER = /no test specified/;
 
@@ -85,7 +94,14 @@ export async function unreadSettings(root: string): Promise<string | undefined> 
 async function pythonOnPath(path: string): Promise<string | undefined> {
   for (const name of ["python3", "python"]) {
     for (const dir of path.split(delimiter)) {
-      if (dir && (await access(join(dir, name), constants.X_OK).then(() => true, () => false))) return name;
+      if (
+        dir &&
+        (await access(join(dir, name), constants.X_OK).then(
+          () => true,
+          () => false,
+        ))
+      )
+        return name;
     }
   }
   return undefined;
@@ -118,7 +134,11 @@ const ESCAPES = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b\n]*(?:\u0007|\u00
 /** How long a build or test run may take before it is stopped. */
 export const TIME_LIMIT_MINUTES = 10;
 
-export async function runTests(root: string, command: string, timeoutMs = TIME_LIMIT_MINUTES * 60 * 1000): Promise<TestRun> {
+export async function runTests(
+  root: string,
+  command: string,
+  timeoutMs = TIME_LIMIT_MINUTES * 60 * 1000,
+): Promise<TestRun> {
   const env: NodeJS.ProcessEnv = { ...(await childEnv()), CI: "1" };
   return new Promise((resolve) => {
     // Detached = its own process group, so a timeout kills the command and not just the shell around it.

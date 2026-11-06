@@ -8,7 +8,19 @@ import { afterEach, expect } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..");
 const tsx = join(ROOT, "node_modules", ".bin", "tsx");
-const COPIED = ["src", "scripts", "test", ".gitignore", "package.json", "knip.json", "tsconfig.json", "tsconfig.build.json", "vitest.config.ts", "coverage-thresholds.json", "eslint.config.js"];
+const COPIED = [
+  "src",
+  "scripts",
+  "test",
+  ".gitignore",
+  "package.json",
+  "knip.json",
+  "tsconfig.json",
+  "tsconfig.build.json",
+  "vitest.config.ts",
+  "coverage-thresholds.json",
+  "eslint.config.js",
+];
 
 export const tempDirs: string[] = [];
 afterEach(async () => {
@@ -37,6 +49,15 @@ export const edit = async (file: string, from: string, to: string) => {
 
 /** A 60 line function; `rename` swaps every name in it, as a copy with variables renamed would. */
 export function block(rename: (name: string) => string) {
-  const body = Array.from({ length: 57 }, (_, i) => `  const ${rename(`part${i}`)} = ${rename("input")}.slice(${i}, ${i + 3}).trim() + ${rename("sep")};`);
-  return [`export function ${rename("pieces")}(${rename("input")}: string, ${rename("sep")}: string): number {`, ...body, `  return ${rename("part0")}.length;`, "}", ""].join("\n");
+  const body = Array.from(
+    { length: 57 },
+    (_, i) => `  const ${rename(`part${i}`)} = ${rename("input")}.slice(${i}, ${i + 3}).trim() + ${rename("sep")};`,
+  );
+  return [
+    `export function ${rename("pieces")}(${rename("input")}: string, ${rename("sep")}: string): number {`,
+    ...body,
+    `  return ${rename("part0")}.length;`,
+    "}",
+    "",
+  ].join("\n");
 }

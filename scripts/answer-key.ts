@@ -19,7 +19,8 @@ import { CLONES, clone, esc, parseRows, runCheck, type Report } from "./golden.j
 export const RULES = {
   "call site": "a model named in the code of a reported call is listed with that call, not again as a mention",
   "longer id": "the line is reported once, under the longer id, such as gpt-4-0613 and not also gpt-4",
-  "letters only": "a letters-only id such as ada is not reported in prose, only in quotes or as a model or engine setting",
+  "letters only":
+    "a letters-only id such as ada is not reported in prose, only in quotes or as a model or engine setting",
   "long line": `an id such as o1 on a line over ${LONG_LINE} characters, as in minified code, is not reported unless quoted or a setting`,
   "code name": "an id such as o1 used as a name in code is not reported, only in comments, strings and settings",
 } as const;
@@ -29,7 +30,14 @@ const WORD = "part of a longer word";
 
 export type Miss = { file: string; line: number; id: string; side: "darnit" | "search" };
 export type Known = Miss & { repo: string; reason: string };
-export type Tally = { mentions: number; agreed: number; explained: Partial<Record<Rule, number>>; known: number; unexplained: Miss[]; wordParts: number };
+export type Tally = {
+  mentions: number;
+  agreed: number;
+  explained: Partial<Record<Rule, number>>;
+  known: number;
+  unexplained: Miss[];
+  wordParts: number;
+};
 export const tally = (): Tally => ({ mentions: 0, agreed: 0, explained: {}, known: 0, unexplained: [], wordParts: 0 });
 
 const NAME_BEFORE = /[\p{L}\p{M}\p{N}_.-]$/u;
@@ -80,7 +88,12 @@ function quoted(text: string, s: number, e: number): boolean {
 }
 
 /** The rules for one file's text; `marks` finds each delimiter once, so a file full of ids is still read in linear time. */
-function rules(file: string, text: string, newlines: readonly number[], reported: (line: number) => ReadonlySet<string>) {
+function rules(
+  file: string,
+  text: string,
+  newlines: readonly number[],
+  reported: (line: number) => ReadonlySet<string>,
+) {
   const found = new Map<string, number[]>();
   const marks = (d: string) => found.get(d) ?? found.set(d, indexes(text, d)).get(d)!;
   const even = (d: string, at: number) => below(marks(d), at) % 2 === 0;
@@ -88,14 +101,22 @@ function rules(file: string, text: string, newlines: readonly number[], reported
     const before = text.slice(lineStart, s);
     if (/["'`#]|\/[/*]/.test(before) || /^\s*\*/.test(before)) return false;
     const opened = below(marks("/*"), s);
-    return ['"""', "'''", "`"].every((d) => even(d, s)) && (opened === 0 || marks("*/")[below(marks("*/"), s) - 1]! > marks("/*")[opened - 1]!);
+    return (
+      ['"""', "'''", "`"].every((d) => even(d, s)) &&
+      (opened === 0 || marks("*/")[below(marks("*/"), s) - 1]! > marks("/*")[opened - 1]!)
+    );
   };
   /** What makes the id at s, on `line`, not a mention, or undefined when it is one. */
   return (line: number, id: string, s: number): Rule | typeof WORD | undefined => {
     const e = s + id.length;
-    const touching = NAME_BEFORE.test(text.slice(Math.max(0, s - 2), s)) || NAME_AFTER.test(text.slice(e, e + 2)) || (text[e] === "." && ALNUM.test(text.slice(e + 1, e + 3)));
+    const touching =
+      NAME_BEFORE.test(text.slice(Math.max(0, s - 2), s)) ||
+      NAME_AFTER.test(text.slice(e, e + 2)) ||
+      (text[e] === "." && ALNUM.test(text.slice(e + 1, e + 3)));
     if (touching) {
-      const longer = [...reported(line)].some((r) => r.length > id.length && indexes(r, id).some((k) => text.startsWith(r, s - k)));
+      const longer = [...reported(line)].some(
+        (r) => r.length > id.length && indexes(r, id).some((k) => text.startsWith(r, s - k)),
+      );
       return longer ? "longer id" : WORD;
     }
     if (!IDENTIFIER.test(id) || quoted(text, s, e) || setting(text, s, e)) return undefined;
@@ -110,7 +131,11 @@ function rules(file: string, text: string, newlines: readonly number[], reported
 const key = (file: string, line: number, id: string) => JSON.stringify([file, line, id]);
 
 /** darnit's model-name findings in `report` joined with a plain search for the ids in `models` (record id to its model ids) over the same files under `root`. */
-export async function answerKey(root: string, report: Report, models: ReadonlyMap<string, ReadonlySet<string>>): Promise<Tally> {
+export async function answerKey(
+  root: string,
+  report: Report,
+  models: ReadonlyMap<string, ReadonlySet<string>>,
+): Promise<Tally> {
   const ids = new Set([...models.values()].flatMap((m) => [...m]));
   const left = [...(report.scanned.tooLarge ?? []), ...(report.scanned.skipped ?? []).map((k) => k.path)];
   const notChecked = (file: string) => left.some((p) => p === "." || file === p || file.startsWith(`${p}/`));
@@ -123,7 +148,11 @@ export async function answerKey(root: string, report: Report, models: ReadonlyMa
   const t = tally();
   const seen = new Set<string>();
   // As darnit does: a mention its reader finds in a call's code, among the models of the record behind the call, is listed with the call.
-  const inCalls = new Set(report.hits.flatMap((h) => findMentions(h.text, models.get(h.id) ?? new Set(), h.file).map((m) => key(h.file, h.line + m.line - 1, m.model))));
+  const inCalls = new Set(
+    report.hits.flatMap((h) =>
+      findMentions(h.text, models.get(h.id) ?? new Set(), h.file).map((m) => key(h.file, h.line + m.line - 1, m.model)),
+    ),
+  );
   for (const file of await listFiles(root)) {
     if (notChecked(file)) continue;
     const text = await readText(join(root, file));
@@ -185,10 +214,18 @@ export function parseKnown(text: string): Known[] {
   const out: Known[] = [];
   for (const [i, row] of text.trimEnd().split("\n").slice(1).entries()) {
     const [repo = "", file = "", line = "", id = "", side = "", reason = ""] = row.split("\t");
-    if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !file || !/^[1-9]\d*$/.test(line) || !id || (side !== "darnit" && side !== "search") || !reason.trim())
+    if (
+      !/^[\w.-]+\/[\w.-]+$/.test(repo) ||
+      !file ||
+      !/^[1-9]\d*$/.test(line) ||
+      !id ||
+      (side !== "darnit" && side !== "search") ||
+      !reason.trim()
+    )
       throw new Error(`${KNOWN} line ${i + 2} is not repository, file, line, id, darnit or search, reason: ${row}`);
     const k = { repo, file, line: Number(line), id, side, reason } as const;
-    if (out.some((o) => same(o, k) && o.repo === repo)) throw new Error(`${KNOWN} line ${i + 2} repeats an earlier line`);
+    if (out.some((o) => same(o, k) && o.repo === repo))
+      throw new Error(`${KNOWN} line ${i + 2} repeats an earlier line`);
     out.push(k);
   }
   return out;
@@ -203,7 +240,10 @@ export function applyKnown(repo: string, t: Tally, known: readonly Known[]): str
   const left = t.unexplained.filter((u) => !listed.some((k) => same(u, k)));
   t.known += t.unexplained.length - left.length;
   t.unexplained = left;
-  return stale.map((k) => `${repo} ${esc(k.file)}:${k.line} ${k.id} only in ${k.side} is in ${KNOWN} but no longer differs: remove that line`);
+  return stale.map(
+    (k) =>
+      `${repo} ${esc(k.file)}:${k.line} ${k.id} only in ${k.side} is in ${KNOWN} but no longer differs: remove that line`,
+  );
 }
 
 /** `text` on one line, each line break made "; ", as the per-repository line prints the summary. */
@@ -214,14 +254,21 @@ export const misses = (t: Tally) => t.unexplained.map((u) => `${esc(u.file)}:${u
 
 /** An error for each known line whose repository repos.tsv does not list, as it would never be compared. */
 export const unlisted = (known: readonly Known[], rows: readonly { repo: string }[]) =>
-  known.filter((k) => !rows.some((r) => r.repo === k.repo)).map((k) => `${KNOWN} lists ${k.repo}, which is not in repos.tsv`);
+  known
+    .filter((k) => !rows.some((r) => r.repo === k.repo))
+    .map((k) => `${KNOWN} lists ${k.repo}, which is not in repos.tsv`);
 
 /** Why darnit's run on `repo` cannot be compared: it failed, or it checked fewer records than the search has ids from. */
 export const notComparable = (repo: string, run: ReturnType<typeof runCheck>, records: number) =>
-  "error" in run ? run.error : run.report.scanned.records !== records ? `darnit checked ${repo} against ${run.report.scanned.records} records, not all ${records}` : undefined;
+  "error" in run
+    ? run.error
+    : run.report.scanned.records !== records
+      ? `darnit checked ${repo} against ${run.report.scanned.records} records, not all ${records}`
+      : undefined;
 
 /** 1 when any line is unexplained or a repository could not be compared. */
-export const exitCode = (t: Tally, errors: readonly string[] = []) => (t.unexplained.length > 0 || errors.length > 0 ? 1 : 0);
+export const exitCode = (t: Tally, errors: readonly string[] = []) =>
+  t.unexplained.length > 0 || errors.length > 0 ? 1 : 0;
 
 async function main() {
   const { values: args } = parseArgs({ options: { dir: { type: "string", default: CLONES } } });
@@ -250,12 +297,23 @@ async function main() {
     total.agreed += t.agreed;
     total.known += t.known;
     total.wordParts += t.wordParts;
-    for (const [r, n] of Object.entries(t.explained) as [Rule, number][]) total.explained[r] = (total.explained[r] ?? 0) + n;
+    for (const [r, n] of Object.entries(t.explained) as [Rule, number][])
+      total.explained[r] = (total.explained[r] ?? 0) + n;
     total.unexplained.push(...t.unexplained.map((u) => ({ ...u, file: `${repo}/${u.file}` })));
   }
-  const text = [`Total over ${compared} of ${rows.length} repositories:`, summary(total), ...errors.map((e) => `- ${e}`)].join("\n");
+  const text = [
+    `Total over ${compared} of ${rows.length} repositories:`,
+    summary(total),
+    ...errors.map((e) => `- ${e}`),
+  ].join("\n");
   console.log(text);
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n${misses(total).map((m) => `- ${m}`).join("\n")}\n`);
+  if (process.env.GITHUB_STEP_SUMMARY)
+    appendFileSync(
+      process.env.GITHUB_STEP_SUMMARY,
+      `${text}\n${misses(total)
+        .map((m) => `- ${m}`)
+        .join("\n")}\n`,
+    );
   process.exitCode = exitCode(total, errors);
 }
 

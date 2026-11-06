@@ -17,7 +17,9 @@ type Options = { env: NodeJS.ProcessEnv; json?: boolean | undefined; get?: Get }
  */
 export const get: Get = (url, signal) =>
   new Promise((resolve, reject) => {
-    request(url, { signal, agent: false, headers: { accept: "application/json" } }, (res) => resolve({ status: res.statusCode ?? 0, body: res }))
+    request(url, { signal, agent: false, headers: { accept: "application/json" } }, (res) =>
+      resolve({ status: res.statusCode ?? 0, body: res }),
+    )
       .on("error", reject)
       .end();
   });
@@ -44,10 +46,17 @@ async function latest(ask: Get, signal: AbortSignal): Promise<string | undefined
  * One line when npm has a release on a newer line than the one `init` pins, else undefined. Starts the request at
  * once and settles within 1.5 seconds of the call, never rejects, and never asks with --json or an off switch set.
  */
-export async function updateNotice(current: string, { env, json, get: ask = get }: Options): Promise<string | undefined> {
+export async function updateNotice(
+  current: string,
+  { env, json, get: ask = get }: Options,
+): Promise<string | undefined> {
   if (json || env.DARNIT_NO_UPDATE_CHECK || env.NO_UPDATE_NOTIFIER || !RELEASE.test(current)) return undefined;
   // Node's own proxy support does not abort a stalled proxy, which would hold the run open; a proxied run goes without.
-  if (env.NODE_USE_ENV_PROXY || [...(env.NODE_OPTIONS ?? "").split(/\s+/), ...process.execArgv].includes("--use-env-proxy")) return undefined;
+  if (
+    env.NODE_USE_ENV_PROXY ||
+    [...(env.NODE_OPTIONS ?? "").split(/\s+/), ...process.execArgv].includes("--use-env-proxy")
+  )
+    return undefined;
   const signal = AbortSignal.timeout(BUDGET_MS);
   const timeout = new Promise<undefined>((resolve) => signal.addEventListener("abort", () => resolve(undefined)));
   const next = await Promise.race([latest(ask, signal), timeout]).catch(() => undefined);

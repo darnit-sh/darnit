@@ -15,7 +15,8 @@ export type LoadedRecord = {
   file: string;
 };
 
-const BROKEN_RECORD = "This is a problem in darnit's own change records, not in your code: upgrade darnit, or report it at https://github.com/darnit-sh/darnit/issues.";
+const BROKEN_RECORD =
+  "This is a problem in darnit's own change records, not in your code: upgrade darnit, or report it at https://github.com/darnit-sh/darnit/issues.";
 
 /** A record whose patterns ast-grep cannot compile, in any language, does not load: it would throw on every file of that language. */
 function compiled(record: ChangeRecord, file: string): ChangeRecord {

@@ -51,7 +51,8 @@ const isLiteral = (node: ts.Node | undefined): node is ts.StringLiteral | ts.NoS
 /** The path node of an import or export declaration, `import x = require()`, `declare module` or an import() type. */
 function declaredPath(node: ts.Node): ts.Node | undefined {
   if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return node.moduleSpecifier;
-  if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) return node.moduleReference.expression;
+  if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference))
+    return node.moduleReference.expression;
   if (ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name)) return node.name;
   if (ts.isImportTypeNode(node)) return ts.isLiteralTypeNode(node.argument) ? node.argument.literal : node.argument;
   return undefined;
@@ -59,7 +60,9 @@ function declaredPath(node: ts.Node): ts.Node | undefined {
 
 /** The argument of import(), or the call when it has none. */
 function importedPath(node: ts.Node): ts.Node | undefined {
-  return ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword ? (node.arguments[0] ?? node) : undefined;
+  return ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
+    ? (node.arguments[0] ?? node)
+    : undefined;
 }
 
 /** The call that loads a module through this name directly, with one argument: require(path) or createRequire(url)(path). */
@@ -67,34 +70,60 @@ function directCall(name: ts.Node): ts.CallExpression | undefined {
   const call = name.parent;
   if (!ts.isIdentifier(name) || !ts.isCallExpression(call) || call.expression !== name) return undefined;
   const loading = name.text === "require" ? call : call.parent;
-  return ts.isCallExpression(loading) && (loading === call || loading.expression === call) && loading.arguments.length === 1 ? loading : undefined;
+  return ts.isCallExpression(loading) &&
+    (loading === call || loading.expression === call) &&
+    loading.arguments.length === 1
+    ? loading
+    : undefined;
 }
 
 /** `import { createRequire }`, which only names the function a direct createRequire(url)(path) calls. */
 const plainImport = (node: ts.Node): boolean =>
-  ts.isIdentifier(node) && node.text === "createRequire" && ts.isImportSpecifier(node.parent) && node.parent.propertyName === undefined;
+  ts.isIdentifier(node) &&
+  node.text === "createRequire" &&
+  ts.isImportSpecifier(node.parent) &&
+  node.parent.propertyName === undefined;
 
 /** Declarations whose name is a key or a member, which only shares a loader's name. */
-const MEMBERS = [ts.isPropertyAssignment, ts.isPropertySignature, ts.isPropertyDeclaration, ts.isMethodDeclaration, ts.isMethodSignature, ts.isGetAccessor, ts.isSetAccessor, ts.isEnumMember];
+const MEMBERS = [
+  ts.isPropertyAssignment,
+  ts.isPropertySignature,
+  ts.isPropertyDeclaration,
+  ts.isMethodDeclaration,
+  ts.isMethodSignature,
+  ts.isGetAccessor,
+  ts.isSetAccessor,
+  ts.isEnumMember,
+];
 /** Objects whose require property is Node's own. */
 const NODE_OBJECTS = new Set(["module", "global", "globalThis"]);
 
 /** A string names a loader as an import, export or destructured name, or as an element access key. */
 function stringUse(node: ts.StringLiteral): boolean {
   const up = node.parent;
-  return ts.isImportSpecifier(up) || ts.isExportSpecifier(up) || (ts.isBindingElement(up) && up.propertyName === node) || (ts.isElementAccessExpression(up) && up.argumentExpression === node);
+  return (
+    ts.isImportSpecifier(up) ||
+    ts.isExportSpecifier(up) ||
+    (ts.isBindingElement(up) && up.propertyName === node) ||
+    (ts.isElementAccessExpression(up) && up.argumentExpression === node)
+  );
 }
 
 /** A property named require is Node's when called or read from Node's own objects; createRequire always is. */
 function propertyUse(name: ts.Identifier, access: ts.PropertyAccessExpression): boolean {
   const called = ts.isCallExpression(access.parent) && access.parent.expression === access;
-  return name.text === "createRequire" || called || (ts.isIdentifier(access.expression) && NODE_OBJECTS.has(access.expression.text));
+  return (
+    name.text === "createRequire" ||
+    called ||
+    (ts.isIdentifier(access.expression) && NODE_OBJECTS.has(access.expression.text))
+  );
 }
 
 /** Whether a node named require or createRequire uses the loader, as a value, rather than only sharing its name. */
 function usesLoader(node: ts.Node): boolean {
   if (ts.isStringLiteral(node)) return stringUse(node);
-  if (!ts.isIdentifier(node) || plainImport(node) || MEMBERS.some((is) => is(node.parent) && node.parent.name === node)) return false;
+  if (!ts.isIdentifier(node) || plainImport(node) || MEMBERS.some((is) => is(node.parent) && node.parent.name === node))
+    return false;
   for (let at = node.parent; !ts.isSourceFile(at); at = at.parent) if (ts.isTypeNode(at)) return false;
   const up = node.parent;
   return ts.isPropertyAccessExpression(up) && up.name === node ? propertyUse(node, up) : true;
@@ -103,14 +132,24 @@ function usesLoader(node: ts.Node): boolean {
 /** Where a name is used: the call or property access it heads, or else the node that holds it. */
 function useSite(name: ts.Node): ts.Node {
   let site = name;
-  const heads = (up: ts.Node) => ts.isPropertyAccessExpression(up) || ts.isElementAccessExpression(up) || ts.isParenthesizedExpression(up) || (ts.isCallExpression(up) && up.expression === site);
+  const heads = (up: ts.Node) =>
+    ts.isPropertyAccessExpression(up) ||
+    ts.isElementAccessExpression(up) ||
+    ts.isParenthesizedExpression(up) ||
+    (ts.isCallExpression(up) && up.expression === site);
   while (heads(site.parent)) site = site.parent;
   return site === name ? name.parent : site;
 }
 
 /** Every node of a file's syntax tree. */
 function parse(file: string, text: string): { source: ts.SourceFile; nodes: ts.Node[] } {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const source = ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
   const nodes: ts.Node[] = [];
   const walk = (node: ts.Node): void => {
     nodes.push(node);
@@ -140,7 +179,8 @@ function readImports(file: string, text: string): Imports {
     const path = declaredPath(node) ?? importedPath(node);
     if (isLiteral(path)) paths.push(path.text);
     else if (path) found.computed.push(flat(node));
-    if ((ts.isIdentifier(node) || ts.isStringLiteral(node)) && LOADERS.has(node.text) && usesLoader(node)) readLoader(node, found, flat);
+    if ((ts.isIdentifier(node) || ts.isStringLiteral(node)) && LOADERS.has(node.text) && usesLoader(node))
+      readLoader(node, found, flat);
   }
   return found;
 }

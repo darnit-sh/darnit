@@ -33,7 +33,9 @@ const LOCAL_HOST =
 function localAddress(url: string): string | undefined {
   const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/\s"'`?#]+)/i.exec(url)?.[1]?.split("@").pop();
   if (!authority) return undefined;
-  const host = (authority.startsWith("[") ? authority.slice(0, authority.indexOf("]") + 1) : authority.split(":")[0]!).replace(/\.$/, "");
+  const host = (
+    authority.startsWith("[") ? authority.slice(0, authority.indexOf("]") + 1) : authority.split(":")[0]!
+  ).replace(/\.$/, "");
   // An IPv4 address written as IPv6, [::ffff:127.0.0.1], is judged as the IPv4 address.
   const mapped = /^\[::ffff:([\d.]+)\]$/i.exec(host)?.[1];
   return LOCAL_HOST.test(mapped ?? host) ? authority.toLowerCase() : undefined;
@@ -51,10 +53,16 @@ export function urlOrigin(url: string, v: VendorClients): Origin {
 
 /** The text of a string literal without prefix or quotes (`f"https://…"` → `https://…`). */
 export const stringText = (node: SgNode): string | undefined =>
-  node.is("string") || node.is("template_string") ? /^[fFrRbBuU]*(["'`]{1,3})([\s\S]*?)\1$/.exec(node.text())?.[2] : undefined;
+  node.is("string") || node.is("template_string")
+    ? /^[fFrRbBuU]*(["'`]{1,3})([\s\S]*?)\1$/.exec(node.text())?.[2]
+    : undefined;
 
 /** "openai/resources" → "openai", "@scope/pkg/x" → "@scope/pkg"; a dot is part of an npm name ("lodash.debounce"). */
-const jsPackage = (pkg: string) => pkg.split("/").slice(0, pkg.startsWith("@") ? 2 : 1).join("/");
+const jsPackage = (pkg: string) =>
+  pkg
+    .split("/")
+    .slice(0, pkg.startsWith("@") ? 2 : 1)
+    .join("/");
 /** "openai.resources" → "openai", "cerebras.cloud.sdk" → "cerebras". */
 const pyPackage = (module: string) => module.split(".")[0]!;
 
@@ -70,19 +78,44 @@ export const FUNCTIONS = new Set([
 ]);
 const CLASSES = new Set(["class_declaration", "class", "class_definition"]);
 const FIELDS = new Set(["public_field_definition", "field_definition"]);
-const ASSIGNMENTS = new Set(["variable_declarator", "assignment_expression", "public_field_definition", "field_definition", "assignment"]);
+const ASSIGNMENTS = new Set([
+  "variable_declarator",
+  "assignment_expression",
+  "public_field_definition",
+  "field_definition",
+  "assignment",
+]);
 const IMPORTS = new Set(["import_statement", "import_from_statement"]);
 
 /** A function or block around a node, and the ones around it. */
 type Scope = { node: SgNode; fn: boolean; outer: Scope | undefined };
 /** Where a node sits: the function it is in (unless a class is nearer), its class, its block or function, the nearest indexed node around it, every function and block around it. */
-type Context = { fn?: SgNode | undefined; cls?: SgNode | undefined; block?: SgNode | undefined; parent?: SgNode; scope?: Scope | undefined };
+type Context = {
+  fn?: SgNode | undefined;
+  cls?: SgNode | undefined;
+  block?: SgNode | undefined;
+  parent?: SgNode;
+  scope?: Scope | undefined;
+};
 /** A client's origin, or the name its base address is read from, which depends on where the call is. */
 type Built = Origin | { name: string };
-type Assignment = { target: string; value: SgNode; node: SgNode; field: boolean; blockScoped: boolean; built?: { v: VendorClients; built: Built } } & Context;
+type Assignment = {
+  target: string;
+  value: SgNode;
+  node: SgNode;
+  field: boolean;
+  blockScoped: boolean;
+  built?: { v: VendorClients; built: Built };
+} & Context;
 /** Assignments by name, then by the node they live in: a function or block, a class, or undefined for the whole file. */
 type Grouped = Map<string, Map<SgNode | undefined, Assignment[]>>;
-type FileIndex = { imports: Map<string, Set<string>>; scoped: Grouped; classed: Grouped; calls: Map<number, Context>; globals: Map<string, { homes: Map<SgNode, Assignment[]>; total: number }> };
+type FileIndex = {
+  imports: Map<string, Set<string>>;
+  scoped: Grouped;
+  classed: Grouped;
+  calls: Map<number, Context>;
+  globals: Map<string, { homes: Map<SgNode, Assignment[]>; total: number }>;
+};
 
 /**
  * Local name → the root of every package it is imported from, read from import statements only (never comments or strings).
@@ -134,14 +167,24 @@ function importsOf(statements: readonly string[]): Map<string, Set<string>> {
 }
 
 // A placeholder such as `client = null` is not a client. Only a short value is read.
-const isPlaceholder = (value: SgNode) => value.range().end.index - value.range().start.index <= 9 && /^(null|undefined|None)$/.test(value.text());
+const isPlaceholder = (value: SgNode) =>
+  value.range().end.index - value.range().start.index <= 9 && /^(null|undefined|None)$/.test(value.text());
 
 // One pass and one import read per parsed file, however many calls it has. The parser hands over
 // only the kinds below, in document order, and each one's surroundings come from the ones still
 // open around it, since asking a node for its ancestors walks down from the root. Every node handed
 // to JavaScript holds memory until the scan yields, so the rest of the tree is never handed over.
 const indexes = new WeakMap<SgNode, FileIndex>();
-const INDEXED = [...IMPORTS, ...ASSIGNMENTS, ...FUNCTIONS, ...CLASSES, "statement_block", "lexical_declaration", "call_expression", "call"];
+const INDEXED = [
+  ...IMPORTS,
+  ...ASSIGNMENTS,
+  ...FUNCTIONS,
+  ...CLASSES,
+  "statement_block",
+  "lexical_declaration",
+  "call_expression",
+  "call",
+];
 
 function indexOf(root: SgNode, grammar: Grammar): FileIndex {
   let index = indexes.get(root);
@@ -170,7 +213,8 @@ function indexOf(root: SgNode, grammar: Grammar): FileIndex {
       const target = (node.field("name") ?? node.field("left") ?? node.field("property"))?.text();
       const value = node.field("value") ?? node.field("right");
       if (target && value) {
-        if ((value.is("call_expression") || value.is("member_expression")) && /^require\s*\(/.test(value.text())) importTexts.push(node.text());
+        if ((value.is("call_expression") || value.is("member_expression")) && /^require\s*\(/.test(value.text()))
+          importTexts.push(node.text());
         // A Python class-body assignment is a class attribute: reached as self.x, not as a bare name.
         const field = FIELDS.has(kind) || (kind === "assignment" && up.cls !== undefined && up.fn === undefined);
         const blockScoped = kind === "variable_declarator" && up.parent?.is("lexical_declaration") === true;
@@ -186,7 +230,13 @@ function indexOf(root: SgNode, grammar: Grammar): FileIndex {
     const [isFunction, isClass] = [FUNCTIONS.has(kind), CLASSES.has(kind)];
     const isBlock = isFunction || kind === "statement_block";
     const scope = isBlock ? { node, fn: isFunction, outer: up.scope } : up.scope;
-    const inner = { fn: isFunction ? node : isClass ? undefined : up.fn, cls: isClass ? node : up.cls, block: isBlock ? node : up.block, parent: node, scope };
+    const inner = {
+      fn: isFunction ? node : isClass ? undefined : up.fn,
+      cls: isClass ? node : up.cls,
+      block: isBlock ? node : up.block,
+      parent: node,
+      scope,
+    };
     open.push({ end: end.index, inner });
   }
   index = { imports: importsOf(importTexts), scoped, classed, calls, globals: new Map() };
@@ -221,7 +271,11 @@ function readParameters(fn: SgNode): string[] {
   return list
     .children()
     .filter((c) => c.isNamed())
-    .map((c) => (c.is("identifier") ? c.text() : (c.field("pattern") ?? c.field("name") ?? c.children().find((x) => x.is("identifier")))?.text()))
+    .map((c) =>
+      c.is("identifier")
+        ? c.text()
+        : (c.field("pattern") ?? c.field("name") ?? c.children().find((x) => x.is("identifier")))?.text(),
+    )
     .filter((n): n is string => Boolean(n));
 }
 
@@ -229,8 +283,19 @@ function readParameters(fn: SgNode): string[] {
 function declaresGlobal(fn: SgNode, name: string): boolean {
   let names = globals.get(fn);
   if (!names) {
-    const statements = String(fn.kind()) === "function_definition" ? fn.findAll({ rule: { kind: "global_statement" } }) : [];
-    globals.set(fn, (names = new Set(statements.flatMap((g) => g.children().filter((c) => c.is("identifier")).map((c) => c.text())))));
+    const statements =
+      String(fn.kind()) === "function_definition" ? fn.findAll({ rule: { kind: "global_statement" } }) : [];
+    globals.set(
+      fn,
+      (names = new Set(
+        statements.flatMap((g) =>
+          g
+            .children()
+            .filter((c) => c.is("identifier"))
+            .map((c) => c.text()),
+        ),
+      )),
+    );
   }
   return names.has(name);
 }
@@ -256,7 +321,10 @@ function reachingAssignments(index: FileIndex, target: string, call: SgNode): As
   const member = /^(?:this|self)\.([\w$#]+)$/.exec(target)?.[1];
   if (member !== undefined) {
     if (!at.cls) return [];
-    const own = [...(index.classed.get(target)?.get(at.cls) ?? []), ...(index.classed.get(member)?.get(at.cls) ?? []).filter((a) => a.field)];
+    const own = [
+      ...(index.classed.get(target)?.get(at.cls) ?? []),
+      ...(index.classed.get(member)?.get(at.cls) ?? []).filter((a) => a.field),
+    ];
     return own.length > MAX_TRACED ? [] : own;
   }
   const groups = index.scoped.get(target);
@@ -270,14 +338,18 @@ function reachingAssignments(index: FileIndex, target: string, call: SgNode): As
     global = { homes: new Map(), total: 0 };
     for (const [home, list] of groups) {
       if (!home || !declaresGlobal(home, target)) continue;
-      global.homes.set(home, list.filter((a) => !a.blockScoped));
+      global.homes.set(
+        home,
+        list.filter((a) => !a.blockScoped),
+      );
       global.total += global.homes.get(home)!.length;
     }
     index.globals.set(target, global);
   }
   // Counted before anything is copied, so a name assigned thousands of times costs little per call.
   let count = global.total;
-  for (const home of homes) count += (groups.get(home)?.length ?? 0) - (home ? (global.homes.get(home)?.length ?? 0) : 0);
+  for (const home of homes)
+    count += (groups.get(home)?.length ?? 0) - (home ? (global.homes.get(home)?.length ?? 0) : 0);
   if (count > MAX_TRACED) return [];
   const reaching = [...homes].flatMap((home) => groups.get(home) ?? []);
   for (const [home, list] of global.homes) if (!homes.has(home)) reaching.push(...list);
@@ -303,7 +375,15 @@ function baseAddress(args: SgNode | null): string | { name: string } | undefined
       return value.is("identifier") || value.is("shorthand_property_identifier") ? { name: value.text() } : undefined;
     }
     // Don't descend into nested calls or functions: their options are not this client's.
-    if (node === args || !(node.is("call_expression") || node.is("call") || node.is("new_expression") || FUNCTIONS.has(String(node.kind())))) {
+    if (
+      node === args ||
+      !(
+        node.is("call_expression") ||
+        node.is("call") ||
+        node.is("new_expression") ||
+        FUNCTIONS.has(String(node.kind()))
+      )
+    ) {
       for (const child of node.children()) stack.push(child);
     }
   }
@@ -326,7 +406,13 @@ function constructed(node: SgNode, index: FileIndex, v: VendorClients): Built {
   return typeof base === "object" ? base : base ? urlOrigin(base, v) : "vendor";
 }
 
-const WRAPPERS = new Set(["parenthesized_expression", "as_expression", "non_null_expression", "satisfies_expression", "await_expression"]);
+const WRAPPERS = new Set([
+  "parenthesized_expression",
+  "as_expression",
+  "non_null_expression",
+  "satisfies_expression",
+  "await_expression",
+]);
 
 /** `x` from `(x)`, `x as T`, `x!`, `await x` and the like; undefined for a wrapper with nothing inside. */
 export function unwrap(node: SgNode): SgNode | undefined {
@@ -355,7 +441,11 @@ export function vendorClass(root: SgNode, grammar: Grammar, callee: string, v: V
 function clientNode(callee: SgNode, symbol: string): SgNode | undefined {
   let node: SgNode | null = callee;
   for (let i = 0; i < symbol.split(".").length && node; i++) node = node.field("object");
-  if (node && (node.is("member_expression") || node.is("attribute")) && (node.field("property") ?? node.field("attribute"))?.text() === "beta") {
+  if (
+    node &&
+    (node.is("member_expression") || node.is("attribute")) &&
+    (node.field("property") ?? node.field("attribute"))?.text() === "beta"
+  ) {
     node = node.field("object");
   }
   return node ? unwrap(node) : undefined;
@@ -367,7 +457,12 @@ function clientNode(callee: SgNode, symbol: string): SgNode | undefined {
  */
 export function clientOrigin(root: SgNode, grammar: Grammar, call: SgNode, symbol: string, v: VendorClients): Origin {
   const callee = call.field("function");
-  const first = isStatic(symbol) && call.field("arguments")?.children().find((c) => c.isNamed() && !c.is("comment"));
+  const first =
+    isStatic(symbol) &&
+    call
+      .field("arguments")
+      ?.children()
+      .find((c) => c.isNamed() && !c.is("comment"));
   const client = isStatic(symbol) ? first && unwrap(first) : callee && clientNode(callee, symbol);
   if (!client) return "unknown";
   const index = indexOf(root, grammar);
@@ -381,13 +476,21 @@ export function clientOrigin(root: SgNode, grammar: Grammar, call: SgNode, symbo
     }
     return origin;
   };
-  if (client.is("new_expression") || client.is("call_expression") || client.is("call")) return traced(constructed(client, index, v));
+  if (client.is("new_expression") || client.is("call_expression") || client.is("call"))
+    return traced(constructed(client, index, v));
   const target = client.text().replace(/\s+/g, "");
   if (!/^(?:(?:this|self)\.)?[\w$#]+$/.test(target)) return "unknown";
   const origins: Origin[] = [];
   for (const a of visibleAssignments(index, target, call)) {
     // Every record on the file shares the index, so what was built is reused only with the same client list (each record passes its own).
-    if (a.built?.v !== v) a.built = { v, built: a.value.is("new_expression") || a.value.is("call_expression") || a.value.is("call") ? constructed(a.value, index, v) : "unknown" };
+    if (a.built?.v !== v)
+      a.built = {
+        v,
+        built:
+          a.value.is("new_expression") || a.value.is("call_expression") || a.value.is("call")
+            ? constructed(a.value, index, v)
+            : "unknown",
+      };
     const origin = traced(a.built.built);
     // One vendor client among them settles it.
     if (origin === "vendor") return "vendor";
@@ -396,6 +499,7 @@ export function clientOrigin(root: SgNode, grammar: Grammar, call: SgNode, symbo
   if (origins.length === 0) return "unknown";
   // Foreign only when every assignment the call could see is a look-alike; local only when every one is local.
   if (origins.every((o) => o === "foreign")) return "foreign";
-  if (origins.every((o) => typeof o === "object")) return { local: [...new Set(origins.flatMap((o) => o.local))].sort() };
+  if (origins.every((o) => typeof o === "object"))
+    return { local: [...new Set(origins.flatMap((o) => o.local))].sort() };
   return origins.includes("vendor") ? "vendor" : "unknown";
 }

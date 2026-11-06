@@ -8,7 +8,8 @@ import { parseArgs } from "node:util";
 const scriptShell = (key: string) => /^npm_config_script[-_]shell$/i.test(key);
 
 /** `env` as a user's shell has it: without CI's npm script-shell setting. */
-export const userEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => Object.fromEntries(Object.entries(env).filter(([k]) => !scriptShell(k)));
+export const userEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(env).filter(([k]) => !scriptShell(k)));
 
 /** The settings in `env` that a user's shell does not have. */
 export const notUser = (env: NodeJS.ProcessEnv) => Object.keys(env).filter(scriptShell);
@@ -26,7 +27,8 @@ export function givenTarball(args: string[]): Tarball | undefined {
   const flag = { type: "string", multiple: true } as const;
   const { values } = parseArgs({ args, options: { tarball: flag, integrity: flag }, strict: true });
   if (!values.tarball && !values.integrity) return undefined;
-  for (const k of ["tarball", "integrity"] as const) if ((values[k]?.length ?? 0) > 1) throw new Error(`--${k} is given more than once`);
+  for (const k of ["tarball", "integrity"] as const)
+    if ((values[k]?.length ?? 0) > 1) throw new Error(`--${k} is given more than once`);
   const [path, sri] = [values.tarball?.[0], values.integrity?.[0]];
   if (!path || !sri) throw new Error("--tarball and --integrity go together: give both or neither");
   const tarball = resolve(process.env.INIT_CWD || process.cwd(), path);
@@ -42,19 +44,33 @@ export function givenTarball(args: string[]): Tarball | undefined {
  * version; npm's lockfile there must show the checked integrity. Only that tarball is used after this: `packed` puts
  * `$DARNIT_TARBALL` in place of `darnit@<pin>` in a command run with `env`, so the path never becomes shell text.
  */
-export function installTarball(work: string, given: Tarball | undefined, pack: (dest: string) => void, install: (tarball: string, dir: string) => string) {
+export function installTarball(
+  work: string,
+  given: Tarball | undefined,
+  pack: (dest: string) => void,
+  install: (tarball: string, dir: string) => string,
+) {
   const tarball = join(work, "darnit.tgz");
   if (given) copyFileSync(given.tarball, tarball);
   else {
     pack(work);
-    renameSync(join(work, readdirSync(work).find((f) => f.endsWith(".tgz"))!), tarball);
+    renameSync(
+      join(
+        work,
+        readdirSync(work).find((f) => f.endsWith(".tgz"))!,
+      ),
+      tarball,
+    );
   }
   const sri = integrity(tarball);
-  if (given && sri !== given.integrity) throw new Error(`${given.tarball} has integrity ${sri}, expected ${given.integrity}`);
+  if (given && sri !== given.integrity)
+    throw new Error(`${given.tarball} has integrity ${sri}, expected ${given.integrity}`);
   const dir = join(work, "install");
   mkdirSync(dir);
   const version = install(tarball, dir);
-  const lock = JSON.parse(readFileSync(join(dir, "package-lock.json"), "utf8")) as { packages: Record<string, { integrity?: string }> };
+  const lock = JSON.parse(readFileSync(join(dir, "package-lock.json"), "utf8")) as {
+    packages: Record<string, { integrity?: string }>;
+  };
   const installed = lock.packages["node_modules/darnit"]?.integrity;
   if (installed !== sri) throw new Error(`npm installed darnit with integrity ${installed}, expected ${sri}`);
   return {

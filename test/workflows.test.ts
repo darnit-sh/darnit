@@ -6,7 +6,14 @@ import { afterAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { minutesOn } from "./helpers.js";
 
-type Job = { "timeout-minutes"?: unknown; uses?: string; if?: unknown; name?: unknown; env?: Record<string, string>; strategy?: { matrix?: unknown } };
+type Job = {
+  "timeout-minutes"?: unknown;
+  uses?: string;
+  if?: unknown;
+  name?: unknown;
+  env?: Record<string, string>;
+  strategy?: { matrix?: unknown };
+};
 type Workflow = { on?: unknown; jobs?: Record<string, Job>; concurrency?: { group?: unknown } };
 type Workflows = Record<string, Workflow>;
 
@@ -22,7 +29,14 @@ const PR_ONLY = /^\$\{\{ github\.event_name == 'pull_request' && fromJSON\('.*'\
 const DIR = new URL("../.github/workflows/", import.meta.url);
 const ours = async (): Promise<Workflows> => {
   const files = (await readdir(DIR)).filter((f) => /\.ya?ml$/.test(f));
-  return Object.fromEntries(await Promise.all(files.map(async (f): Promise<[string, Workflow]> => [f, parse(await readFile(new URL(f, DIR), "utf8")) as Workflow])));
+  return Object.fromEntries(
+    await Promise.all(
+      files.map(async (f): Promise<[string, Workflow]> => [
+        f,
+        parse(await readFile(new URL(f, DIR), "utf8")) as Workflow,
+      ]),
+    ),
+  );
 };
 // A deep copy of the real workflows, so a breach changes nothing the next test reads.
 const copy = async (): Promise<Workflows> => structuredClone(await ours());
@@ -69,10 +83,17 @@ function problems(workflows: Workflows): string[] {
     Object.entries(workflow.jobs ?? {}).map(([name, job]) => jobProblem(workflows, `${file} job ${name}`, job)),
   );
   for (const file of REQUIRED) {
-    if (!events(workflows[file]?.on).includes("merge_group")) found.push(`${file} gives required checks but does not run on merge_group`);
+    if (!events(workflows[file]?.on).includes("merge_group"))
+      found.push(`${file} gives required checks but does not run on merge_group`);
     const jobs = Object.entries(workflows[file]?.jobs ?? {});
-    const called = jobs.map(([, job]) => job.uses ?? "").filter((u) => u.startsWith(LOCAL)).map((u) => u.slice(LOCAL.length));
-    for (const f of [file, ...called]) found.push(...Object.entries(workflows[f]?.jobs ?? {}).flatMap(([name, job]) => eventBound(`${f} job ${name}`, job)));
+    const called = jobs
+      .map(([, job]) => job.uses ?? "")
+      .filter((u) => u.startsWith(LOCAL))
+      .map((u) => u.slice(LOCAL.length));
+    for (const f of [file, ...called])
+      found.push(
+        ...Object.entries(workflows[f]?.jobs ?? {}).flatMap(([name, job]) => eventBound(`${f} job ${name}`, job)),
+      );
   }
   return found.filter((p) => p !== undefined);
 }
@@ -84,10 +105,23 @@ describe("the workflows in .github/workflows", () => {
 
   it("fail a new job without timeout-minutes, or with a limit GitHub would not keep", async () => {
     const byOs = (n: number) => `\${{ matrix.os == 'macos-latest' && ${n} || 20 }}`;
-    for (const limit of [undefined, 0, -5, 2.5, 361, "15", "${{ inputs.minutes }}", byOs(0), byOs(361), "${{ matrix.os == 'macos-latest' && 50 }}"]) {
+    for (const limit of [
+      undefined,
+      0,
+      -5,
+      2.5,
+      361,
+      "15",
+      "${{ inputs.minutes }}",
+      byOs(0),
+      byOs(361),
+      "${{ matrix.os == 'macos-latest' && 50 }}",
+    ]) {
       const workflows = await copy();
       workflows["corpus.yml"]!.jobs!.extra = { "timeout-minutes": limit };
-      expect(problems(workflows)).toEqual([`corpus.yml job extra has no timeout-minutes from 1 to 360 (it reads ${JSON.stringify(limit)})`]);
+      expect(problems(workflows)).toEqual([
+        `corpus.yml job extra has no timeout-minutes from 1 to 360 (it reads ${JSON.stringify(limit)})`,
+      ]);
     }
   });
 
@@ -106,14 +140,20 @@ describe("the workflows in .github/workflows", () => {
   it("fail a called workflow whose job has no limit, on that workflow's own line", async () => {
     const workflows = await copy();
     delete workflows["golden.yml"]!.jobs!.compare!["timeout-minutes"];
-    expect(problems(workflows)).toEqual(["golden.yml job compare has no timeout-minutes from 1 to 360 (it reads undefined)"]);
+    expect(problems(workflows)).toEqual([
+      "golden.yml job compare has no timeout-minutes from 1 to 360 (it reads undefined)",
+    ]);
   });
-
 });
 
 describe("the workflows in a merge queue", () => {
   it("fail a required workflow without merge_group, in each form on: takes", async () => {
-    for (const on of ["pull_request", ["push", "pull_request"], { push: { branches: ["main"] }, pull_request: null }, undefined]) {
+    for (const on of [
+      "pull_request",
+      ["push", "pull_request"],
+      { push: { branches: ["main"] }, pull_request: null },
+      undefined,
+    ]) {
       const workflows = await copy();
       workflows["ci.yml"]!.on = on;
       expect(problems(workflows)).toEqual(["ci.yml gives required checks but does not run on merge_group"]);
@@ -121,7 +161,8 @@ describe("the workflows in a merge queue", () => {
     const missing = await copy();
     delete missing["pr.yml"];
     expect(problems(missing)).toEqual(["pr.yml gives required checks but does not run on merge_group"]);
-    for (const on of ["merge_group", ["merge_group"], { merge_group: null }]) expect(events(on)).toEqual(["merge_group"]);
+    for (const on of ["merge_group", ["merge_group"], { merge_group: null }])
+      expect(events(on)).toEqual(["merge_group"]);
   });
 
   it("fail a required check that a merge queue run would skip, rename or leave out", async () => {
@@ -129,7 +170,11 @@ describe("the workflows in a merge queue", () => {
     workflows["pr.yml"]!.jobs!.title!.if = "github.event_name == 'pull_request'";
     workflows["ci.yml"]!.jobs!.lint!.name = "lint on ${{ github.event_name }}";
     workflows["golden.yml"]!.jobs!.compare!.if = "github.event.pull_request";
-    workflows["ci.yml"]!.jobs!.test!.strategy!.matrix = { os: ["ubuntu-latest"], exclude: "${{ github.event_name == 'merge_group' && fromJSON('[{\"os\":\"ubuntu-latest\"}]') || fromJSON('[]') }}" };
+    workflows["ci.yml"]!.jobs!.test!.strategy!.matrix = {
+      os: ["ubuntu-latest"],
+      exclude:
+        "${{ github.event_name == 'merge_group' && fromJSON('[{\"os\":\"ubuntu-latest\"}]') || fromJSON('[]') }}",
+    };
     workflows["ci.yml"]!.jobs!.package!.strategy!.matrix = "${{ fromJSON(github.event_name) }}";
     expect(problems(workflows)).toEqual([
       "ci.yml job lint has an if or name that depends on the event",
@@ -147,10 +192,16 @@ describe("the workflows in a merge queue", () => {
     const checks = steps.filter((s) => /scripts\/check-/.test(s.run ?? ""));
     expect(checks).toHaveLength(6);
     for (const { env } of checks) {
-      expect(env).toMatchObject({ EVENT: "${{ github.event_name }}", BASE: "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}" });
-      if (env?.HEAD !== undefined) expect(env.HEAD).toBe("${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}");
+      expect(env).toMatchObject({
+        EVENT: "${{ github.event_name }}",
+        BASE: "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}",
+      });
+      if (env?.HEAD !== undefined)
+        expect(env.HEAD).toBe("${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}");
     }
-    expect(pr.concurrency?.group).toBe("${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}");
+    expect(pr.concurrency?.group).toBe(
+      "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}",
+    );
   });
 });
 
@@ -163,7 +214,8 @@ const NONE = "0".repeat(40);
 async function repo(edits: Record<string, string>) {
   const dir = await mkdtemp(join(tmpdir(), "darnit-queue-"));
   temps.push(dir);
-  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
   const commit = async (files: Record<string, string>, subject: string) => {
     for (const [f, text] of Object.entries(files)) await writeFile(join(dir, f), text);
     git("add", ".");
@@ -184,9 +236,22 @@ async function run(dir: string, args: string[], env: Record<string, string>) {
   const r = spawnSync("sh", [resolve("scripts", args[0]!), ...args.slice(1)], {
     cwd: dir,
     encoding: "utf8",
-    env: { ...process.env, EVENT: "", AUTHOR: "someone", BODY: "", ...env, GITHUB_STEP_SUMMARY: summary, GITHUB_OUTPUT: output },
+    env: {
+      ...process.env,
+      EVENT: "",
+      AUTHOR: "someone",
+      BODY: "",
+      ...env,
+      GITHUB_STEP_SUMMARY: summary,
+      GITHUB_OUTPUT: output,
+    },
   });
-  return { status: r.status, stdout: r.stdout, summary: await readFile(summary, "utf8"), output: await readFile(output, "utf8") };
+  return {
+    status: r.status,
+    stdout: r.stdout,
+    summary: await readFile(summary, "utf8"),
+    output: await readFile(output, "utf8"),
+  };
 }
 
 describe("the pull request checks", () => {
@@ -201,7 +266,11 @@ describe("the pull request checks", () => {
     // The runner's own event name never stands in for EVENT, which the workflow sets for these checks alone.
     for (const EVENT of ["pull_request", "", "merge_group "]) {
       for (const [r, script, TITLE, text] of cases) {
-        const { status, stdout } = await run(r.dir, [script, r.base, r.head], { EVENT, GITHUB_EVENT_NAME: "merge_group", TITLE });
+        const { status, stdout } = await run(r.dir, [script, r.base, r.head], {
+          EVENT,
+          GITHUB_EVENT_NAME: "merge_group",
+          TITLE,
+        });
         expect(stdout).toContain(text);
         expect(status).toBe(1);
       }
@@ -210,7 +279,13 @@ describe("the pull request checks", () => {
 
   it("pass in a merge queue with one summary line, reading and changing nothing", async () => {
     const { dir } = await repo({ "test/a.test.ts": "// b\n" });
-    const forms = [["check-pr.sh"], ["check-refactor.sh"], ["check-refactor.sh", "--base-tests"], ["check-proof.sh"], ["check-proof.sh", "--run"]];
+    const forms = [
+      ["check-pr.sh"],
+      ["check-refactor.sh"],
+      ["check-refactor.sh", "--base-tests"],
+      ["check-proof.sh"],
+      ["check-proof.sh", "--run"],
+    ];
     for (const form of forms) {
       // Shas that name nothing and an empty title: any pull request logic that ran would fail.
       const r = await run(dir, [...form, NONE, NONE], { EVENT: "merge_group", TITLE: "" });

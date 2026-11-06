@@ -45,7 +45,9 @@ export async function npmVersionFor(root: string, pkg: string, file: string): Pr
     if (v && VERSION.test(v)) return { version: v, from: join(d, "node_modules", pkg) };
   }
   const lock = await read(join(root, "package-lock.json"));
-  const packages = lock ? (JSON.parse(lock) as { packages?: Record<string, { version?: string }> }).packages : undefined;
+  const packages = lock
+    ? (JSON.parse(lock) as { packages?: Record<string, { version?: string }> }).packages
+    : undefined;
   for (const d of dirs) {
     const v = packages?.[d ? `${d}/node_modules/${pkg}` : `node_modules/${pkg}`]?.version;
     if (v && VERSION.test(v)) return { version: v, from: "package-lock.json" };

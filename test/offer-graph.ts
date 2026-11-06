@@ -19,7 +19,9 @@ const record = parseChangeRecord(
     surface: { sdkSymbols: ["responses.create"], fields: ["model"] },
     classification: "semantic",
     sources: [{ url: "https://developers.openai.com/api/docs/deprecations" }],
-    detection: { astGrepPatterns: { js: list("d", k).map((d) => ({ context: `({ model: "${d}" })`, selector: "pair" })) } },
+    detection: {
+      astGrepPatterns: { js: list("d", k).map((d) => ({ context: `({ model: "${d}" })`, selector: "pair" })) },
+    },
   },
   "one.json",
 );

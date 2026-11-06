@@ -25,7 +25,11 @@ export function assetName(platform = process.platform, arch = process.arch): str
   return `oasdiff_${OASDIFF_VERSION}_${os}.tar.gz`;
 }
 
-const exists = (p: string) => access(p).then(() => true, () => false);
+const exists = (p: string) =>
+  access(p).then(
+    () => true,
+    () => false,
+  );
 
 async function download(url: string): Promise<Buffer> {
   const res = await fetch(url);
@@ -36,7 +40,10 @@ async function download(url: string): Promise<Buffer> {
 /** OASDIFF env, then PATH, then a pinned release downloaded once into ~/.cache/darnit. */
 export async function oasdiffBinary(): Promise<string> {
   if (process.env.OASDIFF) return process.env.OASDIFF;
-  const onPath = await exec("oasdiff", ["--version"]).then(() => true, () => false);
+  const onPath = await exec("oasdiff", ["--version"]).then(
+    () => true,
+    () => false,
+  );
   if (onPath) return "oasdiff";
 
   const dir = join(homedir(), ".cache", "darnit", `oasdiff-${OASDIFF_VERSION}`);

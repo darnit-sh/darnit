@@ -60,7 +60,8 @@ function misplaced(tree: Sources): string[] {
   const problems: string[] = [];
   for (const file of tree.keys()) {
     if (!placeOf(file)) problems.push(`${file} has no floor: add it to GROUPS in test/architecture.test.ts`);
-    if (/(^|\/)index\.[cm]?[jt]sx?$/.test(file)) problems.push(`${file} is a barrel file: import from the file that defines each name`);
+    if (/(^|\/)index\.[cm]?[jt]sx?$/.test(file))
+      problems.push(`${file} is a barrel file: import from the file that defines each name`);
   }
   return problems;
 }
@@ -71,8 +72,13 @@ function misplaced(tree: Sources): string[] {
  */
 function breaches({ graph, computed, loaders }: ImportGraph): Map<string, string> {
   const broken = new Map<string, string>();
-  for (const key of computed) broken.set(key, "an import() or require() of a computed path, which this test cannot place");
-  for (const key of loaders) broken.set(key, `a use of require or createRequire this test cannot follow; call require("path") or createRequire(url)("path")`);
+  for (const key of computed)
+    broken.set(key, "an import() or require() of a computed path, which this test cannot place");
+  for (const key of loaders)
+    broken.set(
+      key,
+      `a use of require or createRequire this test cannot follow; call require("path") or createRequire(url)("path")`,
+    );
   for (const [file, targets] of graph) {
     const from = placeOf(file);
     for (const target of targets) {
@@ -82,7 +88,9 @@ function breaches({ graph, computed, loaders }: ImportGraph): Map<string, string
     }
   }
   for (const set of cycles(graph)) {
-    for (const [file, target] of set.flatMap((f) => [...graph.get(f)!].filter((t) => set.includes(t)).map((t) => [f, t]))) {
+    for (const [file, target] of set.flatMap((f) =>
+      [...graph.get(f)!].filter((t) => set.includes(t)).map((t) => [f, t]),
+    )) {
       const key = `${file}\t${target}`;
       broken.set(key, [broken.get(key), `in the cycle of ${set.join(", ")}`].filter(Boolean).join("; "));
     }
@@ -99,7 +107,11 @@ function check(tree: Sources, list: string): string[] {
   const { missing, stale: gone } = compare(broken.keys(), lines);
   const shown = (key: string) => key.replaceAll("\t", " -> ");
   problems.push(...missing.map((key) => `${shown(key)}: ${broken.get(key)}`));
-  problems.push(...gone.map((s) => `${ALLOWLIST}:${s.line}: "${shown(s.finding)}" no longer breaks the module map; remove its line`));
+  problems.push(
+    ...gone.map(
+      (s) => `${ALLOWLIST}:${s.line}: "${shown(s.finding)}" no longer breaks the module map; remove its line`,
+    ),
+  );
   return problems;
 }
 
@@ -119,7 +131,9 @@ function withLine(file: string, line: string): string[] {
 
 describe("the module map", () => {
   it("holds for src/ and scripts/, apart from the allowlist", () => {
-    expect([...sources.keys()]).toEqual(expect.arrayContaining(["src/cli.ts", "src/scan/astgrep.ts", "scripts/e2e.ts"]));
+    expect([...sources.keys()]).toEqual(
+      expect.arrayContaining(["src/cli.ts", "src/scan/astgrep.ts", "scripts/e2e.ts"]),
+    );
     expect(check(sources, allowlist)).toEqual([]);
   });
 });
@@ -158,7 +172,9 @@ describe("an import against the module map fails", () => {
       });
 
   it("fix importing the rule applier, which the map leaves out of fix until it moves into src/fix/", () => {
-    expect(withLine("src/plan.ts", `import "./packs/apply.js";`)).toEqual(["src/plan.ts -> src/packs/apply.ts: fix imports apply on its own floor 3"]);
+    expect(withLine("src/plan.ts", `import "./packs/apply.js";`)).toEqual([
+      "src/plan.ts -> src/packs/apply.ts: fix imports apply on its own floor 3",
+    ]);
   });
 });
 
@@ -171,7 +187,9 @@ describe("a cycle, a misplaced file or a stale allowlist line fails", () => {
   });
 
   it("a file importing itself", () => {
-    expect(withLine("src/refusal.ts", `import "./refusal.js";`)).toEqual(["src/refusal.ts -> src/refusal.ts: in the cycle of src/refusal.ts"]);
+    expect(withLine("src/refusal.ts", `import "./refusal.js";`)).toEqual([
+      "src/refusal.ts -> src/refusal.ts: in the cycle of src/refusal.ts",
+    ]);
   });
 
   it("a cycle through an allowlisted import", () => {
@@ -187,17 +205,27 @@ describe("a cycle, a misplaced file or a stale allowlist line fails", () => {
   });
 
   it("a new file under src/ with no floor, and a barrel file", () => {
-    expect(withLine("src/new.ts", `export const x = 1;`)).toEqual(["src/new.ts has no floor: add it to GROUPS in test/architecture.test.ts"]);
-    expect(withLine("src/scan/index.ts", `export * from "./values.js";`)).toEqual(["src/scan/index.ts is a barrel file: import from the file that defines each name"]);
+    expect(withLine("src/new.ts", `export const x = 1;`)).toEqual([
+      "src/new.ts has no floor: add it to GROUPS in test/architecture.test.ts",
+    ]);
+    expect(withLine("src/scan/index.ts", `export * from "./values.js";`)).toEqual([
+      "src/scan/index.ts is a barrel file: import from the file that defines each name",
+    ]);
   });
 
   it("an allowlisted import removed from the code but left in the allowlist", () => {
-    const gone = new Map(sources).set("src/git.ts", sources.get("src/git.ts")!.replace(/^import \{ envToken \}.*$/m, ""));
+    const gone = new Map(sources).set(
+      "src/git.ts",
+      sources.get("src/git.ts")!.replace(/^import \{ envToken \}.*$/m, ""),
+    );
     expect(check(gone, allowlist)).toEqual([stale("src/git.ts -> src/github.ts")]);
   });
 
   it("an allowlisted cycle that changed", () => {
-    const smaller = new Map(sources).set("src/detect.ts", sources.get("src/detect.ts")!.replace(/^import type \{ VendorClients \}.*$/m, ""));
+    const smaller = new Map(sources).set(
+      "src/detect.ts",
+      sources.get("src/detect.ts")!.replace(/^import type \{ VendorClients \}.*$/m, ""),
+    );
     expect(check(smaller, allowlist)).toEqual([
       stale("src/detect.ts -> src/scan/clients.ts"),
       stale("src/scan/astgrep.ts -> src/detect.ts"),
@@ -206,7 +234,9 @@ describe("a cycle, a misplaced file or a stale allowlist line fails", () => {
 
   it("a malformed allowlist line", () => {
     const lines = allowlist.split("\n").length;
-    expect(check(sources, `${allowlist}src/git.ts\tsrc/github.ts\n`)).toEqual([`${ALLOWLIST}: line ${lines} needs 2 fields and a reason, tab separated`]);
+    expect(check(sources, `${allowlist}src/git.ts\tsrc/github.ts\n`)).toEqual([
+      `${ALLOWLIST}: line ${lines} needs 2 fields and a reason, tab separated`,
+    ]);
   });
 });
 
@@ -221,24 +251,43 @@ describe("an import across islands and scripts/ fails", () => {
   });
 
   it("scripts/ importing src/cli.ts, and src/ importing scripts/", () => {
-    expect(withLine("scripts/corpus.ts", `import "../src/cli.js";`)).toEqual(["scripts/corpus.ts -> src/cli.ts: scripts/ imports floor 4, above floor 3"]);
-    expect(withLine("src/refusal.ts", `import "../scripts/golden.js";`)).toContain("src/refusal.ts -> scripts/golden.ts: only scripts/ imports scripts/");
+    expect(withLine("scripts/corpus.ts", `import "../src/cli.js";`)).toEqual([
+      "scripts/corpus.ts -> src/cli.ts: scripts/ imports floor 4, above floor 3",
+    ]);
+    expect(withLine("src/refusal.ts", `import "../scripts/golden.js";`)).toContain(
+      "src/refusal.ts -> scripts/golden.ts: only scripts/ imports scripts/",
+    );
   });
 
   it("an island importing above floor 2, or another island", () => {
-    expect(withLine("src/corpus/spec.ts", `import "../check.js";`)).toEqual(["src/corpus/spec.ts -> src/check.ts: the corpus island imports floor 3, above floor 2"]);
-    expect(withLine("src/corpus/spec.ts", `import "../packs/fixtures.js";`)).toEqual(["src/corpus/spec.ts -> src/packs/fixtures.ts: only scripts/ imports the fixtures island"]);
+    expect(withLine("src/corpus/spec.ts", `import "../check.js";`)).toEqual([
+      "src/corpus/spec.ts -> src/check.ts: the corpus island imports floor 3, above floor 2",
+    ]);
+    expect(withLine("src/corpus/spec.ts", `import "../packs/fixtures.js";`)).toEqual([
+      "src/corpus/spec.ts -> src/packs/fixtures.ts: only scripts/ imports the fixtures island",
+    ]);
   });
 
   it("an import it cannot follow", () => {
-    const computed = (call: string) => `src/refusal.ts -> ${call}: an import() or require() of a computed path, which this test cannot place`;
-    expect(withLine("src/refusal.ts", "const m = await import(`./${name}.js`);")).toEqual([computed("import(`./${name}.js`)")]);
+    const computed = (call: string) =>
+      `src/refusal.ts -> ${call}: an import() or require() of a computed path, which this test cannot place`;
+    expect(withLine("src/refusal.ts", "const m = await import(`./${name}.js`);")).toEqual([
+      computed("import(`./${name}.js`)"),
+    ]);
     expect(withLine("src/refusal.ts", "const m = await import(name);")).toEqual([computed("import(name)")]);
     expect(withLine("src/refusal.ts", "const m = require(name);")).toEqual([computed("require(name)")]);
-    expect(withLine("src/refusal.ts", "createRequire(import.meta.url)(name);")).toEqual([computed("createRequire(import.meta.url)(name)")]);
-    expect(withLine("src/refusal.ts", "const req = require;")).toEqual([`src/refusal.ts -> req=require: a use of require or createRequire this test cannot follow; call require("path") or createRequire(url)("path")`]);
-    expect(withLine("src/refusal.ts", `import "./missing.js";`)).toEqual([`src/refusal.ts imports "./missing.js", which is not a file under src/ or scripts/`]);
-    expect(withLine("src/refusal.ts", `import "./missing.json";`)).toEqual([`src/refusal.ts imports "./missing.json", which is not a file under src/ or scripts/`]);
+    expect(withLine("src/refusal.ts", "createRequire(import.meta.url)(name);")).toEqual([
+      computed("createRequire(import.meta.url)(name)"),
+    ]);
+    expect(withLine("src/refusal.ts", "const req = require;")).toEqual([
+      `src/refusal.ts -> req=require: a use of require or createRequire this test cannot follow; call require("path") or createRequire(url)("path")`,
+    ]);
+    expect(withLine("src/refusal.ts", `import "./missing.js";`)).toEqual([
+      `src/refusal.ts imports "./missing.js", which is not a file under src/ or scripts/`,
+    ]);
+    expect(withLine("src/refusal.ts", `import "./missing.json";`)).toEqual([
+      `src/refusal.ts imports "./missing.json", which is not a file under src/ or scripts/`,
+    ]);
   });
 
   it("an import of a .js path that names a .tsx file", () => {
@@ -251,15 +300,27 @@ describe("an import across islands and scripts/ fails", () => {
 describe("the computed require() in the rule applier", () => {
   it("is read, and named by the allowlist", () => {
     const apply = sources.get("src/packs/apply.ts")!;
-    expect(importsOf("src/packs/apply.ts", apply)).toMatchObject({ computed: ["require(pkgPath)"], loaders: [`require=createRequire(import.meta.url)`, `createRequire(import.meta.url)`, `require.resolve("@ast-grep/cli/package.json")`] });
-    expect(check(new Map(sources).set("src/packs/apply.ts", apply.replace("require(pkgPath)", "JSON.parse(pkgPath)")), allowlist)).toEqual([
-      stale("src/packs/apply.ts -> require(pkgPath)"),
-    ]);
+    expect(importsOf("src/packs/apply.ts", apply)).toMatchObject({
+      computed: ["require(pkgPath)"],
+      loaders: [
+        `require=createRequire(import.meta.url)`,
+        `createRequire(import.meta.url)`,
+        `require.resolve("@ast-grep/cli/package.json")`,
+      ],
+    });
+    expect(
+      check(
+        new Map(sources).set("src/packs/apply.ts", apply.replace("require(pkgPath)", "JSON.parse(pkgPath)")),
+        allowlist,
+      ),
+    ).toEqual([stale("src/packs/apply.ts -> require(pkgPath)")]);
   });
 
   it("does not cover a second call with the same text", () => {
     const sneak = `export function sneak(): unknown { const pkgPath = "../check.js"; return require(pkgPath); }`;
-    expect(check(new Map(sources).set("src/packs/apply.ts", `${sources.get("src/packs/apply.ts")}\n${sneak}\n`), allowlist)).toEqual([
+    expect(
+      check(new Map(sources).set("src/packs/apply.ts", `${sources.get("src/packs/apply.ts")}\n${sneak}\n`), allowlist),
+    ).toEqual([
       "src/packs/apply.ts -> require(pkgPath)#2: an import() or require() of a computed path, which this test cannot place",
     ]);
   });
@@ -274,7 +335,7 @@ describe("what does not count as an import", () => {
       `import ts from "typescript";`,
       `import { join } from "node:path";`,
       `const r = /import\\("\\.\\/check\\.js"\\)|require\\("\\.\\/check\\.js"\\)/;`,
-      "const t = `import(\"./check.js\")`;",
+      'const t = `import("./check.js")`;',
       `const { version } = createRequire(import.meta.url)("../package.json");`,
     ];
     expect(withLine("src/refusal.ts", lookAlikes.join("\n"))).toEqual([]);

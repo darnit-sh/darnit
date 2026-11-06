@@ -20,17 +20,28 @@ describe("what the check reads", () => {
     await move(join(dir, "scripts/lists/duplicates.tsv"), join(dir, "scripts/allow/duplicates.tsv"));
     await move(join(dir, "scripts"), join(dir, "tools"));
     await symlink("tools", join(dir, "scripts"));
-    expect(run("duplicates", dir).out).toContain("scripts/allow/duplicates.tsv is reached through a link or is not a file");
+    expect(run("duplicates", dir).out).toContain(
+      "scripts/allow/duplicates.tsv is reached through a link or is not a file",
+    );
   });
 
   it("refuses to run with a knip or jscpd key in package.json, which knip reads whatever --config says", async () => {
     const dir = await copy();
     await writeFile(join(dir, "src/orphan.ts"), "export const orphan = 1;\n");
     const pkg = join(dir, "package.json");
-    await writeFile(pkg, JSON.stringify({ ...JSON.parse(await readFile(pkg, "utf8")), knip: { ignore: ["src/orphan.ts"] }, jscpd: { ignore: ["**/versions.ts"] } }));
+    await writeFile(
+      pkg,
+      JSON.stringify({
+        ...JSON.parse(await readFile(pkg, "utf8")),
+        knip: { ignore: ["src/orphan.ts"] },
+        jscpd: { ignore: ["**/versions.ts"] },
+      }),
+    );
     const unused = run("unused", dir);
     expect(unused.status).toBe(1);
-    expect(unused.out).toContain('package.json has a "knip" key, which would add to what knip.json and this check set; remove it');
+    expect(unused.out).toContain(
+      'package.json has a "knip" key, which would add to what knip.json and this check set; remove it',
+    );
     expect(run("duplicates", dir).out).toContain('package.json has a "jscpd" key');
   });
 
@@ -38,8 +49,12 @@ describe("what the check reads", () => {
     const dir = await copy();
     await rm(join(dir, "node_modules"));
     await mkdir(join(dir, "node_modules/.bin"), { recursive: true });
-    for (const name of ["knip", "jscpd"]) await writeFile(join(dir, "node_modules/.bin", name), "#!/bin/sh\necho broken >&2\nexit 3\n", { mode: 0o755 });
-    for (const [kind, name] of [["unused", "knip"], ["duplicates", "jscpd"]] as const) {
+    for (const name of ["knip", "jscpd"])
+      await writeFile(join(dir, "node_modules/.bin", name), "#!/bin/sh\necho broken >&2\nexit 3\n", { mode: 0o755 });
+    for (const [kind, name] of [
+      ["unused", "knip"],
+      ["duplicates", "jscpd"],
+    ] as const) {
       const r = run(kind, dir);
       expect(r.status, name).toBe(1);
       expect(r.out).toContain(`${name} exited 3; run npx ${name} to see why\nbroken`);
@@ -62,7 +77,10 @@ describe("the checks as the lint job runs them", () => {
 
   it("pass on a copy of this repository, and say so", async () => {
     const dir = await copy();
-    expect(npm(dir, "knip")).toMatchObject({ status: 0, out: "unused: every finding is in scripts/allow/unused.tsv\n" });
+    expect(npm(dir, "knip")).toMatchObject({
+      status: 0,
+      out: "unused: every finding is in scripts/allow/unused.tsv\n",
+    });
   });
 
   it("fail when scripts/ is a link, whatever the copy behind it holds", async () => {
@@ -70,7 +88,10 @@ describe("the checks as the lint job runs them", () => {
     await mkdir(join(dir, "tools"));
     await move(join(dir, "scripts"), join(dir, "tools/scripts"));
     await symlink("tools/scripts", join(dir, "scripts"));
-    for (const [script, file] of [["knip", "unused"], ["duplicates", "duplicates"]]) {
+    for (const [script, file] of [
+      ["knip", "unused"],
+      ["duplicates", "duplicates"],
+    ]) {
       const r = npm(dir, script!);
       expect(r.status, script).toBe(1);
       expect(r.out).toContain(`scripts/allow/${file}.tsv is reached through a link or is not a file`);
@@ -80,7 +101,10 @@ describe("the checks as the lint job runs them", () => {
   it("fail when scripts/allow is missing", async () => {
     const dir = await copy();
     await rm(join(dir, "scripts/allow"), { recursive: true });
-    for (const [script, file] of [["knip", "unused"], ["duplicates", "duplicates"]]) {
+    for (const [script, file] of [
+      ["knip", "unused"],
+      ["duplicates", "duplicates"],
+    ]) {
       const r = npm(dir, script!);
       expect(r.status, script).toBe(1);
       expect(r.out).toContain(`scripts/allow/${file}.tsv is missing`);

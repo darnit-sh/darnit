@@ -67,10 +67,16 @@ export async function applyRules(packDir: string, targets: readonly string[]): P
           await writeFile(variant, toYaml({ ...doc, language: grammar }));
           try {
             // The same clean environment the publish clone uses: no credentials reach ast-grep, which needs none.
-            await execFileAsync(bin, ["scan", "--config", config, "--rule", variant, "--update-all", ...targets], { cwd: tmp, env: cleanEnv() });
+            await execFileAsync(bin, ["scan", "--config", config, "--rule", variant, "--update-all", ...targets], {
+              cwd: tmp,
+              env: cleanEnv(),
+            });
           } catch (err) {
             const { stderr } = err as { stderr?: string };
-            throw new Error(`ast-grep failed on ${relative(packDir, rule)} (${grammar}): ${(stderr ?? String(err)).trim()}`, { cause: err });
+            throw new Error(
+              `ast-grep failed on ${relative(packDir, rule)} (${grammar}): ${(stderr ?? String(err)).trim()}`,
+              { cause: err },
+            );
           }
         }
       }

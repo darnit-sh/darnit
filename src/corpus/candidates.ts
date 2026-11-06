@@ -32,20 +32,34 @@ export const ENDPOINT_GONE = /^(api|endpoint)(-path)?-removed/;
 // The caps keep folder names short (longest in OpenAI's spec: a 35-character name, an 82-character path).
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 // Python's keyword.kwlist: `f(from=$V)` is not valid Python, and ast-grep rejects it as a pattern.
-const PY_KEYWORDS = new Set("False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield".split(" "));
+const PY_KEYWORDS = new Set(
+  "False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield".split(
+    " ",
+  ),
+);
 const METHOD = /^[A-Z]{1,10}$/;
 const PATH = /^\/[\w/{}?=-]{0,199}$/;
 // Greedy, so a name with a backtick in it is read whole and then fails IDENTIFIER.
 const FIELD = /request (?:property|parameter) `(.*)`/s;
 
 // Only explicit phrasings; a bare "use X" would turn prose like "Use this to…" into a rename.
-const REPLACEMENT = /(?:in favou?r of|replaced by)\s+`?([A-Za-z_][A-Za-z0-9_]*)`?|use\s+`([A-Za-z_][A-Za-z0-9_]*)`\s+instead/i;
+const REPLACEMENT =
+  /(?:in favou?r of|replaced by)\s+`?([A-Za-z_][A-Za-z0-9_]*)`?|use\s+`([A-Za-z_][A-Za-z0-9_]*)`\s+instead/i;
 
-const kebab = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-const sentences = (s: string) => s.replace(/\s+/g, " ").trim().split(/(?<=\.)\s/);
+const kebab = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+const sentences = (s: string) =>
+  s
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(?<=\.)\s/);
 const firstSentence = (s: string) => sentences(s)[0]!.slice(0, 200);
 // The sentence that states the deprecation, when there is one.
-const quote = (s: string) => (sentences(s).find((x) => /deprecat|in favou?r of|replaced by/i.test(x)) ?? firstSentence(s)).slice(0, 200);
+const quote = (s: string) =>
+  (sentences(s).find((x) => /deprecat|in favou?r of|replaced by/i.test(x)) ?? firstSentence(s)).slice(0, 200);
 
 // "POST /v1/chat/completions" or "/v1/chat/completions" as its method, if any, and its path without the
 // /v1 prefix, so "/completions" is not "/chat/completions". A query stays: "/responses?beta=true" is the spec's
@@ -68,7 +82,8 @@ export function settingsOf(r: ChangeRecord): Setting[] {
   found = [];
   for (const ps of Object.values(r.detection.astGrepPatterns))
     for (const { context } of ps ?? []) {
-      for (const m of context.matchAll(/["']?([A-Za-z_]\w*)["']?\s*[:=]\s*(\$|"([^"]*)"|'([^']*)')?/g)) found.push({ key: m[1]!, any: m[2] === "$", value: m[3] ?? m[4] });
+      for (const m of context.matchAll(/["']?([A-Za-z_]\w*)["']?\s*[:=]\s*(\$|"([^"]*)"|'([^']*)')?/g))
+        found.push({ key: m[1]!, any: m[2] === "$", value: m[3] ?? m[4] });
       for (const m of context.matchAll(/\{\s*([A-Za-z_]\w*)\s*\}/g)) found.push({ key: m[1]!, any: true });
     }
   settingsMemo.set(r, found);
@@ -97,7 +112,14 @@ export function namesOperation(r: ChangeRecord, path: string, method?: string, s
  * naming it in its surface and finding it with any value: one that finds `model: "dall-e-2"` covers that value, never
  * the field. An endpoint needs a record with no fields whose patterns set no key, so it finds every call.
  */
-export function covers(r: ChangeRecord, vendor: string, path: string, field: string | undefined, method?: string, symbol?: string): boolean {
+export function covers(
+  r: ChangeRecord,
+  vendor: string,
+  path: string,
+  field: string | undefined,
+  method?: string,
+  symbol?: string,
+): boolean {
   const settings = settingsOf(r);
   return (
     r.vendor === vendor &&
@@ -123,7 +145,17 @@ export function deriveCandidates(input: {
   const unmapped = new Set<string>();
   const seen = new Set<string>();
   // The same field changing on several endpoints is one record with several endpoints.
-  type Draft = { slug: string; kind: ChangeRecord["kind"]; field?: string | undefined; rename?: string | undefined; description: string; text: string; endpoints: string[]; paths: string[]; symbols: string[] };
+  type Draft = {
+    slug: string;
+    kind: ChangeRecord["kind"];
+    field?: string | undefined;
+    rename?: string | undefined;
+    description: string;
+    text: string;
+    endpoints: string[];
+    paths: string[];
+    symbols: string[];
+  };
   const drafts = new Map<string, Draft>();
 
   for (const e of entries) {
@@ -168,7 +200,8 @@ export function deriveCandidates(input: {
     const description = field ? (requestProperty(spec, e.operation, e.path, field)?.description ?? "") : "";
     const m = kind === "deprecation" && field ? description.match(REPLACEMENT) : null;
     const replacement = m?.[1] ?? m?.[2];
-    const rename = replacement !== undefined && replacement !== field && IDENTIFIER.test(replacement) ? replacement : undefined;
+    const rename =
+      replacement !== undefined && replacement !== field && IDENTIFIER.test(replacement) ? replacement : undefined;
     const gone = kind === "breaking";
     const slug = field
       ? rename
@@ -177,7 +210,17 @@ export function deriveCandidates(input: {
       : `${kebab(endpoint)}-${gone ? "removed" : "deprecated"}`;
     // Keyed by the exact name: names that differ only in case or punctuation share a slug, not a record.
     const id = JSON.stringify([field ?? endpoint, rename, gone]);
-    const draft = drafts.get(id) ?? { slug, kind, field, rename, description, text: e.text, endpoints: [], paths: [], symbols: [] };
+    const draft = drafts.get(id) ?? {
+      slug,
+      kind,
+      field,
+      rename,
+      description,
+      text: e.text,
+      endpoints: [],
+      paths: [],
+      symbols: [],
+    };
     draft.endpoints.push(endpoint);
     draft.paths.push(e.path);
     if (symbol && !draft.symbols.includes(symbol)) draft.symbols.push(symbol);
@@ -195,7 +238,11 @@ export function deriveCandidates(input: {
     const endpoint = d.endpoints[0]!;
     const gone = kind === "breaking";
     const where = d.symbols.length > 0 ? d.symbols.join(", ") : d.endpoints.join(", ");
-    const title = field ? (gone ? `Stop sending ${field} to ${where}` : `${field} is deprecated on ${where}`) : `${endpoint} is ${gone ? "gone" : "deprecated"}`;
+    const title = field
+      ? gone
+        ? `Stop sending ${field} to ${where}`
+        : `${field} is deprecated on ${where}`
+      : `${endpoint} is ${gone ? "gone" : "deprecated"}`;
     // A deprecated field still works and the replacement may be newer than the SDK a repo pins, so it is
     // reported, not rewritten. A rename can come back behind fix.requires once the SDK versions are known.
     const migration = rename
@@ -221,7 +268,10 @@ export function deriveCandidates(input: {
             { context: `{'${field}': $V}`, selector: "pair" },
           ],
         }
-      : { js: [{ context: `$C.${symbol}($$$ARGS)`, selector: "call_expression" }], py: [{ context: `$C.${symbol}($$$ARGS)`, selector: "call" }] };
+      : {
+          js: [{ context: `$C.${symbol}($$$ARGS)`, selector: "call_expression" }],
+          py: [{ context: `$C.${symbol}($$$ARGS)`, selector: "call" }],
+        };
 
     const record = parseChangeRecord(
       {
@@ -231,14 +281,27 @@ export function deriveCandidates(input: {
         vendor,
         announcedAt: observedAt,
         kind,
-        surface: { endpoints: d.paths, ...(d.symbols.length > 0 ? { sdkSymbols: d.symbols } : {}), ...(field ? { fields: [field] } : {}) },
+        surface: {
+          endpoints: d.paths,
+          ...(d.symbols.length > 0 ? { sdkSymbols: d.symbols } : {}),
+          ...(field ? { fields: [field] } : {}),
+        },
         classification: "semantic",
-        sources: [{ url: config.spec, quoteId: `${endpoint}${field ? ` ${field}` : ""}: ${quote(description) || d.text}` }],
+        sources: [
+          { url: config.spec, quoteId: `${endpoint}${field ? ` ${field}` : ""}: ${quote(description) || d.text}` },
+        ],
         detection: { astGrepPatterns: patterns },
         notes: {
           migration,
-          ...(pyKeyword ? { edgeCases: [`${field} is a Python keyword, so Python code can only send it in a dict; only quoted keys are detected there.`] } : {}),
-          citationQuality: "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it.",
+          ...(pyKeyword
+            ? {
+                edgeCases: [
+                  `${field} is a Python keyword, so Python code can only send it in a dict; only quoted keys are detected there.`,
+                ],
+              }
+            : {}),
+          citationQuality:
+            "Derived from the vendor's OpenAPI specification; the date is when darnit observed the change there, not when the vendor announced it.",
         },
       },
       `${dir}/change.json`,
@@ -246,7 +309,9 @@ export function deriveCandidates(input: {
 
     const call = symbol ?? "call";
     const js = field ? `export const r = client.${call}({ ${field}: 1 });\n` : `export const r = client.${call}({});\n`;
-    const py = field ? `r = client.${call}(${pyKeyword ? `**{"${field}": 1}` : `${field}=1`})\n` : `r = client.${call}()\n`;
+    const py = field
+      ? `r = client.${call}(${pyKeyword ? `**{"${field}": 1}` : `${field}=1`})\n`
+      : `r = client.${call}()\n`;
     const files: Record<string, string> = {
       "fixtures/basic/before/app.js": js,
       "fixtures/basic/before/app.py": py,

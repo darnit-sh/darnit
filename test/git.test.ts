@@ -1,7 +1,12 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { access, appendFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
+import {
+  createServer as createHttpServer,
+  type IncomingMessage,
+  type Server as HttpServer,
+  type ServerResponse,
+} from "node:http";
 import { type AddressInfo, createServer, type Server, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,7 +55,13 @@ function backend(remote: string, send = (res: ServerResponse, body: Buffer) => v
     cgi.on("close", () => {
       const all = Buffer.concat(out);
       const end = all.indexOf("\r\n\r\n");
-      const headers = Object.fromEntries(all.subarray(0, end).toString().split("\r\n").map((l) => l.split(": ") as [string, string]));
+      const headers = Object.fromEntries(
+        all
+          .subarray(0, end)
+          .toString()
+          .split("\r\n")
+          .map((l) => l.split(": ") as [string, string]),
+      );
       const { Status: status = "200", ...rest } = headers;
       res.writeHead(parseInt(status), rest);
       send(res, all.subarray(end + 4));
@@ -88,7 +99,12 @@ describe("git treats the repo as untrusted", () => {
     const mark = join(dir, "..", `${dir.split("/").pop()}.mark`);
     tempDirs.push(mark);
     const cmd = `touch '${mark}'; cat`;
-    for (const [k, v] of [["filter.p.process", cmd], ["filter.p.clean", cmd], ["filter.p.smudge", cmd], ["filter.p.required", "true"]]) {
+    for (const [k, v] of [
+      ["filter.p.process", cmd],
+      ["filter.p.clean", cmd],
+      ["filter.p.smudge", cmd],
+      ["filter.p.required", "true"],
+    ]) {
       await g.git(dir, ["config", k!, v!]);
     }
     await writeFile(join(dir, "a.ts"), "b\n");
@@ -98,7 +114,12 @@ describe("git treats the repo as untrusted", () => {
     await g.diff(dir, ["a.ts"]);
     await writeFile(join(dir, "a.ts"), "c\n");
     await g.discard(dir, ["a.ts"]); // checkout writes through smudge
-    expect(await access(mark).then(() => true, () => false)).toBe(false);
+    expect(
+      await access(mark).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
   });
 
   it("turns off a filter driver whose name holds an equals sign, which a -c pin would split", async () => {
@@ -109,7 +130,12 @@ describe("git treats the repo as untrusted", () => {
     await g.git(dir, ["config", "filter.a=b.required", "true"]);
     await writeFile(join(dir, "a.ts"), "b\n");
     await g.git(dir, ["add", "--", "a.ts"]);
-    expect(await access(mark).then(() => true, () => false)).toBe(false);
+    expect(
+      await access(mark).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
   });
 
   // Under a UTF-8 locale git's config regex `.` would not match a byte like 0xff, so a name read by a
@@ -125,13 +151,28 @@ describe("git treats the repo as untrusted", () => {
       tempDirs.push(mark);
       const run = `touch '${mark}'; cat`;
       // A driver name with a raw 0xff byte: git stores and reads it, but it is not valid UTF-8.
-      await writeFile(join(dir, ".gitattributes"), Buffer.concat([Buffer.from("*.ts filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]));
-      await appendFile(join(dir, ".git", "config"), Buffer.concat([Buffer.from('[filter "x'), Buffer.from([0xff]), Buffer.from(`y"]\n\tclean = ${run}\n\tsmudge = ${run}\n\trequired = true\n`)]));
+      await writeFile(
+        join(dir, ".gitattributes"),
+        Buffer.concat([Buffer.from("*.ts filter=x"), Buffer.from([0xff]), Buffer.from("y\n")]),
+      );
+      await appendFile(
+        join(dir, ".git", "config"),
+        Buffer.concat([
+          Buffer.from('[filter "x'),
+          Buffer.from([0xff]),
+          Buffer.from(`y"]\n\tclean = ${run}\n\tsmudge = ${run}\n\trequired = true\n`),
+        ]),
+      );
       for (const op of [() => g.isClean(dir), () => g.diff(dir, ["a.ts"]), () => g.git(dir, ["add", "--", "a.ts"])]) {
         await writeFile(join(dir, "a.ts"), `b${Math.random()}\n`); // unstaged and stat-dirty, so a live filter would run
         await expect(op()).rejects.toThrow(/not valid UTF-8/);
       }
-      expect(await access(mark).then(() => true, () => false)).toBe(false);
+      expect(
+        await access(mark).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(false);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -148,7 +189,12 @@ describe("git treats the repo as untrusted", () => {
       await g.git(dir, ["config", "filter.p.required", "true"]);
       await writeFile(join(dir, "a.ts"), "b\n");
       await g.git(dir, ["add", "--", "a.ts"]);
-      expect(await access(mark).then(() => true, () => false)).toBe(false);
+      expect(
+        await access(mark).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(false);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -175,10 +221,12 @@ async function gitChildEnv(git = g.git): Promise<string> {
   tempDirs.push(dir);
   await writeFile(join(dir, "a"), "a\n");
   await writeFile(join(dir, "b"), "b\n");
-  return git(dir, ["-c", "diff.external=env; true", "diff", "--no-index", "--ext-diff", "a", "b"]).catch((err: { code?: number; stdout?: string }) => {
-    if (err.code === 1 && err.stdout !== undefined) return err.stdout;
-    throw err;
-  });
+  return git(dir, ["-c", "diff.external=env; true", "diff", "--no-index", "--ext-diff", "a", "b"]).catch(
+    (err: { code?: number; stdout?: string }) => {
+      if (err.code === 1 && err.stdout !== undefined) return err.stdout;
+      throw err;
+    },
+  );
 }
 
 describe("git works on the folder it was given", () => {
@@ -187,7 +235,9 @@ describe("git works on the folder it was given", () => {
   it("hands git and the repository's commands none of the variables git keeps local to a repository", async () => {
     const dir = await mkdtemp(join(tmpdir(), "darnit-env-"));
     tempDirs.push(dir);
-    const names = (await promisify(execFile)("git", ["rev-parse", "--local-env-vars"])).stdout.split("\n").filter(Boolean);
+    const names = (await promisify(execFile)("git", ["rev-parse", "--local-env-vars"])).stdout
+      .split("\n")
+      .filter(Boolean);
     expect(names).toContain("GIT_DIR");
     for (const name of names) {
       // git sets GIT_PREFIX and GIT_CONFIG_PARAMETERS for its own children, so look for the value.
@@ -207,13 +257,16 @@ describe("git works on the folder it was given", () => {
       const real = await original<typeof import("node:child_process")>();
       const run = promisify(real.execFile);
       const execFile = Object.assign(() => {}, {
-        [promisify.custom]: (file: string, args: string[], opts: object) => (args.includes("--local-env-vars") ? answer() : run(file, args, opts)),
+        [promisify.custom]: (file: string, args: string[], opts: object) =>
+          args.includes("--local-env-vars") ? answer() : run(file, args, opts),
       });
       return { ...real, execFile };
     });
     try {
       const fresh = await import("../src/git.js");
-      for (const name of (await promisify(execFile)("git", ["rev-parse", "--local-env-vars"])).stdout.split("\n").filter(Boolean)) {
+      for (const name of (await promisify(execFile)("git", ["rev-parse", "--local-env-vars"])).stdout
+        .split("\n")
+        .filter(Boolean)) {
         vi.stubEnv(name, `darnit-marker-${name}`);
         expect(await gitChildEnv(fresh.git), name).not.toContain("darnit-marker");
         vi.unstubAllEnvs();
@@ -229,7 +282,12 @@ describe("git works on the folder it was given", () => {
     const home = await mkdtemp(join(tmpdir(), "darnit-home-"));
     tempDirs.push(home);
     await mkdir(join(home, "git"));
-    const where = { GIT_CONFIG_GLOBAL: "global", GIT_CONFIG_SYSTEM: "system", HOME: ".gitconfig", XDG_CONFIG_HOME: "git/config" };
+    const where = {
+      GIT_CONFIG_GLOBAL: "global",
+      GIT_CONFIG_SYSTEM: "system",
+      HOME: ".gitconfig",
+      XDG_CONFIG_HOME: "git/config",
+    };
     for (const [name, file] of Object.entries(where)) {
       await writeFile(join(home, file), `[darnit]\n\tprobe = ${name}\n`);
       // The test setup points git away from the user's config files; each is set here alone.
@@ -324,21 +382,33 @@ describe("git calls that reach the remote end when it stalls", () => {
 
   it.each([
     ["with no setting of its own", () => {}],
-    ["when the repo config turns the stall check off for that URL", async (dir: string, url: string) => {
-      await g.git(dir, ["config", `http.${url}.lowSpeedLimit`, "0"]);
-      await g.git(dir, ["config", `http.${url}.lowSpeedTime`, "0"]);
-    }],
-    ["when the environment turns the stall check off", () => {
-      vi.stubEnv("GIT_HTTP_LOW_SPEED_LIMIT", "0");
-      vi.stubEnv("GIT_HTTP_LOW_SPEED_TIME", "0");
-    }],
-  ])("ends an HTTP remote that accepts the connection and never answers %s, leaving no git process on it", async (_, setup) => {
-    const dir = await repoWith({ "a.ts": "a\n" });
-    const { url, closed } = await silentOrigin(dir);
-    await setup(dir, url);
-    await expect(g.git(dir, ["ls-remote", "--heads", "origin", "x"], 1)).rejects.toThrow("git ls-remote timed out after 1 seconds");
-    await closed;
-  }, 10_000);
+    [
+      "when the repo config turns the stall check off for that URL",
+      async (dir: string, url: string) => {
+        await g.git(dir, ["config", `http.${url}.lowSpeedLimit`, "0"]);
+        await g.git(dir, ["config", `http.${url}.lowSpeedTime`, "0"]);
+      },
+    ],
+    [
+      "when the environment turns the stall check off",
+      () => {
+        vi.stubEnv("GIT_HTTP_LOW_SPEED_LIMIT", "0");
+        vi.stubEnv("GIT_HTTP_LOW_SPEED_TIME", "0");
+      },
+    ],
+  ])(
+    "ends an HTTP remote that accepts the connection and never answers %s, leaving no git process on it",
+    async (_, setup) => {
+      const dir = await repoWith({ "a.ts": "a\n" });
+      const { url, closed } = await silentOrigin(dir);
+      await setup(dir, url);
+      await expect(g.git(dir, ["ls-remote", "--heads", "origin", "x"], 1)).rejects.toThrow(
+        "git ls-remote timed out after 1 seconds",
+      );
+      await closed;
+    },
+    10_000,
+  );
 
   it("lets a slow but steady HTTP push run past four times the limit", async () => {
     const remote = await mkdtemp(join(tmpdir(), "darnit-remote-"));
@@ -348,7 +418,10 @@ describe("git calls that reach the remote end when it stalls", () => {
     const server = createHttpServer(
       backend(remote, (res, body) => {
         let at = 0;
-        const timer = setInterval(() => (at < body.length ? res.write(body.subarray(at, ++at)) : (clearInterval(timer), res.end())), 2500 / body.length);
+        const timer = setInterval(
+          () => (at < body.length ? res.write(body.subarray(at, ++at)) : (clearInterval(timer), res.end())),
+          2500 / body.length,
+        );
       }),
     );
     open.push(server);
@@ -367,7 +440,9 @@ describe("git calls that reach the remote end when it stalls", () => {
     await g.git(dir, ["remote", "add", "origin", "ssh://example.invalid/r.git"]);
     vi.stubEnv("GIT_SSH_COMMAND", "sleep 6 #");
     // Named after the command, not git's options before it.
-    await expect(g.git(dir, ["-C", dir, "push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow("git push timed out after 4 seconds");
+    await expect(g.git(dir, ["-C", dir, "push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow(
+      "git push timed out after 4 seconds",
+    );
   }, 20_000);
 });
 
@@ -454,7 +529,12 @@ describe("push", () => {
       await expect(g.git(dir, args), args.join(" ")).rejects.toThrow("reaches origin, so it needs a stall limit");
     }
     // Local commands, `git remote` ones among them, still run without one.
-    for (const args of [["remote", "get-url", "origin"], ["-C", dir, "remote", "-v"], ["remote", "add", "other", url], ["-c", "x.y=z", "status"]]) {
+    for (const args of [
+      ["remote", "get-url", "origin"],
+      ["-C", dir, "remote", "-v"],
+      ["remote", "add", "other", url],
+      ["-c", "x.y=z", "status"],
+    ]) {
       await g.git(dir, args);
     }
   }, 20_000);
@@ -479,7 +559,12 @@ describe("push", () => {
     const dir = await repoWith({ "a.ts": "a\n" });
     const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
     const { url, remote } = await guardedOrigin(dir);
-    for (const [github, gh] of [["", token], [" \n", token], [`${token}\n`, ""], ["", ` ${token}\n`]]) {
+    for (const [github, gh] of [
+      ["", token],
+      [" \n", token],
+      [`${token}\n`, ""],
+      ["", ` ${token}\n`],
+    ]) {
       vi.stubEnv("GITHUB_TOKEN", github);
       vi.stubEnv("GH_TOKEN", gh);
       expect(await g.remoteBranchExists(dir, branch, url), JSON.stringify([github, gh])).toBe(false);
@@ -494,10 +579,16 @@ describe("push", () => {
     const dir = await repoWith({ "a.ts": "a\n" });
     const branch = (await g.git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
     const { url, remote } = await guardedOrigin(dir);
-    for (const [github, gh] of [[`${token}\nX`, ""], ["", `${token} X`], [`${token}\u2028X`, token]]) {
+    for (const [github, gh] of [
+      [`${token}\nX`, ""],
+      ["", `${token} X`],
+      [`${token}\u2028X`, token],
+    ]) {
       vi.stubEnv("GITHUB_TOKEN", github);
       vi.stubEnv("GH_TOKEN", gh);
-      await expect(g.push(dir, branch, url), JSON.stringify([github, gh])).rejects.toThrow(/^the GitHub token holds a character other than printable ASCII \(a space, control or zero-width character, or a letter outside ASCII\); set it again without one$/);
+      await expect(g.push(dir, branch, url), JSON.stringify([github, gh])).rejects.toThrow(
+        /^the GitHub token holds a character other than printable ASCII \(a space, control or zero-width character, or a letter outside ASCII\); set it again without one$/,
+      );
     }
     expect(await g.git(remote, ["branch", "--list"])).toBe("");
   }, 20_000);
@@ -529,11 +620,18 @@ describe("stage and pushStaged", () => {
       return staged;
     };
     // Bytes that change nothing.
-    await expect(g.pushStaged(at, await file(0o100644, "a\n"), ["m"], "x")).rejects.toThrow("the commit darnit built for x changes more than its rewrite; nothing pushed");
+    await expect(g.pushStaged(at, await file(0o100644, "a\n"), ["m"], "x")).rejects.toThrow(
+      "the commit darnit built for x changes more than its rewrite; nothing pushed",
+    );
     expect(await g.git(bare, ["branch", "--list"])).toBe("");
     // The bytes before, or their mode, not as committed.
-    for (const [mode, was] of [[0o100644, "other\n"], [0o100755, "a\n"]] as const) {
-      expect(await g.stage(at, [{ path: "a.ts", mode, bytes: Buffer.from("c\n"), was: Buffer.from(was) }])).toEqual({ unlike: "a.ts" });
+    for (const [mode, was] of [
+      [0o100644, "other\n"],
+      [0o100755, "a\n"],
+    ] as const) {
+      expect(await g.stage(at, [{ path: "a.ts", mode, bytes: Buffer.from("c\n"), was: Buffer.from(was) }])).toEqual({
+        unlike: "a.ts",
+      });
     }
     await g.pushStaged(at, await file(0o100644, "c\n"), ["m", "body"], "x");
     expect(await g.git(bare, ["diff-tree", "-r", "--name-only", at.commit, "x"])).toBe("a.ts\n");
@@ -595,18 +693,27 @@ describe("uncommitted where git composes file names, as on macOS", () => {
   });
 
   // Two files whose names differ only in form can't both exist on macOS.
-  it.skipIf(process.platform === "darwin")("still refuses an untracked file whose name only looks like a tracked one", async () => {
-    const dir = await repoWith({ "\u00e9.js": "a\n" });
-    await writeFile(join(dir, "e\u0301.js"), "b\n");
-    expect(await g.uncommitted(dir, ["\u00e9.js", "e\u0301.js"])).toEqual([{ file: "e\u0301.js" }]);
-  });
+  it.skipIf(process.platform === "darwin")(
+    "still refuses an untracked file whose name only looks like a tracked one",
+    async () => {
+      const dir = await repoWith({ "\u00e9.js": "a\n" });
+      await writeFile(join(dir, "e\u0301.js"), "b\n");
+      expect(await g.uncommitted(dir, ["\u00e9.js", "e\u0301.js"])).toEqual([{ file: "e\u0301.js" }]);
+    },
+  );
 });
 
 describe("patch", () => {
   const lines = (...l: string[]) => `${l.join("\n")}\n`;
   // Each pair gives a different diff under one of the settings below: the algorithm, the indent heuristic, a wider context.
-  const algo = [lines("y", "  w();", "y", "y", "  w();", "y", "  w();", "  z();"), lines("}", "y", "y", "y", "", "  w();", "y", "  w();", "  w();", "  z();")];
-  const heur = [lines("  w();", "  z();", "y", "x", "{", "}", "  z();", "", "x"), lines("  w();", "  z();", "y", "x", "  z();", "{", "}", "}", "  z();", "x")];
+  const algo = [
+    lines("y", "  w();", "y", "y", "  w();", "y", "  w();", "  z();"),
+    lines("}", "y", "y", "y", "", "  w();", "y", "  w();", "  w();", "  z();"),
+  ];
+  const heur = [
+    lines("  w();", "  z();", "y", "x", "{", "}", "  z();", "", "x"),
+    lines("  w();", "  z();", "y", "x", "  z();", "{", "}", "}", "  z();", "x"),
+  ];
   const far = Array.from({ length: 30 }, (_, i) => `line ${i}`);
   const pairs: Record<string, string[]> = {
     "algo.js": algo,
@@ -617,15 +724,29 @@ describe("patch", () => {
   };
 
   it("gives the same bytes whatever diff settings the repository's own code wrote", async () => {
-    const dir = await repoWith({ ...Object.fromEntries(Object.entries(pairs).map(([f, [a]]) => [f, a!])), ".gitattributes": "up.js diff=up\n" });
+    const dir = await repoWith({
+      ...Object.fromEntries(Object.entries(pairs).map(([f, [a]]) => [f, a!])),
+      ".gitattributes": "up.js diff=up\n",
+    });
     for (const [f, [, b]] of Object.entries(pairs)) await writeFile(join(dir, f), b!);
     const files = Object.keys(pairs);
     const clean = await g.patch(dir, files);
     await writeFile(join(dir, "order"), "up.js\nfar.js\n");
     const hostile = {
-      "core.quotePath": "true", "diff.suppressBlankEmpty": "true", "diff.orderFile": join(dir, "order"), "diff.external": "false",
-      "diff.up.textconv": "tr a-z A-Z", "color.diff": "always", "color.ui": "always", "diff.context": "8", "diff.interHunkContext": "20",
-      "diff.algorithm": "histogram", "diff.indentHeuristic": "false", "diff.noprefix": "true", "diff.mnemonicPrefix": "true", "core.abbrev": "7",
+      "core.quotePath": "true",
+      "diff.suppressBlankEmpty": "true",
+      "diff.orderFile": join(dir, "order"),
+      "diff.external": "false",
+      "diff.up.textconv": "tr a-z A-Z",
+      "color.diff": "always",
+      "color.ui": "always",
+      "diff.context": "8",
+      "diff.interHunkContext": "20",
+      "diff.algorithm": "histogram",
+      "diff.indentHeuristic": "false",
+      "diff.noprefix": "true",
+      "diff.mnemonicPrefix": "true",
+      "core.abbrev": "7",
     };
     for (const [key, value] of Object.entries(hostile)) await g.git(dir, ["config", key, value]);
     expect(await g.patch(dir, files)).toBe(clean);

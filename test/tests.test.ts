@@ -31,17 +31,28 @@ describe("detectBuildCommand", () => {
   it("prefers a typecheck script, then a build script, with the lockfile's package manager", async () => {
     const both = JSON.stringify({ scripts: { typecheck: "tsc --noEmit", build: "tsc" } });
     expect(await detectBuildCommand(await dirWith({ "package.json": both }))).toBe("npm run typecheck");
-    expect(await detectBuildCommand(await dirWith({ "package.json": JSON.stringify({ scripts: { build: "tsc" } }), "pnpm-lock.yaml": "" }))).toBe("pnpm run build");
+    expect(
+      await detectBuildCommand(
+        await dirWith({ "package.json": JSON.stringify({ scripts: { build: "tsc" } }), "pnpm-lock.yaml": "" }),
+      ),
+    ).toBe("pnpm run build");
   });
 
   it("falls back to the repo's own TypeScript compiler", async () => {
-    const dir = await dirWith({ "tsconfig.json": "{}", "node_modules/": "", "node_modules/.bin/": "", "node_modules/.bin/tsc": "" });
+    const dir = await dirWith({
+      "tsconfig.json": "{}",
+      "node_modules/": "",
+      "node_modules/.bin/": "",
+      "node_modules/.bin/tsc": "",
+    });
     expect(await detectBuildCommand(dir)).toBe("node_modules/.bin/tsc --noEmit");
     expect(await detectBuildCommand(await dirWith({ "tsconfig.json": "{}" }))).toBeUndefined();
   });
 
   it("finds nothing in a plain project", async () => {
-    expect(await detectBuildCommand(await dirWith({ "package.json": JSON.stringify({ scripts: { test: "x" } }) }))).toBeUndefined();
+    expect(
+      await detectBuildCommand(await dirWith({ "package.json": JSON.stringify({ scripts: { test: "x" } }) })),
+    ).toBeUndefined();
     expect(await detectBuildCommand(await dirWith({}))).toBeUndefined();
   });
 });
@@ -62,9 +73,15 @@ describe("detectTestCommand", () => {
   it("recognises pytest setups", async () => {
     const path = await pathWith("python3");
     expect(await detectTestCommand(await dirWith({ "pytest.ini": "" }), path)).toBe("python3 -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "tests/": "", "tests/test_app.py": "" }), path)).toBe("python3 -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "pyproject.toml": "[tool.pytest.ini_options]\n" }), path)).toBe("python3 -m pytest -q");
-    expect(await detectTestCommand(await dirWith({ "setup.cfg": "[tool:pytest]\n" }), path)).toBe("python3 -m pytest -q");
+    expect(await detectTestCommand(await dirWith({ "tests/": "", "tests/test_app.py": "" }), path)).toBe(
+      "python3 -m pytest -q",
+    );
+    expect(await detectTestCommand(await dirWith({ "pyproject.toml": "[tool.pytest.ini_options]\n" }), path)).toBe(
+      "python3 -m pytest -q",
+    );
+    expect(await detectTestCommand(await dirWith({ "setup.cfg": "[tool:pytest]\n" }), path)).toBe(
+      "python3 -m pytest -q",
+    );
   });
 
   it("runs pytest with whichever Python is installed, python3 first", async () => {
@@ -75,7 +92,9 @@ describe("detectTestCommand", () => {
   });
 
   it("does not mistake a JavaScript tests/ folder for pytest", async () => {
-    expect(await detectTestCommand(await dirWith({ "tests/": "", "tests/app.test.js": "" }), await pathWith("python3"))).toBeUndefined();
+    expect(
+      await detectTestCommand(await dirWith({ "tests/": "", "tests/app.test.js": "" }), await pathWith("python3")),
+    ).toBeUndefined();
   });
 
   it("finds nothing in an empty project", async () => {
@@ -90,23 +109,38 @@ describe("detectTestCommand", () => {
     return dir;
   }
 
-  it.skipIf(process.platform === "win32")("does not wait on a package.json that is not a regular file", { timeout: 2000 }, async () => {
-    const dir = await linkedToPipe("package.json");
-    expect(await detectTestCommand(dir)).toBeUndefined();
-    expect(await detectBuildCommand(dir)).toBeUndefined();
-  });
+  it.skipIf(process.platform === "win32")(
+    "does not wait on a package.json that is not a regular file",
+    { timeout: 2000 },
+    async () => {
+      const dir = await linkedToPipe("package.json");
+      expect(await detectTestCommand(dir)).toBeUndefined();
+      expect(await detectBuildCommand(dir)).toBeUndefined();
+    },
+  );
 
-  it.skipIf(process.platform === "win32")("does not wait on Python settings that are not regular files", { timeout: 2000 }, async () => {
-    const path = await pathWith("python3");
-    expect(await detectTestCommand(await linkedToPipe("pyproject.toml", "setup.cfg"), path)).toBeUndefined();
-    const endless = await dirWith({});
-    await symlink("/dev/zero", join(endless, "pyproject.toml"));
-    expect(await detectTestCommand(endless, path)).toBeUndefined();
-  });
+  it.skipIf(process.platform === "win32")(
+    "does not wait on Python settings that are not regular files",
+    { timeout: 2000 },
+    async () => {
+      const path = await pathWith("python3");
+      expect(await detectTestCommand(await linkedToPipe("pyproject.toml", "setup.cfg"), path)).toBeUndefined();
+      const endless = await dirWith({});
+      await symlink("/dev/zero", join(endless, "pyproject.toml"));
+      expect(await detectTestCommand(endless, path)).toBeUndefined();
+    },
+  );
 
   it("does not guess other commands when package.json is too large to read", async () => {
     const big = JSON.stringify({ scripts: { test: "vitest", build: "tsc" }, pad: "x".repeat(10.1 * 1024 * 1024) });
-    const dir = await dirWith({ "package.json": big, "pytest.ini": "", "tsconfig.json": "{}", "node_modules/": "", "node_modules/.bin/": "", "node_modules/.bin/tsc": "" });
+    const dir = await dirWith({
+      "package.json": big,
+      "pytest.ini": "",
+      "tsconfig.json": "{}",
+      "node_modules/": "",
+      "node_modules/.bin/": "",
+      "node_modules/.bin/tsc": "",
+    });
     expect(await detectTestCommand(dir, await pathWith("python3"))).toBeUndefined();
     expect(await detectBuildCommand(dir)).toBeUndefined();
     expect(await unreadSettings(dir)).toBe("package.json");
@@ -115,7 +149,13 @@ describe("detectTestCommand", () => {
   });
 
   it("does not guess other commands when package.json is a broken link", async () => {
-    const dir = await dirWith({ "pytest.ini": "", "tsconfig.json": "{}", "node_modules/": "", "node_modules/.bin/": "", "node_modules/.bin/tsc": "" });
+    const dir = await dirWith({
+      "pytest.ini": "",
+      "tsconfig.json": "{}",
+      "node_modules/": "",
+      "node_modules/.bin/": "",
+      "node_modules/.bin/tsc": "",
+    });
     await symlink(join(dir, "missing.json"), join(dir, "package.json"));
     expect(await detectTestCommand(dir, await pathWith("python3"))).toBeUndefined();
     expect(await detectBuildCommand(dir)).toBeUndefined();
@@ -145,7 +185,8 @@ describe("runTests", () => {
       `const b = Buffer.from("ok \\u202e x \\u200b \\u{1F389}\\n"); const w = (s, e) => process.${stream}.write(b.subarray(s, e));` +
       `w(0, 5); setTimeout(() => { w(5, b.length - 3); setTimeout(() => w(b.length - 3), 200); }, 200);`;
     const dir = await dirWith({ "out.js": split("stdout"), "err.js": split("stderr") });
-    for (const script of ["out.js", "err.js"]) expect((await runTests(dir, `node ${script}`)).output).toBe("ok \\u202e x \\u200b \u{1F389}");
+    for (const script of ["out.js", "err.js"])
+      expect((await runTests(dir, `node ${script}`)).output).toBe("ok \\u202e x \\u200b \u{1F389}");
   });
 
   it("redacts a token cut in half by the output limit", async () => {
@@ -153,7 +194,10 @@ describe("runTests", () => {
     const saved = process.env.GITHUB_TOKEN;
     process.env.GITHUB_TOKEN = "ghp_testtoken1234567890";
     try {
-      const run = await runTests(dir, `node -e "process.stdout.write('start\\n' + process.argv[1] + 'y'.repeat(16374))" ghp_testtoken1234567890`);
+      const run = await runTests(
+        dir,
+        `node -e "process.stdout.write('start\\n' + process.argv[1] + 'y'.repeat(16374))" ghp_testtoken1234567890`,
+      );
       expect(run.output).not.toContain("1234567890");
     } finally {
       if (saved === undefined) delete process.env.GITHUB_TOKEN;
@@ -171,7 +215,8 @@ describe("runTests", () => {
     } finally {
       vi.unstubAllEnvs();
     }
-    const hooksPath = (d: string) => execFileSync("git", ["config", "--default", "", "core.hooksPath"], { cwd: d, encoding: "utf8" }).trim();
+    const hooksPath = (d: string) =>
+      execFileSync("git", ["config", "--default", "", "core.hooksPath"], { cwd: d, encoding: "utf8" }).trim();
     expect(hooksPath(other)).toBe("");
     expect(hooksPath(mine)).toBe(".husky");
   });
@@ -182,22 +227,34 @@ describe("runTests", () => {
     process.env.GITHUB_TOKEN = "ghp_testtoken1234567890";
     process.env.GH_TOKEN = "gho_othertoken0987654321";
     try {
-      const env = await runTests(dir, `node -e "console.log(process.env.GITHUB_TOKEN ?? 'no-token', process.env.GH_TOKEN ?? 'no-token')"`);
+      const env = await runTests(
+        dir,
+        `node -e "console.log(process.env.GITHUB_TOKEN ?? 'no-token', process.env.GH_TOKEN ?? 'no-token')"`,
+      );
       expect(env.output).toBe("no-token no-token");
       // A command that finds the token some other way still cannot get it into the output.
       const file = await runTests(dir, "cat leak.txt");
       expect(file.output).not.toContain("ghp_testtoken1234567890");
       expect(file.output).toContain("***");
       // Nor any auth header's value, such as one git config shows.
-      await writeFile(join(dir, "leak.txt"), "http.https://github.com/.extraheader AUTHORIZATION: basic c29tZW9uZTpzZWNyZXQ=");
-      expect((await runTests(dir, "cat leak.txt")).output).toBe("http.https://github.com/.extraheader AUTHORIZATION: basic ***");
+      await writeFile(
+        join(dir, "leak.txt"),
+        "http.https://github.com/.extraheader AUTHORIZATION: basic c29tZW9uZTpzZWNyZXQ=",
+      );
+      expect((await runTests(dir, "cat leak.txt")).output).toBe(
+        "http.https://github.com/.extraheader AUTHORIZATION: basic ***",
+      );
       // Nor in base64, as a git auth header carries it, with no header around it.
       for (const plain of ["x-access-token:ghp_testtoken1234567890", "ghp_testtoken1234567890"]) {
         await writeFile(join(dir, "leak.txt"), Buffer.from(plain).toString("base64"));
         expect((await runTests(dir, "cat leak.txt")).output).toMatch(/^\*\*\*=*$/);
       }
       // Nor by wrapping it in terminal codes that, once removed, would cut or join it.
-      for (const wrapped of ["\u001bghp_testtoken1234567890", "\u001b[ghp_testtoken1234567890", "gh\u001b[0mp_testtoken1234567890"]) {
+      for (const wrapped of [
+        "\u001bghp_testtoken1234567890",
+        "\u001b[ghp_testtoken1234567890",
+        "gh\u001b[0mp_testtoken1234567890",
+      ]) {
         await writeFile(join(dir, "leak.txt"), wrapped);
         expect((await runTests(dir, "cat leak.txt")).output).not.toContain("testtoken1234567890");
       }
@@ -223,32 +280,60 @@ describe("runTests", () => {
   });
 
   it("hides the credential on a basic, bearer or token Authorization line, and nothing else", async () => {
-    const lines = ["Authorization: see the docs", "authorization: basic", "next line", "Authorization: Basic c2VjcmV0 x", "AUTHORIZATION: bearer abc.def", "Proxy-Authorization:\tTOKEN ghx_1"];
+    const lines = [
+      "Authorization: see the docs",
+      "authorization: basic",
+      "next line",
+      "Authorization: Basic c2VjcmV0 x",
+      "AUTHORIZATION: bearer abc.def",
+      "Proxy-Authorization:\tTOKEN ghx_1",
+    ];
     const dir = await dirWith({ "leak.txt": lines.join("\n") });
-    expect((await runTests(dir, "cat leak.txt")).output.split("\n")).toEqual([...lines.slice(0, 3), "Authorization: Basic *** x", "AUTHORIZATION: bearer ***", "Proxy-Authorization:\tTOKEN ***"]);
+    expect((await runTests(dir, "cat leak.txt")).output.split("\n")).toEqual([
+      ...lines.slice(0, 3),
+      "Authorization: Basic *** x",
+      "AUTHORIZATION: bearer ***",
+      "Proxy-Authorization:\tTOKEN ***",
+    ]);
   });
 
   it("kills a hung command after the timeout", async () => {
     const dir = await dirWith({});
     // Outlives the test's own limit, so the test fails if the command is not killed.
-    const run = await runTests(dir, "node -e \"setTimeout(() => {}, 300000)\"", 300);
+    const run = await runTests(dir, 'node -e "setTimeout(() => {}, 300000)"', 300);
     expect(run).toMatchObject({ passed: false, timedOut: true });
   });
 
-  it.skipIf(process.platform === "win32")("returns at the timeout even when a process left the group and holds the output open", async () => {
-    const dir = await dirWith({});
-    const start = Date.now();
-    const run = await runTests(dir, "perl -MPOSIX -e 'if (fork() == 0) { POSIX::setsid(); sleep 10; exit } sleep 60'", 500);
-    expect(run).toMatchObject({ passed: false, timedOut: true });
-    // Waiting on the escaped process would take 10 seconds.
-    expect(Date.now() - start).toBeLessThan(5000);
-  }, 20_000);
+  it.skipIf(process.platform === "win32")(
+    "returns at the timeout even when a process left the group and holds the output open",
+    async () => {
+      const dir = await dirWith({});
+      const start = Date.now();
+      const run = await runTests(
+        dir,
+        "perl -MPOSIX -e 'if (fork() == 0) { POSIX::setsid(); sleep 10; exit } sleep 60'",
+        500,
+      );
+      expect(run).toMatchObject({ passed: false, timedOut: true });
+      // Waiting on the escaped process would take 10 seconds.
+      expect(Date.now() - start).toBeLessThan(5000);
+    },
+    20_000,
+  );
 
-  it.skipIf(process.platform === "win32")("returns at the timeout when the command's group is gone and an escaped process holds the output open", async () => {
-    const dir = await dirWith({});
-    const start = Date.now();
-    const run = await runTests(dir, "perl -MPOSIX -e 'if (fork() == 0) { POSIX::setsid(); sleep 10; exit } print \"left\\n\"'", 500);
-    expect(run).toMatchObject({ passed: false, timedOut: true, output: "left" });
-    expect(Date.now() - start).toBeLessThan(5000);
-  }, 20_000);
+  it.skipIf(process.platform === "win32")(
+    "returns at the timeout when the command's group is gone and an escaped process holds the output open",
+    async () => {
+      const dir = await dirWith({});
+      const start = Date.now();
+      const run = await runTests(
+        dir,
+        "perl -MPOSIX -e 'if (fork() == 0) { POSIX::setsid(); sleep 10; exit } print \"left\\n\"'",
+        500,
+      );
+      expect(run).toMatchObject({ passed: false, timedOut: true, output: "left" });
+      expect(Date.now() - start).toBeLessThan(5000);
+    },
+    20_000,
+  );
 });

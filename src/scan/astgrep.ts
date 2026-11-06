@@ -3,7 +3,16 @@ import python from "@ast-grep/lang-python";
 import { kind as kindId, Lang as NapiLang, parse, registerDynamicLanguage, type SgNode } from "@ast-grep/napi";
 import { escapeRegExp } from "../detect.js";
 import type { AstGrepPattern, Lang } from "../records/schema.js";
-import { clientOrigin, FUNCTIONS, isStatic, stringText, unwrap, urlOrigin, vendorClass, type VendorClients } from "./clients.js";
+import {
+  clientOrigin,
+  FUNCTIONS,
+  isStatic,
+  stringText,
+  unwrap,
+  urlOrigin,
+  vendorClass,
+  type VendorClients,
+} from "./clients.js";
 
 /** A built-in napi grammar or the name of a registered dynamic one. */
 export type Grammar = Parameters<typeof parse>[0];
@@ -68,12 +77,23 @@ const normalized = (callee: string) => callee.replace(/\s+/g, "").replace(/\?\./
 
 // Code inside a URL (an interpolation, a helper call) is not URL text.
 const OPAQUE = ["template_substitution", "interpolation", "call_expression", "call"];
-const URL_KINDS = new Set(["string", "template_string", "concatenated_string", "binary_expression", "binary_operator", "ternary_expression", "conditional_expression"]);
+const URL_KINDS = new Set([
+  "string",
+  "template_string",
+  "concatenated_string",
+  "binary_expression",
+  "binary_operator",
+  "ternary_expression",
+  "conditional_expression",
+]);
 
 /** Arguments that could be a request's URL: positional ones, `url=`, and `url:` in an options object. */
 function urlCandidates(call: SgNode): SgNode[] {
   const out: SgNode[] = [];
-  for (const arg of call.field("arguments")?.children().filter((c) => c.isNamed()) ?? []) {
+  for (const arg of call
+    .field("arguments")
+    ?.children()
+    .filter((c) => c.isNamed()) ?? []) {
     if (arg.is("keyword_argument")) {
       if (arg.field("name")?.text() === "url") out.push(arg.field("value")!);
     } else if (arg.is("object")) {
@@ -83,13 +103,21 @@ function urlCandidates(call: SgNode): SgNode[] {
   }
   return out.flatMap((arg) => {
     const n = unwrap(arg);
-    if (n?.is("new_expression") && n.field("constructor")?.text() === "URL") return n.field("arguments")?.children().find((c) => c.isNamed()) ?? [];
+    if (n?.is("new_expression") && n.field("constructor")?.text() === "URL")
+      return (
+        n
+          .field("arguments")
+          ?.children()
+          .find((c) => c.isNamed()) ?? []
+      );
     return n ?? [];
   });
 }
 
 /** Rules for `kinds`, leaving out the ones `grammar` lacks: asking for one is an error. */
-const anyKind = (grammar: Grammar, kinds: readonly string[]) => ({ any: kinds.filter((kind) => kindId(grammar, kind) !== 0).map((kind) => ({ kind })) });
+const anyKind = (grammar: Grammar, kinds: readonly string[]) => ({
+  any: kinds.filter((kind) => kindId(grammar, kind) !== 0).map((kind) => ({ kind })),
+});
 
 const span = (n: SgNode): Span => ({ start: n.range().start.index, end: n.range().end.index });
 const spanKey = ({ start, end }: Span) => `${start}:${end}`;
@@ -103,12 +131,21 @@ const codeSpans = new WeakMap<SgNode, Span[]>();
  * holding an endpoint is found once, under the innermost call or interpolation around it, so a URL is tested by a binary
  * search however deep its code is nested.
  */
-function endpointTest(root: SgNode, grammar: Grammar, endpoints: readonly string[]): (call: SgNode, url: SgNode) => boolean {
+function endpointTest(
+  root: SgNode,
+  grammar: Grammar,
+  endpoints: readonly string[],
+): (call: SgNode, url: SgNode) => boolean {
   let owned: Map<string, number[]> | undefined;
   const index = () => {
     let code = codeSpans.get(root);
     if (!code) codeSpans.set(root, (code = root.findAll({ rule: anyKind(grammar, OPAQUE) }).map(span)));
-    const rule = { rule: { ...anyKind(grammar, ["string_fragment", "string_content"]), regex: endpoints.map(escapeRegExp).join("|") } };
+    const rule = {
+      rule: {
+        ...anyKind(grammar, ["string_fragment", "string_content"]),
+        regex: endpoints.map(escapeRegExp).join("|"),
+      },
+    };
     const pieces = root.findAll(rule).filter((piece) => {
       const text = piece.text();
       return endpoints.some((e) => text.includes(e) && !/\s/.test(text.slice(0, text.indexOf(e))));
@@ -160,7 +197,11 @@ type Frame = { node: SgNode; url?: string | null };
  * an endpoint URL as an argument. Stops at a function, so a route handler, mock or test body
  * never borrows the URL of the call it is passed to. `up` holds the match's ancestors.
  */
-function endpointUrl(up: readonly Frame[], namesEndpoint: (call: SgNode, url: SgNode) => boolean, source: string): string | undefined {
+function endpointUrl(
+  up: readonly Frame[],
+  namesEndpoint: (call: SgNode, url: SgNode) => boolean,
+  source: string,
+): string | undefined {
   const read: Frame[] = [];
   let url: string | null = null;
   for (let i = up.length - 1; i >= 0; i--) {
@@ -176,7 +217,10 @@ function endpointUrl(up: readonly Frame[], namesEndpoint: (call: SgNode, url: Sg
       // Only the address is needed, so a long URL, which can hold every request nested in it, is read up to MAX_URL. The
       // mark at the cut keeps a host cut short from matching another provider's or a local one: its call counts as the vendor's.
       const { start, end } = span(found);
-      url = end - start > MAX_URL ? `${source.slice(start, start + MAX_URL).replace(/^[fFrRbBuU]*(?:"""|'''|[`'"])/, "")}…` : (stringText(found) ?? found.text().replace(/^[fFrRbBuU]*[`'"]/, ""));
+      url =
+        end - start > MAX_URL
+          ? `${source.slice(start, start + MAX_URL).replace(/^[fFrRbBuU]*(?:"""|'''|[`'"])/, "")}…`
+          : (stringText(found) ?? found.text().replace(/^[fFrRbBuU]*[`'"]/, ""));
       break;
     }
   }
@@ -192,7 +236,14 @@ type Request = { call: SgNode | undefined; symbol: string | undefined; url: stri
  * or else the URL of the raw request around it. One walk down from the root keeps each node's
  * ancestors, since asking a node for its parent walks down from the root each time.
  */
-function requests(root: SgNode, source: string, nodes: readonly SgNode[], symbols: readonly string[], namesEndpoint: ((call: SgNode, url: SgNode) => boolean) | undefined, isVendorClass: (callee: string) => boolean): Map<number, Request> {
+function requests(
+  root: SgNode,
+  source: string,
+  nodes: readonly SgNode[],
+  symbols: readonly string[],
+  namesEndpoint: ((call: SgNode, url: SgNode) => boolean) | undefined,
+  isVendorClass: (callee: string) => boolean,
+): Map<number, Request> {
   const wanted = new Set(nodes.map((n) => n.id()));
   const starts = [...new Set(nodes.map((n) => n.range().start.index))].sort((a, b) => a - b);
   /** The first match starting at or after `at`. */
@@ -212,10 +263,18 @@ function requests(root: SgNode, source: string, nodes: readonly SgNode[], symbol
     const { node, depth, start } = todo.pop()!;
     up.length = depth;
     if (next(start) === start && wanted.has(node.id())) {
-      const call = up.slice(-8).reverse().find((f) => isCall(f.node))?.node;
+      const call = up
+        .slice(-8)
+        .reverse()
+        .find((f) => isCall(f.node))?.node;
       const raw = call?.field("function")?.text();
       const callee = raw === undefined ? undefined : normalized(raw);
-      const symbol = callee === undefined ? undefined : symbols.filter((s) => callee.endsWith(s) && (!isStatic(s) || isVendorClass(callee))).sort((a, b) => b.length - a.length)[0];
+      const symbol =
+        callee === undefined
+          ? undefined
+          : symbols
+              .filter((s) => callee.endsWith(s) && (!isStatic(s) || isVendorClass(callee)))
+              .sort((a, b) => b.length - a.length)[0];
       const url = symbol === undefined && namesEndpoint ? endpointUrl(up, namesEndpoint, source) : undefined;
       out.set(node.id(), { call, symbol, url });
     }
@@ -263,7 +322,13 @@ function covered(p: AstGrepPattern, all: readonly AstGrepPattern[]): boolean {
   const quoted = js ?? (p.selector === "pair" ? PY_QUOTED_KEY.exec(p.context) : null);
   if (!quoted) return false;
   return all.some((b) => {
-    const bare = js ? (b.selector === "pair" ? JS_KEY.exec(b.context) : null) : b.selector === "keyword_argument" ? PY_KEY.exec(b.context) : null;
+    const bare = js
+      ? b.selector === "pair"
+        ? JS_KEY.exec(b.context)
+        : null
+      : b.selector === "keyword_argument"
+        ? PY_KEY.exec(b.context)
+        : null;
     return bare !== null && bare[1] === quoted[2] && bare[2]!.trim() === quoted[3]!.trim();
   });
 }
@@ -290,20 +355,30 @@ function ruleFor(context: string, selector: string, source?: string, withTemplat
   const py = PY_VALUE.exec(context);
   const template = withTemplate ? templateOf(context) : undefined;
   const fallbacks = js
-    ? [js[2]!, ...(template ? [template] : [])].flatMap((v) => [`({ ${js[1]}: $_ ?? ${v} })`, `({ ${js[1]}: $_ || ${v} })`])
+    ? [js[2]!, ...(template ? [template] : [])].flatMap((v) => [
+        `({ ${js[1]}: $_ ?? ${v} })`,
+        `({ ${js[1]}: $_ || ${v} })`,
+      ])
     : py
       ? [`f(${py[1]}=$_ or ${py[2]})`]
       : [];
-  const forms = [context, ...(template ? [`({ ${js![1]}: ${template} })`] : []), ...fallbacks].map((c) => ({ context: c, selector }));
+  const forms = [context, ...(template ? [`({ ${js![1]}: ${template} })`] : []), ...fallbacks].map((c) => ({
+    context: c,
+    selector,
+  }));
   const jsKey = selector === "pair" ? JS_KEY.exec(context)?.[1] : undefined;
   const pyKey = selector === "keyword_argument" ? PY_KEY.exec(context)?.[1] : undefined;
   const key = jsKey ?? pyKey;
-  if (key === undefined || (source !== undefined && !source.includes(`"${key}"`) && !source.includes(`'${key}'`))) return { rule: { any: forms.map((pattern) => ({ pattern })) } };
+  if (key === undefined || (source !== undefined && !source.includes(`"${key}"`) && !source.includes(`'${key}'`)))
+    return { rule: { any: forms.map((pattern) => ({ pattern })) } };
   const patterns = jsKey
     ? forms.map((f) => ({ context: f.context.replace(JS_KEY, `({ $${KEY}:$2})`), selector }))
     : [...forms, ...forms.map((f) => ({ context: f.context.replace(PY_KEY, `{$${KEY}: $2}`), selector: "pair" }))];
   const quoted = `"${key}"|'${key}'`;
-  return { rule: { any: patterns.map((pattern) => ({ pattern })) }, constraints: { [KEY]: { regex: `^(?:${jsKey ? `${key}|` : ""}${quoted})$` } } };
+  return {
+    rule: { any: patterns.map((pattern) => ({ pattern })) },
+    constraints: { [KEY]: { regex: `^(?:${jsKey ? `${key}|` : ""}${quoted})$` } },
+  };
 }
 
 // Pattern sets that compiled, so records loaded again in the same process are not compiled again.
@@ -316,14 +391,21 @@ const compiledSets = new Set<string>();
 export function compilePatterns(lang: Lang, patterns: readonly AstGrepPattern[]): void {
   const key = `${lang}\0${JSON.stringify(patterns)}`;
   if (compiledSets.has(key)) return;
-  for (const grammar of new Set(Object.values(GRAMMAR_BY_EXT).filter((g) => g.lang === lang).map((g) => g.grammar))) {
+  for (const grammar of new Set(
+    Object.values(GRAMMAR_BY_EXT)
+      .filter((g) => g.lang === lang)
+      .map((g) => g.grammar),
+  )) {
     const root = parse(grammar, "").root();
     for (const [i, { context, selector }] of patterns.entries()) {
       try {
         // With quoted keys: the same forms, an identifier key aside, so they compile when the plain ones do.
         root.findAll(ruleFor(context, selector));
       } catch (err) {
-        throw new Error(`${lang} pattern ${i + 1} does not compile for ${String(grammar).toLowerCase()}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+        throw new Error(
+          `${lang} pattern ${i + 1} does not compile for ${String(grammar).toLowerCase()}: ${err instanceof Error ? err.message : String(err)}`,
+          { cause: err },
+        );
       }
     }
   }
@@ -331,9 +413,17 @@ export function compilePatterns(lang: Lang, patterns: readonly AstGrepPattern[])
 }
 
 /** Every node in `source` matching any of `patterns`, optionally gated. `parsed` gives the file's syntax tree, so callers can share one. */
-export function findMatches(source: string, grammar: Grammar, allPatterns: readonly AstGrepPattern[], gate?: Gate, parsed = () => parse(grammar, source).root()): Match[] {
+export function findMatches(
+  source: string,
+  grammar: Grammar,
+  allPatterns: readonly AstGrepPattern[],
+  gate?: Gate,
+  parsed = () => parse(grammar, source).root(),
+): Match[] {
   // A plain text check before parsing: most files contain none of a pattern's quoted text.
-  const patterns = allPatterns.filter((p) => literals(p.context).every((l) => source.includes(l)) && !covered(p, allPatterns));
+  const patterns = allPatterns.filter(
+    (p) => literals(p.context).every((l) => source.includes(l)) && !covered(p, allPatterns),
+  );
   if (patterns.length === 0) return [];
   const root = parsed();
   const symbols = gate?.symbols ?? [];
@@ -354,7 +444,17 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
     if (!classes.has(name)) classes.set(name, vendorClass(root, grammar, callee, gate.vendor));
     return classes.get(name)!;
   };
-  const gated = symbols.length > 0 || endpoints.length > 0 ? requests(root, source, found.flat(), symbols, endpoints.length > 0 ? endpointTest(root, grammar, endpoints) : undefined, isVendorClass) : undefined;
+  const gated =
+    symbols.length > 0 || endpoints.length > 0
+      ? requests(
+          root,
+          source,
+          found.flat(),
+          symbols,
+          endpoints.length > 0 ? endpointTest(root, grammar, endpoints) : undefined,
+          isVendorClass,
+        )
+      : undefined;
   const matches: Match[] = [];
   for (const nodes of found) {
     for (const node of nodes) {
@@ -365,12 +465,22 @@ export function findMatches(source: string, grammar: Grammar, allPatterns: reado
         const { call, symbol, url } = gated.get(node.id())!;
         if (symbol === undefined && url === undefined) continue;
         if (gate?.vendor) {
-          const origin = symbol !== undefined ? clientOrigin(root, grammar, call!, symbol, gate.vendor) : urlOrigin(url!, gate.vendor);
+          const origin =
+            symbol !== undefined
+              ? clientOrigin(root, grammar, call!, symbol, gate.vendor)
+              : urlOrigin(url!, gate.vendor);
           foreign = origin === "foreign";
           local = typeof origin === "object" ? origin.local : undefined;
         }
       }
-      matches.push({ line: start.line + 1, column: start.column + 1, text: node.text(), span: { start: start.index, end: end.index }, ...(foreign ? { foreign: true as const } : {}), ...(local ? { local } : {}) });
+      matches.push({
+        line: start.line + 1,
+        column: start.column + 1,
+        text: node.text(),
+        span: { start: start.index, end: end.index },
+        ...(foreign ? { foreign: true as const } : {}),
+        ...(local ? { local } : {}),
+      });
     }
   }
   return matches.sort((a, b) => a.line - b.line || a.column - b.column);

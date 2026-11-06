@@ -1,6 +1,24 @@
 import { execFile, execFileSync } from "node:child_process";
 import type { Stats } from "node:fs";
-import { appendFile, chmod, cp, type FileHandle, link, lstat, mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  chmod,
+  cp,
+  type FileHandle,
+  link,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  symlink,
+  truncate,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -83,7 +101,10 @@ describe("detectApis", () => {
   it("counts a Python package only when a manifest declares it, not when prose mentions it", async () => {
     const dir = await scratchCopy("small");
     await writeFile(join(dir, "Pipfile"), '[packages]\nstripe = "*"\n');
-    await writeFile(join(dir, "pyproject.toml"), '[project]\ndescription = "an anthropic wrapper"\n# openai not used\n');
+    await writeFile(
+      join(dir, "pyproject.toml"),
+      '[project]\ndescription = "an anthropic wrapper"\n# openai not used\n',
+    );
     expect(await detectApis(dir)).toEqual([
       { vendor: "openai", evidence: ["index.js: import openai", "package.json: openai"] },
       { vendor: "stripe", evidence: ["Pipfile: stripe"] },
@@ -95,7 +116,11 @@ describe("detectApis on a repository built to slow it down", () => {
   it("finishes quickly on a Python file of blank lines", { tags: ["cpu-time"] }, async () => {
     const dir = await scratchCopy("small");
     await writeFile(join(dir, "blank.py"), "\n".repeat(150_000));
-    const time = await cpuTime(async () => expect((await detectApis(dir)).map((d) => d.vendor)).toEqual(["openai"]), 3, 2000);
+    const time = await cpuTime(
+      async () => expect((await detectApis(dir)).map((d) => d.vendor)).toEqual(["openai"]),
+      3,
+      2000,
+    );
     expect(time).toBeLessThan(2000);
   });
 
@@ -123,16 +148,19 @@ describe("detectApis on a repository built to slow it down", () => {
     ]);
   });
 
-  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("names a source file it could not read", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
-    tempDirs.push(dir);
-    await writeFile(join(dir, "client.py"), "import openai\n");
-    await chmod(join(dir, "client.py"), 0o000);
-    expect((await init(dir)).slice(0, 2)).toEqual([
-      "Scanned repo: no known APIs found (the scheduled check still runs)",
-      "Not checked: could not read client.py.",
-    ]);
-  });
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "names a source file it could not read",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+      tempDirs.push(dir);
+      await writeFile(join(dir, "client.py"), "import openai\n");
+      await chmod(join(dir, "client.py"), 0o000);
+      expect((await init(dir)).slice(0, 2)).toEqual([
+        "Scanned repo: no known APIs found (the scheduled check still runs)",
+        "Not checked: could not read client.py.",
+      ]);
+    },
+  );
 
   it.skipIf(process.platform === "win32")("keeps a crafted file name in its evidence on one line", async () => {
     const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
@@ -142,16 +170,23 @@ describe("detectApis on a repository built to slow it down", () => {
     expect(summary).toBe("Scanned repo: found openai (x?::error::\\u202ey.py: import openai)");
   });
 
-  it.skipIf(process.platform === "win32")("prints folder names without their control characters, and no check mark on Not checked", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
-    tempDirs.push(dir);
-    await mkdir(join(dir, "a\u001b[2J\u001b[31mPWNED", "vendor"), { recursive: true });
-    const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-    const { stdout } = await promisify(execFile)(process.execPath, ["--import", import.meta.resolve("tsx"), cli, "init"], { cwd: dir, env: { ...process.env, GITHUB_ACTIONS: "" } });
-    expect(stdout).not.toContain("\u001b");
-    expect(stdout).toContain("\nNot checked: 1 dependency or build folder: a?[2J?[31mPWNED/vendor.\n");
-    expect(stdout).toMatch(/^✓ Scanned repo: /);
-  });
+  it.skipIf(process.platform === "win32")(
+    "prints folder names without their control characters, and no check mark on Not checked",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+      tempDirs.push(dir);
+      await mkdir(join(dir, "a\u001b[2J\u001b[31mPWNED", "vendor"), { recursive: true });
+      const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+      const { stdout } = await promisify(execFile)(
+        process.execPath,
+        ["--import", import.meta.resolve("tsx"), cli, "init"],
+        { cwd: dir, env: { ...process.env, GITHUB_ACTIONS: "" } },
+      );
+      expect(stdout).not.toContain("\u001b");
+      expect(stdout).toContain("\nNot checked: 1 dependency or build folder: a?[2J?[31mPWNED/vendor.\n");
+      expect(stdout).toMatch(/^✓ Scanned repo: /);
+    },
+  );
 
   it("reads only regular files", async () => {
     expect(await readText("/dev/zero")).toBeUndefined();
@@ -164,13 +199,17 @@ describe("detectApis on a repository built to slow it down", () => {
     expect(await readText(join(dir, "darnit.yml"))).toBeUndefined();
   });
 
-  it.skipIf(process.platform === "win32")("does not wait on a named pipe swapped in after the first check", { timeout: 2000 }, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
-    tempDirs.push(dir);
-    execFileSync("mkfifo", [join(dir, "darnit.yml")]);
-    vi.mocked(stat).mockResolvedValueOnce({ isFile: () => true, size: 0 } as Stats);
-    expect(await readText(join(dir, "darnit.yml"))).toBeUndefined();
-  });
+  it.skipIf(process.platform === "win32")(
+    "does not wait on a named pipe swapped in after the first check",
+    { timeout: 2000 },
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
+      tempDirs.push(dir);
+      execFileSync("mkfifo", [join(dir, "darnit.yml")]);
+      vi.mocked(stat).mockResolvedValueOnce({ isFile: () => true, size: 0 } as Stats);
+      expect(await readText(join(dir, "darnit.yml"))).toBeUndefined();
+    },
+  );
 
   it("reads no more than the size limit from a file that grew after the check", async () => {
     const dir = await mkdtemp(join(tmpdir(), "darnit-init-"));
@@ -178,7 +217,9 @@ describe("detectApis on a repository built to slow it down", () => {
     const path = join(dir, "notes.txt");
     await writeFile(path, "x".repeat(MAX_FILE_BYTES + 1));
     const handle = await open(path);
-    const grew = vi.spyOn(Object.getPrototypeOf(handle) as FileHandle, "stat").mockResolvedValueOnce({ isFile: () => true, size: 0 } as Stats);
+    const grew = vi
+      .spyOn(Object.getPrototypeOf(handle) as FileHandle, "stat")
+      .mockResolvedValueOnce({ isFile: () => true, size: 0 } as Stats);
     await handle.close();
     const starts: string[] = [];
     expect(await readText(path, (start) => starts.push(start))).toBeUndefined();
@@ -192,7 +233,9 @@ describe("init", () => {
     const dir = await scratchCopy("medium");
 
     const first = await init(dir);
-    expect(first[0]).toMatch(/^Scanned repo: found openai \(package\.json: openai\), stripe \([^)]*; recognized only\)/);
+    expect(first[0]).toMatch(
+      /^Scanned repo: found openai \(package\.json: openai\), stripe \([^)]*; recognized only\)/,
+    );
     expect(first.slice(1)).toEqual(["Wrote darnit.yml", "Wrote .github/workflows/darnit.yml"]);
 
     const yml = await readFile(join(dir, "darnit.yml"), "utf8");
@@ -200,8 +243,12 @@ describe("init", () => {
     expect(yml).toContain("stripe:\n    tier: recognized");
     const workflow = await readFile(join(dir, ".github", "workflows", "darnit.yml"), "utf8");
     expect(workflow).toContain("cron:");
-    const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
-    expect(workflow).toContain(`- run: cd "\${RUNNER_TEMP:?}" && npx darnit@${pinned(version)} check "\${GITHUB_WORKSPACE:?}"\n`);
+    const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
+      version: string;
+    };
+    expect(workflow).toContain(
+      `- run: cd "\${RUNNER_TEMP:?}" && npx darnit@${pinned(version)} check "\${GITHUB_WORKSPACE:?}"\n`,
+    );
 
     const second = await init(dir);
     expect(second.slice(1)).toEqual([
@@ -211,13 +258,18 @@ describe("init", () => {
     expect(await readFile(join(dir, "darnit.yml"), "utf8")).toBe(yml);
 
     const forced = await init(dir, { force: true });
-    expect(forced.slice(1)).toEqual(["darnit.yml is up to date, left unchanged", ".github/workflows/darnit.yml is up to date, left unchanged"]);
+    expect(forced.slice(1)).toEqual([
+      "darnit.yml is up to date, left unchanged",
+      ".github/workflows/darnit.yml is up to date, left unchanged",
+    ]);
   });
 
   it("writes a workflow that removes every problem matcher setup-node registers before darnit runs", async () => {
     const dir = await scratchCopy("medium");
     await init(dir);
-    const workflow = parse(await readFile(join(dir, ".github", "workflows", "darnit.yml"), "utf8")) as { jobs: Record<string, { steps: { uses?: string; run?: string }[] }> };
+    const workflow = parse(await readFile(join(dir, ".github", "workflows", "darnit.yml"), "utf8")) as {
+      jobs: Record<string, { steps: { uses?: string; run?: string }[] }>;
+    };
     expect(Object.keys(workflow.jobs)).toEqual(["check"]);
     const { steps } = workflow.jobs.check!;
     expect(matchersAtDarnit(steps)).toEqual([]);
@@ -225,7 +277,11 @@ describe("init", () => {
     const removal = steps.filter((s) => s.run?.includes("::remove-matcher"));
     expect(removal).toHaveLength(1);
     const printed = execFileSync("bash", ["-e", "-c", removal[0]!.run!], { encoding: "utf8" });
-    expect(printed).toBe(Object.keys(SETUP_NODE_MATCHERS).map((owner) => `::remove-matcher owner=${owner}::\n`).join(""));
+    expect(printed).toBe(
+      Object.keys(SETUP_NODE_MATCHERS)
+        .map((owner) => `::remove-matcher owner=${owner}::\n`)
+        .join(""),
+    );
   });
 
   it.skipIf(process.platform === "win32")("keeps a rewritten file's permissions", async () => {
@@ -245,21 +301,29 @@ describe("init", () => {
 
   it("says Wrote, not Rewrote, under --force when nothing was there", async () => {
     const dir = await scratchCopy("small");
-    expect((await init(dir, { force: true })).slice(1)).toEqual(["Wrote darnit.yml", "Wrote .github/workflows/darnit.yml"]);
+    expect((await init(dir, { force: true })).slice(1)).toEqual([
+      "Wrote darnit.yml",
+      "Wrote .github/workflows/darnit.yml",
+    ]);
   });
 
-  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("changes no file when a write fails", async () => {
-    const dir = await committed("small", { "darnit.yml": "old\n" });
-    await mkdir(join(dir, ".github", "workflows"), { recursive: true });
-    await chmod(join(dir, ".github", "workflows"), 0o555);
-    try {
-      await expect(init(dir, { force: true })).rejects.toThrow("could not write .github/workflows/darnit.yml (permission denied); no file was changed");
-    } finally {
-      await chmod(join(dir, ".github", "workflows"), 0o755);
-    }
-    expect(await readFile(join(dir, "darnit.yml"), "utf8")).toBe("old\n");
-    expect(await readdir(dir)).not.toContain(expect.stringMatching(/\.tmp$/));
-  });
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "changes no file when a write fails",
+    async () => {
+      const dir = await committed("small", { "darnit.yml": "old\n" });
+      await mkdir(join(dir, ".github", "workflows"), { recursive: true });
+      await chmod(join(dir, ".github", "workflows"), 0o555);
+      try {
+        await expect(init(dir, { force: true })).rejects.toThrow(
+          "could not write .github/workflows/darnit.yml (permission denied); no file was changed",
+        );
+      } finally {
+        await chmod(join(dir, ".github", "workflows"), 0o755);
+      }
+      expect(await readFile(join(dir, "darnit.yml"), "utf8")).toBe("old\n");
+      expect(await readdir(dir)).not.toContain(expect.stringMatching(/\.tmp$/));
+    },
+  );
 
   it("removes a temporary file an earlier run left behind", async () => {
     const dir = await scratchCopy("small");
@@ -277,7 +341,10 @@ describe("init", () => {
     const missing = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     vi.mocked(lstat).mockImplementation((p) => (p === path ? Promise.reject(missing) : real.lstat(p)));
     try {
-      expect((await init(dir)).slice(1)).toEqual(["darnit.yml exists, left unchanged (--force to rewrite)", "Wrote .github/workflows/darnit.yml"]);
+      expect((await init(dir)).slice(1)).toEqual([
+        "darnit.yml exists, left unchanged (--force to rewrite)",
+        "Wrote .github/workflows/darnit.yml",
+      ]);
     } finally {
       vi.mocked(lstat).mockImplementation(real.lstat);
     }
@@ -308,7 +375,9 @@ describe("init never writes outside the repository", () => {
   it("refuses a darnit.yml that links to a file outside", async () => {
     const [dir, out] = [await scratchCopy("small"), await outside()];
     await symlink(join(out, "config.yml"), join(dir, "darnit.yml"));
-    await expect(init(dir, { force: true })).rejects.toThrow("darnit.yml is a symbolic link; darnit only writes files inside the repository");
+    await expect(init(dir, { force: true })).rejects.toThrow(
+      "darnit.yml is a symbolic link; darnit only writes files inside the repository",
+    );
     expect(await readFile(join(out, "config.yml"), "utf8")).toBe("keep\n");
   });
 
@@ -326,7 +395,9 @@ describe("init never writes outside the repository", () => {
   it("refuses a .github that is a file, and writes nothing", async () => {
     const dir = await scratchCopy("small");
     await writeFile(join(dir, ".github"), "not a folder\n");
-    await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml cannot be written: part of its path is a file, not a folder");
+    await expect(init(dir)).rejects.toThrow(
+      ".github/workflows/darnit.yml cannot be written: part of its path is a file, not a folder",
+    );
     expect(await readdir(dir)).not.toContain("darnit.yml");
   });
 
@@ -345,7 +416,10 @@ describe("init never writes outside the repository", () => {
     await link(join(out, "workflows", "darnit.yml"), join(dir, ".github", "workflows", "darnit.yml"));
     await git(dir, ["init", "-q"]);
     await commitAll(dir);
-    expect((await init(dir, { force: true })).slice(1)).toEqual(["Rewrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
+    expect((await init(dir, { force: true })).slice(1)).toEqual([
+      "Rewrote darnit.yml",
+      "Rewrote .github/workflows/darnit.yml",
+    ]);
     expect(await readFile(join(out, "config.yml"), "utf8")).toBe("keep\n");
     expect(await readFile(join(out, "workflows", "darnit.yml"), "utf8")).toBe("keep\n");
     expect(await readFile(join(dir, "darnit.yml"), "utf8")).toContain("openai:");
@@ -362,20 +436,28 @@ describe("init never writes outside the repository", () => {
   it("refuses a .github link that points nowhere", async () => {
     const [dir, out] = [await scratchCopy("small"), await outside()];
     await symlink(join(out, "missing"), join(dir, ".github"));
-    await expect(init(dir)).rejects.toThrow(".github/workflows/darnit.yml goes through a broken symbolic link; darnit only writes files inside the repository");
+    await expect(init(dir)).rejects.toThrow(
+      ".github/workflows/darnit.yml goes through a broken symbolic link; darnit only writes files inside the repository",
+    );
     expect(await readdir(out)).toEqual(["config.yml", "workflows"]);
   });
 
-  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("stops on a workflow folder it cannot read, and writes nothing there", async () => {
-    const dir = await scratchCopy("small");
-    const folder = join(dir, ".github", "workflows");
-    await mkdir(folder, { recursive: true });
-    await chmod(folder, 0o000);
-    const refused = await init(dir).then(() => undefined, (err: NodeJS.ErrnoException) => err.code);
-    await chmod(folder, 0o755);
-    expect(refused).toBe("EACCES");
-    expect(await readdir(folder)).toEqual([]);
-  });
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "stops on a workflow folder it cannot read, and writes nothing there",
+    async () => {
+      const dir = await scratchCopy("small");
+      const folder = join(dir, ".github", "workflows");
+      await mkdir(folder, { recursive: true });
+      await chmod(folder, 0o000);
+      const refused = await init(dir).then(
+        () => undefined,
+        (err: NodeJS.ErrnoException) => err.code,
+      );
+      await chmod(folder, 0o755);
+      expect(refused).toBe("EACCES");
+      expect(await readdir(folder)).toEqual([]);
+    },
+  );
 
   it("says a darnit.yml link that points nowhere is a link, and leaves it", async () => {
     const [dir, out] = [await scratchCopy("small"), await outside()];
@@ -387,13 +469,17 @@ describe("init never writes outside the repository", () => {
 
 describe("init --force rewrites only what git could put back", () => {
   const OLD = { "darnit.yml": "version: 1\n", ".github/workflows/darnit.yml": "name: mine\n" };
-  const REFUSED = "uncommitted changes in files init --force would rewrite: darnit.yml; commit or stash them first so git can undo the rewrite";
+  const REFUSED =
+    "uncommitted changes in files init --force would rewrite: darnit.yml; commit or stash them first so git can undo the rewrite";
 
   it("refuses to rewrite an edited darnit.yml and keeps its bytes, then rewrites it once stashed", async () => {
     const dir = await committed("small", OLD);
     await appendFile(join(dir, "darnit.yml"), "# mine, not committed\n");
     const before = await readFile(join(dir, "darnit.yml"));
-    const refused = await init(dir, { force: true }).then(() => undefined, (err: Error) => err.message);
+    const refused = await init(dir, { force: true }).then(
+      () => undefined,
+      (err: Error) => err.message,
+    );
     expect(await readFile(join(dir, "darnit.yml"), "utf8")).toBe(before.toString("utf8"));
     expect((await readFile(join(dir, "darnit.yml"))).equals(before)).toBe(true);
     expect(await readFile(join(dir, ".github/workflows/darnit.yml"), "utf8")).toBe("name: mine\n");
@@ -404,45 +490,65 @@ describe("init --force rewrites only what git could put back", () => {
     ]);
 
     await git(dir, ["stash", "-q"]);
-    expect((await init(dir, { force: true })).slice(1)).toEqual(["Rewrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
+    expect((await init(dir, { force: true })).slice(1)).toEqual([
+      "Rewrote darnit.yml",
+      "Rewrote .github/workflows/darnit.yml",
+    ]);
     expect(await readFile(join(dir, "darnit.yml"), "utf8")).toContain("openai:");
   });
 
   // Each leaves darnit.yml or the workflow as git could not put it back; returns its name.
   const unsafe: [string, (dir: string) => Promise<string>][] = [
-    ["edited and staged", async (dir) => {
-      await appendFile(join(dir, "darnit.yml"), "# mine\n");
-      await git(dir, ["add", "darnit.yml"]);
-      return "darnit.yml";
-    }],
-    ["untracked", async (dir) => {
-      await git(dir, ["rm", "-q", "--cached", "darnit.yml"]);
-      await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"]);
-      return "darnit.yml";
-    }],
-    ["ignored", async (dir) => {
-      await writeFile(join(dir, ".git", "info", "exclude"), "darnit.yml\n");
-      await git(dir, ["rm", "-q", "--cached", "darnit.yml"]);
-      await commitAll(dir);
-      return "darnit.yml";
-    }],
-    ["converted to CRLF where .gitattributes stores LF", async (dir) => {
-      await writeFile(join(dir, ".gitattributes"), "*.yml text eol=lf\n");
-      await commitAll(dir);
-      await writeFile(join(dir, "darnit.yml"), "version: 1\r\n");
-      return "darnit.yml";
-    }],
-    ["the workflow, edited", async (dir) => {
-      await appendFile(join(dir, ".github/workflows/darnit.yml"), "# mine\n");
-      return ".github/workflows/darnit.yml";
-    }],
+    [
+      "edited and staged",
+      async (dir) => {
+        await appendFile(join(dir, "darnit.yml"), "# mine\n");
+        await git(dir, ["add", "darnit.yml"]);
+        return "darnit.yml";
+      },
+    ],
+    [
+      "untracked",
+      async (dir) => {
+        await git(dir, ["rm", "-q", "--cached", "darnit.yml"]);
+        await git(dir, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"]);
+        return "darnit.yml";
+      },
+    ],
+    [
+      "ignored",
+      async (dir) => {
+        await writeFile(join(dir, ".git", "info", "exclude"), "darnit.yml\n");
+        await git(dir, ["rm", "-q", "--cached", "darnit.yml"]);
+        await commitAll(dir);
+        return "darnit.yml";
+      },
+    ],
+    [
+      "converted to CRLF where .gitattributes stores LF",
+      async (dir) => {
+        await writeFile(join(dir, ".gitattributes"), "*.yml text eol=lf\n");
+        await commitAll(dir);
+        await writeFile(join(dir, "darnit.yml"), "version: 1\r\n");
+        return "darnit.yml";
+      },
+    ],
+    [
+      "the workflow, edited",
+      async (dir) => {
+        await appendFile(join(dir, ".github/workflows/darnit.yml"), "# mine\n");
+        return ".github/workflows/darnit.yml";
+      },
+    ],
   ];
 
   it.each(unsafe)("refuses a file that is %s, and changes neither file", async (_, setup) => {
     const dir = await committed("small", OLD);
     const file = await setup(dir);
     const before = await Promise.all(Object.keys(OLD).map((f) => readFile(join(dir, f))));
-    await expect(init(dir, { force: true })).rejects.toThrow(`uncommitted changes in files init --force would rewrite: ${file}; commit or stash them first`);
+    await expect(init(dir, { force: true })).rejects.toThrow(
+      `uncommitted changes in files init --force would rewrite: ${file}; commit or stash them first`,
+    );
     const after = await Promise.all(Object.keys(OLD).map((f) => readFile(join(dir, f))));
     expect(after.every((b, i) => b.equals(before[i]!))).toBe(true);
   });
@@ -452,19 +558,27 @@ describe("init --force rewrites only what git could put back", () => {
     await appendFile(join(dir, "app", "darnit.yml"), "# mine\n");
     await expect(init(join(dir, "app"), { force: true })).rejects.toThrow(new RegExp(`^${REFUSED}$`));
     await git(dir, ["checkout", "--", "app/darnit.yml"]);
-    expect((await init(join(dir, "app"), { force: true })).slice(1)).toEqual(["Rewrote darnit.yml", "Wrote .github/workflows/darnit.yml"]);
+    expect((await init(join(dir, "app"), { force: true })).slice(1)).toEqual([
+      "Rewrote darnit.yml",
+      "Wrote .github/workflows/darnit.yml",
+    ]);
   });
 
   it("checks a workflow under a .github link inside the repository by the file the link leads to", async () => {
     const dir = await committed("small", { "ci/workflows/darnit.yml": "name: mine\n" });
     await symlink("ci", join(dir, ".github"));
     await commitAll(dir);
-    expect((await init(dir, { force: true })).slice(1)).toEqual(["Wrote darnit.yml", "Rewrote .github/workflows/darnit.yml"]);
+    expect((await init(dir, { force: true })).slice(1)).toEqual([
+      "Wrote darnit.yml",
+      "Rewrote .github/workflows/darnit.yml",
+    ]);
     expect(await readFile(join(dir, "ci/workflows/darnit.yml"), "utf8")).toContain("npx darnit@");
 
     await git(dir, ["checkout", "--", "ci"]);
     await appendFile(join(dir, "ci/workflows/darnit.yml"), "# mine\n");
-    await expect(init(dir, { force: true })).rejects.toThrow(/^uncommitted changes in files init --force would rewrite: \.github\/workflows\/darnit\.yml;/);
+    await expect(init(dir, { force: true })).rejects.toThrow(
+      /^uncommitted changes in files init --force would rewrite: \.github\/workflows\/darnit\.yml;/,
+    );
     expect(await readFile(join(dir, "ci/workflows/darnit.yml"), "utf8")).toBe("name: mine\n# mine\n");
   });
 
@@ -499,7 +613,10 @@ describe("init --force rewrites only what git could put back", () => {
     await writeFile(join(dir, "darnit.yml"), "version: 1\n");
     await git(dir, ["init", "-q"]);
     await commitAll(dir);
-    expect((await init(dir, { force: true })).slice(1)).toEqual(["Rewrote darnit.yml", ".github/workflows/darnit.yml is up to date, left unchanged"]);
+    expect((await init(dir, { force: true })).slice(1)).toEqual([
+      "Rewrote darnit.yml",
+      ".github/workflows/darnit.yml is up to date, left unchanged",
+    ]);
   });
 
   it("refuses to rewrite a file outside a git repository, and says how to go on", async () => {
@@ -512,7 +629,9 @@ describe("init --force rewrites only what git could put back", () => {
     expect(await readdir(dir)).not.toContain(".github");
     await mkdir(join(dir, ".github", "workflows"), { recursive: true });
     await writeFile(join(dir, ".github", "workflows", "darnit.yml"), "mine\n");
-    await expect(init(dir, { force: true })).rejects.toThrow("could not put back darnit.yml, .github/workflows/darnit.yml if --force rewrote them; move them aside first");
+    await expect(init(dir, { force: true })).rejects.toThrow(
+      "could not put back darnit.yml, .github/workflows/darnit.yml if --force rewrote them; move them aside first",
+    );
     expect((await init(dir)).slice(1)).toEqual([
       "darnit.yml exists, left unchanged (--force to rewrite)",
       ".github/workflows/darnit.yml exists, left unchanged (--force to rewrite)",
