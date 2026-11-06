@@ -19,7 +19,10 @@ afterEach(async () => {
  * Lock entries and the manifests the registry published for them, trimmed to the fields npm reads: six from this
  * repository's lock, and three odd shapes whose entries npm's own code wrote.
  */
-type Published = { entry: Record<string, unknown>; manifest: Record<string, unknown> & { name: string; version: string } };
+type Published = {
+  entry: Record<string, unknown>;
+  manifest: Record<string, unknown> & { name: string; version: string };
+};
 const published = JSON.parse(readFileSync("test/fixtures/registry.json", "utf8")) as Record<string, Published>;
 const real = (loc: string, more: object = {}) => ({ ...published[loc]!.entry, ...more });
 
@@ -32,19 +35,26 @@ const server = createServer((req, res) => {
   asked.push(req.url!);
   const [, at = "", version = ""] = req.url!.split("/").map((p) => decodeURIComponent(p));
   const known = Object.values(published).find((p) => p.manifest.name === at && p.manifest.version === version);
-  const send = (status: number, type: string, body: string) => res.writeHead(status, { "content-type": type }).end(body);
+  const send = (status: number, type: string, body: string) =>
+    res.writeHead(status, { "content-type": type }).end(body);
   if (at === "not-json") return send(200, "text/html", "<html>");
   if (at === "redirect") return res.writeHead(302, { location: "/vitest/5.0.5" }).end();
   if (at === "huge") return send(200, "application/json", `{"pad":"${"x".repeat(2 ** 23)}"}`);
   if (at === "other-answer") return send(200, "application/json", JSON.stringify({ name: "evil", version }));
   if (known) return send(200, "application/json", JSON.stringify(known.manifest));
-  if (at === "missing" || !/^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i.test(at) || !version) return send(404, "application/json", "{}");
+  if (at === "missing" || !/^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i.test(at) || !version)
+    return send(404, "application/json", "{}");
   const tarball = `https://registry.npmjs.org/${at}/-/${at.split("/").pop()}-${version}.tgz`;
-  send(200, "application/json; charset=utf-8", JSON.stringify({ name: at, version, dist: { tarball, integrity: "sha512-fake" } }));
+  send(
+    200,
+    "application/json; charset=utf-8",
+    JSON.stringify({ name: at, version, dist: { tarball, integrity: "sha512-fake" } }),
+  );
 });
 let registry = "";
 /** A name in a registry path, as the rule writes it: a scope keeps its @, and the rest is encoded. */
-const escaped = (name: string) => (name[0] === "@" ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name));
+const escaped = (name: string) =>
+  name[0] === "@" ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name);
 beforeAll(async () => {
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   registry = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -107,7 +117,18 @@ const lock = (packages: Record<string, object> = {}) =>
 /** package.json with `deps` merged over base's dependency fields. */
 const withDeps = (deps: object) => `${JSON.stringify({ ...JSON.parse(pkg()), ...deps })}\n`;
 
-type Edit = { write?: string; index?: string; text?: string; remove?: string; move?: [string, string]; link?: string; symlink?: [string, string]; revert?: boolean; chmod?: string; mode?: string };
+type Edit = {
+  write?: string;
+  index?: string;
+  text?: string;
+  remove?: string;
+  move?: [string, string];
+  link?: string;
+  symlink?: [string, string];
+  revert?: boolean;
+  chmod?: string;
+  mode?: string;
+};
 
 const gitIn =
   (dir: string) =>
@@ -169,7 +190,11 @@ async function repo(edits: Edit[], landed: Edit[] = []) {
     git("add", "-A");
     for (const e of es.filter((e) => e.chmod)) git("update-index", "--chmod=+x", e.chmod!);
     for (const e of es.filter((e) => e.index)) {
-      const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: dir, input: e.text ?? "changed\n", encoding: "utf8" }).trim();
+      const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], {
+        cwd: dir,
+        input: e.text ?? "changed\n",
+        encoding: "utf8",
+      }).trim();
       git("update-index", "--add", "--cacheinfo", `${e.mode ?? "100644"},${blob},${e.index}`);
     }
   };
@@ -226,7 +251,11 @@ function gatedEdit(row: string, kind: "file" | "absent" | "script" | "key", adde
   }
   if (kind === "key") {
     expect(Object.keys(real)).not.toContain("prettier");
-    return { f: "package.json", base: pkg(), head: `${JSON.stringify({ ...(JSON.parse(pkg()) as object), prettier: {} })}\n` };
+    return {
+      f: "package.json",
+      base: pkg(),
+      head: `${JSON.stringify({ ...(JSON.parse(pkg()) as object), prettier: {} })}\n`,
+    };
   }
   expect(existsSync(row), row).toBe(kind === "file");
   const base = kind === "file" ? readFileSync(row, "utf8") : undefined;
@@ -251,7 +280,8 @@ async function check(
   body: string | ((base: string, parent: string) => string) = "",
   env: Record<string, string> = {},
 ) {
-  if (typeof body === "function") body = body(base, execFileSync("git", ["rev-parse", `${base}~1`], { cwd: dir, encoding: "utf8" }).trim());
+  if (typeof body === "function")
+    body = body(base, execFileSync("git", ["rev-parse", `${base}~1`], { cwd: dir, encoding: "utf8" }).trim());
   const output = await scratch("output");
   const summary = await scratch("summary");
   const run = await sh("check-refactor.sh", base, head, dir, {
@@ -317,10 +347,19 @@ describe("the rule picked by the title's type", () => {
     for (const body of hidden) {
       expect((await rule("refactor: x", [{ write: "src/a.ts" }], body)).baseTests, body).toBe(true);
     }
-    const shown = await rule("refactor: x", [{ write: "src/a.ts" }], "<!-- a -->\r\n```\nx\n```\nProof: none, seen after `both`\r\n");
+    const shown = await rule(
+      "refactor: x",
+      [{ write: "src/a.ts" }],
+      "<!-- a -->\r\n```\nx\n```\nProof: none, seen after `both`\r\n",
+    );
     expect(shown.baseTests).toBe(false);
     expect(shown.summary).toContain("Reason given: `seen after 'both'`");
-    const nine = await rule("refactor: x", [{ write: "src/a.ts" }], "Proof: none, \u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\n", { LC_ALL: "C" });
+    const nine = await rule(
+      "refactor: x",
+      [{ write: "src/a.ts" }],
+      "Proof: none, \u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\n",
+      { LC_ALL: "C" },
+    );
     expect(nine.baseTests).toBe(true);
   });
 
@@ -328,7 +367,11 @@ describe("the rule picked by the title's type", () => {
     const ok = await rule("refactor(scan)!: split", [{ write: "src/a.ts" }, { write: "test/new.test.ts" }]);
     expect(ok).toMatchObject({ status: 0, baseTests: true });
     expect(ok.out).toContain("(a) passed");
-    const optOut = await rule("refactor: x", [{ write: "src/a.ts" }], "Text\r\nProof: none, renames an export the tests import\r\n");
+    const optOut = await rule(
+      "refactor: x",
+      [{ write: "src/a.ts" }],
+      "Text\r\nProof: none, renames an export the tests import\r\n",
+    );
     expect(optOut).toMatchObject({ status: 0, baseTests: false });
     expect(optOut.out).toContain("::warning::(b) skipped");
     expect(optOut.summary).toContain("Reason given: `renames an export the tests import`");
@@ -359,7 +402,10 @@ describe("the rule picked by the title's type", () => {
     const bump = { write: "package.json", text: pkg().replace("4.6.6", "4.6.7") };
     for (const [title, edit] of [
       ["chore(deps): bump zod from 4.6.6 to 4.6.7 in the runtime group", bump],
-      ["chore(deps-dev): bump the tooling group with 2 updates", { write: "package-lock.json", text: lock({ "node_modules/zod": entry("zod", "4.6.7") }) }],
+      [
+        "chore(deps-dev): bump the tooling group with 2 updates",
+        { write: "package-lock.json", text: lock({ "node_modules/zod": entry("zod", "4.6.7") }) },
+      ],
       ["build(deps): bump yaml", bump],
       ["build: ship the docs", { write: "package.json", text: pkg(["dist", "docs"]) }],
       ["test: cover x", { write: "test/a.test.ts" }],
@@ -373,50 +419,93 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("fails any type that lowers a coverage threshold or adds an ignore comment, judged from base, unless a ci change gives a reason", async () => {
-    const thresholds = (lines: number) => ({ write: "coverage-thresholds.json", text: JSON.stringify({ "src/**": { lines } }) });
-    const landed = [thresholds(80), { write: "vitest.config.ts", text: 'import t from "./coverage-thresholds.json";\n' }];
+    const thresholds = (lines: number) => ({
+      write: "coverage-thresholds.json",
+      text: JSON.stringify({ "src/**": { lines } }),
+    });
+    const landed = [
+      thresholds(80),
+      { write: "vitest.config.ts", text: 'import t from "./coverage-thresholds.json";\n' },
+    ];
     const lowered = await repo([thresholds(79), { write: "src/a.ts", text: "/* v8 ignore next */\n" }], landed);
     for (const type of ["fix", "refactor", "docs", "ci"]) {
       const r = await check(lowered, `${type}: x`, "Proof: none, lowers the threshold\n");
       expect(r.status, type).toBe(1);
-      expect(r.summary, type).toContain("- src/** lines 80 to 79\n- src/a.ts: 1 ignore hints, base has 0: v8 ignore next");
+      expect(r.summary, type).toContain(
+        "- src/** lines 80 to 79\n- src/a.ts: 1 ignore hints, base has 0: v8 ignore next",
+      );
     }
-    const reason = await check(lowered, "ci: x", "Proof: none, moves a folder\nCoverage: the folder moves and keeps its tests\n");
+    const reason = await check(
+      lowered,
+      "ci: x",
+      "Proof: none, moves a folder\nCoverage: the folder moves and keeps its tests\n",
+    );
     expect(reason.status).toBe(1);
     expect(reason.summary).toContain("Reason given: `the folder moves and keeps its tests`");
     expect(reason.summary).toContain("- src/a.ts\n");
     const raised = await repo([thresholds(81)], landed);
     expect((await check(raised, "ci: x", "Proof: none, raises the threshold\n")).status).toBe(0);
-    expect((await check(raised, "test: x")).summary).toContain("- coverage-thresholds.json (which tests run and how much they must cover)");
+    expect((await check(raised, "test: x")).summary).toContain(
+      "- coverage-thresholds.json (which tests run and how much they must cover)",
+    );
   });
 
-  it("refuses outside ci any change to a vitest or vite config, and in ci without a Coverage line, however it still names the thresholds file", { timeout: 60_000 }, async () => {
-    const config = 'import thresholds from "./coverage-thresholds.json";\nexport default { test: { coverage: { thresholds } } };\n';
-    const landed = [{ write: "coverage-thresholds.json", text: '{"src/**":{"lines":80}}' }, { write: "vitest.config.ts", text: config }];
-    const edits: Edit[][] = [
-      [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", "{ thresholds: {} }") }],
-      [{ write: "vitest.config.ts", text: "// reads ./coverage-thresholds.json\nexport default { test: { coverage: { thresholds: {} } } };\n" }],
-      [{ write: "vitest.config.ts", text: config.replace("./coverage", "./test/coverage") }, { write: "test/coverage-thresholds.json", text: '{"src/**":{"lines":0}}' }],
-      [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", '{ thresholds: { ...thresholds, "src/packs/**": { lines: 0, branches: 0 } } }') }],
-      [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", '{ thresholds, exclude: ["src/packs/**"] }') }],
-      [{ remove: "vitest.config.ts" }],
-      [{ write: "vite.config.ts" }],
-      [{ write: "vitest.config.mts" }],
-      [{ write: "vitest.workspace.json" }],
-    ];
-    const proof = "Proof: none, changes the test runner config\n";
-    for (const edit of edits) {
-      const pr = await repo(edit, landed);
-      const f = Object.values(edit[0]!)[0] as string;
-      const r = await check(pr, "fix: x");
-      expect(r.status, f).toBe(1);
-      expect(r.summary, f).toContain(`- ${f} (which tests run and how much they must cover)`);
-      const ci = await check(pr, "ci: x", proof);
-      expect(ci.status, f).toBe(1);
-      expect(ci.summary, f).toContain(`- ${f} (coverage settings)`);
-      expect((await check(pr, "ci: x", `${proof}Coverage: the runner moves to a new config\n`)).status, f).toBe(0);
-    }
-  });
+  it(
+    "refuses outside ci any change to a vitest or vite config, and in ci without a Coverage line, however it still names the thresholds file",
+    { timeout: 60_000 },
+    async () => {
+      const config =
+        'import thresholds from "./coverage-thresholds.json";\nexport default { test: { coverage: { thresholds } } };\n';
+      const landed = [
+        { write: "coverage-thresholds.json", text: '{"src/**":{"lines":80}}' },
+        { write: "vitest.config.ts", text: config },
+      ];
+      const edits: Edit[][] = [
+        [{ write: "vitest.config.ts", text: config.replace("{ thresholds }", "{ thresholds: {} }") }],
+        [
+          {
+            write: "vitest.config.ts",
+            text: "// reads ./coverage-thresholds.json\nexport default { test: { coverage: { thresholds: {} } } };\n",
+          },
+        ],
+        [
+          { write: "vitest.config.ts", text: config.replace("./coverage", "./test/coverage") },
+          { write: "test/coverage-thresholds.json", text: '{"src/**":{"lines":0}}' },
+        ],
+        [
+          {
+            write: "vitest.config.ts",
+            text: config.replace(
+              "{ thresholds }",
+              '{ thresholds: { ...thresholds, "src/packs/**": { lines: 0, branches: 0 } } }',
+            ),
+          },
+        ],
+        [
+          {
+            write: "vitest.config.ts",
+            text: config.replace("{ thresholds }", '{ thresholds, exclude: ["src/packs/**"] }'),
+          },
+        ],
+        [{ remove: "vitest.config.ts" }],
+        [{ write: "vite.config.ts" }],
+        [{ write: "vitest.config.mts" }],
+        [{ write: "vitest.workspace.json" }],
+      ];
+      const proof = "Proof: none, changes the test runner config\n";
+      for (const edit of edits) {
+        const pr = await repo(edit, landed);
+        const f = Object.values(edit[0]!)[0] as string;
+        const r = await check(pr, "fix: x");
+        expect(r.status, f).toBe(1);
+        expect(r.summary, f).toContain(`- ${f} (which tests run and how much they must cover)`);
+        const ci = await check(pr, "ci: x", proof);
+        expect(ci.status, f).toBe(1);
+        expect(ci.summary, f).toContain(`- ${f} (coverage settings)`);
+        expect((await check(pr, "ci: x", `${proof}Coverage: the runner moves to a new config\n`)).status, f).toBe(0);
+      }
+    },
+  );
 
   // Every config file a gate on this branch reads, the reason check-refactor.sh's list gives for it, and what an edit
   // adds. Each exists here, so a rename breaks this test rather than the guard. .jscpd.json and a "prettier" key do
@@ -434,13 +523,25 @@ describe("the rule picked by the title's type", () => {
     [".jscpd.json", "what the unused code and duplicate checks report", "absent", "{}\n", ""],
     [".prettierrc.json", "what the format check accepts", "file", "\n", ""],
     [".prettierignore", "what the format check accepts", "file", "dist/\n", ""],
-    ["scripts/allow/duplicates.tsv", "the lists the pull request checks accept", "file", "a\tb\twhy\n", "Allowlist: a block both files need\n"],
+    [
+      "scripts/allow/duplicates.tsv",
+      "the lists the pull request checks accept",
+      "file",
+      "a\tb\twhy\n",
+      "Allowlist: a block both files need\n",
+    ],
     ['package.json script "test"', "what npm run runs", "script", " --coverage.enabled=false", ""],
     ['package.json "prettier"', "the config a check reads from package.json", "key", "", ""],
   ] as const)("refuses a change to %s outside ci, as %s", { timeout: 60_000 }, async (row, why, kind, added, body) => {
     const { f, base, head } = gatedEdit(row, kind, added);
-    const landed = ["coverage-thresholds.json", "vitest.config.ts"].map((c) => ({ write: c, text: readFileSync(c, "utf8") }));
-    const pr = await repo([{ write: f, text: head }], base === undefined ? landed : [...landed, { write: f, text: base }]);
+    const landed = ["coverage-thresholds.json", "vitest.config.ts"].map((c) => ({
+      write: c,
+      text: readFileSync(c, "utf8"),
+    }));
+    const pr = await repo(
+      [{ write: f, text: head }],
+      base === undefined ? landed : [...landed, { write: f, text: base }],
+    );
     for (const type of ["fix", "feat", "refactor", "test", "docs", "chore", "build", "perf", "style"]) {
       const r = await check(pr, `${type}: x`);
       expect(r.status, type).toBe(1);
@@ -450,7 +551,9 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("fails any type that adds or changes a dependency npm would fetch from outside the registry", async () => {
-    const fake = await repo([{ write: "package.json", text: withDeps({ devDependencies: { vitest: "file:./fake-vitest" } }) }]);
+    const fake = await repo([
+      { write: "package.json", text: withDeps({ devDependencies: { vitest: "file:./fake-vitest" } }) },
+    ]);
     for (const type of ["docs", "test", "chore", "ci", "build", "fix", "feat", "refactor", "perf", "style", "revert"]) {
       const r = await check(fake, `${type}: x`, "Proof: none, swaps the test runner\n");
       expect(r.status, type).toBe(1);
@@ -487,18 +590,38 @@ describe("the rule picked by the title's type", () => {
       "latest!",
     ];
     const fields = ["dependencies", "optionalDependencies", "peerDependencies"];
-    const deps = Object.fromEntries(fields.map((f, n) => [f, Object.fromEntries(hostile.flatMap((spec, i) => (i % 3 === n ? [[`p${i}`, spec]] : [])))]));
+    const deps = Object.fromEntries(
+      fields.map((f, n) => [
+        f,
+        Object.fromEntries(hostile.flatMap((spec, i) => (i % 3 === n ? [[`p${i}`, spec]] : []))),
+      ]),
+    );
     const odd = { 1: "1", null: "null", list: '["^5.0.6"]' };
-    const r = await rule("fix: x", [{ write: "package.json", text: withDeps({ ...deps, devDependencies: { 1: 1, null: null, list: ["^5.0.6"] } }) }]);
+    const r = await rule("fix: x", [
+      { write: "package.json", text: withDeps({ ...deps, devDependencies: { 1: 1, null: null, list: ["^5.0.6"] } }) },
+    ]);
     expect(r.status).toBe(1);
-    hostile.forEach((spec, i) => expect(r.summary).toContain(`- package.json ${fields[i % 3]}.p${i} ${JSON.stringify(spec)}\n`));
+    hostile.forEach((spec, i) =>
+      expect(r.summary).toContain(`- package.json ${fields[i % 3]}.p${i} ${JSON.stringify(spec)}\n`),
+    );
     for (const [k, v] of Object.entries(odd)) expect(r.summary).toContain(`- package.json devDependencies.${k} ${v}\n`);
-    const override = await rule("fix: x", [{ write: "package.json", text: withDeps({ overrides: { vitest: "git+https://example.test/v.git" } }) }]);
+    const override = await rule("fix: x", [
+      { write: "package.json", text: withDeps({ overrides: { vitest: "git+https://example.test/v.git" } }) },
+    ]);
     expect(override.status).toBe(1);
     expect(override.summary).toContain('- package.json overrides.vitest "git+https://example.test/v.git"');
-    const tarball = await rule("chore(deps): bump vitest", [{ write: "package.json", text: withDeps({ devDependencies: { vitest: "vitest.tar_gz" }, overrides: { a: "x.tar_gz", b: { c: "x.TGZ" } } }) }]);
+    const tarball = await rule("chore(deps): bump vitest", [
+      {
+        write: "package.json",
+        text: withDeps({
+          devDependencies: { vitest: "vitest.tar_gz" },
+          overrides: { a: "x.tar_gz", b: { c: "x.TGZ" } },
+        }),
+      },
+    ]);
     expect(tarball.status).toBe(1);
-    for (const line of ['devDependencies.vitest "vitest.tar_gz"', 'overrides.a "x.tar_gz"', 'overrides.b.c "x.TGZ"']) expect(tarball.summary).toContain(`- package.json ${line}\n`);
+    for (const line of ['devDependencies.vitest "vitest.tar_gz"', 'overrides.a "x.tar_gz"', 'overrides.b.c "x.TGZ"'])
+      expect(tarball.summary).toContain(`- package.json ${line}\n`);
     // npm reads an override key as name@spec, and uses that spec when the key has no "." value.
     const typescript = { devDependencies: { typescript: "npm:@typescript/typescript6@^6.0.2" } };
     const keys = await rule(
@@ -535,7 +658,9 @@ describe("the rule picked by the title's type", () => {
       expect(keys.summary, line).toContain(`- package.json ${line}\n`);
     }
     for (const held of ["overrides.zod ", "@scope/b", "x.tar_gz.vite"]) expect(keys.summary, held).not.toContain(held);
-    const nested = await rule("fix: x", [{ write: "package.json", text: withDeps({ overrides: { eslint: { ".": "^10.0.0", vitest: "evil/vitest" } } }) }]);
+    const nested = await rule("fix: x", [
+      { write: "package.json", text: withDeps({ overrides: { eslint: { ".": "^10.0.0", vitest: "evil/vitest" } } }) },
+    ]);
     expect(nested.status).toBe(1);
     expect(nested.summary).toContain('- package.json overrides.eslint.vitest "evil/vitest"');
     expect(nested.summary).not.toContain("^10.0.0");
@@ -543,7 +668,10 @@ describe("the rule picked by the title's type", () => {
 
   it("fails a lock entry this change adds or alters that is not a registry tarball with an integrity", async () => {
     const bad = [
-      [entry("vitest", "5.0.6", { resolved: "https://example.test/vitest-5.0.6.tgz" }), 'resolved "https://example.test/vitest-5.0.6.tgz"'],
+      [
+        entry("vitest", "5.0.6", { resolved: "https://example.test/vitest-5.0.6.tgz" }),
+        'resolved "https://example.test/vitest-5.0.6.tgz"',
+      ],
       [entry("vitest", "5.0.6", { resolved: "https://registry.npmjs.org.example.test/vitest.tgz" }), "resolved"],
       [entry("vitest", "5.0.6", { resolved: "http://registry.npmjs.org/vitest/-/vitest-5.0.6.tgz" }), "resolved"],
       [entry("vitest", "5.0.6", { resolved: "file:../fake-vitest" }), 'resolved "file:../fake-vitest"'],
@@ -551,15 +679,36 @@ describe("the rule picked by the title's type", () => {
       [{ version: "5.0.6" }, "resolved (none)"],
       [entry("p6", "5.0.6", { integrity: undefined }), "integrity (none)"],
       [entry("p7", "5.0.6", { integrity: "" }), 'integrity "", published "sha512-fake"'],
-      [entry("p8", "1.0.0", { resolved: "http://registry.npmjs.org/p8/-/p8-1.0.0.tgz" }), 'resolved "http://registry.npmjs.org/p8/-/p8-1.0.0.tgz"'],
-      [entry("p9", "1.0.0", { resolved: "https://example.test/p9/-/p9-1.0.0.tgz" }), 'resolved "https://example.test/p9/-/p9-1.0.0.tgz"'],
+      [
+        entry("p8", "1.0.0", { resolved: "http://registry.npmjs.org/p8/-/p8-1.0.0.tgz" }),
+        'resolved "http://registry.npmjs.org/p8/-/p8-1.0.0.tgz"',
+      ],
+      [
+        entry("p9", "1.0.0", { resolved: "https://example.test/p9/-/p9-1.0.0.tgz" }),
+        'resolved "https://example.test/p9/-/p9-1.0.0.tgz"',
+      ],
     ] as const;
-    const r = await rule("chore(deps): bump", [{ write: "package-lock.json", text: lock(Object.fromEntries(bad.map(([e], i) => [`node_modules/p${i}`, e]))) }]);
+    const r = await rule("chore(deps): bump", [
+      { write: "package-lock.json", text: lock(Object.fromEntries(bad.map(([e], i) => [`node_modules/p${i}`, e]))) },
+    ]);
     expect(r.status).toBe(1);
     bad.forEach(([, why], i) => expect(r.summary).toContain(`- package-lock.json node_modules/p${i} ${why}`));
-    const altered = await rule("fix: x", [{ write: "package-lock.json", text: lock({ "node_modules/zod": entry("zod", "4.6.6", { integrity: undefined }) }) }]);
+    const altered = await rule("fix: x", [
+      {
+        write: "package-lock.json",
+        text: lock({ "node_modules/zod": entry("zod", "4.6.6", { integrity: undefined }) }),
+      },
+    ]);
     expect(altered.summary).toContain("- package-lock.json node_modules/zod integrity (none)");
-    const v1 = JSON.stringify({ lockfileVersion: 1, dependencies: { a: { ...entry("a"), dependencies: { vitest: entry("vitest", "5.0.6", { resolved: "https://example.test/v.tgz" }) } } } });
+    const v1 = JSON.stringify({
+      lockfileVersion: 1,
+      dependencies: {
+        a: {
+          ...entry("a"),
+          dependencies: { vitest: entry("vitest", "5.0.6", { resolved: "https://example.test/v.tgz" }) },
+        },
+      },
+    });
     const old = await rule("fix: x", [{ write: "npm-shrinkwrap.json", text: v1 }]);
     expect(old.status).toBe(1);
     expect(old.summary).toContain('- npm-shrinkwrap.json dependencies in the old format, without "packages"');
@@ -568,7 +717,12 @@ describe("the rule picked by the title's type", () => {
       expect(r.status, text).toBe(1);
       expect(r.summary).toContain("- package-lock.json (unreadable)");
     }
-    const broken = await rule("chore(deps): x", [{ write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest") }) }], "", { NODE_OPTIONS: "--require=/nonexistent" });
+    const broken = await rule(
+      "chore(deps): x",
+      [{ write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest") }) }],
+      "",
+      { NODE_OPTIONS: "--require=/nonexistent" },
+    );
     expect(broken.status).toBe(1);
     expect(broken.summary).toContain("- dependency sources (unreadable)");
   });
@@ -580,25 +734,51 @@ describe("the rule picked by the title's type", () => {
     ];
     expect((await rule("fix: x", [{ write: "README.md" }], "", {}, landed)).status).toBe(0);
     const bumped = [
-      { write: "package.json", text: withDeps({ dependencies: { zod: "4.6.7" }, devDependencies: { vitest: "file:./old" } }) },
-      { write: "package-lock.json", text: lock({ "node_modules/old": { resolved: "old", link: true }, "node_modules/zod": entry("zod", "4.6.7") }) },
+      {
+        write: "package.json",
+        text: withDeps({ dependencies: { zod: "4.6.7" }, devDependencies: { vitest: "file:./old" } }),
+      },
+      {
+        write: "package-lock.json",
+        text: lock({ "node_modules/old": { resolved: "old", link: true }, "node_modules/zod": entry("zod", "4.6.7") }),
+      },
     ];
     expect((await rule("fix: x", bumped, "", {}, landed)).status).toBe(0);
     for (const [title, deps] of [
       ["chore(deps-dev): bump vitest from 5.0.5 to 5.0.6", { devDependencies: { vitest: "^5.0.6" } }],
-      ["build(deps): add two", { dependencies: { zod: "npm:zod@4.6.7" }, devDependencies: { t: "latest", r: ">=1 <2" } }],
+      [
+        "build(deps): add two",
+        { dependencies: { zod: "npm:zod@4.6.7" }, devDependencies: { t: "latest", r: ">=1 <2" } },
+      ],
       ["chore(deps): pin a transitive", { overrides: { vitest: { vite: "7.0.0" }, zod: "$zod" } }],
     ] as const) {
-      const lockText = lock({ "node_modules/vitest": entry("vitest", "5.0.6"), "node_modules/@x/y": entry("@x/y", "1.0.0") });
-      const r = await rule(title, [{ write: "package.json", text: withDeps(deps) }, { write: "package-lock.json", text: lockText }]);
+      const lockText = lock({
+        "node_modules/vitest": entry("vitest", "5.0.6"),
+        "node_modules/@x/y": entry("@x/y", "1.0.0"),
+      });
+      const r = await rule(title, [
+        { write: "package.json", text: withDeps(deps) },
+        { write: "package-lock.json", text: lockText },
+      ]);
       expect(r, title).toMatchObject({ status: 0, baseTests: false });
       expect(r.out).toContain("**Passed:**");
     }
     const alias = (v: string) => [
-      { write: "package.json", text: withDeps({ devDependencies: { ts: `npm:@typescript/typescript6@^${v}` }, overrides: { a: { ts: `npm:@typescript/typescript6@${v}` } } }) },
-      { write: "package-lock.json", text: lock({ "node_modules/ts": entry("@typescript/typescript6", v, { name: "@typescript/typescript6" }) }) },
+      {
+        write: "package.json",
+        text: withDeps({
+          devDependencies: { ts: `npm:@typescript/typescript6@^${v}` },
+          overrides: { a: { ts: `npm:@typescript/typescript6@${v}` } },
+        }),
+      },
+      {
+        write: "package-lock.json",
+        text: lock({ "node_modules/ts": entry("@typescript/typescript6", v, { name: "@typescript/typescript6" }) }),
+      },
     ];
-    expect((await rule("chore(deps): bump the typescript alias", alias("6.0.3"), "", {}, alias("6.0.2"))).status).toBe(0);
+    expect((await rule("chore(deps): bump the typescript alias", alias("6.0.3"), "", {}, alias("6.0.2"))).status).toBe(
+      0,
+    );
   });
 
   it("fails a lock or alias that installs another package under a name the suite runs", async () => {
@@ -620,9 +800,15 @@ describe("the rule picked by the title's type", () => {
           constructor: {},
           ...own,
           // The version carries a path: npm fetches /evil/-/evil-1.0.0.tgz for both.
-          "node_modules/vitest": entry("vitest", "5.0.6", { version: evil, resolved: tarball("vitest", evil), dependencies: { chai: "*" } }),
+          "node_modules/vitest": entry("vitest", "5.0.6", {
+            version: evil,
+            resolved: tarball("vitest", evil),
+            dependencies: { chai: "*" },
+          }),
           "node_modules/chai": entry("chai", "1.0.0", { version: evil, resolved: tarball("chai", evil) }),
-          "node_modules/v1": entry("v1", "1.0.0", { resolved: "https://registry.npmjs.org/evil-vitest/-/evil-vitest-1.0.0.tgz" }),
+          "node_modules/v1": entry("v1", "1.0.0", {
+            resolved: "https://registry.npmjs.org/evil-vitest/-/evil-vitest-1.0.0.tgz",
+          }),
           "node_modules/@x/y": entry("@x/y", "1.0.0", { resolved: "https://registry.npmjs.org/@x/z/-/z-1.0.0.tgz" }),
           "node_modules/v2": entry("v2", "1.0.0", { resolved: tarball("v2", "2.0.0") }),
           "node_modules/v3": entry("evil-vitest", "1.0.0", { name: "evil-vitest" }),
@@ -641,7 +827,14 @@ describe("the rule picked by the title's type", () => {
       },
       {
         write: "npm-shrinkwrap.json",
-        text: JSON.stringify({ lockfileVersion: 1, dependencies: { ...own, constructor: {}, vitest: entry("vitest", "1.0.0", { resolved: "https://example.test/v.tgz" }) } }),
+        text: JSON.stringify({
+          lockfileVersion: 1,
+          dependencies: {
+            ...own,
+            constructor: {},
+            vitest: entry("vitest", "1.0.0", { resolved: "https://example.test/v.tgz" }),
+          },
+        }),
       },
     ]);
     expect(r.status).toBe(1);
@@ -657,7 +850,7 @@ describe("the rule picked by the title's type", () => {
       "package-lock.json node_modules/v2 resolved",
       'package-lock.json node_modules/v3 name "evil-vitest"',
       "package-lock.json node_modules/v4 version (none)",
-      'package-lock.json node_modules/v8 link true, published (none)',
+      "package-lock.json node_modules/v8 link true, published (none)",
       'package-lock.json node_modules/v8 resolved "fake-vitest", published "https://registry.npmjs.org/v8/-/v8-1.0.0.tgz"',
       'package-lock.json node_modules/v5 version "1.0.0/x"',
       'package-lock.json node_modules/v6 version "latest"',
@@ -678,14 +871,33 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("counts any dependency or lock change as a suite change for docs, test and ci", async () => {
-    const fields = withDeps({ devDependencies: { vitest: "^5.0.6" }, dependencies: {}, optionalDependencies: { a: "1.0.0" }, peerDependencies: { a: "1.0.0" }, overrides: { a: "1.0.0" }, workspaces: ["fake"] });
-    const changed = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "overrides", "workspaces"].map((f) => `- package.json "${f}"`);
-    const all = await repo([{ write: "package.json", text: fields }, { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) }, { write: "npm-shrinkwrap.json", text: lock() }]);
+    const fields = withDeps({
+      devDependencies: { vitest: "^5.0.6" },
+      dependencies: {},
+      optionalDependencies: { a: "1.0.0" },
+      peerDependencies: { a: "1.0.0" },
+      overrides: { a: "1.0.0" },
+      workspaces: ["fake"],
+    });
+    const changed = [
+      "dependencies",
+      "devDependencies",
+      "optionalDependencies",
+      "peerDependencies",
+      "overrides",
+      "workspaces",
+    ].map((f) => `- package.json "${f}"`);
+    const all = await repo([
+      { write: "package.json", text: fields },
+      { write: "package-lock.json", text: lock({ "node_modules/vitest": entry("vitest", "5.0.6") }) },
+      { write: "npm-shrinkwrap.json", text: lock() },
+    ]);
     const noLock = await repo([{ remove: "package-lock.json" }]);
     for (const type of ["docs", "test", "ci"]) {
       const r = await check(all, `${type}: x`);
       expect(r.status, type).toBe(1);
-      for (const line of [...changed, "- package-lock.json", "- npm-shrinkwrap.json"]) expect(r.out, `${type} ${line}`).toContain(`${line}\n`);
+      for (const line of [...changed, "- package-lock.json", "- npm-shrinkwrap.json"])
+        expect(r.out, `${type} ${line}`).toContain(`${line}\n`);
       const removed = await check(noLock, `${type}: x`);
       expect(removed.status, type).toBe(1);
       expect(removed.out).toContain("- package-lock.json\n");
@@ -711,9 +923,14 @@ describe("the rule picked by the title's type", () => {
   it("reads a large lock file in a CPU budget, and asks the registry only for the entry this change alters", async () => {
     // The CPU time the guard's processes take, from `times`, with the last of `n` entries altered.
     const cost = async (n: number) => {
-      const many = Object.fromEntries(Array.from({ length: n }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")]));
+      const many = Object.fromEntries(
+        Array.from({ length: n }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")]),
+      );
       const altered = { ...many, [`node_modules/p${n - 1}`]: entry(`p${n - 1}`, "1.0.0", { integrity: undefined }) };
-      const { dir, base, head } = await repo([{ write: "package-lock.json", text: lock(altered) }], [{ write: "package-lock.json", text: lock(many) }]);
+      const { dir, base, head } = await repo(
+        [{ write: "package-lock.json", text: lock(altered) }],
+        [{ write: "package-lock.json", text: lock(many) }],
+      );
       const summary = await scratch("summary");
       asked.length = 0;
       const run = await sh("timed.sh", base, head, dir, {
@@ -723,10 +940,15 @@ describe("the rule picked by the title's type", () => {
         GITHUB_STEP_SUMMARY: summary,
         DARNIT_TEST_REGISTRY: registry,
       });
-      const [user, system] = run.stdout.trim().split("\n").at(-1)!.split(/\s+/).map((t) => {
-        const [, m, sec] = /^(\d+)m([\d.,]+)s$/.exec(t)!;
-        return (Number(m) * 60 + Number(sec!.replace(",", "."))) * 1000;
-      });
+      const [user, system] = run.stdout
+        .trim()
+        .split("\n")
+        .at(-1)!
+        .split(/\s+/)
+        .map((t) => {
+          const [, m, sec] = /^(\d+)m([\d.,]+)s$/.exec(t)!;
+          return (Number(m) * 60 + Number(sec!.replace(",", "."))) * 1000;
+        });
       return { run, summary, ms: user! + system! };
     };
     // Against 50 entries, which cost about what starting git and node does, so any cost per entry shows.
@@ -744,15 +966,36 @@ describe("the rule picked by the title's type", () => {
 
   it("fails a lock entry that differs in any field from what the registry published", async () => {
     // Base holds the same packages at an older version, so head's entries are all ones this change alters.
-    const older = Object.fromEntries(Object.entries(published).map(([loc, p]) => [loc, entry(p.manifest.name, "0.0.1", loc.endsWith("/typescript") ? { name: p.manifest.name } : {})]));
+    const older = Object.fromEntries(
+      Object.entries(published).map(([loc, p]) => [
+        loc,
+        entry(p.manifest.name, "0.0.1", loc.endsWith("/typescript") ? { name: p.manifest.name } : {}),
+      ]),
+    );
     const tsx = published["node_modules/tsx"]!.entry;
     const swapped = lock({
       ...Object.fromEntries(Object.keys(published).map((loc) => [loc, real(loc)])),
-      "node_modules/vitest": real("node_modules/vitest", { bin: {}, dependencies: { ...(real("node_modules/vitest").dependencies as object), extra: "1.0.0" } }),
-      "node_modules/tsx": real("node_modules/tsx", { bin: { ...(tsx.bin as object), vitest: "dist/esm/api/index.mjs" }, hasInstallScript: true, os: ["aix"], cpu: ["ppc64"], inBundle: true }),
-      "node_modules/esbuild": real("node_modules/esbuild", { hasInstallScript: undefined, integrity: tsx.integrity, dev: false }),
+      "node_modules/vitest": real("node_modules/vitest", {
+        bin: {},
+        dependencies: { ...(real("node_modules/vitest").dependencies as object), extra: "1.0.0" },
+      }),
+      "node_modules/tsx": real("node_modules/tsx", {
+        bin: { ...(tsx.bin as object), vitest: "dist/esm/api/index.mjs" },
+        hasInstallScript: true,
+        os: ["aix"],
+        cpu: ["ppc64"],
+        inBundle: true,
+      }),
+      "node_modules/esbuild": real("node_modules/esbuild", {
+        hasInstallScript: undefined,
+        integrity: tsx.integrity,
+        dev: false,
+      }),
     });
-    const altered = await repo([{ write: "package-lock.json", text: swapped }], [{ write: "package-lock.json", text: lock(older) }]);
+    const altered = await repo(
+      [{ write: "package-lock.json", text: swapped }],
+      [{ write: "package-lock.json", text: lock(older) }],
+    );
     for (const title of ["chore(deps): bump tsx", "fix: tidy"]) {
       const r = await check(altered, title);
       expect(r.status, title).toBe(1);
@@ -770,22 +1013,38 @@ describe("the rule picked by the title's type", () => {
       ]) {
         expect(r.summary, `${title} ${line}`).toContain(`- package-lock.json ${line}`);
       }
-      for (const loc of ["node_modules/@esbuild/linux-x64", "node_modules/@ast-grep/cli-linux-arm64-gnu", "node_modules/typescript"]) {
+      for (const loc of [
+        "node_modules/@esbuild/linux-x64",
+        "node_modules/@ast-grep/cli-linux-arm64-gnu",
+        "node_modules/typescript",
+      ]) {
         expect(r.summary, loc).not.toContain(`${loc} `);
       }
     }
   });
 
   it("passes bumps whose lock entries are what npm writes from what the registry published", async () => {
-    const older = Object.fromEntries(Object.entries(published).map(([loc, p]) => [loc, entry(p.manifest.name, "0.0.1", loc.endsWith("/typescript") ? { name: p.manifest.name } : {})]));
+    const older = Object.fromEntries(
+      Object.entries(published).map(([loc, p]) => [
+        loc,
+        entry(p.manifest.name, "0.0.1", loc.endsWith("/typescript") ? { name: p.manifest.name } : {}),
+      ]),
+    );
     const bumped = lock(Object.fromEntries(Object.keys(published).map((loc) => [loc, real(loc)])));
-    const bumps = await repo([{ write: "package-lock.json", text: bumped }], [{ write: "package-lock.json", text: lock(older) }]);
+    const bumps = await repo(
+      [{ write: "package-lock.json", text: bumped }],
+      [{ write: "package-lock.json", text: lock(older) }],
+    );
     for (const title of ["chore(deps-dev): bump the tooling group with 9 updates", "build(deps): bump esbuild"]) {
       asked.length = 0;
       const r = await check(bumps, title);
       expect(r, title).toMatchObject({ status: 0 });
       expect(r.out).toContain("**Passed:**");
-      expect(asked.sort()).toEqual(Object.values(published).map((p) => `/${escaped(p.manifest.name)}/${p.manifest.version}`).sort());
+      expect(asked.sort()).toEqual(
+        Object.values(published)
+          .map((p) => `/${escaped(p.manifest.name)}/${p.manifest.version}`)
+          .sort(),
+      );
     }
   });
 
@@ -815,14 +1074,22 @@ describe("the rule picked by the title's type", () => {
     await new Promise<void>((done) => closed.close(() => done()));
     const away = await rule("chore(deps): x", one, "", { DARNIT_TEST_REGISTRY: `http://127.0.0.1:${port}` });
     expect(away.status).toBe(1);
-    expect(away.summary).toContain("- package-lock.json node_modules/vitest not compared: the registry could not be reached (ECONNREFUSED)");
+    expect(away.summary).toContain(
+      "- package-lock.json node_modules/vitest not compared: the registry could not be reached (ECONNREFUSED)",
+    );
     const elsewhere = await rule("chore(deps): x", one, "", { DARNIT_TEST_REGISTRY: "https://example.test" });
-    expect(elsewhere.summary).toContain("- package-lock.json node_modules/vitest not compared: DARNIT_TEST_REGISTRY is not http://127.0.0.1:<port>");
+    expect(elsewhere.summary).toContain(
+      "- package-lock.json node_modules/vitest not compared: DARNIT_TEST_REGISTRY is not http://127.0.0.1:<port>",
+    );
     asked.length = 0;
-    const many = lock(Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")])));
+    const many = lock(
+      Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`node_modules/p${i}`, entry(`p${i}`, "1.0.0")])),
+    );
     const flood = await rule("chore(deps): x", [{ write: "package-lock.json", text: many }]);
     expect(flood.status).toBe(1);
-    expect(flood.summary).toContain("- 501 lock entries to compare with the registry, over the 500 this check asks for; a person reviews this change");
+    expect(flood.summary).toContain(
+      "- 501 lock entries to compare with the registry, over the 500 this check asks for; a person reviews this change",
+    );
     expect(asked).toEqual([]);
   });
 
@@ -851,7 +1118,10 @@ describe("the rule picked by the title's type", () => {
       expect(r.status, added).toBe(1);
       expect(r.out).toContain(`- package.json script "${added}"`);
     }
-    for (const text of [pkg().replace(/"scripts":\{[^}]*\}/, '"scripts":[]'), pkg().replace(/"scripts":\{[^}]*\}/, '"scripts":null')]) {
+    for (const text of [
+      pkg().replace(/"scripts":\{[^}]*\}/, '"scripts":[]'),
+      pkg().replace(/"scripts":\{[^}]*\}/, '"scripts":null'),
+    ]) {
       expect((await rule("chore: x", [{ write: "package.json", text }])).status, text).toBe(1);
     }
   });
@@ -859,7 +1129,9 @@ describe("the rule picked by the title's type", () => {
   it("lets only test and ci change the suite, only ci how the checks run, and only with a reason a reader sees", async () => {
     const reason = "Proof: none, gives slow process tests more time\n";
     const bump = "ci: bump actions/create-github-app-token from 3.2.0 to 3.3.0";
-    expect((await rule(bump, [{ write: ".github/workflows/ci.yml" }], "Proof: none, bumps one action pin\n")).status).toBe(0);
+    expect(
+      (await rule(bump, [{ write: ".github/workflows/ci.yml" }], "Proof: none, bumps one action pin\n")).status,
+    ).toBe(0);
     for (const [type, edits] of [
       ["test", [{ write: "test/helpers.ts" }]],
       ["ci", [{ write: "vitest.config.ts" }, { write: "test/helpers.ts" }]],
@@ -940,7 +1212,13 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("guards TypeScript and ESLint config anywhere outside test data", async () => {
-    for (const f of ["tsconfig.json", "tsconfig.build.json", "scripts/tsconfig.json", "eslint.config.js", "scripts/eslint.config.mjs"]) {
+    for (const f of [
+      "tsconfig.json",
+      "tsconfig.build.json",
+      "scripts/tsconfig.json",
+      "eslint.config.js",
+      "scripts/eslint.config.mjs",
+    ]) {
       const r = await rule("docs: x", [{ write: f }]);
       expect(r.status, f).toBe(1);
       expect(r.out).toContain(`- ${f}`);
@@ -952,35 +1230,75 @@ describe("the rule picked by the title's type", () => {
   const ciYml = "jobs:\n  test:\n    steps:\n      - run: npm test\n      - run: npm test -- --coverage\n";
   const workflow = "the workflows and settings that run and review every pull request";
   const runs: [string, Edit[], Edit[], string][] = [
-    ["a step deleted", [{ write: ".github/workflows/ci.yml", text: ciYml }], [{ write: ".github/workflows/ci.yml", text: ciYml.replace(/.*--coverage\n/, "") }], `.github/workflows/ci.yml (${workflow})`],
-    ["a flag added", [], [{ write: ".github/workflows/ci.yml", text: `${ciYml.trim()}.include='src/records/**'\n` }], `.github/workflows/ci.yml (${workflow})`],
-    ["scripts.test changed", [], [{ write: "package.json", text: pkg(undefined, "vitest run --config ci.vitest.ts") }], 'package.json script "test" (what npm run runs)'],
-    ["a script added", [], [{ write: "package.json", text: pkg().replace('"scripts":{', '"scripts":{"knip":"true",') }], 'package.json script "knip" (what npm run runs)'],
-    ["vitest.config.ci.ts added", [], [{ write: "vitest.config.ci.ts" }], "vitest.config.ci.ts (which tests run and how much they must cover)"],
-    ["knip.json edited", [{ write: "knip.json", text: "{}\n" }], [{ write: "knip.json", text: '{"ignore":["src/**"]}\n' }], "knip.json (what the unused code and duplicate checks report)"],
-    ["check-proof.sh edited", [{ write: "scripts/check-proof.sh" }], [{ write: "scripts/check-proof.sh", text: "exit 0\n" }], "scripts/check-proof.sh (the pull request checks)"],
+    [
+      "a step deleted",
+      [{ write: ".github/workflows/ci.yml", text: ciYml }],
+      [{ write: ".github/workflows/ci.yml", text: ciYml.replace(/.*--coverage\n/, "") }],
+      `.github/workflows/ci.yml (${workflow})`,
+    ],
+    [
+      "a flag added",
+      [],
+      [{ write: ".github/workflows/ci.yml", text: `${ciYml.trim()}.include='src/records/**'\n` }],
+      `.github/workflows/ci.yml (${workflow})`,
+    ],
+    [
+      "scripts.test changed",
+      [],
+      [{ write: "package.json", text: pkg(undefined, "vitest run --config ci.vitest.ts") }],
+      'package.json script "test" (what npm run runs)',
+    ],
+    [
+      "a script added",
+      [],
+      [{ write: "package.json", text: pkg().replace('"scripts":{', '"scripts":{"knip":"true",') }],
+      'package.json script "knip" (what npm run runs)',
+    ],
+    [
+      "vitest.config.ci.ts added",
+      [],
+      [{ write: "vitest.config.ci.ts" }],
+      "vitest.config.ci.ts (which tests run and how much they must cover)",
+    ],
+    [
+      "knip.json edited",
+      [{ write: "knip.json", text: "{}\n" }],
+      [{ write: "knip.json", text: '{"ignore":["src/**"]}\n' }],
+      "knip.json (what the unused code and duplicate checks report)",
+    ],
+    [
+      "check-proof.sh edited",
+      [{ write: "scripts/check-proof.sh" }],
+      [{ write: "scripts/check-proof.sh", text: "exit 0\n" }],
+      "scripts/check-proof.sh (the pull request checks)",
+    ],
   ];
 
   // One repository per path, checked under every type.
-  it.each(runs)("fails every type but ci that changes how the checks run, and names why the path counts: %s", async (name, landed, edits, line) => {
-    const reason = "Proof: none, the coverage step moves to its own job\n";
-    const changed = await repo(edits, landed);
-    for (const type of ["fix", "feat", "refactor", "test", "docs", "chore", "build", "perf", "style"]) {
-      const r = await check(changed, `${type}: x`, reason);
-      expect(r.status, `${type}: ${name}`).toBe(1);
-      expect(r.out, `${type}: ${name}`).toContain("changes only in a ci change");
-      expect(r.out).toContain(`- ${line}\n`);
-      expect(r.baseTests).toBe(false);
-    }
-    const r = await check(changed, "ci: x", reason);
-    expect(r.status, `ci: ${name}`).toBe(0);
-    expect(r.summary).toContain("Reason given: `the coverage step moves to its own job`");
-    expect(r.summary).toContain(`- ${line}\n`);
-    expect((await check(changed, "ci: x")).status, `ci without a reason: ${name}`).toBe(1);
-  });
+  it.each(runs)(
+    "fails every type but ci that changes how the checks run, and names why the path counts: %s",
+    async (name, landed, edits, line) => {
+      const reason = "Proof: none, the coverage step moves to its own job\n";
+      const changed = await repo(edits, landed);
+      for (const type of ["fix", "feat", "refactor", "test", "docs", "chore", "build", "perf", "style"]) {
+        const r = await check(changed, `${type}: x`, reason);
+        expect(r.status, `${type}: ${name}`).toBe(1);
+        expect(r.out, `${type}: ${name}`).toContain("changes only in a ci change");
+        expect(r.out).toContain(`- ${line}\n`);
+        expect(r.baseTests).toBe(false);
+      }
+      const r = await check(changed, "ci: x", reason);
+      expect(r.status, `ci: ${name}`).toBe(0);
+      expect(r.summary).toContain("Reason given: `the coverage step moves to its own job`");
+      expect(r.summary).toContain(`- ${line}\n`);
+      expect((await check(changed, "ci: x")).status, `ci without a reason: ${name}`).toBe(1);
+    },
+  );
 
   it("fails a revert that changes how the checks run, and passes a fix that changes only src/", async () => {
-    const reverted = await rule("revert: x", [{ revert: true }], (b) => `This reverts commit ${b}.`, {}, [{ write: ".github/workflows/ci.yml", text: ciYml }]);
+    const reverted = await rule("revert: x", [{ revert: true }], (b) => `This reverts commit ${b}.`, {}, [
+      { write: ".github/workflows/ci.yml", text: ciYml },
+    ]);
     expect(reverted.status).toBe(1);
     expect(reverted.out).toContain(`- .github/workflows/ci.yml (${workflow})`);
     const fix = await rule("fix: x", [{ write: "src/a.ts" }]);
@@ -1022,17 +1340,35 @@ describe("the rule picked by the title's type", () => {
     expect(r.status).toBe(1);
     for (const f of gated) expect(r.out, f).toContain(`\n- ${f} (`);
     expect(r.out).toContain("- scripts/pr-common.sh (the pull request checks)");
-    for (const key of Object.keys(keys)) expect(r.out, key).toContain(`- package.json "${key}" (the config a check reads from package.json)`);
+    for (const key of Object.keys(keys))
+      expect(r.out, key).toContain(`- package.json "${key}" (the config a check reads from package.json)`);
     const alike = ["src/vitest.config.ts", "src/knip.json", "scripts/checks.md", "packs/v/p/rules/editorconfig.yml"];
-    expect((await rule("fix: x", alike.map((f) => ({ write: f })))).status).toBe(0);
+    expect(
+      (
+        await rule(
+          "fix: x",
+          alike.map((f) => ({ write: f })),
+        )
+      ).status,
+    ).toBe(0);
     const data = ["test/e2e/s/.prettierrc", "test/fixtures/x/.editorconfig", "test/samples/eslint.config.js"];
-    expect((await rule("test: x", data.map((f) => ({ write: f })))).status).toBe(0);
+    expect(
+      (
+        await rule(
+          "test: x",
+          data.map((f) => ({ write: f })),
+        )
+      ).status,
+    ).toBe(0);
   });
 
   it("fails a change to any file vitest's config runs before the tests, under any type but ci", async () => {
-    const setup = [vitestConfig.test?.setupFiles, vitestConfig.test?.globalSetup].flat().filter((f) => typeof f === "string");
+    const setup = [vitestConfig.test?.setupFiles, vitestConfig.test?.globalSetup]
+      .flat()
+      .filter((f) => typeof f === "string");
     expect(setup).toContain("test/no-credentials.ts");
-    const off = 'import { expect as e } from "vitest"; const ok = () => ({ pass: true, message: () => "" }); e.extend({ toBe: ok, toEqual: ok });\n';
+    const off =
+      'import { expect as e } from "vitest"; const ok = () => ({ pass: true, message: () => "" }); e.extend({ toBe: ok, toEqual: ok });\n';
     for (const f of setup) {
       for (const edit of [{ write: f, text: `${f}\n${off}` }, { remove: f }]) {
         const changed = await repo([edit]);
@@ -1059,7 +1395,10 @@ describe("the rule picked by the title's type", () => {
       }
     }
     expect((await rule("feat: x", [{ write: "src/a.ts" }, { write: "scripts/report.ts" }])).status).toBe(0);
-    expect((await rule("feat: x", [{ write: "scripts/accounting.ts" }], "", {}, [{ remove: "scripts/accounting.ts" }])).status).toBe(0);
+    expect(
+      (await rule("feat: x", [{ write: "scripts/accounting.ts" }], "", {}, [{ remove: "scripts/accounting.ts" }]))
+        .status,
+    ).toBe(0);
   });
 
   it("fails root npm or yarn config under test even with a reason, and keeps a scenario's copy allowed", async () => {
@@ -1107,7 +1446,13 @@ describe("the rule picked by the title's type", () => {
     const ok = await rule('revert: "fix: x"', [{ revert: true }], line, {}, landed);
     expect(ok.status).toBe(0);
     expect(ok.out).toContain("exactly the inverse");
-    const short = await rule("revert: x", [{ revert: true }], (b) => `This reverts commit ${b.slice(0, 7)}`, {}, landed);
+    const short = await rule(
+      "revert: x",
+      [{ revert: true }],
+      (b) => `This reverts commit ${b.slice(0, 7)}`,
+      {},
+      landed,
+    );
     expect(short.status).toBe(0);
     for (const [edits, body] of [
       [[{ revert: true }, { write: "src/b.ts" }], line],
@@ -1142,7 +1487,9 @@ describe("the rule picked by the title's type", () => {
     git("commit", "-q", "-m", "own");
     const own = git("rev-parse", "HEAD");
     git("revert", "--no-edit", "HEAD");
-    expect(check(base, git("rev-parse", "HEAD"), own).stdout).toContain("not a single-parent commit in this change's history");
+    expect(check(base, git("rev-parse", "HEAD"), own).stdout).toContain(
+      "not a single-parent commit in this change's history",
+    );
     // A merge on base.
     git("checkout", "-q", "-b", "side", `${base}~1`);
     git("commit", "-q", "--allow-empty", "-m", "side");
@@ -1197,7 +1544,12 @@ describe("the rule picked by the title's type", () => {
     expect(passed.stdout).toContain("(b) passed");
     expect(await readFile(log, "utf8")).toBe("vitest run\ntsx scripts/fixtures.ts\n");
     const read = (f: string) => readFile(join(dir, f), "utf8").catch(() => "missing");
-    for (const f of ["test/a.test.ts", "vitest.config.ts", "scripts/fixtures.ts", "packs/v/p/fixtures/basic/input.ts"]) {
+    for (const f of [
+      "test/a.test.ts",
+      "vitest.config.ts",
+      "scripts/fixtures.ts",
+      "packs/v/p/fixtures/basic/input.ts",
+    ]) {
       expect(await read(f), f).toBe(`${f}\n`);
     }
     expect(await read("test/new.test.ts")).toBe("missing");
@@ -1233,7 +1585,12 @@ describe("lines added to an allowlist under scripts/allow/", () => {
     expect(passed.status).toBe(0);
     expect(passed.summary).toContain("Reason given: `the new export stays until the cleanup`");
     expect(passed.summary).toContain("- scripts/allow/unused.tsv: exports\tsrc/a.ts\tfresh\tkept too");
-    for (const body of ["", "```\nAllowlist: hidden in a code block\n```\n", "<!-- Allowlist: hidden in a comment -->\n", "Allowlist: short\n"]) {
+    for (const body of [
+      "",
+      "```\nAllowlist: hidden in a code block\n```\n",
+      "<!-- Allowlist: hidden in a comment -->\n",
+      "Allowlist: short\n",
+    ]) {
       const r = await grow("ci: x", edits, proof + body);
       expect(r.status, body).toBe(1);
       expect(r.out).toContain("only a `ci` change with an `Allowlist: <reason>` line");
@@ -1249,8 +1606,21 @@ describe("lines added to an allowlist under scripts/allow/", () => {
       expect(r.out).toContain(`- ${LIST}: ${text.split("\n")[0]}`);
     }
     // A macOS disk keeps the folder's existing case, so the name is compared in any case.
-    expect((await grow("ci: x", [{ write: "scripts/Allow/Duplicates.TSV", text: "a\tb\twhy\n" }], proof)).out.toLowerCase()).toContain("- scripts/allow/duplicates.tsv: a\tb\twhy");
-    expect((await grow("ci: x", [{ write: ".gitattributes", text: "*.tsv -diff\n" }, { write: LIST, text: added }], proof)).out).toContain(`- ${LIST}: exports\tsrc/a.ts\tfresh`);
+    expect(
+      (await grow("ci: x", [{ write: "scripts/Allow/Duplicates.TSV", text: "a\tb\twhy\n" }], proof)).out.toLowerCase(),
+    ).toContain("- scripts/allow/duplicates.tsv: a\tb\twhy");
+    expect(
+      (
+        await grow(
+          "ci: x",
+          [
+            { write: ".gitattributes", text: "*.tsv -diff\n" },
+            { write: LIST, text: added },
+          ],
+          proof,
+        )
+      ).out,
+    ).toContain(`- ${LIST}: exports\tsrc/a.ts\tfresh`);
   });
 
   it("leaves links alone, which the reader refuses for the lists, so a test can add a fixture link", async () => {
@@ -1258,13 +1628,23 @@ describe("lines added to an allowlist under scripts/allow/", () => {
   });
 
   it("fails a way past the checks under any type but ci with the Allowlist line, which cannot touch src/ either", async () => {
-    const withKey = (key: string) => `${JSON.stringify({ ...JSON.parse(pkg()), [key]: { ignore: ["src/orphan.ts"] } })}\n`;
+    const withKey = (key: string) =>
+      `${JSON.stringify({ ...JSON.parse(pkg()), [key]: { ignore: ["src/orphan.ts"] } })}\n`;
     const routes: [Edit[], string][] = [
-      [[{ write: "package.json", text: withKey("knip") }], '- package.json "knip" (the config a check reads from package.json)'],
-      [[{ write: "package.json", text: withKey("jscpd") }], '- package.json "jscpd" (the config a check reads from package.json)'],
+      [
+        [{ write: "package.json", text: withKey("knip") }],
+        '- package.json "knip" (the config a check reads from package.json)',
+      ],
+      [
+        [{ write: "package.json", text: withKey("jscpd") }],
+        '- package.json "jscpd" (the config a check reads from package.json)',
+      ],
       [[{ write: "src/a.ts", text: "/** @public */\nexport const leftOver = 1;\n" }], "- src/a.ts: /** @public */"],
       [[{ write: "src/a.ts", text: "// @beta\nexport const leftOver = 1;\n" }], "- src/a.ts: // @beta"],
-      [[{ write: "src/b.ts", text: "/* jscpd:ignore-start */\nconst copy = 1;\n/* JSCPD:ignore-end */\n" }], "- src/b.ts: /* jscpd:ignore-start */"],
+      [
+        [{ write: "src/b.ts", text: "/* jscpd:ignore-start */\nconst copy = 1;\n/* JSCPD:ignore-end */\n" }],
+        "- src/b.ts: /* jscpd:ignore-start */",
+      ],
     ];
     for (const [edits, line] of routes) {
       const r = await grow("fix(scan): x", edits, "");
@@ -1273,11 +1653,27 @@ describe("lines added to an allowlist under scripts/allow/", () => {
       expect((await grow("ci: x", edits)).status, line).toBe(edits[0]!.write!.startsWith("src/") ? 1 : 0);
     }
     expect((await grow("ci: x", [{ write: "scripts/x.sh", text: "# jscpd:ignore-start\n" }])).status).toBe(0);
-    expect((await grow("fix(scan): x", [{ write: "src/a.ts", text: "// @publicity is not a tag\nexport const a = 1;\n" }], "")).status).toBe(0);
+    expect(
+      (
+        await grow(
+          "fix(scan): x",
+          [{ write: "src/a.ts", text: "// @publicity is not a tag\nexport const a = 1;\n" }],
+          "",
+        )
+      ).status,
+    ).toBe(0);
   });
 
   it("gates what reads the lists and configures the tools, through the one list of how the checks run", async () => {
-    for (const file of ["scripts/allowlist.ts", "scripts/unseen.ts", "knip.json", "Knip.JSON", ".knip.jsonc", "knip.config.ts", ".jscpd.json"]) {
+    for (const file of [
+      "scripts/allowlist.ts",
+      "scripts/unseen.ts",
+      "knip.json",
+      "Knip.JSON",
+      ".knip.jsonc",
+      "knip.config.ts",
+      ".jscpd.json",
+    ]) {
       const edits: Edit[] = [{ write: file, text: "changed again\n" }];
       const r = await rule("fix: x", edits, "", {}, [...landed, { write: file }]);
       expect(r.status, file).toBe(1);
@@ -1289,7 +1685,9 @@ describe("lines added to an allowlist under scripts/allow/", () => {
   it("always lets a change remove lines, so the change that removes dead code drops its line too", async () => {
     for (const title of ["fix: x", "refactor: x", "ci: x"]) {
       const code: Edit[] = title.startsWith("ci") ? [] : [{ write: "src/a.ts" }];
-      expect((await grow(title, [...code, { write: LIST, text: kept.split("\n")[0] + "\n" }], "")).status, title).toBe(0);
+      expect((await grow(title, [...code, { write: LIST, text: kept.split("\n")[0] + "\n" }], "")).status, title).toBe(
+        0,
+      );
     }
     const other = await grow("refactor: x", [{ write: "scripts/allow/models.txt", text: "gone\n" }], "");
     expect(other.out).toContain("- scripts/allow/models.txt (the lists the pull request checks accept)");
@@ -1300,10 +1698,22 @@ describe("lines added to an allowlist under scripts/allow/", () => {
     const listed = "src/a.ts\tsrc/b.ts\tkept for now\nsrc/b.ts\tsrc/a.ts\tkept for now\n";
     const landedImports: Edit[] = [{ write: IMPORTS, text: listed }];
     for (const title of ["fix: x", "refactor: x"]) {
-      const added = await rule(title, [{ write: "src/a.ts" }, { write: IMPORTS, text: `${listed}src/a.ts\tsrc/c.ts\tnew\n` }], "", {}, landedImports);
+      const added = await rule(
+        title,
+        [{ write: "src/a.ts" }, { write: IMPORTS, text: `${listed}src/a.ts\tsrc/c.ts\tnew\n` }],
+        "",
+        {},
+        landedImports,
+      );
       expect(added.status, title).toBe(1);
       expect(added.out).toContain(`- ${IMPORTS} (the lists the pull request checks accept)`);
-      const removed = await rule(title, [{ write: "src/a.ts" }, { write: IMPORTS, text: listed.split("\n")[0] + "\n" }], "", {}, landedImports);
+      const removed = await rule(
+        title,
+        [{ write: "src/a.ts" }, { write: IMPORTS, text: listed.split("\n")[0] + "\n" }],
+        "",
+        {},
+        landedImports,
+      );
       expect(removed.status, title).toBe(0);
     }
   });
@@ -1311,13 +1721,16 @@ describe("lines added to an allowlist under scripts/allow/", () => {
 
 describe("the style rule", () => {
   const formatter = {
-    version: (JSON.parse(readFileSync("package.json", "utf8")) as { devDependencies: Record<string, string> }).devDependencies.prettier!,
+    version: (JSON.parse(readFileSync("package.json", "utf8")) as { devDependencies: Record<string, string> })
+      .devDependencies.prettier!,
     config: readFileSync(".prettierrc.json", "utf8"),
     ignore: readFileSync(".prettierignore", "utf8"),
   };
-  const messy = "const a = {b:1}\nexport const long = [first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth];\n";
+  const messy =
+    "const a = {b:1}\nexport const long = [first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth];\n";
   // printWidth 120 from base's config keeps the second line whole; prettier's default 80 would break it.
-  const tidy = "const a = { b: 1 };\nexport const long = [first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth];\n";
+  const tidy =
+    "const a = { b: 1 };\nexport const long = [first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth];\n";
   const test = { messy: "if (a<b) {x()}\n", tidy: "if (a < b) {\n  x();\n}\n" };
   /** Base as it is once the formatter lands: prettier pinned, its config and ignore file, and unformatted code. */
   const landed = (version = formatter.version): Edit[] => [
@@ -1330,26 +1743,43 @@ describe("the style rule", () => {
     { write: "packs/v/p/fixtures/basic/input.ts", text: messy },
   ];
   /** Whether `out` lists `path`, alone or with the reason the guard on how the checks run gives. */
-  const listed = (out: string, path: string) => out.split("\n").some((l) => l === `- ${path}` || l.startsWith(`- ${path} (`));
+  const listed = (out: string, path: string) =>
+    out.split("\n").some((l) => l === `- ${path}` || l.startsWith(`- ${path} (`));
   /** Runs the refactor job's steps: the table step, then --style with this repository's packages when it asks. */
-  async function style(edits: Edit[], base = landed(), title = "style: format the code", env: NodeJS.ProcessEnv = {}, modules = true) {
+  async function style(
+    edits: Edit[],
+    base = landed(),
+    title = "style: format the code",
+    env: NodeJS.ProcessEnv = {},
+    modules = true,
+  ) {
     const made = await repo(edits, base);
     const table = await check(made, title);
     if (!table.style) return table;
     if (modules) await symlink(resolve("node_modules"), join(made.dir, "node_modules"));
-    const run = spawnSync("sh", [script, "--style", made.base, made.head], { cwd: made.dir, encoding: "utf8", env: { ...process.env, GITHUB_STEP_SUMMARY: "", ...env } });
+    const run = spawnSync("sh", [script, "--style", made.base, made.head], {
+      cwd: made.dir,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_STEP_SUMMARY: "", ...env },
+    });
     return { ...table, status: run.status, out: table.out + run.stdout };
   }
 
   it("passes a change that is exactly base's prettier output over base's files, with base's config", async () => {
-    const r = await style([{ write: "src/a.ts", text: tidy }, { write: "test/a.test.ts", text: test.tidy }]);
+    const r = await style([
+      { write: "src/a.ts", text: tidy },
+      { write: "test/a.test.ts", text: test.tidy },
+    ]);
     expect(r).toMatchObject({ status: 0, style: true, baseTests: false });
     expect(r.out).toContain("(a) passed");
     expect(r.out).toContain(`**(b) passed:** every changed file is what prettier ${formatter.version} writes`);
   });
 
   it("fails a change that is not the formatter's output, and names each file that differs", async () => {
-    const flipped = await style([{ write: "src/a.ts", text: tidy }, { write: "test/a.test.ts", text: test.tidy.replace("a < b", "a <= b") }]);
+    const flipped = await style([
+      { write: "src/a.ts", text: tidy },
+      { write: "test/a.test.ts", text: test.tidy.replace("a < b", "a <= b") },
+    ]);
     expect(flipped.status).toBe(1);
     expect(flipped.out).toContain("**(b) failed:**");
     expect(flipped.out).toContain("- test/a.test.ts (differs from the formatter's output)\n");
@@ -1386,7 +1816,10 @@ describe("the style rule", () => {
     const md = "export const footer = md`* checked by darnit\n*    run it`;\n";
     const rewritten = "export const footer = md`\n- checked by darnit\n- run it\n`;\n";
     for (const config of [formatter.config, '{ "printWidth": 120 }\n']) {
-      const r = await style([{ write: "src/a.ts", text: rewritten }], [...landed(), { write: ".prettierrc.json", text: config }, { write: "src/a.ts", text: md }]);
+      const r = await style(
+        [{ write: "src/a.ts", text: rewritten }],
+        [...landed(), { write: ".prettierrc.json", text: config }, { write: "src/a.ts", text: md }],
+      );
       expect(r.status, config).toBe(1);
       expect(r.out).toContain("- src/a.ts (differs from the formatter's output)\n");
     }
@@ -1402,7 +1835,13 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
 
   it("lets only a ci change with a reason touch formatter config, wherever it lives", async () => {
     const reason = "Proof: none, sets up the formatter for the next change\n";
-    const planted = await repo([{ write: "scripts/fmt.cjs", text: plugin }, { write: ".prettierrc.json", text: plugged }], landed());
+    const planted = await repo(
+      [
+        { write: "scripts/fmt.cjs", text: plugin },
+        { write: ".prettierrc.json", text: plugged },
+      ],
+      landed(),
+    );
     for (const type of ["chore", "docs", "build", "test", "fix", "feat", "refactor", "perf", "style"]) {
       const r = await check(planted, `${type}: x`, reason);
       expect(r.status, type).toBe(1);
@@ -1412,10 +1851,16 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
     const ci = await check(planted, "ci: x", reason);
     expect(ci.status).toBe(0);
     expect(listed(ci.summary, ".prettierrc.json")).toBe(true);
-    const key = withDeps({ devDependencies: { prettier: formatter.version }, prettier: { plugins: ["./scripts/fmt.cjs"] } });
+    const key = withDeps({
+      devDependencies: { prettier: formatter.version },
+      prettier: { plugins: ["./scripts/fmt.cjs"] },
+    });
     for (const [edit, shown] of [
       [{ write: "package.json", text: key }, 'package.json "prettier"'],
-      [{ write: "src/package.json", text: '{ "prettier": { "plugins": ["./fmt.cjs"] } }\n' }, 'src/package.json "prettier"'],
+      [
+        { write: "src/package.json", text: '{ "prettier": { "plugins": ["./fmt.cjs"] } }\n' },
+        'src/package.json "prettier"',
+      ],
       [{ write: ".editorconfig", text: "root = true\n" }, ".editorconfig"],
       [{ write: ".prettierignore", text: "*\n" }, ".prettierignore"],
       [{ write: "prettier.config.cjs", text: "module.exports = {};\n" }, "prettier.config.cjs"],
@@ -1430,29 +1875,44 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
         expect(listed(r.out, shown), `${type} ${shown}`).toBe(true);
       }
     }
-    const fixture = await rule("test: x", [{ write: "test/e2e/s/package.json", text: '{ "name": "s" }\n' }], "", {}, landed());
+    const fixture = await rule(
+      "test: x",
+      [{ write: "test/e2e/s/package.json", text: '{ "name": "s" }\n' }],
+      "",
+      {},
+      landed(),
+    );
     expect(fixture.status).toBe(0);
   });
 
   it("formats only with plain layout options from base's root .prettierrc.json, read as JSON", async () => {
     const loop = "for (let i = 0; i < n; i++) {}\n";
-    const smuggled = await style([{ write: "src/a.ts", text: loop.replace("i < n", "i <= n") }], [
-      ...landed(),
-      { write: "scripts/fmt.cjs", text: plugin },
-      { write: ".prettierrc.json", text: plugged },
-      { write: "src/a.ts", text: loop },
-    ]);
+    const smuggled = await style(
+      [{ write: "src/a.ts", text: loop.replace("i < n", "i <= n") }],
+      [
+        ...landed(),
+        { write: "scripts/fmt.cjs", text: plugin },
+        { write: ".prettierrc.json", text: plugged },
+        { write: "src/a.ts", text: loop },
+      ],
+    );
     expect(smuggled.status).toBe(1);
     expect(smuggled.out).toContain('- .prettierrc.json in base sets "plugins", not a plain layout option\n');
     for (const [config, why] of [
       ['{ "overrides": [] }', 'sets "overrides", not a plain layout option'],
       ['{ "parser": "babel" }', 'sets "parser", not a plain layout option'],
-      ['{ "embeddedLanguageFormatting": "auto" }', 'sets "embeddedLanguageFormatting" to "auto", where only "off" keeps templates as they are'],
+      [
+        '{ "embeddedLanguageFormatting": "auto" }',
+        'sets "embeddedLanguageFormatting" to "auto", where only "off" keeps templates as they are',
+      ],
       ['{ "printWidth": [120] }', 'sets "printWidth" to [120], not a plain value'],
       ["[]", "is not a JSON object"],
       ["printWidth: 120", "is not a JSON object"],
     ] as [string, string][]) {
-      const r = await style([{ write: "src/a.ts", text: tidy }], [...landed(), { write: ".prettierrc.json", text: config }]);
+      const r = await style(
+        [{ write: "src/a.ts", text: tidy }],
+        [...landed(), { write: ".prettierrc.json", text: config }],
+      );
       expect(r.status, config).toBe(1);
       expect(r.out, config).toContain(`- .prettierrc.json in base ${why}\n`);
     }
@@ -1465,7 +1925,15 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
     for (const [extra, shown] of [
       [[{ write: "src/.prettierrc", text: '{ "printWidth": 120 }\n' }], "src/.prettierrc"],
       [[{ write: ".editorconfig", text: "root = true\n[*]\nindent_size = 2\n" }], ".editorconfig"],
-      [[{ write: "package.json", text: withDeps({ devDependencies: { prettier: formatter.version }, prettier: { printWidth: 120 } }) }], "package.json"],
+      [
+        [
+          {
+            write: "package.json",
+            text: withDeps({ devDependencies: { prettier: formatter.version }, prettier: { printWidth: 120 } }),
+          },
+        ],
+        "package.json",
+      ],
       [[{ write: "src/package.yaml", text: "name: a\n" }], "src/package.yaml"],
       [[{ write: "src/package.json", text: "{\n" }], "src/package.json"],
       [[{ remove: ".prettierrc.json" }, { write: "prettier.config.cjs", text: js }], "prettier.config.cjs"],
@@ -1474,11 +1942,22 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
       expect(r.status, shown).toBe(1);
       expect(r.out, shown).toContain(`- ${shown} in base: only base's root .prettierrc.json may set options\n`);
     }
-    expect(await readFile(loaded).then(() => "loaded", () => "never loaded")).toBe("never loaded");
-    const none = await style([{ write: "src/a.ts", text: tidy }], [...landed().filter((e) => e.write !== ".prettierrc.json")]);
+    expect(
+      await readFile(loaded).then(
+        () => "loaded",
+        () => "never loaded",
+      ),
+    ).toBe("never loaded");
+    const none = await style(
+      [{ write: "src/a.ts", text: tidy }],
+      [...landed().filter((e) => e.write !== ".prettierrc.json")],
+    );
     expect(none.out).toContain("- .prettierrc.json in base is missing\n");
     // Config elsewhere, where prettier would not read it for the changed files, does not count.
-    const elsewhere = await style([{ write: "src/a.ts", text: tidy }], [...landed(), { write: "test/e2e/s/.editorconfig", text: "root = true\n" }]);
+    const elsewhere = await style(
+      [{ write: "src/a.ts", text: tidy }],
+      [...landed(), { write: "test/e2e/s/.editorconfig", text: "root = true\n" }],
+    );
     expect(elsewhere.status).toBe(0);
   });
 
@@ -1489,7 +1968,11 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
     await chmod(join(fake, "bin/prettier"), 0o755);
     await chmod(join(fake, "bin/npx"), 0o755);
     // A prettier module that answers with whatever the head holds, so any change would pass.
-    await writeIn(fake, "modules/prettier/package.json", JSON.stringify({ name: "prettier", version: formatter.version, main: "index.js" }));
+    await writeIn(
+      fake,
+      "modules/prettier/package.json",
+      JSON.stringify({ name: "prettier", version: formatter.version, main: "index.js" }),
+    );
     await writeIn(
       fake,
       "modules/prettier/index.js",
@@ -1524,7 +2007,10 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
 
   it("fails a change to a file base's .prettierignore leaves out, even when it is the formatter's output", async () => {
     for (const f of ["packs/v/p/fixtures/basic/input.ts", "test/golden/case.ts"]) {
-      const r = await style([{ write: "src/a.ts", text: tidy }, { write: f, text: tidy }]);
+      const r = await style([
+        { write: "src/a.ts", text: tidy },
+        { write: f, text: tidy },
+      ]);
       expect(r.status, f).toBe(1);
       expect(r.out).toContain(`- ${f} (left out by base's .prettierignore)\n`);
     }
@@ -1534,7 +2020,10 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
     const edits = [{ write: "src/a.ts", text: tidy }];
     for (const [version, why] of [
       ["3.9.9", `prettier 3.9.9 pinned in base's package.json, ${formatter.version} installed`],
-      [`^${formatter.version}`, `prettier ^${formatter.version} pinned in base's package.json, ${formatter.version} installed`],
+      [
+        `^${formatter.version}`,
+        `prettier ^${formatter.version} pinned in base's package.json, ${formatter.version} installed`,
+      ],
     ]) {
       const r = await style(edits, landed(version));
       expect(r.status, version).toBe(1);
