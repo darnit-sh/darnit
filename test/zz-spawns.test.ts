@@ -14,6 +14,7 @@ const spawns = vi.hoisted(
       cwd?: string | undefined;
       env?: NodeJS.ProcessEnv | undefined;
       timeout?: number | undefined;
+      signal?: AbortSignal | undefined;
     }[],
 );
 vi.mock("node:child_process", async (orig) => {
@@ -24,6 +25,7 @@ vi.mock("node:child_process", async (orig) => {
       cwd?: string;
       env?: NodeJS.ProcessEnv;
       timeout?: number;
+      signal?: AbortSignal;
     };
     spawns.push({
       file,
@@ -31,6 +33,7 @@ vi.mock("node:child_process", async (orig) => {
       cwd: o.cwd,
       env: o.env,
       timeout: o.timeout,
+      signal: o.signal,
     });
   };
   const execFile = function (file: string, ...rest: unknown[]) {
@@ -200,24 +203,28 @@ const SSH = "ssh://example.invalid/r.git";
 const stall = 2;
 const killAfter = stall * 4 * 1000;
 
-describe("the limits on a call to origin", () => {
-  // Nothing listens on port 1 and the ssh command exits, so every call fails at once and no test waits on a clock.
-  // The last spawn is the call itself: the ones before it read the remote's URLs.
-  const failedCall = async (dir: string, args: string[]) => {
-    await expect(git(dir, args, stall)).rejects.toThrow();
-    const call = spawns.at(-1)!;
-    expect(call.args).toEqual(expect.arrayContaining(args));
-    return call;
-  };
-  const repoWithOrigin = async (urls: string[]) => {
-    const dir = await temp("darnit-limits-");
-    await git(dir, ["init", "-q"]);
-    await git(dir, ["remote", "add", "origin", urls[0]!]);
-    for (const url of urls) await git(dir, ["remote", "set-url", "--add", "--push", "origin", url]);
-    return dir;
-  };
-  beforeEach(() => void vi.stubEnv("GIT_SSH_COMMAND", "false"));
+const PUSH = ["push", "-q", "origin", "HEAD:x"];
 
+// Nothing listens on port 1 and the ssh command exits, so every call fails at once and no test waits on a clock.
+// The last spawn is the call itself: the ones before it read the remote's URLs.
+const failedCall = async (dir: string, args: string[], limit = stall, more?: { env: NodeJS.ProcessEnv }) => {
+  vi.stubEnv("GIT_SSH_COMMAND", "false");
+  await expect(git(dir, args, limit, undefined, more)).rejects.toThrow();
+  const call = spawns.at(-1)!;
+  expect(call.args).toEqual(expect.arrayContaining(args));
+  expect(call.signal).toBeUndefined();
+  return call;
+};
+const repoWithOrigin = async (urls: string[], pushUrls = urls) => {
+  const dir = await temp("darnit-limits-");
+  await git(dir, ["init", "-q"]);
+  await git(dir, ["remote", "add", "origin", urls[0]!]);
+  for (const url of urls.slice(1)) await git(dir, ["remote", "set-url", "--add", "origin", url]);
+  for (const url of pushUrls) await git(dir, ["remote", "set-url", "--add", "--push", "origin", url]);
+  return dir;
+};
+
+describe("the process timeout on a call to origin", () => {
   it.each<[string, string[], number]>([
     ["http", [HTTP], 0],
     ["https", [HTTPS], 0],
@@ -230,22 +237,49 @@ describe("the limits on a call to origin", () => {
     ["a scheme that starts like http", ["httpsx://127.0.0.1:1/r.git"], killAfter],
     ["http only inside an ssh URL", [`ssh://example.invalid/${HTTP}`], killAfter],
   ])("sets the process timeout for a push to %s", async (_, urls, timeout) => {
-    const call = await failedCall(await repoWithOrigin(urls), ["push", "-q", "origin", "HEAD:x"]);
-    expect(call.timeout).toBe(timeout);
+    expect((await failedCall(await repoWithOrigin(urls), PUSH)).timeout).toBe(timeout);
   });
 
   it("judges a push by its push URL, past git's own options, and any other call by the fetch URL", async () => {
-    const dir = await repoWithOrigin([HTTP]);
-    await git(dir, ["remote", "set-url", "--push", "origin", SSH]);
-    expect((await failedCall(dir, ["-c", "x.y=z", "push", "-q", "origin", "HEAD:x"])).timeout).toBe(killAfter);
+    const dir = await repoWithOrigin([HTTP], [SSH]);
+    expect((await failedCall(dir, ["-c", "x.y=z", ...PUSH])).timeout).toBe(killAfter);
     expect((await failedCall(dir, ["fetch", "-q", "origin"])).timeout).toBe(0);
     expect((await failedCall(dir, ["ls-remote", "origin"])).timeout).toBe(0);
   });
 
+  it.each([
+    ["ssh", [SSH]],
+    ["http and then ssh", [HTTP, SSH]],
+    ["ssh and then http", [SSH, HTTP]],
+  ])("sets the process timeout for a fetch or ls-remote from %s, whatever the push URL", async (_, urls) => {
+    const dir = await repoWithOrigin(urls, [HTTP]);
+    expect((await failedCall(dir, PUSH)).timeout).toBe(0);
+    for (const args of [
+      ["fetch", "-q", "origin"],
+      ["ls-remote", "origin"],
+    ]) {
+      expect((await failedCall(dir, args)).timeout).toBe(killAfter);
+      expect((await failedCall(dir, args, stall, { env: {} })).timeout).toBe(killAfter);
+    }
+  });
+
+  it("keeps the process timeout on a push that passes its own environment", async () => {
+    const call = await failedCall(await repoWithOrigin([SSH]), PUSH, stall, { env: {} });
+    expect(call.timeout).toBe(killAfter);
+  });
+});
+
+describe("the limit given to a call to origin", () => {
   it("gives git its own stall limit, whatever the transport", async () => {
     for (const url of [HTTP, SSH]) {
-      const call = await failedCall(await repoWithOrigin([url]), ["push", "-q", "origin", "HEAD:x"]);
+      const call = await failedCall(await repoWithOrigin([url]), PUSH);
       expect(call.env).toMatchObject({ GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
     }
+  });
+
+  it("sets both limits from the value passed", async () => {
+    const call = await failedCall(await repoWithOrigin([SSH]), PUSH, 3);
+    expect(call.timeout).toBe(12_000);
+    expect(call.env).toMatchObject({ GIT_HTTP_LOW_SPEED_TIME: "3" });
   });
 });

@@ -37,7 +37,7 @@ async function bareRemote(): Promise<string> {
   return remote;
 }
 
-async function listen(server: HttpServer): Promise<number> {
+async function listen(server: Server | HttpServer): Promise<number> {
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   return (server.address() as AddressInfo).port;
@@ -390,9 +390,7 @@ describe("git calls that reach the remote end when it stalls", () => {
         socket.resume().on("close", resolve);
       }),
     );
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/r.git`;
+    const url = `http://127.0.0.1:${await listen(server)}/r.git`;
     await g.git(dir, ["remote", "add", "origin", url]);
     return { url, closed };
   };
