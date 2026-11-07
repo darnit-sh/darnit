@@ -30,8 +30,21 @@ async function repoWith(files: Record<string, string>): Promise<string> {
   return dir;
 }
 
-/** git http-backend serving the bare repos under `remote`; `send` writes each answer's body. */
-function backend(remote: string, send = (res: ServerResponse, body: Buffer) => void res.end(body)) {
+async function bareRemote(): Promise<string> {
+  const remote = await mkdtemp(join(tmpdir(), "darnit-remote-"));
+  tempDirs.push(remote);
+  await g.git(remote, ["init", "-q", "--bare", "r.git"]);
+  return remote;
+}
+
+async function listen(server: HttpServer): Promise<number> {
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  return (server.address() as AddressInfo).port;
+}
+
+/** git http-backend serving the bare repos under `remote`; `send` writes each answer's body, then `exited` runs. */
+function backend(remote: string, send = (res: ServerResponse, body: Buffer) => void res.end(body), exited = () => {}) {
   return (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url!, "http://x");
     const cgi = spawn("git", ["http-backend"], {
@@ -49,10 +62,13 @@ function backend(remote: string, send = (res: ServerResponse, body: Buffer) => v
       },
     });
     res.on("close", () => cgi.kill());
+    // The backend can go first, with the client still sending.
+    cgi.stdin.on("error", () => {});
     req.pipe(cgi.stdin);
     const out: Buffer[] = [];
     cgi.stdout.on("data", (d: Buffer) => out.push(d));
     cgi.on("close", () => {
+      if (res.destroyed) return;
       const all = Buffer.concat(out);
       const end = all.indexOf("\r\n\r\n");
       const headers = Object.fromEntries(
@@ -66,6 +82,7 @@ function backend(remote: string, send = (res: ServerResponse, body: Buffer) => v
       res.writeHead(parseInt(status), rest);
       send(res, all.subarray(end + 4));
     });
+    cgi.on("close", exited);
   };
 }
 
@@ -410,40 +427,66 @@ describe("git calls that reach the remote end when it stalls", () => {
     10_000,
   );
 
-  it("lets a slow but steady HTTP push run past four times the limit", async () => {
-    const remote = await mkdtemp(join(tmpdir(), "darnit-remote-"));
-    tempDirs.push(remote);
-    await g.git(remote, ["init", "-q", "--bare", "r.git"]);
-    // git http-backend behind a server that sends each answer a byte at a time over 2.5 seconds.
-    const server = createHttpServer(
-      backend(remote, (res, body) => {
-        let at = 0;
-        const timer = setInterval(
-          () => (at < body.length ? res.write(body.subarray(at, ++at)) : (clearInterval(timer), res.end())),
-          2500 / body.length,
-        );
-      }),
-    );
-    open.push(server);
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const dir = await repoWith({ "a.ts": "a\n" });
-    await g.git(dir, ["remote", "add", "origin", `http://127.0.0.1:${(server.address() as AddressInfo).port}/r.git`]);
-    const start = Date.now();
-    await g.git(dir, ["push", "-q", "origin", "HEAD:refs/heads/x"], 1);
-    expect(Date.now() - start).toBeGreaterThan(4000);
-    expect(await g.git(join(remote, "r.git"), ["rev-parse", "x"])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
-  }, 20_000);
-
   it("stops git after four times the limit on a transport with no stall setting", async () => {
     const dir = await repoWith({ "a.ts": "a\n" });
     await g.git(dir, ["remote", "add", "origin", "ssh://example.invalid/r.git"]);
-    vi.stubEnv("GIT_SSH_COMMAND", "sleep 6 #");
+    vi.stubEnv("GIT_SSH_COMMAND", "sleep 30 #");
     // Named after the command, not git's options before it.
     await expect(g.git(dir, ["-C", dir, "push", "-q", "origin", "HEAD:x"], 1)).rejects.toThrow(
       "git push timed out after 4 seconds",
     );
   }, 20_000);
+});
+
+describe("a push over HTTP to git http-backend", () => {
+  const open: (Socket | HttpServer)[] = [];
+  afterEach(() => open.splice(0).forEach((s) => (s instanceof Socket ? s.destroy() : s.close())));
+  const serve = (...args: Parameters<typeof backend>) => {
+    const server = createHttpServer(backend(...args));
+    open.push(server);
+    return server;
+  };
+
+  // No clock and the limit real pushes use, so a pause cannot fail this. test/zz-spawns.test.ts holds the process timeout.
+  it("lands on a server that answers a byte at a time", async () => {
+    const remote = await bareRemote();
+    const port = await listen(
+      serve(remote, (res, body) => {
+        let at = 0;
+        const timer = setInterval(
+          () => (at < body.length ? res.write(body.subarray(at, ++at)) : (clearInterval(timer), res.end())),
+          1,
+        );
+      }),
+    );
+    const dir = await repoWith({ "a.ts": "a\n" });
+    await g.git(dir, ["remote", "add", "origin", `http://127.0.0.1:${port}/r.git`]);
+    await g.git(dir, ["push", "-q", "origin", "HEAD:refs/heads/x"], 60);
+    expect(await g.git(join(remote, "r.git"), ["rev-parse", "x"])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
+  });
+
+  // A throw in the helper reaches no test: vitest reports it as an unhandled error, and `exited` never runs.
+  it.each([
+    ["before sending anything", ""],
+    ["while sending what the backend refuses", "0".repeat(2 ** 20)],
+  ])(
+    "leaves the server up when the client hangs up %s",
+    async (_, body) => {
+      let exited!: () => void;
+      const gone = new Promise<void>((resolve) => (exited = resolve));
+      const server = serve(await bareRemote(), undefined, exited);
+      const client = new Socket();
+      open.push(client);
+      server.once("request", () => client.destroy());
+      client.connect(await listen(server), "127.0.0.1");
+      client.write(
+        "POST /r.git/git-receive-pack HTTP/1.1\r\nHost: x\r\nContent-Type: application/x-git-receive-pack-request\r\n" +
+          `Content-Length: ${2 ** 24}\r\n\r\n${body}`,
+      );
+      await gone;
+    },
+    10_000,
+  );
 });
 
 describe("push", () => {
@@ -458,9 +501,7 @@ describe("push", () => {
   // A remote that takes a push only with exactly one auth header, `accept`, and refuses any other, as
   // GitHub refuses a token without push rights.
   async function guardedOrigin(dir: string, accept = header): Promise<{ url: string; remote: string }> {
-    const remote = await mkdtemp(join(tmpdir(), "darnit-remote-"));
-    tempDirs.push(remote);
-    await g.git(remote, ["init", "-q", "--bare", "r.git"]);
+    const remote = await bareRemote();
     const serve = backend(remote);
     server = createHttpServer((req, res) => {
       const auth = req.headersDistinct.authorization ?? [];
@@ -468,9 +509,7 @@ describe("push", () => {
       else if (auth.length === 0) res.writeHead(401, { "WWW-Authenticate": 'Basic realm="r"' }).end();
       else res.writeHead(403).end();
     });
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    const url = `http://127.0.0.1:${await listen(server)}/`;
     await g.git(dir, ["remote", "add", "origin", `${url}r.git`]);
     return { url, remote: join(remote, "r.git") };
   }
