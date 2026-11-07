@@ -1,27 +1,31 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { checkPackage, MAX_READ, MAX_UNPACKED } from "../scripts/check-package.js";
+import { checkPackage, MAX_READ, MAX_UNPACKED, PREFIXED } from "../scripts/check-package.js";
 
 const ROOT = join(import.meta.dirname, "..");
-const tsx = join(ROOT, "node_modules", ".bin", "tsx");
-const { version: VERSION } = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8")) as { version: string };
-type File = { path: string; data?: string | Buffer; type?: string; link?: string; pax?: Record<string, string> };
+const TSX = join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
+const PKG = await readFile(join(ROOT, "package.json"), "utf8");
+const { version: VERSION } = JSON.parse(PKG) as { version: string };
+type File = { path?: string; data?: string | Buffer; type?: string; link?: string; raw?: Buffer } & Partial<
+  Record<"magic" | "prefix", string> & { pax: Record<string, string> }
+>;
 
-// A tar writer that can write what npm never would: links, escaping paths, a path only a pax header holds.
+// A tar writer that can write what npm never would: links, escaping paths, odd magic, paths only a pax header holds.
 const field = (n: number, width: number) => `${n.toString(8).padStart(width - 1, "0")}\0`;
 const pad = (b: Buffer) => Buffer.concat([b, Buffer.alloc(-b.length & 511)]);
 function header(f: File, size: number): Buffer {
   const h = Buffer.alloc(512);
-  h.write(f.path, 0, 100);
+  h.write(f.path ?? "", 0, 100);
   h.write(field(0o644, 8), 100);
   h.write(field(size, 12), 124);
   h.write(`${" ".repeat(8)}${f.type ?? "0"}`, 148);
   h.write(f.link ?? "", 157, 100);
-  h.write("ustar\x0000", 257);
+  h.write(f.magic ?? "ustar\x0000", 257);
+  h.write(f.prefix ?? "", 345, 155);
   const sum = h.reduce((total, b) => total + b, 0);
   h.write(field(sum, 7), 148);
   return h;
@@ -33,26 +37,29 @@ const paxData = (records: Record<string, string>) =>
     while (Buffer.byteLength(`${n} ${key}=${value}\n`) !== n) n++;
     return `${out}${n} ${key}=${value}\n`;
   }, "");
-function tar(files: File[]): Buffer {
-  const blocks = files.flatMap((f) => {
-    const data = Buffer.from(f.data ?? "");
-    const ext = Buffer.from(paxData(f.pax ?? {}));
-    const pax = f.pax ? [header({ path: "PaxHeader", type: "x" }, ext.length), pad(ext)] : [];
-    return [...pax, header(f, data.length), pad(data)];
-  });
-  return gzipSync(Buffer.concat([...blocks, Buffer.alloc(1024)]));
-}
+const tar = (files: File[]) =>
+  Buffer.concat([
+    ...files.flatMap((f) => {
+      if (f.raw) return [f.raw];
+      const data = Buffer.from(f.data ?? "");
+      const ext = Buffer.from(paxData(f.pax ?? {}));
+      const pax = f.pax ? [header({ path: "PaxHeader", type: "x" }, ext.length), pad(ext)] : [];
+      return [...pax, header(f, data.length), pad(data)];
+    }),
+    Buffer.alloc(1024),
+  ]);
 
 let dir: string;
 let base: File[];
 let count = 0;
-const write = async (files: File[]) => {
+const write = async (files: File[], edit = (t: Buffer) => t) => {
   const file = join(dir, `${++count}.tgz`);
-  await writeFile(file, tar(files));
+  await writeFile(file, gzipSync(edit(tar(files))));
   return file;
 };
 const check = async (files: File[], version?: string) => checkPackage(await write(files), { version });
-const run = (args: string[]) => spawnSync(tsx, ["scripts/check-package.ts", ...args], { cwd: ROOT, encoding: "utf8" });
+const run = (args: string[], env = process.env) =>
+  spawnSync(process.execPath, [TSX, "scripts/check-package.ts", ...args], { cwd: ROOT, encoding: "utf8", env });
 const npm = (...args: string[]) => spawnSync("npm", args, { cwd: ROOT, encoding: "utf8" }).status;
 
 beforeAll(async () => {
@@ -62,7 +69,7 @@ beforeAll(async () => {
     .map((d) => relative(ROOT, join(d.parentPath, d.name)))
     .filter((p) => /\/change\.json$|\/rules\//.test(p));
   base = [
-    { path: "package/package.json", data: await readFile(join(ROOT, "package.json")) },
+    { path: "package/package.json", data: PKG },
     { path: "package/dist/cli.js", data: "#!/usr/bin/env node\n" },
     ...(await Promise.all(records.map(async (p) => ({ path: `package/${p}`, data: await readFile(join(ROOT, p)) })))),
   ];
@@ -77,40 +84,45 @@ describe("check-package", () => {
     expect(r.status).toBe(0);
   });
 
-  it("passes the records as the checkout holds them", async () => {
+  it("passes the package.json and records as the checkout holds them", async () => {
     expect(await check(base, VERSION)).toEqual([]);
   });
 
   const add =
     (...extra: File[]) =>
     (b: File[]) => [...b, ...extra];
-  const ok = { path: "package/dist/ok.js", pax: { path: "package/.env" } };
-  const record = () => base.find((f) => f.path.endsWith("/change.json"))!.path;
+  const without = (path: string) => (b: File[]) => b.filter((f) => f.path !== path);
+  const replace = (path: string, data: string) => (b: File[]) => b.map((f) => (f.path === path ? { ...f, data } : f));
+  const record = () => base.find((f) => f.path!.endsWith("/change.json"))!.path!;
+  const postinstall = PKG.replace('"scripts": {', '"scripts": {\n    "postinstall": "node -e 1",');
   it.each<[string, (b: File[]) => File[], RegExp]>([
     ["an extra .env", add({ path: "package/dist/.env", data: "KEY=1" }), /dist\/\.env: a dotfile/],
     ["an env file by another name", add({ path: "package/dist/prod.env" }), /prod\.env: an env file/],
     ["a test file", add({ path: "package/dist/cli.test.js" }), /cli\.test\.js: a test file/],
+    ["a test file by name alone", add({ path: "package/dist/Test.JS" }), /Test\.JS: a test file/],
     ["a source map", add({ path: "package/dist/cli.js.map" }), /cli\.js\.map: a source map/],
     ["a key", add({ path: "package/packs/x/rules/id_rsa" }), /id_rsa: named like a key/],
+    ["a certificate", add({ path: "package/dist/server.crt" }), /server\.crt: named like a key/],
     ["a credentials file", add({ path: "package/dist/credentials.json" }), /credentials\.json: named like a key/],
     ["a file outside files", add({ path: "package/src/cli.ts" }), /src\/cli\.ts: not in package\.json/],
-    ["a changed record", (b) => b.map((f) => (f.path === record() ? { ...f, data: "{}" } : f)), /differs from/],
-    ["a missing record", (b) => b.filter((f) => f.path !== record()), /in the checkout but not in the tarball/],
+    ["a changed record", (b) => replace(record(), "{}")(b), /differs from the checkout's copy/],
+    ["a missing record", (b) => without(record())(b), /in the checkout but not in the tarball/],
+    [
+      "an extra record",
+      add({ path: "package/packs/openai/new/change.json" }),
+      /new\/change\.json: not in the checkout/,
+    ],
+    ["a missing package.json", without("package/package.json"), /^package\/package\.json: missing$/],
+    ["a changed package.json", replace("package/package.json", postinstall), /differs from the checkout's package/],
     ["a symlink", add({ path: "package/dist/x.js", type: "2", link: "/etc/passwd" }), /symlink to \/etc/],
     ["a hard link", add({ path: "package/dist/x.js", type: "1", link: "package/dist/cli.js" }), /hard link/],
     ["a device", add({ path: "package/dist/x", type: "3" }), /package\/dist\/x: a device/],
     ["a ../ path", add({ path: "package/../evil.js" }), /evil\.js: outside package\//],
     ["an absolute path", add({ path: "/package/evil.js" }), /evil\.js: outside package\//],
     ["a backslash path", add({ path: "package/..\\evil.js" }), /evil\.js: outside package\//],
-    // The first pax size must reach the file, not the second pax header.
-    ["a path in a pax header", add({ path: "P", type: "x", data: paxData({ size: "0" }) }, ok), /\.env/],
+    ["a path in a pax header", add({ path: "package/dist/ok.js", pax: { path: "package/.env" } }), /\.env: a dot/],
     ["a GNU long name", add({ path: "L", type: "L", data: "package/.npmrc" }, { path: "package/a" }), /\.npmrc: a dot/],
-    ["a missing bin", (b) => b.filter((f) => f.path !== "package/dist/cli.js"), /bin dist\/cli\.js is not in/],
-    [
-      "too many entries",
-      add(...Array.from({ length: 5_000 }, (_, i) => ({ path: `package/dist/${i}.js` }))),
-      /5000 entries/,
-    ],
+    ["a missing bin", without("package/dist/cli.js"), /bin dist\/cli\.js is not in/],
     ["over the size limit", add({ path: "package/dist/a.js", data: Buffer.alloc(MAX_UNPACKED) }), /more than/],
   ])("finds %s", async (_, breach, finding) => {
     expect(await check(breach(base), VERSION)).toEqual([expect.stringMatching(finding)]);
@@ -120,17 +132,74 @@ describe("check-package", () => {
     expect(await check(base, "9.9.9")).toEqual([`package/package.json: version ${VERSION}, expected 9.9.9`]);
   });
 
-  it("stops reading a tarball that unpacks past its cap, and says so", async () => {
-    const huge = [...base, { path: "package/dist/a.js", data: Buffer.alloc(MAX_READ) }];
-    expect(await check(huge)).toEqual([expect.stringMatching(`unpacks to more than ${MAX_READ} bytes`)]);
+  it("leaves out what a ! entry in files leaves out", async () => {
+    const root = join(dir, "checkout");
+    const manifest = JSON.stringify({ files: ["dist", "!dist/x.js"] });
+    await mkdir(join(root, "packs"), { recursive: true });
+    await writeFile(join(root, "package.json"), manifest);
+    const files = [{ path: "package/package.json", data: manifest }, { path: "package/dist/y.js" }];
+    expect(checkPackage(await write(files), { root })).toEqual([]);
+    const extra = await write([...files, { path: "package/dist/x.js" }]);
+    expect(checkPackage(extra, { root })).toEqual(['package/dist/x.js: not in package.json "files"']);
   });
 
-  it("exits 1 listing every finding, and 2 on bad usage or an unreadable file", async () => {
-    const r = run([await write([...base, { path: "package/.env" }, { path: "package/a.test.js" }])]);
+  const cut = (t: Buffer) => t.subarray(0, t.length - 1024 - 1000);
+  const big = async () => {
+    await writeFile(join(dir, "big.tgz"), Buffer.alloc(MAX_READ + 1));
+    return join(dir, "big.tgz");
+  };
+  const pax = { path: "package/a.js", pax: { path: "package/a.key\0.js" } };
+  it.each<[string, () => Promise<string>, RegExp]>([
+    ["data after one zero block", () => write(add({ raw: Buffer.alloc(512) }, { path: "package/a" })(base)), /zero/],
+    ["a short magic", () => write(add({ path: "package/a", prefix: "package", magic: "ustar\0xx" })(base)), /magic/],
+    ["a NUL in a pax path", () => write(add(pax)(base)), /NUL/],
+    ["a record inside a pax value", () => write([{ path: "package/a", pax: { c: "x\n9 path=.e\n" } }]), /newline/],
+    ["a pax size that differs", () => write([{ path: "package/a", data: "abc", pax: { size: "5" } }]), /pax size/],
+    ["an unreadable pax header", () => write([{ path: "P", type: "x", data: "bad" }, { path: "package/a" }]), /pax/],
+    ["five pax headers in a row", () => write(Array<File>(5).fill({ path: "P", type: "x" })), /in a row/],
+    ["a bad checksum", () => write(base, (t) => (t.writeUInt8(t[100]! ^ 1, 100), t)), /checksum/],
+    ["a field that is not octal", () => write(base, (t) => (t.write("zz", 148), t)), /not octal/],
+    ["a cut short entry", () => write([{ path: "package/a", data: Buffer.alloc(2000) }], cut), /cut short/],
+    ["too many entries", () => write(Array.from({ length: 5_001 }, () => ({ path: "package/a" }))), /5000 entries/],
+    ["one that unpacks past the cap", () => write([{ path: "package/a", data: Buffer.alloc(MAX_READ) }]), /unpacks/],
+    ["a file over the budget", big, /more than 8000000 bytes/],
+    ["a device", () => Promise.resolve("/dev/zero"), /not a regular file/],
+    ["one npm's reader refuses", () => write(add({ path: "" })(base)), /npm's tar reader: .*path is required/],
+  ])("refuses %s unread", async (_, make, reason) => {
+    const file = await make();
+    expect(() => checkPackage(file)).toThrow(reason);
+  });
+
+  it("refuses by npm's reading alone a header this reader reads apart", async () => {
+    const moved = { path: "package/package.json", prefix: "package/dist", magic: "ustar\0xx" };
+    const file = await write(add(moved)(base));
+    PREFIXED.add("ustar\0xx");
+    try {
+      expect(checkPackage(file)).toEqual([
+        expect.stringMatching(/^npm's tar reads entry \d+ as package\/package\.json 0 0, this script as package\/dist/),
+      ]);
+    } finally {
+      PREFIXED.delete("ustar\0xx");
+    }
+  });
+
+  it("finds an entry npm's reader skips", async () => {
+    expect(await check(add({ path: "package/z", type: "Z" })(base))).toEqual([
+      expect.stringMatching(/^npm's tar reads entry \d+ as package\/z ignored, this script as package\/z Z 0$/),
+      'package/z: tar entry type "Z"',
+    ]);
+  });
+
+  it("exits 1 listing every finding, and 2 on bad usage, an unreadable file or no npm reader", async () => {
+    const file = await write([...base, { path: "package/.env" }, { path: "package/a.test.js" }]);
+    const r = run([file]);
     expect([r.status, r.stdout.split("\n").length]).toEqual([1, 4]);
     expect(run([]).status).toBe(2);
     expect(run(["a.tgz", "b.tgz"]).status).toBe(2);
+    expect(run([file, "--version="]).status).toBe(2);
     expect(run([join(dir, "missing.tgz")]).status).toBe(2);
     expect(run([join(ROOT, "package.json")]).status).toBe(2);
+    const noNpm = run([await write(base)], { PATH: dir });
+    expect([noNpm.status, noNpm.stderr]).toEqual([2, expect.stringMatching(/npm/)]);
   });
 });

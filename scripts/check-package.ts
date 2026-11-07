@@ -1,38 +1,49 @@
 // Lists everything in a packed tarball that should not ship: a path outside package.json's "files" or on the deny
-// list, an entry that is not a plain file, a record that differs from or is missing against packs/, a wrong version
-// or bin, or more than MAX_UNPACKED bytes unpacked. Reads the tar itself rather than through the system tar, whose
-// listing differs between GNU and BSD tar and cannot be parsed safely: each entry's type comes from its header.
+// list, an entry that is not a plain file, a package.json or record that differs from the checkout's or is missing,
+// a wrong version or bin, or more than MAX_UNPACKED bytes unpacked. The tarball is read twice: by the strict reader
+// below, which refuses anything it cannot explain, and by the tar reader inside npm, which installs the package.
+// The two listings must agree entry for entry, so a header the two read apart is refused, not passed.
 //   tsx scripts/check-package.ts <file.tgz> [--version <v>]   exit 0 clean, 1 findings, 2 bad usage or unreadable
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, posix, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { gunzipSync } from "node:zlib";
 
 export const MAX_UNPACKED = 1_000_000;
-// Room for tar headers and padding; past these the tarball is not read further and that is a finding.
+// Read budgets: past any of them the tarball is refused unread (exit 2).
 export const MAX_READ = 8 * MAX_UNPACKED;
 const MAX_ENTRIES = 5_000;
+// Pax and long name headers in a row before one entry; npm writes at most one.
+const MAX_META = 4;
+// Tar magic and version whose prefix field is part of the path (POSIX ustar), and GNU's, which has no prefix.
+export const PREFIXED = new Set(["ustar\u000000"]);
+const GNU = "ustar  \u0000";
 const ROOT = resolve(import.meta.dirname, "..");
 // npm ships these whatever "files" says.
 const ALWAYS = ["package.json", "README*", "LICENSE*"];
 const DENY: [RegExp, string][] = [
   [/(^|\/)\./, "a dotfile or dot folder"],
-  [/(^|\/)(tests?|__tests__)\/|\.(test|spec)\.[cm]?[jt]sx?$/i, "a test file"],
+  [/(^|\/)(tests?|__tests__)\/|(^|[/.])(test|spec)\.[cm]?[jt]sx?$/i, "a test file"],
   [/\.map$/i, "a source map"],
   [/(^|[/.])env(\.[^/]*)?$/i, "an env file"],
-  [/\.(pem|key|p12|pfx|jks|keystore|ppk|gpg|asc)$|(^|\/)id_(rsa|dsa|ecdsa|ed25519)/i, "named like a key"],
+  [
+    /\.(pem|key|crt|cer|der|p8|p12|pfx|jks|keystore|ppk|gpg|asc)$|(^|\/)id_(rsa|dsa|ecdsa|ed25519)/i,
+    "named like a key",
+  ],
   [/(^|[/._-])(secrets?|credentials?|private[-_]?key)([._-][^/]*)?$/i, "named like a key"],
 ];
 // What each tar entry type from 1 to 6 is; only 0, a plain file, ships.
 const TYPES = ["", "a hard link", "a symlink", "a device", "a device", "a folder", "a pipe"];
 const USAGE = "usage: tsx scripts/check-package.ts <file.tgz> [--version <v>]";
 
-// Entries that describe the next one: pax extended and global headers, GNU long names and long link names.
-const META = "xgLK";
-
 type Manifest = { version?: string; bin?: Record<string, string> };
 type Entry = { path: string; type: string; size: number; data: Buffer; link: string };
+type Rules = { denied: (p: string) => string | undefined; allowed: (p: string) => boolean };
+type NpmEntry = { path: string; size: number; header: { typeKey: string }; resume(): void };
+type NpmParser = { on(event: string, f: (e: NpmEntry) => void): void; end(data: Buffer): void };
 
 const text = (b: Buffer, from: number, len: number) => {
   const s = b.subarray(from, from + len);
@@ -45,62 +56,113 @@ const octal = (b: Buffer, from: number, len: number) => {
   return parseInt(s || "0", 8);
 };
 const checksum = (h: Buffer) => h.reduce((sum, byte, i) => sum + (i >= 148 && i < 156 ? 32 : byte), 0);
+const zero = (b: Buffer) => b.every((byte) => byte === 0);
 
+// Each record is "<length> <key>=<value>\n", the length in bytes and counting itself. A value holding a NUL or a
+// newline is refused: npm's reader cuts a path at a NUL and splits records at newlines, so either could hide a path.
 function pax(data: Buffer): Record<string, string> {
   const out: Record<string, string> = {};
   for (let at = 0; at < data.length;) {
     const space = data.indexOf(0x20, at);
-    const len = Number(data.toString("utf8", at, space));
-    if (space < 0 || !Number.isInteger(len) || len <= 0 || at + len > data.length)
+    const digits = data.toString("latin1", at, space);
+    const end = at + Number(digits);
+    const record = data.toString("utf8", space + 1, end - 1);
+    const eq = record.indexOf("=");
+    if (space < 0 || !/^\d+$/.test(digits) || end > data.length || data[end - 1] !== 0x0a || eq < 1)
       throw new Error("unreadable pax header");
-    const record = data.toString("utf8", space + 1, at + len - 1);
-    out[record.slice(0, record.indexOf("="))] = record.slice(record.indexOf("=") + 1);
-    at += len;
+    if (/[\0\n]/.test(record)) throw new Error(`a pax record holds a NUL or newline: ${JSON.stringify(record)}`);
+    out[record.slice(0, eq)] = record.slice(eq + 1);
+    at = end;
   }
   return out;
 }
 
-// One header and its data. Pax and GNU long name entries carry the path, link or size of the entry after them.
-function entry(tar: Buffer, at: number, ext: Record<string, string>): Entry {
+function header(tar: Buffer, at: number) {
   const h = tar.subarray(at, at + 512);
   if (checksum(h) !== octal(h, 148, 8)) throw new Error(`bad tar header checksum at byte ${at}`);
-  const type = String.fromCharCode(h[156] || 48);
-  const own = META.includes(type) ? {} : ext;
-  const size = own.size === undefined ? octal(h, 124, 12) : Number(own.size);
-  const data = tar.subarray(at + 512, at + 512 + size);
-  if (!Number.isSafeInteger(size) || data.length < size) throw new Error(`tar entry at byte ${at} is cut short`);
-  const prefix = h.toString("latin1", 257, 263) === "ustar\0" ? text(h, 345, 155) : "";
-  const name = prefix ? `${prefix}/${text(h, 0, 100)}` : text(h, 0, 100);
-  return { path: own.path ?? name, type, size, data, link: own.linkpath ?? text(h, 157, 100) };
+  const magic = h.toString("latin1", 257, 265);
+  if (!PREFIXED.has(magic) && magic !== GNU)
+    throw new Error(`unknown tar magic ${JSON.stringify(magic)} at byte ${at}`);
+  const prefix = PREFIXED.has(magic) ? text(h, 345, 155) : "";
+  const name = text(h, 0, 100);
+  return {
+    type: String.fromCharCode(h[156] || 48),
+    size: octal(h, 124, 12),
+    name: prefix ? `${prefix}/${name}` : name,
+  };
 }
 
-function readTar(tar: Buffer): { entries: Entry[]; findings: string[] } {
+// One header and its data, with what the pax and long name headers before it set.
+function entry(tar: Buffer, at: number, ext: Record<string, string>): Entry {
+  const { type, size, name } = header(tar, at);
+  if (ext.size !== undefined && ext.size !== String(size)) throw new Error(`a pax size differs at byte ${at}`);
+  const data = tar.subarray(at + 512, at + 512 + size);
+  if (data.length < size) throw new Error(`tar entry at byte ${at} is cut short`);
+  return { path: ext.path ?? name, type, size, data, link: ext.linkpath ?? text(tar, at + 157, 100) };
+}
+
+function readTar(tar: Buffer): Entry[] {
   const entries: Entry[] = [];
   let ext: Record<string, string> = {};
-  for (let at = 0; at + 512 <= tar.length && tar.subarray(at, at + 512).some((b) => b !== 0);) {
+  let meta = 0;
+  for (let at = 0; at < tar.length;) {
+    if (zero(tar.subarray(at, at + 512))) {
+      if (!zero(tar.subarray(at))) throw new Error(`data after a zero block at byte ${at}`);
+      break;
+    }
     const e = entry(tar, at, ext);
     at += 512 + Math.ceil(e.size / 512) * 512;
-    if (e.type === "x") ext = { ...ext, ...pax(e.data) };
-    else if (e.type === "L") ext = { ...ext, path: text(e.data, 0, e.size) };
-    else if (e.type === "K") ext = { ...ext, linkpath: text(e.data, 0, e.size) };
-    else {
-      entries.push(e);
-      ext = {};
-      if (entries.length >= MAX_ENTRIES)
-        return { entries, findings: [`${MAX_ENTRIES} entries or more; read stopped there`] };
+    if (e.type === "x" || e.type === "L") {
+      if (++meta > MAX_META) throw new Error(`more than ${MAX_META} pax or long name headers in a row`);
+      Object.assign(ext, e.type === "x" ? pax(e.data) : { path: text(e.data, 0, e.size) });
+      continue;
     }
+    entries.push(e);
+    [ext, meta] = [{}, 0];
+    if (entries.length > MAX_ENTRIES) throw new Error(`more than ${MAX_ENTRIES} entries`);
   }
-  return { entries, findings: [] };
+  return entries;
 }
 
-// A "files" entry as a pattern: ** spans folders, * stays within one, and a plain name includes what is under it.
+// The same tarball through the tar reader inside the npm on PATH, as path, type code and size per entry.
+function npmListing(tar: Buffer): string[] {
+  const root = execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
+  let Parser: new (o: { strict: boolean }) => NpmParser;
+  try {
+    ({ Parser } = createRequire(join(root, "npm", "node_modules", "_.js"))("tar") as { Parser: typeof Parser });
+  } catch (e) {
+    throw new Error(`npm's tar reader is not under ${root}`, { cause: e });
+  }
+  const out: string[] = [];
+  const parser = new Parser({ strict: true });
+  parser.on("entry", (e) => {
+    out.push(`${e.path} ${e.header.typeKey} ${e.size}`);
+    e.resume();
+  });
+  parser.on("ignoredEntry", (e) => out.push(`${e.path} ignored`));
+  try {
+    parser.end(tar);
+  } catch (e) {
+    throw new Error(`npm's tar reader: ${(e as Error).message}`, { cause: e });
+  }
+  return out;
+}
+
+function listingFindings(entries: Entry[], tar: Buffer): string[] {
+  const ours = entries.map((e) => `${e.path} ${e.type} ${e.size}`);
+  const npm = npmListing(tar);
+  const at = Array.from({ length: Math.max(ours.length, npm.length) }, (_, n) => n).find((n) => ours[n] !== npm[n]);
+  if (at === undefined) return [];
+  return [`npm's tar reads entry ${at + 1} as ${npm[at] ?? "nothing"}, this script as ${ours[at] ?? "nothing"}`];
+}
+
 const GLOB: Record<string, string> = { "**/": "(.*/)?", "/**": "/.*", "**": ".*", "*": "[^/]*" };
 const glob = (p: string) => {
   const re = p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*\*\/|\/\*\*$|\*\*|\*/g, (m) => GLOB[m]!);
   return new RegExp(`^${re}${p.includes("*") ? "" : "(/.*)?"}$`);
 };
 
-function rules(root: string) {
+function rules(root: string): Rules {
   const { files = [] } = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { files?: string[] };
   const keep = [...ALWAYS, ...files.filter((f) => !f.startsWith("!"))].map(glob);
   const drop = files.filter((f) => f.startsWith("!")).map((f) => glob(f.slice(1)));
@@ -109,7 +171,7 @@ function rules(root: string) {
   return { denied, allowed };
 }
 
-function pathFinding(e: Entry, { denied, allowed }: ReturnType<typeof rules>): string | undefined {
+function pathFinding(e: Entry, { denied, allowed }: Rules): string | undefined {
   if (e.type !== "0")
     return `${e.path}: ${TYPES[parseInt(e.type)] || `tar entry type ${JSON.stringify(e.type)}`}${e.link && ` to ${e.link}`}`;
   const rel = e.path.slice("package/".length);
@@ -120,59 +182,78 @@ function pathFinding(e: Entry, { denied, allowed }: ReturnType<typeof rules>): s
   return allowed(rel) ? undefined : `${e.path}: not in package.json "files"`;
 }
 
-// Every record file in the tarball matches the checkout's copy, and every one the checkout would ship is there.
-function recordFindings(files: Map<string, Entry>, root: string, r: ReturnType<typeof rules>): string[] {
-  const out: string[] = [];
-  for (const [path, e] of files) {
-    if (!path.startsWith("package/packs/")) continue;
-    const local = join(root, path.slice("package/".length));
-    if (!statSync(local, { throwIfNoEntry: false })?.isFile() || !readFileSync(local).equals(e.data))
-      out.push(`${path}: differs from ${relative(root, local)} in the checkout`);
-  }
-  for (const d of readdirSync(join(root, "packs"), { recursive: true, withFileTypes: true })) {
-    const rel = relative(root, join(d.parentPath, d.name)).split("\\").join("/");
-    if (d.isFile() && r.allowed(rel) && !r.denied(rel) && !files.has(`package/${rel}`))
-      out.push(`${rel}: in the checkout but not in the tarball`);
-  }
-  return out;
-}
+// Every record file in the tarball is the checkout's copy.
+const changedRecords = (files: Map<string, Entry>, root: string) =>
+  [...files]
+    .filter(([path]) => path.startsWith("package/packs/"))
+    .flatMap(([path, e]) => {
+      const local = join(root, path.slice("package/".length));
+      if (!statSync(local, { throwIfNoEntry: false })?.isFile()) return [`${path}: not in the checkout`];
+      return readFileSync(local).equals(e.data) ? [] : [`${path}: differs from the checkout's copy`];
+    });
 
-function manifestFindings(files: Map<string, Entry>, version: string | undefined): string[] {
+// Every record file the checkout would ship is in the tarball.
+const missingRecords = (files: Map<string, Entry>, root: string, r: Rules) =>
+  readdirSync(join(root, "packs"), { recursive: true, withFileTypes: true })
+    .filter((d) => d.isFile())
+    .map((d) => relative(root, join(d.parentPath, d.name)).split("\\").join("/"))
+    .filter((rel) => r.allowed(rel) && !r.denied(rel) && !files.has(`package/${rel}`))
+    .map((rel) => `${rel}: in the checkout but not in the tarball`);
+
+function manifestFindings(files: Map<string, Entry>, root: string, version: string | undefined): string[] {
   const manifest = files.get("package/package.json");
   if (!manifest) return ["package/package.json: missing"];
+  const out = manifest.data.equals(readFileSync(join(root, "package.json")))
+    ? []
+    : ["package/package.json: differs from the checkout's package.json"];
   const pkg = JSON.parse(manifest.data.toString("utf8")) as Manifest;
-  const out = Object.values(pkg.bin ?? {})
-    .filter((target) => !files.has(posix.join("package", target)))
-    .map((target) => `package/package.json: bin ${target} is not in the tarball`);
+  for (const target of Object.values(pkg.bin ?? {}))
+    if (!files.has(posix.join("package", target)))
+      out.push(`package/package.json: bin ${target} is not in the tarball`);
   if (version !== undefined && pkg.version !== version)
     out.push(`package/package.json: version ${pkg.version}, expected ${version}`);
   return out;
 }
 
-export function checkPackage(
-  file: string,
-  { root = ROOT, version }: { root?: string; version?: string | undefined } = {},
-): string[] {
-  const size = statSync(file).size;
-  if (size > MAX_READ) return [`${file}: ${size} bytes, more than ${MAX_READ} to read`];
-  let tar: Buffer;
+// At most MAX_READ bytes of a regular file; a device, pipe or larger file is refused before it fills memory.
+function readBounded(file: string): Buffer {
+  if (!statSync(file).isFile()) throw new Error(`${file}: not a regular file`);
+  const buf = Buffer.alloc(MAX_READ + 1);
+  const fd = openSync(file, "r");
+  let n = 0;
   try {
-    tar = gunzipSync(readFileSync(file), { maxOutputLength: MAX_READ });
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE")
-      return [`${file}: unpacks to more than ${MAX_READ} bytes`];
-    throw new Error(`${file}: ${(e as Error).message}`, { cause: e });
+    for (let got = 1; got > 0 && n < buf.length; n += got) got = readSync(fd, buf, n, buf.length - n, null);
+  } finally {
+    closeSync(fd);
   }
-  const { entries, findings } = readTar(tar);
+  if (n > MAX_READ) throw new Error(`${file}: more than ${MAX_READ} bytes`);
+  return buf.subarray(0, n);
+}
+
+function unpack(file: string): Buffer {
+  const packed = readBounded(file);
+  try {
+    return gunzipSync(packed, { maxOutputLength: MAX_READ });
+  } catch (e) {
+    const big = (e as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE";
+    throw new Error(`${file}: ${big ? `unpacks to more than ${MAX_READ} bytes` : (e as Error).message}`, { cause: e });
+  }
+}
+
+export function checkPackage(file: string, options: { root?: string; version?: string | undefined } = {}): string[] {
+  const { root = ROOT, version } = options;
+  const tar = unpack(file);
+  const entries = readTar(tar);
   const r = rules(root);
   const files = new Map(entries.filter((e) => !pathFinding(e, r)).map((e) => [e.path, e]));
   const unpacked = entries.reduce((sum, e) => sum + e.size, 0);
-  if (unpacked > MAX_UNPACKED) findings.push(`unpacks to ${unpacked} bytes, more than ${MAX_UNPACKED}`);
   return [
+    ...listingFindings(entries, tar),
     ...entries.map((e) => pathFinding(e, r)).filter((f) => f !== undefined),
-    ...recordFindings(files, root, r),
-    ...manifestFindings(files, version),
-    ...findings,
+    ...changedRecords(files, root),
+    ...missingRecords(files, root, r),
+    ...manifestFindings(files, root, version),
+    ...(unpacked > MAX_UNPACKED ? [`unpacks to ${unpacked} bytes, more than ${MAX_UNPACKED}`] : []),
   ];
 }
 
