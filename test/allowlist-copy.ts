@@ -36,7 +36,10 @@ export async function copy() {
   return dir;
 }
 
-export const run = (kind: "unused" | "duplicates", root = ROOT, env: NodeJS.ProcessEnv = process.env) => {
+// Without GITHUB_ACTIONS, so a run under Actions reads the same output as a local one.
+const LOCAL = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "GITHUB_ACTIONS"));
+
+export const run = (kind: "unused" | "duplicates" | "limits", root = ROOT, env: NodeJS.ProcessEnv = LOCAL) => {
   const r = spawnSync(tsx, ["scripts/allowlist.ts", kind, "--root", root], { cwd: ROOT, encoding: "utf8", env });
   return { status: r.status, out: r.stdout + r.stderr };
 };

@@ -275,6 +275,23 @@ const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) 
     },
     { in: ["CONTRIBUTING.md"], at: /CI also runs ([^]*?), measures coverage/, is: async () => [await ciOnly()] },
     { in: ["ARCHITECTURE.md"], at: /without a stack and exits (\d+)/, is: async () => [await refused()] },
+    ...(
+      [
+        ["Lines per file in `src\\/`", "max-lines"],
+        ["Lines per function", "max-lines-per-function"],
+        ["Complexity per function", "complexity"],
+        ["Nesting depth", "max-depth"],
+        ["Parameters", "max-params"],
+      ] as const
+    ).map(([row, rule]) => ({
+      in: ["ARCHITECTURE.md"] as Doc[],
+      at: new RegExp(`^\\| ${row} \\| (\\d+)(?: \\(an options object beyond\\))? \\|$`),
+      is: async () => [
+        (
+          await declared("scripts/limits.ts", new RegExp(`^  "?${rule}"?: \\["error", \\{ max: (\\d+) \\}\\],$`, "m"))
+        )?.[0],
+      ],
+    })),
     {
       in: ["ARCHITECTURE.md"],
       at: /none of (\d+) tokens or more/,
@@ -318,31 +335,6 @@ const UNCHECKED: { in: Doc[]; at: RegExp; why: string }[] = [
     why: "the 1.0 boundary of the pin rule",
   },
   { in: ["RELEASING.md"], at: /`rc\.N\+1`/, why: "the next candidate number" },
-  {
-    in: ["ARCHITECTURE.md"],
-    at: /^\| Lines per file in `src\/` \| 300 \|$/,
-    why: "a limit a change holds to; no lint rule checks it",
-  },
-  {
-    in: ["ARCHITECTURE.md"],
-    at: /^\| Lines per function \| 50 \|$/,
-    why: "a limit a change holds to; no lint rule checks it",
-  },
-  {
-    in: ["ARCHITECTURE.md"],
-    at: /^\| Complexity per function \| 10 \|$/,
-    why: "a limit a change holds to; no lint rule checks it",
-  },
-  {
-    in: ["ARCHITECTURE.md"],
-    at: /^\| Nesting depth \| 3 \|$/,
-    why: "a limit a change holds to; no lint rule checks it",
-  },
-  {
-    in: ["ARCHITECTURE.md"],
-    at: /^\| Parameters \| 4 \(an options object beyond\) \|$/,
-    why: "a limit a change holds to; no lint rule checks it",
-  },
   {
     in: ["CONTRIBUTING.md"],
     at: /about 300 changed source lines at most/,

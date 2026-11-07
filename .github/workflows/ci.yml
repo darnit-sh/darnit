@@ -55,6 +55,10 @@ jobs:
         timeout-minutes: 5
       - run: npm run duplicates
         timeout-minutes: 5
+      # The size and shape limits of scripts/limits.ts on src/, checked against scripts/allow/limits.tsv. Its limit is
+      # the rule above applied to the step: it took 2s on a local run, so 5.
+      - run: npm run limits
+        timeout-minutes: 5
 
   test:
     strategy:

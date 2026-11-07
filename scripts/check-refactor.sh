@@ -315,7 +315,7 @@ gates() {
   gate '^"?\.github/' "the workflows and settings that run and review every pull request"
   gate '^"?\.(npmrc|yarnrc[^/]*)"?$' "npm and yarn config, which decides what every npm command runs"
   gate '^"?test/no-credentials\.ts"?$' "what vitest runs in every worker before the tests"
-  gate '^"?scripts/(accounting|golden|fixtures|allowlist|unseen)\.ts"?$' "a runner behind a required check" "$edited"
+  gate '^"?scripts/(accounting|golden|fixtures|allowlist|unseen|limits)\.ts"?$' "a runner behind a required check" "$edited"
   gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*)"?$' "the pull request checks"
   # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
   shrunk=$(git diff --no-renames --text --numstat --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' | awk '$1 == 0 { print $3 }')

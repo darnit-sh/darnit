@@ -70,7 +70,9 @@ describe("what the check reads", () => {
 describe("the checks as the lint job runs them", () => {
   /** `npm run <script>` in `dir`, as CI's lint job runs it, with npm's own settings left out. */
   const npm = (dir: string, script: string) => {
-    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_/i.test(k)));
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !/^npm_/i.test(k) && k !== "GITHUB_ACTIONS"),
+    );
     const r = spawnSync("npm", ["run", "--silent", script], { cwd: dir, encoding: "utf8", env });
     return { status: r.status, out: r.stdout + r.stderr };
   };
@@ -80,6 +82,10 @@ describe("the checks as the lint job runs them", () => {
     expect(npm(dir, "knip")).toMatchObject({
       status: 0,
       out: "unused: every finding is in scripts/allow/unused.tsv\n",
+    });
+    expect(npm(dir, "limits")).toMatchObject({
+      status: 0,
+      out: "limits: every finding is in scripts/allow/limits.tsv\n",
     });
   });
 
@@ -91,6 +97,7 @@ describe("the checks as the lint job runs them", () => {
     for (const [script, file] of [
       ["knip", "unused"],
       ["duplicates", "duplicates"],
+      ["limits", "limits"],
     ]) {
       const r = npm(dir, script!);
       expect(r.status, script).toBe(1);
@@ -104,6 +111,7 @@ describe("the checks as the lint job runs them", () => {
     for (const [script, file] of [
       ["knip", "unused"],
       ["duplicates", "duplicates"],
+      ["limits", "limits"],
     ]) {
       const r = npm(dir, script!);
       expect(r.status, script).toBe(1);

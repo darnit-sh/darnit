@@ -96,8 +96,8 @@ new class is listed here, with its invariant, by the change that adds it.
 
 ## Limits
 The checks below run in CI. Anything that broke one before it existed is listed in its file under `scripts/allow/`
-(`scripts/allow/imports.tsv`, `scripts/allow/unused.tsv`, `scripts/allow/duplicates.tsv`), one finding per line,
-tab-separated with the reason last. One shared reader (`scripts/allowlist.ts`) checks every list the same way: a
+(`scripts/allow/imports.tsv`, `scripts/allow/unused.tsv`, `scripts/allow/duplicates.tsv`,
+`scripts/allow/limits.tsv`), one finding per line, tab-separated with the reason last. One shared reader (`scripts/allowlist.ts`) checks every list the same way: a
 finding not listed fails, and a listed line whose finding is gone fails, so each list can only shrink. Only a `ci`
 change with an `Allowlist: <reason>` line in its description may add a line to a list, or add anywhere a tag that
 makes knip skip an export or a `jscpd:ignore` marker, and only a `ci` change with a `Proof: none, <reason>` line may
@@ -117,8 +117,10 @@ hint there. A folder a change adds to the thresholds must start at or above what
 | Duplicated blocks in `src/` and `scripts/` | none of 50 tokens or more, checked by `npm run duplicates` |
 | Coverage per folder of `src/` | at or above each line and branch percent in `coverage-thresholds.json`, measured by `npm test -- --coverage` on one CI runner |
 
-These limits hold for any code a change writes or touches. No lint rule enforces them, so the change holds to
-them itself, and does not make an existing breach worse.
+These limits hold for any code a change writes or touches, and a change does not make an existing breach worse.
+For every file in `src/`, `npm run limits` checks them against `scripts/allow/limits.tsv`, with the rules
+`scripts/limits.ts` holds: it reads no eslint config file and ignores comments that turn a rule off, so neither can
+widen them. In `scripts/` and the tests, the change holds to them itself.
 
 | Limit | Value |
 |---|---|
