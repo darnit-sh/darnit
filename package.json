@@ -36,11 +36,12 @@
     "corpus:backfill": "tsx scripts/backfill-removals.ts",
     "accounting": "tsx scripts/accounting.ts",
     "replacements": "tsx scripts/replacements.ts",
+    "waivers": "tsx scripts/waivers.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:fixtures",
     "golden": "npm run build && tsx scripts/golden.ts",
     "answer-key": "npm run build && tsx scripts/answer-key.ts",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format": "prettier --ignore-path .prettierignore --write .",
+    "format:check": "prettier --ignore-path .prettierignore --check ."
   },
   "dependencies": {
     "@ast-grep/cli": "0.51.1",

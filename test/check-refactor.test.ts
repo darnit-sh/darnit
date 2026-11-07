@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { format } from "prettier";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import vitestConfig from "../vitest.config.js";
+import { buildGraph, readSources } from "./import-graph.js";
 
 const script = resolve("scripts/check-refactor.sh");
 const tempDirs: string[] = [];
@@ -97,6 +98,7 @@ const baseFiles = [
   "scripts/golden.ts",
   "scripts/fixtures.ts",
   "scripts/accounting.ts",
+  "scripts/show.ts",
   "scripts/check-pr.sh",
   "scripts/pr-common.sh",
   "vitest.config.ts",
@@ -1383,7 +1385,7 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("fails an edit or removal of a runner behind a required check under any type but ci, and lets a new script in", async () => {
-    for (const f of ["scripts/accounting.ts", "scripts/golden.ts", "scripts/fixtures.ts"]) {
+    for (const f of ["scripts/accounting.ts", "scripts/golden.ts", "scripts/fixtures.ts", "scripts/show.ts"]) {
       for (const edit of [{ write: f, text: "process.exit(0);\n" }, { remove: f }]) {
         const changed = await repo([edit]);
         for (const type of ["docs", "fix", "feat", "test"]) {
@@ -1399,6 +1401,29 @@ describe("the rule picked by the title's type", () => {
       (await rule("feat: x", [{ write: "scripts/accounting.ts" }], "", {}, [{ remove: "scripts/accounting.ts" }]))
         .status,
     ).toBe(0);
+  });
+
+  it("lists every script a listed runner imports, all the way down", () => {
+    const rule = readFileSync("scripts/check-refactor.sh", "utf8");
+    const names = /gate '\^"\?scripts\/\(([a-z|-]+)\)\\\.ts"\?\$' "a runner behind a required check"/.exec(rule)?.[1];
+    expect(names, "the runner list in scripts/check-refactor.sh").toBeTruthy();
+    const listed = new Set(names!.split("|").map((n) => `scripts/${n}.ts`));
+    const { graph } = buildGraph(readSources(), []);
+    const missing: string[] = [];
+    const queue = [...listed];
+    for (const seen = new Set(queue); queue.length > 0;) {
+      const from = queue.pop()!;
+      for (const to of graph.get(from) ?? []) {
+        if (!to.startsWith("scripts/") || seen.has(to)) continue;
+        seen.add(to);
+        queue.push(to);
+        if (!listed.has(to)) missing.push(`${to}, imported by ${from}`);
+      }
+    }
+    expect(
+      missing,
+      "each is a runner behind a required check too: add it to that list in gates() in scripts/check-refactor.sh",
+    ).toEqual([]);
   });
 
   it("fails root npm or yarn config under test even with a reason, and keeps a scenario's copy allowed", async () => {
@@ -2014,6 +2039,30 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
       expect(r.status, f).toBe(1);
       expect(r.out).toContain(`- ${f} (left out by base's .prettierignore)\n`);
     }
+  });
+
+  it("decides what it leaves out by base's .prettierignore alone, as the format scripts do, not .gitignore", async () => {
+    const r = await style([{ write: "src/a.ts", text: tidy }], [...landed(), { write: ".gitignore", text: "src/\n" }]);
+    expect(r).toMatchObject({ status: 0, style: true });
+    const off = await style(
+      [{ write: "src/a.ts", text: "export const a = 2;\n" }],
+      [...landed(), { write: ".gitignore", text: "src/\n" }],
+    );
+    expect(off.status).toBe(1);
+    expect(off.out).toContain("- src/a.ts (differs from the formatter's output)\n");
+  });
+
+  it("formats every code extension lint covers: .mts, .cts, .tsx and .jsx too", async () => {
+    const files = ["src/b.mts", "src/c.cts", "src/d.tsx", "src/e.jsx"];
+    const base = [...landed(), ...files.map((f) => ({ write: f, text: test.messy }))];
+    const r = await style(
+      [{ write: "src/a.ts", text: tidy }, ...files.map((f) => ({ write: f, text: test.tidy }))],
+      base,
+    );
+    expect(r).toMatchObject({ status: 0, style: true });
+    const off = await style([{ write: "src/d.tsx", text: test.tidy.replace("a < b", "a <= b") }], base);
+    expect(off.status).toBe(1);
+    expect(off.out).toContain("- src/d.tsx (differs from the formatter's output)\n");
   });
 
   it("judges by the prettier version base pins, and fails when base pins none", async () => {
