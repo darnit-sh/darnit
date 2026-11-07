@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { integrity } from "../scripts/e2e-env.js";
@@ -182,8 +182,18 @@ describe("scripts/installed.ts", () => {
   writeFileSync(join(npmBin, "npm"), `#!/bin/sh\necho "$@" >> "$NPM_LOG"\n`, { mode: 0o755 });
   const tarball = join(dir, "darnit.tgz");
   writeFileSync(tarball, "not really a tarball\n");
+  // TMPDIR sits right under the system temp folder: tsx opens a socket at $TMPDIR/tsx-<uid>/<pid>.pipe, and macOS
+  // refuses a socket path of 104 bytes or more (its temp folder is /var/folders/xx/<39 characters>/T/).
+  const temps: string[] = [];
+  afterAll(() => temps.forEach((t) => rmSync(t, { recursive: true, force: true })));
+  const shortTemp = () => {
+    temps.push(mkdtempSync(join(tmpdir(), "dgi-")));
+    const pipe = join(`/var/folders/xx/${"y".repeat(39)}/T`, basename(temps.at(-1)!), "tsx-4294967295", "4194304.pipe");
+    expect(Buffer.byteLength(pipe)).toBeLessThan(104);
+    return temps.at(-1)!;
+  };
   const installed = (sri: string) => {
-    const tmp = mkdtempSync(join(dir, "tmp-"));
+    const tmp = shortTemp();
     const log = join(tmp, "npm.log");
     const r = spawnSync(
       resolve("node_modules/.bin/tsx"),
