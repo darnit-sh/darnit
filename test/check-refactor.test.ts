@@ -2041,6 +2041,30 @@ module.exports = { parsers: { typescript: { ...parsers.typescript, preprocess: (
     }
   });
 
+  it("decides what it leaves out by base's .prettierignore alone, as the format scripts do, not .gitignore", async () => {
+    const r = await style([{ write: "src/a.ts", text: tidy }], [...landed(), { write: ".gitignore", text: "src/\n" }]);
+    expect(r).toMatchObject({ status: 0, style: true });
+    const off = await style(
+      [{ write: "src/a.ts", text: "export const a = 2;\n" }],
+      [...landed(), { write: ".gitignore", text: "src/\n" }],
+    );
+    expect(off.status).toBe(1);
+    expect(off.out).toContain("- src/a.ts (differs from the formatter's output)\n");
+  });
+
+  it("formats every code extension lint covers: .mts, .cts, .tsx and .jsx too", async () => {
+    const files = ["src/b.mts", "src/c.cts", "src/d.tsx", "src/e.jsx"];
+    const base = [...landed(), ...files.map((f) => ({ write: f, text: test.messy }))];
+    const r = await style(
+      [{ write: "src/a.ts", text: tidy }, ...files.map((f) => ({ write: f, text: test.tidy }))],
+      base,
+    );
+    expect(r).toMatchObject({ status: 0, style: true });
+    const off = await style([{ write: "src/d.tsx", text: test.tidy.replace("a < b", "a <= b") }], base);
+    expect(off.status).toBe(1);
+    expect(off.out).toContain("- src/d.tsx (differs from the formatter's output)\n");
+  });
+
   it("judges by the prettier version base pins, and fails when base pins none", async () => {
     const edits = [{ write: "src/a.ts", text: tidy }];
     for (const [version, why] of [
