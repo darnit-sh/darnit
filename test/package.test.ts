@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const SPECS = ["dependencies", "optionalDependencies", "peerDependencies"] as const;
@@ -93,5 +94,20 @@ describe("package-lock.json", () => {
     const lock = (await read("package-lock.json")) as { packages: Record<string, { peer?: boolean }> };
     const direct = [...Object.keys(pkg.dependencies), ...Object.keys(pkg.devDependencies)];
     expect(direct.filter((name) => lock.packages[`node_modules/${name}`]?.peer)).toEqual([]);
+  });
+});
+
+// The package leaves out the build's source maps on purpose; a change to the build or to "files" must not bring them back.
+describe("the packed package", () => {
+  it("ships no source map", () => {
+    const run = (args: string[]) =>
+      spawnSync("npm", args, { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8" });
+    expect(run(["run", "build"]).status).toBe(0);
+    const json = JSON.parse(run(["pack", "--dry-run", "--json", "--ignore-scripts"]).stdout) as unknown;
+    // npm 10 and 11 print a list of packages, npm 12 an object keyed by package name.
+    const packs = (Array.isArray(json) ? json : Object.values(json as object)) as { files: { path: string }[] }[];
+    const files = packs.flatMap((p) => p.files.map((f) => f.path));
+    expect(files).toContain("dist/cli.js");
+    expect(files.filter((f) => f.endsWith(".map"))).toEqual([]);
   });
 });
