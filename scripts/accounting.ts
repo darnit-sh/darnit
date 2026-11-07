@@ -2,11 +2,20 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { account, NotCoveredSchema, openItems, readOptional, readRemovals } from "../src/corpus/accounting.js";
+import { account, readRemovals } from "../src/corpus/accounting.js";
 import type { VendorConfig } from "../src/corpus/candidates.js";
 import { parseSpec } from "../src/corpus/spec.js";
 import { forTerminal } from "../src/fix.js";
 import { loadRecords } from "../src/records/load.js";
+import {
+  judgeCeiling,
+  notesSection,
+  openEntries,
+  parseFlags,
+  readNotCovered,
+  refuseExisting,
+  writeNotes,
+} from "./accounting-final.js";
 import { show } from "./show.js";
 
 // Every deprecation in each vendor's spec and every removal in its corpus history is either covered
@@ -14,14 +23,26 @@ import { show } from "./show.js";
 // anything unaccounted for, and on entries that name an item no longer there or one a record covers.
 // Items marked needs-record stay open and are listed on every run, soonest date first.
 // --root <dir> reads vendors.yml, corpus/ and packs/ from another folder.
+// --final, for a final release, also exits 1 when a vendor has more open items than packs/<vendor>/record-ceiling.txt
+// allows or the accounting fails, and --notes <file> with it writes the open items as Markdown for the release notes
+// to a new file, on a pass only. Any other flag, or a misspelled one, exits 2.
 
-const at = process.argv.indexOf("--root");
-const ROOT = at > 0 ? resolve(process.argv[at + 1] ?? "") : fileURLToPath(new URL("../", import.meta.url));
-
+let flags: ReturnType<typeof parseFlags>;
+try {
+  flags = parseFlags(process.argv.slice(2));
+} catch (err) {
+  console.log(forTerminal(`accounting: ${show(err instanceof Error ? err.message : String(err))}`));
+  process.exit(2);
+}
+const ROOT = flags.root !== undefined ? resolve(flags.root) : fileURLToPath(new URL("../", import.meta.url));
 const out: string[] = [];
+const notes: string[] = [];
+// Printed only once the notes, when asked for, are written, so no verdict line stands above a failure to write them.
+const verdicts: string[] = [];
 // Every message goes out once, fenced and with control characters gone; a failure, whose message can quote
 // spec text (a YAML error quotes the line it stopped at), is shown quoted and escaped like an item.
 try {
+  if (flags.notes !== undefined) await refuseExisting(flags.notes);
   const vendors = parseYaml(await readFile(join(ROOT, "vendors.yml"), "utf8")) as Record<string, VendorConfig>;
   const records = (await loadRecords(join(ROOT, "packs"))).map((l) => l.record);
 
@@ -32,9 +53,7 @@ try {
       spec: parseSpec(await readFile(join(ROOT, "corpus", vendor, "openapi.yaml"), "utf8")),
       removals: await readRemovals(join(ROOT, "corpus", vendor, "removals.json")),
       records,
-      notCovered: NotCoveredSchema.parse(
-        parseYaml((await readOptional(join(ROOT, "packs", vendor, "not-covered.yaml"))) ?? "") ?? [],
-      ),
+      notCovered: await readNotCovered(ROOT, vendor),
       symbols: config.symbols,
     });
     out.push(
@@ -46,12 +65,10 @@ try {
     const section = (title: string, lines: string[]) => {
       if (lines.length > 0) out.push("", title, ...lines.map((line) => `  ${line}`));
     };
+    const open = openEntries(result.needsRecord, new Date().toISOString().slice(0, 10));
     section(
       "Open, needs a record (soonest first):",
-      openItems(result.needsRecord, new Date().toISOString().slice(0, 10)).flatMap((o) => [
-        `- ${o.date ? `${o.date}${o.past ? ", already past" : ""}` : "no date"}: ${o.proposal.replace(/\s+/g, " ").trim()}`,
-        ...o.keys.map((k) => `    ${show(k)}`),
-      ]),
+      open.flatMap((o) => [`- ${o.head}`, ...o.keys.map((k) => `    ${show(k)}`)]),
     );
     section(`Not accounted for (add a record, or an entry in ${notCoveredFile}):`, result.unaccounted.map(show));
     section(
@@ -66,9 +83,21 @@ try {
       `Reasons in ${notCoveredFile} that the spec or the corpus history contradicts (correct them):`,
       result.contradicted.map(show),
     );
-    if (result.unaccounted.length + result.stale.length + result.redundant.length + result.contradicted.length > 0)
-      process.exitCode = 1;
+    const failed =
+      result.unaccounted.length + result.stale.length + result.redundant.length + result.contradicted.length > 0;
+    if (failed) process.exitCode = 1;
+    if (flags.final) {
+      const items = result.deprecated + result.removals;
+      const verdict = await judgeCeiling({ root: ROOT, vendor, open: result.needsRecord.length, items, failed });
+      verdicts.push(verdict.line);
+      if (!verdict.ok) process.exitCode = 1;
+      notes.push(...notesSection(vendor, open));
+    }
   }
+  const refused = process.exitCode === 1;
+  if (flags.notes !== undefined && !refused) await writeNotes(flags.notes, notes);
+  if (verdicts.length > 0) out.push("", ...verdicts);
+  if (flags.notes !== undefined && refused) out.push("", "No notes written: the final release is refused.");
 } catch (err) {
   out.push(`accounting stopped: ${show(err instanceof Error ? err.message : String(err))}`);
   process.exitCode = 1;

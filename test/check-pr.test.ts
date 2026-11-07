@@ -387,7 +387,14 @@ async function pullRequest(
     }
   };
   const commit = (m: string) => (git("add", "-A"), git("commit", "-q", "-m", m), git("rev-parse", "HEAD"));
-  const scripts = ["check-coverage.sh", "check-proof.sh", "check-proof.ts", "check-refactor.sh", "pr-common.sh"];
+  const scripts = [
+    "check-ceiling.sh",
+    "check-coverage.sh",
+    "check-proof.sh",
+    "check-proof.ts",
+    "check-refactor.sh",
+    "pr-common.sh",
+  ];
   const pin = style ? { devDependencies: { prettier: prettier.version } } : {};
   const script = (decoy: string) => ({ "breach.sh": `: > "$RUNNER_TEMP/ran"\n${breach(decoy)}` });
   git("init", "-q");

@@ -90,7 +90,7 @@
     "title": "ci: plain change 211"
   },
   {
-    "body": "What changed and why.",
+    "body": "What changed and why.\n\nCeiling: a long enough reason",
     "mergedAt": "2026-10-01T00:30:00Z",
     "number": 210,
     "title": "fix: plain change 210"
@@ -108,7 +108,7 @@
     "title": "fix: plain change 208"
   },
   {
-    "body": "What changed and why.",
+    "body": "What changed and why.\n\nCeiling: a long enough reason",
     "mergedAt": "2026-10-01T00:27:00Z",
     "number": 207,
     "title": "fix: plain change 207"
