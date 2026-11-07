@@ -1,0 +1,117 @@
+[
+  {
+    "body": "What changed and why.",
+    "number": 210,
+    "title": "fix: plain change 210"
+  },
+  {
+    "body": "What changed and why.",
+    "number": 209,
+    "title": "fix: plain change 209"
+  },
+  {
+    "body": "What changed and why.",
+    "number": 208,
+    "title": "fix: plain change 208"
+  },
+  {
+    "body": "What changed and why.",
+    "number": 207,
+    "title": "fix: plain change 207"
+  },
+  {
+    "body": "What changed and why.",
+    "number": 206,
+    "title": "fix: plain change 206"
+  },
+  {
+    "body": "What changed and why.",
+    "number": 205,
+    "title": "fix: plain change 205"
+  },
+  {
+    "body": "What changed and why.",
+    "number": 204,
+    "title": "fix: plain change 204"
+  },
+  {
+    "body": "What changed and why.",
+    "number": 203,
+    "title": "fix: plain change 203"
+  },
+  {
+    "body": "What changed and why.",
+    "number": 202,
+    "title": "fix: plain change 202"
+  },
+  {
+    "body": "What changed and why.",
+    "number": 201,
+    "title": "fix: plain change 201"
+  },
+  {
+    "body": "Allowlist: ✓✓✓✓✓✓✓✓✓",
+    "number": 200,
+    "title": "ci!: short in characters"
+  },
+  {
+    "body": "",
+    "number": 190,
+    "title": "test: empty"
+  },
+  {
+    "body": "```\nCoverage: an example inside a fence\n```",
+    "number": 180,
+    "title": "ci(test): fenced"
+  },
+  {
+    "body": "Coverage: the folder moved, so its floor restarts\nProof: none, the checks only, no code",
+    "number": 176,
+    "title": "ci: lower a threshold"
+  },
+  {
+    "body": "Allowlist: only a ci change may grow a list",
+    "number": 175,
+    "title": "fix: not a ci change"
+  },
+  {
+    "body": "Allowlist: one block stays until the helper lands",
+    "number": 174,
+    "title": "ci: grow the duplicates list"
+  },
+  {
+    "body": null,
+    "number": 150,
+    "title": "docs: no lines"
+  },
+  {
+    "body": "Proof: none, too short",
+    "number": 140,
+    "title": "fix: a short reason"
+  },
+  {
+    "body": " Proof: none, starts with a space so no gate reads it",
+    "number": 130,
+    "title": "fix: a lookalike"
+  },
+  {
+    "body": "<!--\nProof: none, the template line left in a comment\n-->",
+    "number": 120,
+    "title": "fix: a commented line"
+  },
+  {
+    "body": "Adds aliases.\r\n\r\nProof: none, covered by the fixture cases\r\n",
+    "number": 110,
+    "title": "feat(scan): read aliases"
+  },
+  {
+    "body": "Moves a file.\n\nProof: none, a move with no new behaviour",
+    "number": 102,
+    "title": "refactor: move the reader"
+  },
+  {
+    "body": "Proof: none, came before the gate existed",
+    "number": 100,
+    "title": "fix: before the proof gate"
+  }
+]

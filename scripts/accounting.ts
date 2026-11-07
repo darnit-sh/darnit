@@ -7,6 +7,7 @@ import type { VendorConfig } from "../src/corpus/candidates.js";
 import { parseSpec } from "../src/corpus/spec.js";
 import { forTerminal } from "../src/fix.js";
 import { loadRecords } from "../src/records/load.js";
+import { show } from "./show.js";
 
 // Every deprecation in each vendor's spec and every removal in its corpus history is either covered
 // by a record or listed in packs/<vendor>/not-covered.yaml with the reason it has none. Exit 1 on
@@ -17,9 +18,6 @@ import { loadRecords } from "../src/records/load.js";
 const at = process.argv.indexOf("--root");
 const ROOT = at > 0 ? resolve(process.argv[at + 1] ?? "") : fileURLToPath(new URL("../", import.meta.url));
 
-// Keys are spec text: quoted, and anything outside printable ASCII written as an escape, so a name cannot hide or forge a line.
-const show = (key: string) =>
-  JSON.stringify(key).replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 const out: string[] = [];
 // Every message goes out once, fenced and with control characters gone; a failure, whose message can quote
 // spec text (a YAML error quotes the line it stopped at), is shown quoted and escaped like an item.
