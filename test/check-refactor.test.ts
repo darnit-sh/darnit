@@ -1610,7 +1610,7 @@ describe("a record ceiling that goes up", () => {
       [{ write: "packs/new/record-ceiling.txt", text: "3\n" }, "- packs/new/record-ceiling.txt: 0 to 3"],
       [{ write: CEILING, text: "five\n" }, `- ${CEILING}: 4 to something other than a whole number`],
       [{ write: CEILING, text: `${"9".repeat(40)}\n` }, `- ${CEILING}: 4 to ${"9".repeat(40)}`],
-      [{ write: "packs/openai/Record-Ceiling.TXT", text: "6\n" }, "- packs/openai/Record-Ceiling.TXT: 0 to 6"],
+      [{ write: "packs/other/Record-Ceiling.TXT", text: "6\n" }, "- packs/other/Record-Ceiling.TXT: 0 to 6"],
     ];
     for (const [edit, line] of cases) {
       const r = await rule("feat: x", [edit], "", {}, landed);
