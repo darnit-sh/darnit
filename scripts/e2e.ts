@@ -2,13 +2,12 @@
 // folder, and runs init, check and fix against every scenario in test/e2e/.
 // Unit tests import the source; this checks the artifact users actually get.
 // With --tarball <path> --integrity <sha512-...> it checks that tarball instead of packing one.
-import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WORKFLOW } from "../src/init.js";
-import { givenTarball, installTarball, notUser, userEnv } from "./e2e-env.js";
+import { givenTarball, installTarball, must, notUser, npmInstall, run, usage, userEnv } from "./e2e-env.js";
 
 // No run may reach the npm registry.
 process.env.DARNIT_NO_UPDATE_CHECK = "1";
@@ -180,18 +179,6 @@ const EXPECT: Record<string, Expect> = {
   },
 };
 
-function run(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env) {
-  const r = spawnSync(cmd, args, { cwd, env, encoding: "utf8", timeout: 5 * 60 * 1000 });
-  if (r.error) return { exit: -1, out: `${cmd} did not finish: ${r.error.message}` };
-  return { exit: r.status ?? -1, out: `${r.stdout}${r.stderr}` };
-}
-
-function must(cmd: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv): string {
-  const r = run(cmd, args, cwd, env);
-  if (r.exit !== 0) throw new Error(`${cmd} ${args.join(" ")} failed in ${cwd}:\n${r.out}`);
-  return r.out;
-}
-
 // A scenario folder without expectations, or expectations without a folder, is a mistake, not a skip.
 const folders = readdirSync(SCENARIOS).sort();
 if (JSON.stringify(folders) !== JSON.stringify(Object.keys(EXPECT).sort())) {
@@ -200,13 +187,7 @@ if (JSON.stringify(folders) !== JSON.stringify(Object.keys(EXPECT).sort())) {
   );
 }
 
-let given: ReturnType<typeof givenTarball>;
-try {
-  given = givenTarball(process.argv.slice(2));
-} catch (e) {
-  console.error(`e2e: ${(e as Error).message}`);
-  process.exit(2);
-}
+const given = usage("e2e", () => givenTarball(process.argv.slice(2)));
 
 const work = mkdtempSync(join(tmpdir(), "darnit-e2e-"));
 let failures = 0;
@@ -220,11 +201,7 @@ try {
     work,
     given,
     (dest) => must("npm", ["pack", "--silent", "--pack-destination", dest], ROOT),
-    (tarball, dir) => {
-      must("npm", ["init", "-y"], dir);
-      must("npm", ["install", "--silent", tarball], dir);
-      return must(join(dir, "node_modules", ".bin", "darnit"), ["--version"], dir).trim();
-    },
+    npmInstall,
   );
   const darnit = join(install, "node_modules", ".bin", "darnit");
   console.log(`${installed}\n`);
