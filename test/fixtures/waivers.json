@@ -1,0 +1,272 @@
+[
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:45:00Z",
+    "number": 225,
+    "title": "ci: plain change 225"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:44:00Z",
+    "number": 224,
+    "title": "ci: plain change 224"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:43:00Z",
+    "number": 223,
+    "title": "ci: plain change 223"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:42:00Z",
+    "number": 222,
+    "title": "ci: plain change 222"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:41:00Z",
+    "number": 221,
+    "title": "ci: plain change 221"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:40:00Z",
+    "number": 220,
+    "title": "ci: plain change 220"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:39:00Z",
+    "number": 219,
+    "title": "ci: plain change 219"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:38:00Z",
+    "number": 218,
+    "title": "ci: plain change 218"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:37:00Z",
+    "number": 217,
+    "title": "ci: plain change 217"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:36:00Z",
+    "number": 216,
+    "title": "ci: plain change 216"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:35:00Z",
+    "number": 215,
+    "title": "ci: plain change 215"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:34:00Z",
+    "number": 214,
+    "title": "ci: plain change 214"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:33:00Z",
+    "number": 213,
+    "title": "ci: plain change 213"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:32:00Z",
+    "number": 212,
+    "title": "ci: plain change 212"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:31:00Z",
+    "number": 211,
+    "title": "ci: plain change 211"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:30:00Z",
+    "number": 210,
+    "title": "fix: plain change 210"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:29:00Z",
+    "number": 209,
+    "title": "fix: plain change 209"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:28:00Z",
+    "number": 208,
+    "title": "fix: plain change 208"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:27:00Z",
+    "number": 207,
+    "title": "fix: plain change 207"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:26:00Z",
+    "number": 206,
+    "title": "fix: plain change 206"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:25:00Z",
+    "number": 205,
+    "title": "fix: plain change 205"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:24:00Z",
+    "number": 204,
+    "title": "fix: plain change 204"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:23:00Z",
+    "number": 203,
+    "title": "fix: plain change 203"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:22:00Z",
+    "number": 202,
+    "title": "fix: plain change 202"
+  },
+  {
+    "body": "What changed and why.",
+    "mergedAt": "2026-10-01T00:21:00Z",
+    "number": 201,
+    "title": "fix: plain change 201"
+  },
+  {
+    "body": null,
+    "mergedAt": "2026-10-01T00:20:00Z",
+    "number": 190,
+    "title": "test: empty"
+  },
+  {
+    "body": "```\nCoverage: an example inside a fence\n```",
+    "mergedAt": "2026-10-01T00:19:00Z",
+    "number": 180,
+    "title": "ci(test): fenced"
+  },
+  {
+    "body": "Coverage: the folder moved, so its floor restarts",
+    "mergedAt": "2026-10-01T00:18:00Z",
+    "number": 178,
+    "title": "ci: lower a threshold"
+  },
+  {
+    "body": "Allowlist: only a ci change may grow a list",
+    "mergedAt": "2026-10-01T00:17:00Z",
+    "number": 177,
+    "title": "fix: not a ci change"
+  },
+  {
+    "body": "Coverage: the pull request that adds the gate\nProof: none, the checks only, no code",
+    "mergedAt": "2026-10-01T00:16:00Z",
+    "number": 176,
+    "title": "ci: the coverage gate itself"
+  },
+  {
+    "body": "Allowlist: one block stays until the helper lands",
+    "mergedAt": "2026-10-01T00:15:00Z",
+    "number": 173,
+    "title": "ci: numbered lower, merged later"
+  },
+  {
+    "body": "Allowlist: the pull request that adds the gate",
+    "mergedAt": "2026-10-01T00:14:00Z",
+    "number": 174,
+    "title": "ci: the allowlist gate itself"
+  },
+  {
+    "body": "Allowlist: merged before the gate came in",
+    "mergedAt": "2026-10-01T00:13:00Z",
+    "number": 175,
+    "title": "ci: merged before the allowlist gate"
+  },
+  {
+    "body": "Proof: none, a workflow changed",
+    "mergedAt": "2026-10-01T00:12:00Z",
+    "number": 150,
+    "title": "ci: change a workflow"
+  },
+  {
+    "body": "Proof: none, a shared test module changed",
+    "mergedAt": "2026-10-01T00:11:00Z",
+    "number": 140,
+    "title": "test: change a shared module"
+  },
+  {
+    "body": "Proof: none, the pull request that adds the suite rule",
+    "mergedAt": "2026-10-01T00:10:00Z",
+    "number": 137,
+    "title": "ci: the suite rule itself"
+  },
+  {
+    "body": "Proof: none, chore never calls opt_out",
+    "mergedAt": "2026-10-01T00:09:00Z",
+    "number": 126,
+    "title": "chore: nor here"
+  },
+  {
+    "body": "Proof: none, docs never call opt_out",
+    "mergedAt": "2026-10-01T00:08:00Z",
+    "number": 125,
+    "title": "docs: no gate reads it here"
+  },
+  {
+    "body": "<!--\nProof: none, the template line left in a comment\n-->",
+    "mergedAt": "2026-10-01T00:07:00Z",
+    "number": 120,
+    "title": "fix: a commented line"
+  },
+  {
+    "body": "Adds aliases.\r\n\r\nProof: none, covered by the fixture cases\r\n",
+    "mergedAt": "2026-10-01T00:06:00Z",
+    "number": 110,
+    "title": "feat(scan): read aliases"
+  },
+  {
+    "body": "Proof: none, the pull request that adds the check",
+    "mergedAt": "2026-10-01T00:05:00Z",
+    "number": 108,
+    "title": "fix: the proof check itself"
+  },
+  {
+    "body": "Proof: none, the fix rule came in with #108",
+    "mergedAt": "2026-10-01T00:04:00Z",
+    "number": 105,
+    "title": "fix: before the proof check"
+  },
+  {
+    "body": "Proof: none, merged after the gate, numbered before it",
+    "mergedAt": "2026-10-01T00:03:00Z",
+    "number": 98,
+    "title": "refactor: numbered lower, merged later"
+  },
+  {
+    "body": "Proof: none, the pull request that adds the gate",
+    "mergedAt": "2026-10-01T00:02:00Z",
+    "number": 102,
+    "title": "refactor: the gate itself"
+  },
+  {
+    "body": "Proof: none, merged before the gate existed",
+    "mergedAt": "2026-10-01T00:01:00Z",
+    "number": 100,
+    "title": "refactor: before the gate"
+  }
+]
