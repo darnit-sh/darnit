@@ -103,7 +103,7 @@ describe("golden --cli", () => {
 });
 
 describe("golden workflow with a tarball input", () => {
-  type Step = { id?: string; if?: string; run?: string; env?: Record<string, string> };
+  type Step = { id?: string; if?: string; uses?: string; run?: string; env?: Record<string, string> };
   const steps = (
     parse(readFileSync(".github/workflows/golden.yml", "utf8")) as { jobs: { compare: { steps: Step[] } } }
   ).jobs.compare.steps;
@@ -149,7 +149,10 @@ describe("golden workflow with a tarball input", () => {
   });
 
   it("fails the job before anything else when only one of tarball and integrity is set", () => {
+    // It runs on every event and before the checkout, so no condition or earlier step can skip it.
     expect(guard.run).toContain("tarball and integrity together");
+    expect(guard.if).toBeUndefined();
+    expect(steps.findIndex((s) => s.uses?.startsWith("actions/checkout@"))).toBeGreaterThan(steps.indexOf(guard));
     for (const [TARBALL, INTEGRITY, exit] of [
       ["package", "", 1],
       ["", "sha512-x", 1],

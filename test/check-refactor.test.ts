@@ -328,8 +328,9 @@ describe("the rule picked by the title's type", () => {
       { write: "scripts/e2e.ts" },
       { write: "scripts/golden.ts" },
       { write: "scripts/e2e-env.ts" },
+      { write: "scripts/installed.ts", text: "edited\n" },
     ]) {
-      const r = await rule("refactor: x", [{ write: "src/a.ts" }, edit]);
+      const r = await rule("refactor: x", [{ write: "src/a.ts" }, edit], "", {}, [{ write: "scripts/installed.ts" }]);
       expect(r.status, JSON.stringify(edit)).toBe(1);
       expect(r.out).toContain(`- ${Object.values(edit)[0]}`);
     }
@@ -1099,6 +1100,12 @@ describe("the rule picked by the title's type", () => {
       expect(r.status, JSON.stringify(edit)).toBe(1);
       expect(r.out).toContain("**Failed:**");
     }
+    // A file added beside the installer that golden.yml runs, as test/helpers.js beside test/helpers.ts.
+    const shadow = await rule("test: x", [{ write: "scripts/installed.js" }], "", {}, [
+      { write: "scripts/installed.ts" },
+    ]);
+    expect(shadow.status).toBe(1);
+    expect(shadow.out).toContain("- scripts/installed.js");
   });
 
   it("fails docs, chore, ci and build changes that change what the suite proves", async () => {
