@@ -289,7 +289,7 @@ async function check(
   const output = await scratch("output");
   const summary = await scratch("summary");
   const run = await sh("check-refactor.sh", base, head, dir, {
-    ...process.env,
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "GITHUB_ACTIONS")),
     TITLE: title,
     BODY: body,
     GITHUB_OUTPUT: output,
@@ -1862,6 +1862,95 @@ describe("lines added to an allowlist under scripts/allow/", () => {
       );
       expect(removed.status, title).toBe(0);
     }
+  });
+});
+
+describe("a refactor that moves listed code", () => {
+  const NOTE = "# what stays for now, tab separated\n";
+  const OTHER = "src/z.ts\tother\t#1\tkept for now\n";
+  // Each list's line before and after the code it names moves; duplicates.tsv names two files and moves both.
+  const moves: Record<string, [string, string]> = {
+    "scripts/allow/limits.tsv": [
+      "src/a.ts\tcomplexity\tscan\t21\tsplit later",
+      "src/check/scan.ts\tcomplexity\tscan\t21\tsplit later",
+    ],
+    "scripts/allow/imports.tsv": ["src/a.ts\tsrc/b.ts\tkept for now", "src/check/a.ts\tsrc/b.ts\tkept for now"],
+    "scripts/allow/duplicates.tsv": [
+      "src/a.ts\tsrc/b.ts\t#1\tone copy goes",
+      "src/check/a.ts\tsrc/scan/b.ts\t#1\tone copy goes",
+    ],
+    "scripts/allow/unused.tsv": ["exports\tsrc/a.ts\told\tkept for now", "exports\tsrc/check/a.ts\told\tkept for now"],
+    "scripts/allow/suppressions.tsv": [
+      "src/a.ts\teslint-disable-next-line no-console\t#1\tprints",
+      "src/check/a.ts\teslint-disable-next-line no-console\t#1\tprints",
+    ],
+    "scripts/allow/odd name.tsv": ["src/a.ts\tx\twhy", "src/b.ts\tx\twhy"],
+    'scripts/allow/q"uote.tsv': ["test/a.ts\tx\twhy", "packs/v/a.ts\tx\twhy"],
+  };
+  const before = (line: string) => `${NOTE}${line}\n${OTHER}`;
+  // The moved line sorts after the one beside it, as a list kept in order would.
+  const after = (...lines: string[]) => `${NOTE}${OTHER}${lines.map((l) => `${l}\n`).join("")}`;
+  const crlf = (text: string) => text.replace(/\n/g, "\r\n");
+  const move = (title: string, list: string, from: string, to: string, body = "") =>
+    rule(title, [{ write: "src/check/a.ts" }, { write: list, text: to }], body, {}, [{ write: list, text: from }]);
+
+  it("passes a refactor whose list lines change only in their paths, with no Allowlist line", async () => {
+    for (const [list, [was, now]] of Object.entries(moves))
+      for (const text of [(t: string) => t, crlf]) {
+        const r = await move("refactor: move the scan", list, text(before(was)), text(after(now)));
+        expect(r.status, `${list}\n${r.out}`).toBe(0);
+        expect(r.baseTests).toBe(true);
+      }
+  });
+
+  it("fails a refactor whose moved line changes in anything but a path, or appears twice", async () => {
+    const LIMITS = "scripts/allow/limits.tsv";
+    const [was, now] = moves[LIMITS]!;
+    for (const head of [
+      after(now.replace("\t21\t", "\t22\t")),
+      after(now.replace("\tscan\t", "\tscanAll\t")),
+      after(now.replace("split later", "split one day")),
+      after(now.replace("complexity", "max-depth")),
+      after(now, now.replace("src/check/scan.ts", "src/check/again.ts")),
+      after(was, now),
+      after(now.replace("src/check/scan.ts", "")),
+      after(now).replace(NOTE, "# what stays\n"),
+    ]) {
+      const r = await move("refactor: move the scan", LIMITS, before(was), head);
+      expect(r.status, head).toBe(1);
+      expect(r.out).toContain(`- ${LIMITS} (the lists the pull request checks accept)`);
+    }
+  });
+
+  it("holds every other type to the rule as it was: fix and feat fail, ci needs an Allowlist line", async () => {
+    const LIMITS = "scripts/allow/limits.tsv";
+    const [was, now] = moves[LIMITS]!;
+    for (const title of ["fix: move the scan", "feat: move the scan"]) {
+      const r = await move(title, LIMITS, before(was), after(now));
+      expect(r.status, title).toBe(1);
+      expect(r.out).toContain(`- ${LIMITS} (the lists the pull request checks accept)`);
+    }
+    const ci = await rule("ci: x", [{ write: LIMITS, text: after(now) }], "Proof: none, moves a line\n", {}, [
+      { write: LIMITS, text: before(was) },
+    ]);
+    expect(ci.status).toBe(1);
+    expect(ci.out).toContain(`- ${LIMITS}: ${now}`);
+    const QUOTED = 'scripts/allow/q"uote.tsv';
+    const quoted = await rule("ci: x", [{ write: QUOTED, text: after(now) }], "Proof: none, moves a line\n", {}, [
+      { write: QUOTED, text: before(was) },
+    ]);
+    expect(quoted.status).toBe(1);
+    expect(quoted.out).toContain(`- "scripts/allow/q\\"uote.tsv": ${now}`);
+  });
+
+  it("reads a list line that starts like a diff header as a line, not as a file name", async () => {
+    const LIMITS = "scripts/allow/limits.tsv";
+    const text = `${before(moves[LIMITS]![0])}++ b/src/x.ts\tcomplexity\tf\t11\twhy\n`;
+    const r = await rule("ci: x", [{ write: LIMITS, text }], "Proof: none, adds a line\n", {}, [
+      { write: LIMITS, text: before(moves[LIMITS]![0]) },
+    ]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`- ${LIMITS}: ++ b/src/x.ts`);
   });
 });
 

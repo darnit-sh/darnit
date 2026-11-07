@@ -318,9 +318,8 @@ gates() {
   gate '^"?scripts/(accounting|accounting-final|golden|installed|e2e-env|fixtures|allowlist|unseen|show|limits)\.ts"?$' "a runner behind a required check" "$edited"
   gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*)"?$' "the pull request checks"
   gate '^"?test/(suppressions\.test|tool-ignores\.test|import-graph)\.ts"?$' "a test that guards the allowlists and tool settings"
-  # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
-  shrunk=$(git diff --no-renames --text --numstat --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' | awk '$1 == 0 { print $3 }')
-  gate '^"?scripts/allow/' "the lists the pull request checks accept" "$(printf '%s\n' "$all" | grep -vixF -- "${shrunk:-//}" || true)"
+  # A list kept_lists names below is left out.
+  gate '^"?scripts/allow/' "the lists the pull request checks accept" "$(printf '%s\n' "$all" | grep -vixF -- "${kept:-//}" || true)"
   gate '^"?('"$VITEST_CONFIG"'|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
   gate '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' "what the typecheck and lint steps check"
   gate '^"?(\.?knip(\.config)?\.[^/]*|\.jscpd\.json)"?$' "what the unused code and duplicate checks report"
@@ -343,6 +342,23 @@ ships() {
   paths | grep -iE '/\.gitignore"?$' | grep -viE '^"?test/' || true
 }
 
+# Each file name in git's -U0 diff, as paths prints it, and only the lines after each hunk header as lines.
+DIFF_FILES='/^diff --git / { h = 1 } /^@@/ { h = 0 }
+  h && /^\+\+\+ / { f = substr($0, 5); sub(/\t$/, "", f); if (!sub(/^b\//, "", f)) sub(/^"b\//, "\"", f); files[f] } h { next }'
+# The lists under scripts/allow/ this change edits without growing, which the gate and the Allowlist rule below leave
+# out: each only loses lines, so the change that removes dead code can drop its line too, or, in a refactor, changes
+# only the paths in its lines, so moved code carries them along. Each added line, its path fields blanked, must match
+# a removed one.
+kept_lists() {
+  git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' |
+    awk -v type="$type" "$DIFF_FILES"'
+      { n = split(substr($0, 2), p, "\t"); l = f "\t"
+        for (i = 1; i <= n; i++) l = l (i > 1 ? "\t" : "") (p[i] ~ /^(src|scripts|test|packs)\// ? SUBSEP : p[i])
+        if (/^-/) gone[l]++; else if (/^\+/) added[l]++ }
+      END { for (l in added) if (type != "refactor" || added[l] > gone[l]) grew[substr(l, 1, index(l, "\t") - 1)]
+        for (f in files) if (!(f in grew)) print f }'
+}
+kept=$(kept_lists)
 gated=$(gates)
 if [ "$type" != ci ] && [ -n "$gated" ]; then
   say "**Failed:** how the checks run changes only in a ci change with a \`Proof: none, <reason>\` line, so that no other change can switch a check off. Touched:"
@@ -351,13 +367,15 @@ if [ "$type" != ci ] && [ -n "$gated" ]; then
 fi
 
 # What lets a finding of the unused or duplicate code checks pass besides the paths gates() lists: a line added to a
-# list under scripts/allow/ (one edited in place counts as added), or an added line anywhere with a tag knip skips an
-# export for (@public, @beta, @alias) or a jscpd:ignore marker. These are lines, not paths, so they are not entries in
-# gates(): a marker lands in code, and growing a list takes its own reason beside the ci one. Names match in any case.
+# list under scripts/allow/ that kept_lists does not name (one edited in place counts as added), or an added line
+# anywhere with a tag knip skips an export for (@public, @beta, @alias) or a jscpd:ignore marker. These are lines, not
+# paths, so they are not entries in gates(): a marker lands in code, and growing a list takes its own reason beside
+# the ci one. Names match in any case.
 grown=$(
   git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" |
-    awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next }
-      /^\+/ && (tolower(f) ~ /^scripts\/allow\/.*\.tsv"?$/ || /@(public|beta|alias)([^A-Za-z0-9_]|$)/ || tolower($0) ~ /jscpd:ignore-(start|end)/) { print f ": " substr($0, 2) }'
+    KEPT=$kept awk "$DIFF_FILES"'
+      index("\n" ENVIRON["KEPT"] "\n", "\n" f "\n") { next }
+      /^\+/ && (tolower(f) ~ /^"?scripts\/allow\/.*\.tsv"?$/ || /@(public|beta|alias)([^A-Za-z0-9_]|$)/ || tolower($0) ~ /jscpd:ignore-(start|end)/) { print f ": " substr($0, 2) }'
 )
 if [ -n "$grown" ]; then
   reason=
