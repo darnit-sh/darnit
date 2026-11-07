@@ -5,9 +5,11 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { cliAt, usage } from "./e2e-env.js";
 
 // Scans pinned real repositories with the built CLI and compares each result with test/golden/<owner>_<name>.txt.
 // Usage: npm run golden [-- --update] [--all] [--recheck] [--dir <clones>] [--out <dir for changed results>] [--base <sha>]
+// --cli <path> scans with that CLI, not dist/cli.js; run as `npx tsx scripts/golden.ts --cli <path>`, nothing builds.
 // --recheck also fetches each cached clone's commit again, so a repo that is gone or force-pushed away shows up.
 // Fails on any difference, a repo that cannot be fetched, darnit exiting 2 or writing to stderr, a repo count
 // that does not match repos.tsv, or a repo that --base compares and this branch does not. Facts only are stored (paths,
@@ -152,9 +154,10 @@ export function clone(root: string, repo: string, sha: string, recheck = false):
   }
 }
 
-/** The built CLI's `check --json` on `dir`: its exit code and report, or why darnit failed there. */
-export function runCheck(dir: string, repo: string): { exit: number; report: Report } | { error: string } {
-  const run = spawnSync(process.execPath, [resolve("dist/cli.js"), "check", "--json"], {
+type Checked = { exit: number; report: Report } | { error: string };
+/** `cli check --json` on `dir`: its exit code and report, or why darnit failed there. */
+export function runCheck(dir: string, repo: string, cli = resolve("dist/cli.js")): Checked {
+  const run = spawnSync(process.execPath, [cli, "check", "--json"], {
     cwd: dir,
     encoding: "utf8",
     maxBuffer: 1 << 30,
@@ -177,17 +180,28 @@ export function runCheck(dir: string, repo: string): { exit: number; report: Rep
   }
 }
 
-function main() {
-  const { values: args } = parseArgs({
-    options: {
-      update: { type: "boolean", default: false },
-      all: { type: "boolean", default: false },
-      recheck: { type: "boolean", default: false },
-      dir: { type: "string", default: CLONES },
-      out: { type: "string", default: join(tmpdir(), "darnit-golden-update") },
-      base: { type: "string" },
-    },
+/** The flags, or exit 2 before any scan on a usage error or a --cli that does not run. */
+function options() {
+  return usage("golden", () => {
+    const { values } = parseArgs({
+      options: {
+        update: { type: "boolean", default: false },
+        all: { type: "boolean", default: false },
+        recheck: { type: "boolean", default: false },
+        dir: { type: "string", default: CLONES },
+        out: { type: "string", default: join(tmpdir(), "darnit-golden-update") },
+        base: { type: "string" },
+        cli: { type: "string" },
+      },
+    });
+    const cli = values.cli === undefined ? undefined : cliAt(values.cli);
+    if (cli) console.log(`scanning with darnit ${cli.version} from ${cli.path}`);
+    return { ...values, cli: cli?.path };
   });
+}
+
+function main() {
+  const args = options();
   const GOLDEN = resolve("test/golden");
   const ci = !!process.env.GITHUB_ACTIONS;
   const errors: string[] = [];
@@ -230,7 +244,7 @@ function main() {
       );
       continue;
     }
-    const run = runCheck(dir, repo);
+    const run = runCheck(dir, repo, args.cli);
     if ("error" in run) {
       fail(run.error);
       continue;

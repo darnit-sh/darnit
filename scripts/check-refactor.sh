@@ -273,7 +273,7 @@ collisions() {
 # What the suite and the pull request checks run besides the tests: the runners, the checks and the
 # modules tests import.
 guarded() {
-  grep -iE '^"?(scripts/(fixtures|e2e|e2e-env|golden)\.ts|test/.*\.[cm]?[jt]s)"?$' |
+  grep -iE '^"?(scripts/(fixtures|e2e|e2e-env|golden|installed)\.ts|test/.*\.[cm]?[jt]s)"?$' |
     grep -viE '\.test\.[cm]?[jt]s"?$|^"?test/(e2e|fixtures|samples|golden)/' || true
 }
 # Those this change edits or removes, or shadows with an added file of the same path minus its extension
@@ -315,7 +315,7 @@ gates() {
   gate '^"?\.github/' "the workflows and settings that run and review every pull request"
   gate '^"?\.(npmrc|yarnrc[^/]*)"?$' "npm and yarn config, which decides what every npm command runs"
   gate '^"?test/no-credentials\.ts"?$' "what vitest runs in every worker before the tests"
-  gate '^"?scripts/(accounting|golden|fixtures|allowlist|unseen|show)\.ts"?$' "a runner behind a required check" "$edited"
+  gate '^"?scripts/(accounting|golden|installed|e2e-env|fixtures|allowlist|unseen|show)\.ts"?$' "a runner behind a required check" "$edited"
   gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*)"?$' "the pull request checks"
   # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
   shrunk=$(git diff --no-renames --text --numstat --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' | awk '$1 == 0 { print $3 }')
@@ -377,7 +377,7 @@ refactor | perf)
   say "**Rule for \`$type\`:** (a) no existing test, fixture, golden file or test script changes, and no record (change.json) at all; (b) base's tests and fixtures pass against this code."
   # CI runs this change's copy of the test scripts, and records are data the tests do not check.
   edited=$(
-    paths --diff-filter=DMT | grep -iE '^"?(test/|packs/[^/]+/[^/]+/fixtures/|scripts/(e2e|e2e-env|golden)\.ts"?$)' || true
+    paths --diff-filter=DMT | grep -iE '^"?(test/|packs/[^/]+/[^/]+/fixtures/|scripts/(e2e|e2e-env|golden|installed)\.ts"?$)' || true
     paths | grep -iE '(^|/)change\.json"?$' || true
     collisions
   )

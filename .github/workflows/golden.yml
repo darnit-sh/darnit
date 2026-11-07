@@ -6,6 +6,16 @@ name: golden
 # gone or force-pushed away turns it red; it can also be started on any branch.
 on:
   workflow_call:
+    inputs:
+      # A calling workflow can have it scan with the package users get instead of the build: the name of an
+      # artifact of that run holding one darnit .tgz, and that file's integrity (sha512-..., as npm pack --json
+      # reports it). The tarball is installed as the end-to-end run installs one (scripts/installed.ts).
+      tarball:
+        type: string
+        default: ""
+      integrity:
+        type: string
+        default: ""
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
@@ -22,6 +32,16 @@ jobs:
       # npm_config_* variables after project config, so they win.
       npm_config_script_shell: /bin/sh
     steps:
+      # tarball and integrity go together: a caller whose one input comes out empty fails here instead of
+      # scanning the build while it meant the package.
+      - env:
+          TARBALL: ${{ inputs.tarball }}
+          INTEGRITY: ${{ inputs.integrity }}
+        run: |
+          if [ "${TARBALL:+set}" != "${INTEGRITY:+set}" ]; then
+            echo "::error::golden.yml takes tarball and integrity together, got tarball '$TARBALL' and integrity '$INTEGRITY'"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -40,13 +60,13 @@ jobs:
             set=all why="Golden compares all pinned repositories: this $EVENT run is not a pull request."
           else
             changed=$(git -c core.quotePath=false diff --name-only --no-renames "$BASE...$HEAD")
-            detection=$(grep -E '^"?(src|packs|test/golden)/|^(scripts/golden\.ts|\.github/workflows/golden\.yml|package(-lock)?\.json|tsconfig[^/]*\.json)$' <<< "$changed" || true)
+            detection=$(grep -E '^"?(src|packs|test/golden)/|^(scripts/(golden|installed|e2e-env)\.ts|\.github/workflows/golden\.yml|package(-lock)?\.json|tsconfig[^/]*\.json)$' <<< "$changed" || true)
             if ! grep -Eqv '\.md$|^LICENSE$' <<< "$changed"; then
               set=skip why="Golden skipped: this pull request changes only Markdown or LICENSE files."
             elif [ -n "$detection" ]; then
               set=all why="Golden compares all pinned repositories: this pull request changes $(head -n 1 <<< "$detection"), which can change scan results."
             else
-              set=slice why="Golden compares the slice (slice yes in repos.tsv): this pull request changes nothing under src/, packs/ or test/golden/, nor scripts/golden.ts, golden.yml, tsconfig or the package files."
+              set=slice why="Golden compares the slice (slice yes in repos.tsv): this pull request changes nothing under src/, packs/ or test/golden/, nor the golden runner and the scripts it imports or runs (scripts/golden.ts, scripts/installed.ts, scripts/e2e-env.ts), golden.yml, tsconfig or the package files."
             fi
           fi
           echo "$why" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -65,6 +85,21 @@ jobs:
         with:
           path: ~/.cache/darnit-golden
           key: golden-${{ hashFiles('test/golden/repos.tsv') }}
+      - if: steps.scope.outputs.set != 'skip' && inputs.tarball != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.tarball }}
+          path: ${{ runner.temp }}/package
+      # The installed CLI's path, set only when the integrity matches and npm installed that file. npm runs the
+      # dependencies' install scripts on purpose, as a user's install does, so the scan uses what users get.
+      - if: steps.scope.outputs.set != 'skip' && inputs.tarball != ''
+        id: installed
+        env:
+          INTEGRITY: ${{ inputs.integrity }}
+        run: |
+          cli=$(npx tsx scripts/installed.ts --tarball "$RUNNER_TEMP"/package/*.tgz --integrity "$INTEGRITY")
+          echo "cli=$cli" >> "$GITHUB_OUTPUT"
+      # npm run golden builds dist/ first; with an installed CLI nothing is built.
       - if: steps.scope.outputs.set != 'skip'
         timeout-minutes: ${{ steps.scope.outputs.set == 'all' && 45 || 15 }}
         env:
@@ -72,7 +107,18 @@ jobs:
           RECHECK: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'yes' || '' }}
           BASE: ${{ github.event.pull_request.base.sha }}
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: time npm run golden -- --out "$RUNNER_TEMP/golden-update" ${ALL:+--all} ${RECHECK:+--recheck} ${BASE:+--base "$BASE"}
+          TARBALL: ${{ inputs.tarball }}
+          INTEGRITY: ${{ inputs.integrity }}
+          CLI: ${{ steps.installed.outputs.cli }}
+        run: |
+          set -- --out "$RUNNER_TEMP/golden-update" ${ALL:+--all} ${RECHECK:+--recheck} ${BASE:+--base "$BASE"}
+          if [ -z "$TARBALL" ]; then
+            echo "Golden scans with dist/cli.js, built from this commit." >> "$GITHUB_STEP_SUMMARY"
+            time npm run golden -- "$@"
+          else
+            echo "Golden scans with the darnit installed from artifact $TARBALL, integrity $INTEGRITY." >> "$GITHUB_STEP_SUMMARY"
+            time npx tsx scripts/golden.ts --cli "$CLI" "$@"
+          fi
       - if: failure() && steps.scope.outputs.set != 'skip'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
