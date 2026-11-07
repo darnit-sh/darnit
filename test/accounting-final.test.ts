@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -115,6 +115,24 @@ describe("npm run accounting --final", () => {
       1,
       refused(`the accounting above failed; 4 need a record, at ${at("4")}`),
     ]);
+  });
+
+  it("refuses a ceiling read through a link, as the pull request check does", async () => {
+    const file = await corpus({ "packs/openai/119": "4\n" });
+    await symlink("119", join(file, CEILING));
+    const vendor = await corpus({ [CEILING]: "4\n" });
+    await rename(join(vendor, "packs", "openai"), join(vendor, "elsewhere"));
+    await symlink(join("..", "elsewhere"), join(vendor, "packs", "openai"));
+    const packs = await corpus({ [CEILING]: "4\n" });
+    await rename(join(packs, "packs"), join(packs, "packs-data"));
+    await symlink("packs-data", join(packs, "packs"));
+    const runs = await Promise.all([file, vendor, packs].map((d) => accounting(d, "--final")));
+    expect(runs.map((r) => [r.status, lastLine(r.stdout)])).toEqual([
+      [1, refused("packs/openai/record-ceiling.txt is not a regular file")],
+      [1, refused("packs/openai is not a folder")],
+      [1, refused("packs is not a folder")],
+    ]);
+    await expect(readCeiling(file, "openai")).rejects.toThrow("is not a regular file");
   });
 
   it("is zero once every open item has a record or a reason", async () => {

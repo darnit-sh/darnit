@@ -14,9 +14,9 @@ import {
   parseFlags,
   readNotCovered,
   refuseExisting,
-  show,
   writeNotes,
 } from "./accounting-final.js";
+import { show } from "./show.js";
 
 // Every deprecation in each vendor's spec and every removal in its corpus history is either covered
 // by a record or listed in packs/<vendor>/not-covered.yaml with the reason it has none. Exit 1 on

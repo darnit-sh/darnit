@@ -10,7 +10,7 @@ git config core.hooksPath .githooks
 npm run check
 ```
 Needs Node 22.12 or newer. `npm run check` runs lint, typecheck, the tests and the record fixtures; the pre-commit
-hook runs it too. CI also runs `npm run knip`, `npm run duplicates`, `npm run accounting`, `npm run test:e2e`,
+hook runs it too. CI also runs `npm run format:check`, `npm run knip`, `npm run duplicates`, `npm run accounting`, `npm run test:e2e`,
 `npm run build` and `npm run answer-key`, measures coverage with `npm test -- --coverage` against
 `coverage-thresholds.json`, and, through golden.yml, compares scans of pinned real repositories with their stored
 results. After the build, `scripts/watchdog.ts` runs the built CLI on the largest inputs it accepts, and kills and
@@ -44,7 +44,7 @@ co-author line. Each type has a rule CI checks:
 |---|---|
 | `feat`, `fix` | the proof check: when it changes `src/`, a rule pack's rules or a `change.json`, a new or changed test, fixture case or end-to-end scenario fails against the base's code and passes with the change |
 | `refactor`, `perf` | output, exit codes and JSON unchanged: no existing test, fixture, golden file or test script changes, no `change.json` changes, and the base's tests and fixtures pass against the new code |
-| `style` | only edits to existing `.ts`, `.js`, `.mjs` and `.cjs` files, each exactly what the pinned formatter writes over the base's copy |
+| `style` | only edits to existing `.ts`, `.js`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.tsx` and `.jsx` files, each exactly what the pinned formatter writes over the base's copy |
 | `test`, `ci` | leaves the code and the rule packs alone; a change to the suite (its runners, shared test modules, dependencies, the lock file, npm config) needs a `Proof: none, <reason>` line in the description |
 | `docs` | leaves the code, the rule packs, the suite, the dependencies and the lock file alone |
 | `chore`, `build` | leaves the code, the rule packs and the suite alone; may change dependency versions, apart from the pins of `vitest` and `@vitest/coverage-v8`; only `build` may change which files the package ships |

@@ -4,13 +4,10 @@ import { parseArgs } from "node:util";
 import { parse as parseYaml } from "yaml";
 import { type NotCovered, NotCoveredSchema, openItems, readOptional } from "../src/corpus/accounting.js";
 import { forTerminal, prose } from "../src/fix.js";
+import { show } from "./show.js";
 
 // What `npm run accounting --final` adds to the plain run: each vendor's open items held to the ceiling committed in
 // packs/<vendor>/record-ceiling.txt, and the open list written as Markdown for the release notes.
-
-// Keys are spec text: quoted, and anything outside printable ASCII written as an escape, so a name cannot hide or forge a line.
-export const show = (key: string) =>
-  JSON.stringify(key).replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
 /** The flags, strictly: an unknown or misspelled flag, a value on --final, or --notes without --final throws. */
 export function parseFlags(args: string[]): { root?: string | undefined; final: boolean; notes?: string | undefined } {
@@ -32,8 +29,22 @@ export const marked = (notCovered: NotCovered) =>
 
 export const ceilingFile = (vendor: string) => `packs/${vendor}/record-ceiling.txt`;
 
-/** The committed ceiling: one whole number, no sign or leading zero. Missing, empty or anything else throws. */
+/** Whether `path` under `root` is what `kind` says, without following a link; a missing path passes. */
+async function stored(root: string, path: string, kind: "folder" | "regular file") {
+  const found = await lstat(join(root, path)).catch((err: NodeJS.ErrnoException) =>
+    err.code === "ENOENT" ? undefined : Promise.reject(err),
+  );
+  if (found && !(kind === "folder" ? found.isDirectory() : found.isFile())) throw new Error(`${path} is not a ${kind}`);
+}
+
+/**
+ * The committed ceiling: one whole number, no sign or leading zero, in a regular file inside plain folders, as
+ * scripts/check-ceiling.sh reads it. Missing, empty, behind a link or anything else throws.
+ */
 export async function readCeiling(root: string, vendor: string): Promise<number> {
+  await stored(root, "packs", "folder");
+  await stored(root, `packs/${vendor}`, "folder");
+  await stored(root, ceilingFile(vendor), "regular file");
   const text = await readOptional(join(root, ceilingFile(vendor)));
   if (text === undefined) throw new Error(`${ceilingFile(vendor)} is missing`);
   if (!/^(0|[1-9][0-9]*)\r?\n?$/.test(text)) throw new Error(`${ceilingFile(vendor)} does not hold one whole number`);
