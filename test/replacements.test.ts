@@ -796,9 +796,10 @@ describe("fix.models from the page", () => {
         human: "not a plain swap: OpenAI recommends gpt-5.6-sol or gpt-4.1* (retiring too)",
         source: PAGE,
       },
-      // gpt-image-1 and gpt-image-1-mini retire too, both to gpt-image-2.5-sunburst or gpt-image-2.5-flare.
+      // gpt-image-1 and gpt-image-1-mini retire too, to the 2.5 and the 2.6 sunburst or flare models.
       "dall-e-3": {
-        human: "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare",
+        human:
+          "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, gpt-image-2.5-flare, gpt-image-2.6-sunburst, or gpt-image-2.6-flare",
         source: PAGE,
       },
       "codex-mini-latest": {
