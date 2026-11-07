@@ -42,6 +42,9 @@ async function stored(root: string, path: string, kind: "folder" | "regular file
  * scripts/check-ceiling.sh reads it. Missing, empty, behind a link or anything else throws.
  */
 export async function readCeiling(root: string, vendor: string): Promise<number> {
+  // One plain folder name, so the ceiling sits in packs/<vendor>/ where the pull request check reads it.
+  if (!/^[a-z0-9-]+$/.test(vendor))
+    throw new Error(`vendor ${JSON.stringify(vendor)} is not one lowercase path segment (a-z, 0-9, -)`);
   await stored(root, "packs", "folder");
   await stored(root, `packs/${vendor}`, "folder");
   await stored(root, ceilingFile(vendor), "regular file");

@@ -37,6 +37,8 @@ try {
 const ROOT = flags.root !== undefined ? resolve(flags.root) : fileURLToPath(new URL("../", import.meta.url));
 const out: string[] = [];
 const notes: string[] = [];
+// Printed only once the notes, when asked for, are written, so no verdict line stands above a failure to write them.
+const verdicts: string[] = [];
 // Every message goes out once, fenced and with control characters gone; a failure, whose message can quote
 // spec text (a YAML error quotes the line it stopped at), is shown quoted and escaped like an item.
 try {
@@ -87,14 +89,15 @@ try {
     if (flags.final) {
       const items = result.deprecated + result.removals;
       const verdict = await judgeCeiling({ root: ROOT, vendor, open: result.needsRecord.length, items, failed });
-      out.push("", verdict.line);
+      verdicts.push(verdict.line);
       if (!verdict.ok) process.exitCode = 1;
       notes.push(...notesSection(vendor, open));
     }
   }
-  if (flags.notes !== undefined && process.exitCode === 1)
-    out.push("", "No notes written: the final release is refused.");
-  else if (flags.notes !== undefined) await writeNotes(flags.notes, notes);
+  const refused = process.exitCode === 1;
+  if (flags.notes !== undefined && !refused) await writeNotes(flags.notes, notes);
+  if (verdicts.length > 0) out.push("", ...verdicts);
+  if (flags.notes !== undefined && refused) out.push("", "No notes written: the final release is refused.");
 } catch (err) {
   out.push(`accounting stopped: ${show(err instanceof Error ? err.message : String(err))}`);
   process.exitCode = 1;

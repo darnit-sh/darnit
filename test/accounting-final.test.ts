@@ -135,6 +135,35 @@ describe("npm run accounting --final", () => {
     await expect(readCeiling(file, "openai")).rejects.toThrow("is not a regular file");
   });
 
+  it("refuses a vendors.yml key that is not one lowercase path segment with --final, and leaves the plain run alone", async () => {
+    // A key such as ../corpus/openai would keep its ceiling outside packs/, where the pull request check reads none.
+    const outside = await corpus({
+      "vendors.yml": (await readFile(join(FIXTURE, "vendors.yml"), "utf8")).replace(/^openai:/m, "../corpus/openai:"),
+      // The record names vendor openai, so its item needs an entry under the new name: five open items.
+      [join("corpus", "openai", "not-covered.yaml")]: `${await readFile(join(FIXTURE, NOT_COVERED), "utf8")}
+- items: [schema CreateImageRequest property style]
+  needs-record: The record names the vendor openai.
+`,
+      [join("corpus", "openai", "record-ceiling.txt")]: "5\n",
+    });
+    expect((await accounting(outside)).status).toBe(0);
+    const run = await accounting(outside, "--final");
+    expect([run.status, lastLine(run.stdout)]).toEqual([
+      1,
+      'final release refused, ../corpus/openai: vendor "../corpus/openai" is not one lowercase path segment (a-z, 0-9, -)',
+    ]);
+    for (const key of ["OpenAI", "open ai", "a/b", "..", ""])
+      await expect(readCeiling(outside, key), key).rejects.toThrow("is not one lowercase path segment");
+  });
+
+  it("prints no verdict when the notes cannot be written", async () => {
+    const dir = await corpus({ [CEILING]: "4\n" });
+    const run = await accounting(dir, "--final", "--notes", join(dir, "missing", "notes.md"));
+    expect(run.status).toBe(1);
+    expect(run.stdout).not.toContain("final release");
+    expect(lastLine(run.stdout)).toMatch(/^accounting stopped: "ENOENT/);
+  });
+
   it("is zero once every open item has a record or a reason", async () => {
     const swept = (await readFile(join(FIXTURE, NOT_COVERED), "utf8"))
       .replace(/^ {2}date: .*\n/gm, "")
