@@ -128,4 +128,4 @@ them itself, and does not make an existing breach worse.
 | Nesting depth | 3 |
 | Parameters | 4 (an options object beyond) |
 | Nested ternaries, shadowed names | none |
-| Formatting | what the pinned prettier writes (`npx prettier --write <files>`); CI checks it only for a `style` change |
+| Formatting | what the pinned prettier writes (`npx prettier --write <files>`); CI's lint job checks it (`npm run format:check`) on every `.ts`, `.js`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.tsx` and `.jsx` file except those `.prettierignore` leaves out: build output, rule pack fixtures, test fixtures, samples, end-to-end scenarios, golden files and the corpus |

@@ -43,6 +43,10 @@ jobs:
       # Install scripts and tests run with whatever git config holds; it must hold no GitHub token.
       - run: "! git config --name-only --get-regexp '^http\\..*\\.extraheader$'"
       - run: npm run lint
+      # Every code file as the pinned prettier writes it (.prettierignore leaves out the rest). Its limit is the rule
+      # above applied to the step: it took 4s on a local run, so 5.
+      - run: npm run format:check
+        timeout-minutes: 5
       - run: npm run typecheck
       # Unused files, exports and dependencies, and duplicated blocks, each checked against its list in scripts/allow/.
       # Each limit is the rule above applied to the step: it took 1s (knip) and under 1s (duplicates) in this job's
