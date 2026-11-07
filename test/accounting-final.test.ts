@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { parse as parseYaml, stringify } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
-import { marked, readCeiling, readNotCovered } from "../scripts/accounting-final.js";
+import { marked, notesSection, readCeiling, readNotCovered } from "../scripts/accounting-final.js";
 import { parseSpec } from "../src/corpus/spec.js";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -40,18 +40,34 @@ async function accounting(dir: string, ...args: string[]) {
 }
 
 const lastLine = (stdout: string) => stdout.trimEnd().split("\n").at(-1);
+const passes = (says: string) => `final release passes, openai: ${says}`;
+const refused = (says: string) => `final release refused, openai: ${says}`;
+const at = (n: string) => `the ceiling of ${n} in packs/openai/record-ceiling.txt`;
+/** What GitHub could still render in a Markdown line once code spans and backslash escapes are taken out. */
+const live = (line: string) =>
+  line
+    .replace(/`[^`]*`/g, "")
+    .replace(/\\[!-/:-@[-`{-~]/g, "")
+    .match(/[<>@#&*_[\]()!|~`\\]/g) ?? [];
+const HIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+
+/** The fixture with its spec changed: written as JSON, which YAML reads too. */
+async function withSpec(change: (props: Record<string, unknown>) => void) {
+  const spec = parseSpec(await readFile(join(FIXTURE, SPEC), "utf8"));
+  change(spec.components!.schemas!.CreateImageRequest!.properties!);
+  return JSON.stringify(spec);
+}
 
 describe("npm run accounting --final", () => {
   it("fails above the ceiling and passes at or below it, naming both numbers", async () => {
-    const at = (n: string) => `the ceiling of ${n} in packs/openai/record-ceiling.txt`;
     const [above, equal, below] = await Promise.all(
       ["3\n", "4\n", "5\n"].map(async (c) => accounting(await corpus({ [CEILING]: c }), "--final")),
     );
-    expect([above!.status, lastLine(above!.stdout)]).toEqual([1, `openai: 4 need a record, above ${at("3")}`]);
-    expect([equal!.status, lastLine(equal!.stdout)]).toEqual([0, `openai: 4 need a record, at ${at("4")}`]);
+    expect([above!.status, lastLine(above!.stdout)]).toEqual([1, refused(`4 need a record, above ${at("3")}`)]);
+    expect([equal!.status, lastLine(equal!.stdout)]).toEqual([0, passes(`4 need a record, at ${at("4")}`)]);
     expect([below!.status, lastLine(below!.stdout)]).toEqual([
       0,
-      `openai: 4 need a record, below ${at("5")}; lower it to 4`,
+      passes(`4 need a record, below ${at("5")}; lower it to 4`),
     ]);
   });
 
@@ -72,13 +88,29 @@ describe("npm run accounting --final", () => {
       Object.values(bad).map(async (c) => accounting(await corpus({ [CEILING]: c }), "--final")),
     );
     expect(runs.map((r) => [r.status, lastLine(r.stdout)])).toEqual([
-      [1, "openai: packs/openai/record-ceiling.txt is missing"],
-      ...Array.from({ length: 7 }, () => [1, "openai: packs/openai/record-ceiling.txt does not hold one whole number"]),
-      [1, "openai: packs/openai/record-ceiling.txt holds a number too large to count to"],
-      [1, "openai: the ceiling of 10 in packs/openai/record-ceiling.txt is above all 9 items accounting reads"],
+      [1, refused("packs/openai/record-ceiling.txt is missing")],
+      ...Array.from({ length: 7 }, () => [
+        1,
+        refused("packs/openai/record-ceiling.txt does not hold one whole number"),
+      ]),
+      [1, refused("packs/openai/record-ceiling.txt holds a number too large to count to")],
+      [1, refused(`${at("10")} is above all 9 items accounting reads`)],
     ]);
     // Up to the ceiling itself, a ceiling equal to every item is a number like any other.
     expect(await readCeiling(await corpus({ [CEILING]: "9\r\n" }), "openai")).toBe(9);
+  });
+
+  it("fails, and says so last, when the plain check fails though the open items are at the ceiling", async () => {
+    // A deprecation the spec no longer marks leaves a stale entry, which fails the plain run.
+    const spec = parseSpec(await readFile(join(FIXTURE, SPEC), "utf8"));
+    delete spec.components!.schemas!.ImagesResponse!.properties!.status!.deprecated;
+    const dir = await corpus({ [CEILING]: "4\n", [SPEC]: JSON.stringify(spec) });
+    expect((await accounting(dir)).status).toBe(1);
+    const run = await accounting(dir, "--final");
+    expect([run.status, lastLine(run.stdout)]).toEqual([
+      1,
+      refused(`the accounting above failed; 4 need a record, at ${at("4")}`),
+    ]);
   });
 
   it("is zero once every open item has a record or a reason", async () => {
@@ -88,10 +120,7 @@ describe("npm run accounting --final", () => {
     const dir = await corpus({ [CEILING]: "0\n", [NOT_COVERED]: swept });
     const notes = join(dir, "notes.md");
     const run = await accounting(dir, "--final", "--notes", notes);
-    expect([run.status, lastLine(run.stdout)]).toEqual([
-      0,
-      "openai: 0 need a record, at the ceiling of 0 in packs/openai/record-ceiling.txt",
-    ]);
+    expect([run.status, lastLine(run.stdout)]).toEqual([0, passes(`0 need a record, at ${at("0")}`)]);
     expect(await readFile(notes, "utf8")).toBe("## openai: 0 open, each needing a record\n\nNone.\n");
   });
 
@@ -106,56 +135,105 @@ describe("npm run accounting --final", () => {
     }
   });
 
-  it("refuses --notes without --final or without a file", async () => {
-    const dir = await corpus({ [CEILING]: "4\n" });
+  it("exits 2 on a flag it does not know, a value on --final, a missing value, or --notes without --final", async () => {
+    const dir = await corpus({ [CEILING]: "3\n" });
+    const notes = join(dir, "notes.md");
     for (const args of [
-      ["--notes", join(dir, "notes.md")],
+      ["--final=true"],
+      ["--Final"],
+      ["--fianl"],
+      ["final"],
       ["--final", "--notes"],
       ["--notes", "--final"],
+      ["--notes", notes],
+      ["--root"],
     ]) {
       const run = await accounting(dir, ...args);
-      expect([run.status, lastLine(run.stdout)]).toEqual([1, 'accounting stopped: "--notes <file> goes with --final"']);
+      expect(run.status, args.join(" ")).toBe(2);
+      expect(run.stdout, args.join(" ")).toMatch(/^accounting: "/);
+      expect(run.stdout).not.toContain("deprecated in the spec");
     }
-    await expect(readFile(join(dir, "notes.md"))).rejects.toThrow("ENOENT");
+    await expect(readFile(notes)).rejects.toThrow("ENOENT");
+    // --root=<dir> reads that folder: its 4 open items against its ceiling of 3.
+    const inline = await promisify(execFile)(tsx, ["scripts/accounting.ts", `--root=${dir}`, "--final"], {
+      cwd: ROOT,
+    }).catch((e: { stdout: string; code: number }) => e);
+    expect(["code" in inline ? inline.code : 0, lastLine(inline.stdout)]).toEqual([
+      1,
+      refused(`4 need a record, above ${at("3")}`),
+    ]);
+  });
+
+  it("writes the notes only on a pass, and only to a new file: an existing file or link is refused", async () => {
+    const above = await corpus({ [CEILING]: "3\n" });
+    const run = await accounting(above, "--final", "--notes", join(above, "notes.md"));
+    expect([run.status, lastLine(run.stdout)]).toEqual([1, "No notes written: the final release is refused."]);
+    await expect(readFile(join(above, "notes.md"))).rejects.toThrow("ENOENT");
+
+    const dir = await corpus({ [CEILING]: "4\n", "old.md": "old notes\n" });
+    await symlink(join(dir, "old.md"), join(dir, "link.md"));
+    await symlink(join(dir, "nowhere.md"), join(dir, "dangling.md"));
+    for (const name of ["old.md", "link.md", "dangling.md"]) {
+      const file = join(dir, name);
+      const refusal = await accounting(dir, "--final", "--notes", file);
+      expect([refusal.status, lastLine(refusal.stdout)]).toEqual([
+        1,
+        `accounting stopped: ${JSON.stringify(`${file} already exists; the notes go only to a new file`)}`,
+      ]);
+    }
+    expect(await readFile(join(dir, "old.md"), "utf8")).toBe("old notes\n");
+    await expect(readFile(join(dir, "nowhere.md"))).rejects.toThrow("ENOENT");
   });
 
   it("writes the open items to the notes in the printed order, with no name able to forge a line or Markdown", async () => {
     const hostile = [
       "evil\n- forged\n## heading",
-      "`code` *em* _u_ [a](javascript:x) <img src=x> &amp; | ~ \\ !",
-      "‮rtl",
+      "`code` *em* _u_ [a](javascript:x) <img src=x> &amp; | ~ \\ ! @someone #12 deadbeef1 :smile:",
+      "‮rtl​\u0007",
     ];
-    const spec = parseSpec(await readFile(join(FIXTURE, SPEC), "utf8"));
-    const props = spec.components!.schemas!.CreateImageRequest!.properties!;
-    for (const name of hostile) props[name] = { type: "string", deprecated: true };
     const entry = {
       items: hostile.map((n) => `schema CreateImageRequest property ${n}`),
       date: "2027-01-01",
-      "needs-record": "Report-only.\n## forged [x](y) <b>",
+      "needs-record": "Report-only.\n## forged [x](y) <b> @someone‮",
     };
-    const notCovered = `${await readFile(join(FIXTURE, NOT_COVERED), "utf8")}\n${stringify([entry])}`;
-    const dir = await corpus({ [CEILING]: "7\n", [SPEC]: JSON.stringify(spec), [NOT_COVERED]: notCovered });
+    const dir = await corpus({
+      [CEILING]: "7\n",
+      [SPEC]: await withSpec((props) => {
+        for (const name of hostile) props[name] = { type: "string", deprecated: true };
+      }),
+      [NOT_COVERED]: `${await readFile(join(FIXTURE, NOT_COVERED), "utf8")}\n${stringify([entry])}`,
+    });
     const notes = join(dir, "notes.md");
     const run = await accounting(dir, "--final", "--notes", notes);
     expect(run.status).toBe(0);
 
     const lines = (await readFile(notes, "utf8")).split("\n");
     expect(lines.slice(0, 2)).toEqual(["## openai: 7 open, each needing a record", ""]);
-    const body = lines.slice(2, -1);
     expect(lines.at(-1)).toBe("");
-    // Every line is an entry or a key under it, and nothing in one is Markdown once its escapes are read.
+    const body = lines.slice(2, -1);
+    // Every line is an entry or a key under it, with nothing GitHub would render and no hidden character.
     for (const line of body) {
       expect(line).toMatch(/^( {2})?- \S/);
-      expect(line.replace(/^( {2})?- /, "").replace(/\\[!-/:-@[-`{-~]/g, "")).toMatch(/^[\w ]*$/);
+      expect(live(line.replace(/^( {2})?- /, "")), line).toEqual([]);
+      expect(line).not.toMatch(HIDDEN);
     }
-    expect(body).toContain("- 2027\\-01\\-01\\: Report\\-only\\. \\#\\# forged \\[x\\]\\(y\\) \\<b\\>");
-    const unescape = (l: string) => l.replace(/\\([!-/:-@[-`{-~])/g, "$1");
+    // The same keys in the same order as printed, read by their letters and digits.
+    const words = (l: string) => l.replace(/[^A-Za-z0-9]/g, "");
     const printed = run.stdout.split("\n").filter((l) => /^ {6}"/.test(l));
-    expect(body.filter((l) => l.startsWith("  - ")).map((l) => unescape(l.slice(4)))).toEqual(
-      printed.map((l) => l.trim()),
-    );
+    expect(body.filter((l) => l.startsWith("  - ")).map(words)).toEqual(printed.map(words));
     expect(printed).toContain('      "schema CreateImageRequest property evil\\n- forged\\n## heading"');
-    expect(printed).toContain('      "schema CreateImageRequest property \\u202ertl"');
+    expect(printed).toContain('      "schema CreateImageRequest property \\u202ertl\\u200b\\u0007"');
+  });
+
+  it("escapes the vendor heading, the entries and the keys, hidden characters included", () => {
+    const lines = notesSection("@team <b>x</b> #1 [a](b)", [
+      { head: "2027-01-01: a‮b\u0007c​d e *f* <i>", keys: ["k‮\u0000 <u>x</u> @me"] },
+    ]);
+    expect(lines).toHaveLength(5);
+    for (const line of lines) {
+      expect(live(line.replace(/^(## |- | {2}- )/, "")), line).toEqual([]);
+      expect(line).not.toMatch(HIDDEN);
+    }
   });
 
   it("holds each vendor's committed ceiling at the items its not-covered file marks needs-record", async () => {

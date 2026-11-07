@@ -47,11 +47,14 @@ All must be true before tagging, for a candidate and again for the final version
 - For the final version only: the candidate passed every check in "Verify from every angle", and
   nothing has merged to `main` since its tag (`git log --oneline vX.Y.Z-rc.N..origin/main` is
   empty).
-- For the final version only: `npm run accounting -- --final --notes open.md` passes. It fails when
-  a vendor has more items that need a record than `packs/<vendor>/record-ceiling.txt` allows, or
-  when that file is missing or not one whole number. A test holds each ceiling equal to the items
-  marked needs-record, so a change that closes items lowers it, and it reaches zero once they are all
-  closed. A candidate runs plain `npm run accounting`.
+- For the final version only: `npm run accounting -- --final --notes open.md` passes, which writes
+  `open.md` as a new file. It fails when the accounting fails, when a vendor has more items that
+  need a record than `packs/<vendor>/record-ceiling.txt` allows, or when that file is missing or
+  not one whole number. A test holds each ceiling equal to the items marked needs-record, so a
+  change that closes items lowers it, and it reaches zero once they are all closed. A change that
+  raises a ceiling fails its pull request check unless the description has a `Ceiling: <reason>`
+  line, whose reason the check shows (`scripts/check-ceiling.sh`). A candidate runs plain
+  `npm run accounting`.
 
 ## Release candidate
 

@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
@@ -7,7 +7,16 @@ import type { VendorConfig } from "../src/corpus/candidates.js";
 import { parseSpec } from "../src/corpus/spec.js";
 import { forTerminal } from "../src/fix.js";
 import { loadRecords } from "../src/records/load.js";
-import { judgeCeiling, notesSection, openEntries, readNotCovered, show } from "./accounting-final.js";
+import {
+  judgeCeiling,
+  notesSection,
+  openEntries,
+  parseFlags,
+  readNotCovered,
+  refuseExisting,
+  show,
+  writeNotes,
+} from "./accounting-final.js";
 
 // Every deprecation in each vendor's spec and every removal in its corpus history is either covered
 // by a record or listed in packs/<vendor>/not-covered.yaml with the reason it has none. Exit 1 on
@@ -15,19 +24,23 @@ import { judgeCeiling, notesSection, openEntries, readNotCovered, show } from ".
 // Items marked needs-record stay open and are listed on every run, soonest date first.
 // --root <dir> reads vendors.yml, corpus/ and packs/ from another folder.
 // --final, for a final release, also exits 1 when a vendor has more open items than packs/<vendor>/record-ceiling.txt
-// allows, and --notes <file> with it writes the open items as Markdown for the release notes.
+// allows or the accounting fails, and --notes <file> with it writes the open items as Markdown for the release notes
+// to a new file, on a pass only. Any other flag, or a misspelled one, exits 2.
 
-const at = process.argv.indexOf("--root");
-const ROOT = at > 0 ? resolve(process.argv[at + 1] ?? "") : fileURLToPath(new URL("../", import.meta.url));
-const FINAL = process.argv.includes("--final");
-const notesAt = process.argv.indexOf("--notes");
-const NOTES = notesAt > 0 ? process.argv[notesAt + 1] : undefined;
+let flags: ReturnType<typeof parseFlags>;
+try {
+  flags = parseFlags(process.argv.slice(2));
+} catch (err) {
+  console.log(forTerminal(`accounting: ${show(err instanceof Error ? err.message : String(err))}`));
+  process.exit(2);
+}
+const ROOT = flags.root !== undefined ? resolve(flags.root) : fileURLToPath(new URL("../", import.meta.url));
 const out: string[] = [];
 const notes: string[] = [];
 // Every message goes out once, fenced and with control characters gone; a failure, whose message can quote
 // spec text (a YAML error quotes the line it stopped at), is shown quoted and escaped like an item.
 try {
-  if (notesAt > 0 && (!FINAL || !NOTES || NOTES.startsWith("--"))) throw new Error("--notes <file> goes with --final");
+  if (flags.notes !== undefined) await refuseExisting(flags.notes);
   const vendors = parseYaml(await readFile(join(ROOT, "vendors.yml"), "utf8")) as Record<string, VendorConfig>;
   const records = (await loadRecords(join(ROOT, "packs"))).map((l) => l.record);
 
@@ -68,17 +81,20 @@ try {
       `Reasons in ${notCoveredFile} that the spec or the corpus history contradicts (correct them):`,
       result.contradicted.map(show),
     );
-    if (result.unaccounted.length + result.stale.length + result.redundant.length + result.contradicted.length > 0)
-      process.exitCode = 1;
-    if (FINAL) {
+    const failed =
+      result.unaccounted.length + result.stale.length + result.redundant.length + result.contradicted.length > 0;
+    if (failed) process.exitCode = 1;
+    if (flags.final) {
       const items = result.deprecated + result.removals;
-      const verdict = await judgeCeiling({ root: ROOT, vendor, open: result.needsRecord.length, items });
+      const verdict = await judgeCeiling({ root: ROOT, vendor, open: result.needsRecord.length, items, failed });
       out.push("", verdict.line);
       if (!verdict.ok) process.exitCode = 1;
       notes.push(...notesSection(vendor, open));
     }
   }
-  if (NOTES) await writeFile(NOTES, notes.join("\n"));
+  if (flags.notes !== undefined && process.exitCode === 1)
+    out.push("", "No notes written: the final release is refused.");
+  else if (flags.notes !== undefined) await writeNotes(flags.notes, notes);
 } catch (err) {
   out.push(`accounting stopped: ${show(err instanceof Error ? err.message : String(err))}`);
   process.exitCode = 1;
