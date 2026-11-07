@@ -32,6 +32,7 @@
     "test": "vitest run",
     "test:fixtures": "tsx scripts/fixtures.ts",
     "test:e2e": "npm run build && tsx scripts/e2e.ts",
+    "check:package": "tsx scripts/check-package.ts",
     "corpus": "tsx scripts/corpus.ts",
     "corpus:backfill": "tsx scripts/backfill-removals.ts",
     "accounting": "tsx scripts/accounting.ts",
