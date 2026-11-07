@@ -11,7 +11,8 @@ import { stillUnused } from "./unseen.js";
 // it stays. Fails on a finding the list lacks and on a line whose finding is gone, so the list only shrinks. Neither
 // tool reads git's ignore files, and jscpd gets an empty config in place of a .jscpd.json, so a local run finds what
 // CI finds. knip reads a "knip" key in package.json whatever --config says, so the check refuses to run with one, or
-// with a "jscpd" key. The limits read no config file and no comments that turn a rule off.
+// with a "jscpd" key. The limits read no config file and no comments that turn a rule off, and each of their lines
+// gives a cap its breach fails above.
 // Usage: tsx scripts/allowlist.ts unused|duplicates|limits [--root <dir>]
 
 // Tests and data are left out of the duplicate search: tests repeat setup on purpose, so each reads on its own.

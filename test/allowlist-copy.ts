@@ -44,6 +44,13 @@ export const run = (kind: "unused" | "duplicates" | "limits", root = ROOT, env: 
   return { status: r.status, out: r.stdout + r.stderr };
 };
 
+/** `npm run <script>` in `dir`, as CI's lint job runs it, with npm's own settings left out. */
+export const npm = (dir: string, script: string) => {
+  const env = Object.fromEntries(Object.entries(LOCAL).filter(([k]) => !/^npm_/i.test(k)));
+  const r = spawnSync("npm", ["run", "--silent", script], { cwd: dir, encoding: "utf8", env });
+  return { status: r.status, out: r.stdout + r.stderr };
+};
+
 export const edit = async (file: string, from: string, to: string) => {
   const text = await readFile(file, "utf8");
   expect(text).toContain(from);

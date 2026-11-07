@@ -1,12 +1,12 @@
-import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { limitFindings, named } from "../scripts/limits.js";
-import { copy, edit, run } from "./allowlist-copy.js";
+import { limitFindings, measured } from "../scripts/limits.js";
+import { copy, edit, npm, run } from "./allowlist-copy.js";
 
 const LIST = "scripts/allow/limits.tsv";
 
-/** The findings a run reports the list lacks, each as its key. */
+/** The findings a run reports the list lacks, each as its key and measure. */
 const missing = (out: string) =>
   out
     .split("\n")
@@ -24,26 +24,28 @@ const long = (name: string, lines: number) =>
     "}",
     "",
   ].join("\n");
+const ifs = (n: number) => Array.from({ length: n }, (_, i) => `  if (n === ${i}) t++;\n`).join("");
+const TERNARY = 'export const pick = (n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c");\n';
 
 const BREACHES: Record<string, string> = {
   "src/b/lines.ts": Array.from({ length: 301 }, (_, i) => `export const a${i} = ${i};\n`).join(""),
   "src/b/long.ts": long("tooLong", 51),
-  "src/b/branchy.ts": `export function branchy(n: number) {\n  let t = 0;\n${Array.from({ length: 10 }, (_, i) => `  if (n === ${i}) t++;\n`).join("")}  return t;\n}\n`,
+  "src/b/branchy.ts": `export function branchy(n: number) {\n  let t = 0;\n${ifs(10)}  return t;\n}\n`,
   "src/b/deep.ts":
     "export function deep(n: number) {\n  if (n) {\n    if (n > 1) {\n      if (n > 2) {\n        if (n > 3) {\n          return 4;\n        }\n      }\n    }\n  }\n  return 0;\n}\n",
   "src/b/many.ts":
     "export function many(a: number, b: number, c: number, d: number, e: number) {\n  return a + b + c + d + e;\n}\n",
-  "src/b/pick.ts": 'export const pick = (n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c");\n',
+  "src/b/pick.ts": TERNARY,
   "src/b/shadow.ts": "const top = 1;\nexport function inner() {\n  const top = 2;\n  return top;\n}\nexport { top };\n",
 };
 const KEYS = [
-  "src/b/branchy.ts\tcomplexity\tFunction 'branchy'\t#1",
-  "src/b/deep.ts\tmax-depth\t-\t#1",
-  "src/b/lines.ts\tmax-lines\tFile\t#1",
-  "src/b/long.ts\tmax-lines-per-function\tFunction 'tooLong'\t#1",
-  "src/b/many.ts\tmax-params\tFunction 'many'\t#1",
-  "src/b/pick.ts\tno-nested-ternary\t-\t#1",
-  "src/b/shadow.ts\t@typescript-eslint/no-shadow\t'top'\t#1",
+  "src/b/branchy.ts\tcomplexity\tbranchy\t11",
+  "src/b/deep.ts\tmax-depth\tdeep\t4",
+  "src/b/lines.ts\tmax-lines\t(file)\t301",
+  "src/b/long.ts\tmax-lines-per-function\ttooLong\t51",
+  "src/b/many.ts\tmax-params\tmany\t5",
+  "src/b/pick.ts\tno-nested-ternary\tpick\t1",
+  "src/b/shadow.ts\t@typescript-eslint/no-shadow\tinner\t1",
 ];
 
 async function plant(dir: string, files: Record<string, string>) {
@@ -62,16 +64,16 @@ describe("npm run limits", () => {
     const r = run("limits", dir);
     expect(r.status).toBe(1);
     expect(r.out).toContain(
-      `not in ${LIST}: src/clean.ts\tmax-lines-per-function\tFunction 'fiftyOne'\t#1 (line 1: Function 'fiftyOne' has too many lines (51). Maximum allowed is 50.); remove it, or add the line with the reason it stays`,
+      `not in ${LIST}: src/clean.ts\tmax-lines-per-function\tfiftyOne\t51 (line 1: Function 'fiftyOne' has too many lines (51). Maximum allowed is 50.); remove it, or add the line with the reason it stays`,
     );
   });
 
   it("fails on a line listed for a file that passes", async () => {
     const dir = await copy();
-    await appendFile(join(dir, LIST), "src/refusal.ts\tcomplexity\tFunction 'refuse'\t#1\tonce complex\n");
+    await appendFile(join(dir, LIST), "src/refusal.ts\tcomplexity\trefuse\t12\tonce complex\n");
     const r = run("limits", dir);
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/limits\.tsv:\d+ is no longer found: src\/refusal\.ts\tcomplexity\tFunction 'refuse'\t#1;/);
+    expect(r.out).toMatch(/limits\.tsv:\d+ is no longer found: src\/refusal\.ts\tcomplexity\trefuse\t12;/);
     expect(missing(r.out)).toEqual([]);
   });
 
@@ -98,46 +100,55 @@ describe("npm run limits", () => {
     await writeFile(pkg, JSON.stringify({ ...JSON.parse(await readFile(pkg, "utf8")), eslintConfig: { root: true } }));
     const r = run("limits", dir);
     expect(r.status).toBe(1);
-    expect(missing(r.out)).toEqual(KEYS);
+    // The two comment lines count toward the file's length.
+    expect(missing(r.out)).toEqual(KEYS.map((k) => k.replace("(file)\t301", "(file)\t303")));
   });
 
-  it("finds an unnamed arrow function over a limit", async () => {
+  it("checks every code file under src/: each extension, hidden folders, node_modules, a folder named like a file and a linked file", async () => {
     const dir = await copy();
+    const jsx = 'export const P = (n) => <b>{n > 1 ? "a" : n > 0 ? "b" : "c"}</b>;\n';
     await plant(dir, {
-      "src/anon.ts": `export default (a: number, b: number, c: number, d: number, e: number) => a + b + c + d + e;\n`,
-      "src/callback.ts": `export const all = [1].map(${long("x", 51).replace("export function x", "function")});\n`,
+      "src/node_modules/x.ts": TERNARY,
+      "src/.hidden/y.js": TERNARY.replace(": number", ""),
+      "src/z.mts": TERNARY,
+      "src/c.cts": TERNARY,
+      "src/v.tsx": jsx.replace("(n)", "(n: number)"),
+      "src/w.jsx": jsx,
+      "src/dir.ts/inner.ts": TERNARY,
+      "outside.ts": TERNARY,
     });
+    await symlink("../outside.ts", join(dir, "src/link.ts"));
+    expect(missing(run("limits", dir).out)).toEqual([
+      "src/.hidden/y.js\tno-nested-ternary\tpick\t1",
+      "src/c.cts\tno-nested-ternary\tpick\t1",
+      "src/dir.ts/inner.ts\tno-nested-ternary\tpick\t1",
+      "src/link.ts\tno-nested-ternary\tpick\t1",
+      "src/node_modules/x.ts\tno-nested-ternary\tpick\t1",
+      "src/v.tsx\tno-nested-ternary\tP\t1",
+      "src/w.jsx\tno-nested-ternary\tP\t1",
+      "src/z.mts\tno-nested-ternary\tpick\t1",
+    ]);
+  });
+
+  it("fails on a link to a folder under src/, which it would not read", async () => {
+    const dir = await copy();
+    await plant(dir, { "lib/x.ts": TERNARY });
+    await symlink("../lib", join(dir, "src/lib"));
     const r = run("limits", dir);
     expect(r.status).toBe(1);
-    expect(missing(r.out)).toEqual([
-      "src/anon.ts\tmax-params\tArrow function\t#1",
-      "src/callback.ts\tmax-lines-per-function\tFunction\t#1",
-    ]);
+    expect(r.out).toContain("src/lib links to a folder");
   });
 
-  it("checks every code file under src/: other extensions, hidden folders and node_modules", async () => {
-    const dir = await copy();
-    const ternary = 'export const pick = (n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c");\n';
-    await plant(dir, {
-      "src/node_modules/x.ts": ternary,
-      "src/.hidden/y.js": ternary.replace(": number", ""),
-      "src/z.mts": ternary,
-    });
-    expect(missing(run("limits", dir).out)).toEqual([
-      "src/.hidden/y.js\tno-nested-ternary\t-\t#1",
-      "src/node_modules/x.ts\tno-nested-ternary\t-\t#1",
-      "src/z.mts\tno-nested-ternary\t-\t#1",
-    ]);
-  });
-
-  it("keys a breach without its line, so lines added above every listed breach change nothing", async () => {
+  it("keys a breach without its line, so moving every listed breach down changes nothing", async () => {
     const dir = await copy();
     const files = (await readdir(join(dir, "src"), { recursive: true })).filter((f) => f.endsWith(".ts"));
     for (const file of files) {
       const at = join(dir, "src", file);
       const text = await readFile(at, "utf8");
       const start = text.startsWith("#!") ? text.indexOf("\n") + 1 : 0;
-      await writeFile(at, `${text.slice(0, start)}// A note on what this module does.\n\n${text.slice(start)}`);
+      // Two blank lines go where two lines are added, so each file keeps its length.
+      const rest = text.slice(start).replace("\n\n", "\n").replace("\n\n", "\n");
+      await writeFile(at, `${text.slice(0, start)}// A note on what this module does.\n\n${rest}`);
     }
     expect(run("limits", dir)).toMatchObject({ status: 0 });
   });
@@ -151,32 +162,157 @@ describe("npm run limits", () => {
   });
 });
 
-describe("a limit's key", () => {
-  it("names the function or the shadowed name eslint's message gives, and - when it gives none", () => {
-    expect(named("Async function 'scan' has too many lines (114). Maximum allowed is 50.")).toBe(
-      "Async function 'scan'",
+describe("a listed breach", () => {
+  it("fails once it grows past the cap its line gives", async () => {
+    const dir = await copy();
+    const lines = Array.from({ length: 300 }, (_, i) => `  if (files.length === ${i}) void i;\n`).join("");
+    await edit(
+      join(dir, "src/check.ts"),
+      "}> {\n  const hits: Hit[] = [];\n",
+      `}> {\n  const i = 0;\n${lines}  const hits: Hit[] = [];\n`,
     );
-    expect(named("Arrow function has a complexity of 12. Maximum allowed is 10.")).toBe("Arrow function");
-    expect(named("Method 'run' has too many parameters (5). Maximum allowed is 4.")).toBe("Method 'run'");
-    expect(named("File has too many lines (301). Maximum allowed is 300.")).toBe("File");
-    expect(named("'line' is already declared in the upper scope on line 12 column 5.")).toBe("'line'");
-    expect(named("Blocks are nested too deeply (4). Maximum allowed is 3.")).toBe("-");
-    expect(named("Do not nest ternary expressions.")).toBe("-");
+    const r = run("limits", dir);
+    expect(r.status).toBe(1);
+    const over = r.out.split("\n").filter((l) => l.includes("above the cap"));
+    expect(over.map((l) => /^not in [^:]+: (src\/check\.ts\t[^\t]+\t[^\t]+)\t\d+/.exec(l)?.[1]).sort()).toEqual([
+      "src/check.ts\tcomplexity\tscan",
+      "src/check.ts\tmax-lines\t(file)",
+      "src/check.ts\tmax-lines-per-function\tscan",
+    ]);
+    expect(r.out).not.toContain("no longer found");
+  });
+
+  it("passes at or below its cap, and fails one above", async () => {
+    const dir = await copy();
+    const list = join(dir, LIST);
+    const text = await readFile(list, "utf8");
+    const [, cap] = /^src\/check\.ts\tcomplexity\tscan\t(\d+)\t/m.exec(text)!;
+    const capped = (n: number) =>
+      text.replace(`src/check.ts\tcomplexity\tscan\t${cap}\t`, `src/check.ts\tcomplexity\tscan\t${n}\t`);
+    await writeFile(list, capped(Number(cap) + 5));
+    expect(run("limits", dir)).toMatchObject({ status: 0 });
+    await writeFile(list, capped(Number(cap) - 1));
+    const r = run("limits", dir);
+    expect(r.status).toBe(1);
+    expect(missing(r.out)).toEqual([`src/check.ts\tcomplexity\tscan\t${cap}`]);
+    expect(r.out).toContain(`above the cap of ${Number(cap) - 1} its line gives`);
+  });
+
+  it("cannot be traded for a new breach of the same rule in another function of the file", async () => {
+    const dir = await copy();
+    const fix = join(dir, "src/fix.ts");
+    await edit(fix, ": mixed.has(key(hit))\n          ? MIXED\n          : LOCAL;", ": LOCAL;");
+    await appendFile(fix, 'export const grade = (n: number) => (n > 90 ? "a" : n > 80 ? "b" : "c");\n');
+    const r = run("limits", dir);
+    expect(r.status).toBe(1);
+    expect(missing(r.out)).toContain("src/fix.ts\tno-nested-ternary\tgrade\t1");
+  });
+
+  it("is measured inside an immediately invoked function and a class static block", async () => {
+    const dir = await copy();
+    const body = long("x", 124).split("\n").slice(1, -2).join("\n");
+    await plant(dir, {
+      "src/iife.ts": `export const table = (() => {\n${body}\n})();\n`,
+      "src/statics.ts": `export class K {\n  static n = 0;\n  static {\n    let t = 0;\n    const n = K.n;\n${ifs(10)}    K.n = t;\n  }\n}\n`,
+    });
+    const r = run("limits", dir);
+    expect(r.status).toBe(1);
+    expect(missing(r.out)).toEqual([
+      "src/iife.ts\tmax-lines-per-function\ttable\t124",
+      "src/statics.ts\tcomplexity\tK\t11",
+    ]);
+  });
+});
+
+describe("the eslint the check runs", () => {
+  it("is the one the repository installs, not a folder of the same name committed under scripts/", async () => {
+    const dir = await copy();
+    await plant(dir, {
+      "scripts/node_modules/eslint/package.json": '{ "name": "eslint", "main": "index.js" }\n',
+      // Every file but one goes to the real eslint, so only the breach in that file goes unseen.
+      "scripts/node_modules/eslint/index.js": [
+        'const real = require("../../../node_modules/eslint");',
+        "class Linter extends real.Linter {",
+        "  verify(text, config, options) {",
+        '    return options.filename.endsWith("clean.ts") ? [] : super.verify(text, config, options);',
+        "  }",
+        "}",
+        "module.exports = { ...real, Linter };",
+        "",
+      ].join("\n"),
+      "src/clean.ts": long("fiftyOne", 51),
+    });
+    const r = npm(dir, "limits");
+    expect(r.status).toBe(1);
+    expect(missing(r.out)).toEqual(["src/clean.ts\tmax-lines-per-function\tfiftyOne\t51"]);
+  });
+});
+
+describe("a limit's key", () => {
+  it("names the nearest named function: a declaration, a const, a property key, a method, an IIFE, the default export, or (top)", async () => {
+    const dir = await copy();
+    await plant(dir, {
+      "src/names.ts": [
+        'export const top = (n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c");',
+        "export const props = {",
+        '  key: (n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c"),',
+        '  "quoted key": function (n: number) {',
+        '    return n > 1 ? "a" : n > 0 ? "b" : "c";',
+        "  },",
+        "};",
+        "export class C {",
+        "  run(n: number) {",
+        '    return [n].map((m) => (m > 1 ? "a" : m > 0 ? "b" : "c"));',
+        "  }",
+        '  field = (n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c");',
+        "}",
+        'export const table = ((n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c"))(1);',
+        'export const bare = 1 > 0 ? "a" : 0 > 1 ? "b" : "c";',
+        "export default (a: number, b: number, c: number, d: number, e: number) => a + b + c + d + e;",
+        "",
+      ].join("\n"),
+    });
+    expect(missing(run("limits", dir).out)).toEqual([
+      "src/names.ts\tmax-params\tdefault\t5",
+      "src/names.ts\tno-nested-ternary\t(top)\t1",
+      "src/names.ts\tno-nested-ternary\tfield\t1",
+      "src/names.ts\tno-nested-ternary\tkey\t1",
+      "src/names.ts\tno-nested-ternary\tquoted key\t1",
+      "src/names.ts\tno-nested-ternary\trun\t1",
+      "src/names.ts\tno-nested-ternary\ttable\t1",
+      "src/names.ts\tno-nested-ternary\ttop\t1",
+    ]);
   });
 
   it("numbers breaches of the same file, rule and name in order, so one more is a finding of its own", () => {
     const at = (line: number) => ({
       file: "src/a.ts",
       rule: "max-depth",
+      name: "run",
       line,
       column: 3,
-      message: "Blocks are nested",
+      message: `nested (${line % 7})`,
     });
-    const shadow = { file: "src/a.ts", rule: "no-shadow", line: 1, column: 1, message: "'x' is already declared" };
-    expect([...limitFindings([at(40), shadow, at(9)])]).toEqual([
-      ["src/a.ts\tno-shadow\t'x'\t#1", "line 1: 'x' is already declared"],
-      ["src/a.ts\tmax-depth\t-\t#1", "line 9: Blocks are nested"],
-      ["src/a.ts\tmax-depth\t-\t#2", "line 40: Blocks are nested"],
+    const shadow = {
+      file: "src/a.ts",
+      rule: "no-shadow",
+      name: "run",
+      line: 1,
+      column: 1,
+      message: "'x' is already declared",
+    };
+    expect([...limitFindings([at(40), shadow, at(9)], [])]).toEqual([
+      ["src/a.ts\tno-shadow\trun\t1", "line 1: 'x' is already declared"],
+      ["src/a.ts\tmax-depth\trun\t2", "line 9: nested (2)"],
+      ["src/a.ts\tmax-depth\trun #2\t5", "line 40: nested (5)"],
     ]);
+  });
+
+  it("reads the measure from eslint's message, and counts a breach eslint does not measure as 1", () => {
+    expect(measured("Async function 'scan' has too many lines (114). Maximum allowed is 50.")).toBe(114);
+    expect(measured("Arrow function has a complexity of 12. Maximum allowed is 10.")).toBe(12);
+    expect(measured("Blocks are nested too deeply (4). Maximum allowed is 3.")).toBe(4);
+    expect(measured("'line' is already declared in the upper scope on line 12 column 5.")).toBe(1);
+    expect(measured("Do not nest ternary expressions.")).toBe(1);
   });
 });

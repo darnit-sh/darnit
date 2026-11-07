@@ -287,9 +287,7 @@ const CHECKED: { in: Doc[]; at: RegExp; raw?: boolean; is: (m: RegExpExecArray) 
       in: ["ARCHITECTURE.md"] as Doc[],
       at: new RegExp(`^\\| ${row} \\| (\\d+)(?: \\(an options object beyond\\))? \\|$`),
       is: async () => [
-        (
-          await declared("scripts/limits.ts", new RegExp(`^  "?${rule}"?: \\["error", \\{ max: (\\d+) \\}\\],$`, "m"))
-        )?.[0],
+        (await declared("scripts/limits.ts", new RegExp(`^  "?${rule}"?: \\["error", \\{ max: (\\d+)[ ,]`, "m")))?.[0],
       ],
     })),
     {

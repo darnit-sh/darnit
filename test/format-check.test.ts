@@ -4,23 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
+import { checking, ci, loosened } from "./ci-steps.js";
 import { read } from "./docs.js";
 
-type Gated = { if?: unknown; "continue-on-error"?: unknown };
-type Workflow = { jobs?: Record<string, Gated & { steps?: (Gated & { run?: string })[] }> };
-
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
-const ci = async () => parse(await read(".github/workflows/ci.yml")) as Workflow;
+const FORMAT = "npm run format:check";
 const scripts = async () => (JSON.parse(await read("package.json")) as { scripts: Record<string, string> }).scripts;
 const git = (...args: string[]) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8" });
-
-const always = (at: Gated) => at.if === undefined && at["continue-on-error"] === undefined;
-/** The jobs that always run the format check and fail when it fails. */
-const checking = (workflow: Workflow) =>
-  Object.entries(workflow.jobs ?? {})
-    .filter(([, job]) => always(job) && (job.steps ?? []).some((s) => always(s) && s.run === "npm run format:check"))
-    .map(([name]) => name);
 
 /** Each line of an ignore-revs file that is not one full commit id, and a missing final newline. */
 function badLines(text: string): string[] {
@@ -57,29 +47,18 @@ const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], { 
 
 describe("the format check", () => {
   it("runs in the lint job, and fails when the step moves or goes", async () => {
-    expect(checking(await ci())).toEqual(["lint"]);
+    expect(checking(await ci(), FORMAT)).toEqual(["lint"]);
     const moved = await ci();
     const lint = moved.jobs!.lint!;
-    const step = lint.steps!.findIndex((s) => s.run === "npm run format:check");
+    const step = lint.steps!.findIndex((s) => s.run === FORMAT);
     moved.jobs!.test!.steps!.push(...lint.steps!.splice(step, 1));
-    expect(checking(moved)).toEqual(["test"]);
+    expect(checking(moved, FORMAT)).toEqual(["test"]);
     moved.jobs!.test!.steps!.pop();
-    expect(checking(moved)).toEqual([]);
+    expect(checking(moved, FORMAT)).toEqual([]);
   });
 
   it("fails when the step or the lint job may be skipped or may fail without failing the run", async () => {
-    for (const [key, value] of [
-      ["if", false],
-      ["if", "github.event_name == 'push'"],
-      ["continue-on-error", true],
-    ] as const)
-      for (const on of ["step", "job"]) {
-        const workflow = await ci();
-        const lint = workflow.jobs!.lint!;
-        const at = on === "job" ? lint : lint.steps!.find((s) => s.run === "npm run format:check")!;
-        at[key] = value;
-        expect(checking(workflow), `${key} on the ${on}`).toEqual([]);
-      }
+    for await (const { workflow, how } of loosened("lint", FORMAT)) expect(checking(workflow, FORMAT), how).toEqual([]);
   });
 
   it("reads only .prettierignore, so .gitignore cannot drop a file, and checks every code extension", async () => {
