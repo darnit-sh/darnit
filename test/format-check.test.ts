@@ -1,20 +1,25 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { read } from "./docs.js";
 
-type Workflow = { jobs?: Record<string, { steps?: { run?: string }[] }> };
+type Gated = { if?: unknown; "continue-on-error"?: unknown };
+type Workflow = { jobs?: Record<string, Gated & { steps?: (Gated & { run?: string })[] }> };
 
-const ROOT = new URL("../", import.meta.url);
-const read = (path: string) => readFile(new URL(path, ROOT), "utf8");
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const ci = async () => parse(await read(".github/workflows/ci.yml")) as Workflow;
-const git = (...args: string[]) => spawnSync("git", args, { cwd: fileURLToPath(ROOT), encoding: "utf8" });
+const scripts = async () => (JSON.parse(await read("package.json")) as { scripts: Record<string, string> }).scripts;
+const git = (...args: string[]) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8" });
 
-/** The jobs that run the format check. */
+const always = (at: Gated) => at.if === undefined && at["continue-on-error"] === undefined;
+/** The jobs that always run the format check and fail when it fails. */
 const checking = (workflow: Workflow) =>
   Object.entries(workflow.jobs ?? {})
-    .filter(([, job]) => (job.steps ?? []).some((s) => s.run?.trim() === "npm run format:check"))
+    .filter(([, job]) => always(job) && (job.steps ?? []).some((s) => always(s) && s.run === "npm run format:check"))
     .map(([name]) => name);
 
 /** Each line of an ignore-revs file that is not one full commit id, and a missing final newline. */
@@ -32,22 +37,57 @@ const notInHistory = (ids: string[]) =>
   );
 
 // CI's test job fetches two commits; history older than that is only there in a full clone.
-const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: fileURLToPath(ROOT) })
-  .toString()
-  .trim();
+const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: ROOT }).toString().trim();
 
 describe("the format check", () => {
   it("runs in the lint job, and fails when the step moves or goes", async () => {
     expect(checking(await ci())).toEqual(["lint"]);
-    const pkg = JSON.parse(await read("package.json")) as { scripts: Record<string, string> };
-    expect(pkg.scripts["format:check"]).toBe("prettier --check .");
-    const moved = structuredClone(await ci());
+    const moved = await ci();
     const lint = moved.jobs!.lint!;
     const step = lint.steps!.findIndex((s) => s.run === "npm run format:check");
     moved.jobs!.test!.steps!.push(...lint.steps!.splice(step, 1));
     expect(checking(moved)).toEqual(["test"]);
     moved.jobs!.test!.steps!.pop();
     expect(checking(moved)).toEqual([]);
+  });
+
+  it("fails when the step or the lint job may be skipped or may fail without failing the run", async () => {
+    for (const [key, value] of [
+      ["if", false],
+      ["if", "github.event_name == 'push'"],
+      ["continue-on-error", true],
+    ] as const)
+      for (const on of ["step", "job"]) {
+        const workflow = await ci();
+        const lint = workflow.jobs!.lint!;
+        const at = on === "job" ? lint : lint.steps!.find((s) => s.run === "npm run format:check")!;
+        at[key] = value;
+        expect(checking(workflow), `${key} on the ${on}`).toEqual([]);
+      }
+  });
+
+  it("reads only .prettierignore, so .gitignore cannot drop a file, and checks every code extension", async () => {
+    const { format, "format:check": check } = await scripts();
+    expect(format).toBe(check!.replace("--check", "--write"));
+    const [bin, ...args] = check!.split(" ");
+    expect(bin).toBe("prettier");
+    const dir = await mkdtemp(join(tmpdir(), "darnit-format-"));
+    try {
+      for (const f of [".prettierignore", ".prettierrc.json"]) await copyFile(join(ROOT, f), join(dir, f));
+      await writeFile(join(dir, ".gitignore"), "src/\n");
+      await mkdir(join(dir, "src"));
+      const files = ["ts", "js", "mjs", "cjs", "mts", "cts", "tsx", "jsx"].map((e) => `src/bad.${e}`);
+      for (const f of files) await writeFile(join(dir, f), "export   const badly={a:1}\n");
+      await writeFile(join(dir, "src/notes.md"), "a  *b*\n");
+      const prettier = join(ROOT, "node_modules/prettier/bin/prettier.cjs");
+      const run = spawnSync(process.execPath, [prettier, ...args], { cwd: dir, encoding: "utf8" });
+      expect(run.status).toBe(1);
+      expect([...(run.stdout + run.stderr).matchAll(/^\[warn\] (src\/\S+)$/gm)].map((m) => m[1]).sort()).toEqual(
+        files.sort(),
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
