@@ -47,6 +47,11 @@ All must be true before tagging, for a candidate and again for the final version
 - For the final version only: the candidate passed every check in "Verify from every angle", and
   nothing has merged to `main` since its tag (`git log --oneline vX.Y.Z-rc.N..origin/main` is
   empty).
+- For the final version only: `npm run accounting -- --final --notes open.md` passes. It fails when
+  a vendor has more items that need a record than `packs/<vendor>/record-ceiling.txt` allows, or
+  when that file is missing or not one whole number. A test holds each ceiling equal to the items
+  marked needs-record, so a change that closes items lowers it, and it reaches zero once they are all
+  closed. A candidate runs plain `npm run accounting`.
 
 ## Release candidate
 
@@ -132,7 +137,8 @@ cd "$(mktemp -d)" && npx -y darnit@X.Y.Z --version
 npm view darnit dist-tags                           # latest (or latest-X.Y for an older line) is X.Y.Z
 ```
 
-`notes.md` holds the version's changelog entry. A candidate's `init` pins its exact version
+`notes.md` holds the version's changelog entry, then `open.md` from the gate above, which lists
+every item still open with its date, so no item that needs a record goes out unnamed. A candidate's `init` pins its exact version
 (`darnit@X.Y.Z-rc.N`), so anyone who set up a repository with a candidate re-runs `init` or edits
 the pin to `darnit@X.Y` (`darnit@X` from 1.0 on). Afterwards, watch the next scheduled run of the
 darnit-sh/darnit-example workflow (`gh run list -R darnit-sh/darnit-example`) and check it passes.

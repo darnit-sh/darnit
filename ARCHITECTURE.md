@@ -92,7 +92,8 @@ new class is listed here, with its invariant, by the change that adds it.
   vendor's corpus files, and accounting then fails on that vendor's new removals: keep only the new vendor's files
   and restore the rest (`git checkout -- corpus/<other-vendor>/`). Every item the new vendor's spec marks deprecated
   then needs a record or an entry with its reason in `packs/<vendor>/not-covered.yaml`, or `npm run accounting`
-  fails. Nothing checks that `VENDORS` and `vendors.yml` name the same vendors.
+  fails, and `packs/<vendor>/record-ceiling.txt` holds how many of them that file marks needs-record, or
+  `npm test` fails. Nothing checks that `VENDORS` and `vendors.yml` name the same vendors.
 
 ## Limits
 The checks below run in CI. Anything that broke one before it existed is listed in its file under `scripts/allow/`
