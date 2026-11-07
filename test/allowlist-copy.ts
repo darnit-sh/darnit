@@ -39,9 +39,15 @@ export async function copy() {
 // Without GITHUB_ACTIONS, so a run under Actions reads the same output as a local one.
 const LOCAL = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "GITHUB_ACTIONS"));
 
+// A check that hangs is killed here and fails its test, which then names it, rather than running past the suite's limit.
 export const run = (kind: "unused" | "duplicates" | "limits", root = ROOT, env: NodeJS.ProcessEnv = LOCAL) => {
-  const r = spawnSync(tsx, ["scripts/allowlist.ts", kind, "--root", root], { cwd: ROOT, encoding: "utf8", env });
-  return { status: r.status, out: r.stdout + r.stderr };
+  const r = spawnSync(tsx, ["scripts/allowlist.ts", kind, "--root", root], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env,
+    timeout: 60_000,
+  });
+  return { status: r.status, out: r.stdout + r.stderr + (r.error ? `\nkilled by ${r.error.message}` : "") };
 };
 
 /** `npm run <script>` in `dir`, as CI's lint job runs it, with npm's own settings left out. */

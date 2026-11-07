@@ -112,10 +112,10 @@ describe("the checks as the lint job runs them", () => {
 
   it("run in the lint job every time, and fail the run when they fail", async () => {
     for (const script of ["knip", "duplicates", "limits"]) {
-      const run = `npm run ${script}`;
-      expect(checking(await ci(), run), script).toEqual(["lint"]);
-      for await (const { workflow, how } of loosened("lint", run))
-        expect(checking(workflow, run), `${script}: ${how}`).toEqual([]);
+      const step = `npm run ${script}`;
+      expect(checking(await ci(), step), script).toEqual(["lint"]);
+      for await (const { workflow, how } of loosened("lint", step))
+        expect(checking(workflow, step), `${script}: ${how}`).toEqual([]);
     }
   });
 });

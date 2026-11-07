@@ -130,13 +130,13 @@ describe("npm run limits", () => {
     ]);
   });
 
-  it("fails on a link to a folder under src/, which it would not read", async () => {
+  it("fails on a link to a folder under src/, so each breach is listed under the path it is edited at", async () => {
     const dir = await copy();
     await plant(dir, { "lib/x.ts": TERNARY });
     await symlink("../lib", join(dir, "src/lib"));
     const r = run("limits", dir);
     expect(r.status).toBe(1);
-    expect(r.out).toContain("src/lib links to a folder");
+    expect(r.out).toContain("src/lib is a link to a folder; keep the code in src/ itself");
   });
 
   it("keys a breach without its line, so moving every listed breach down changes nothing", async () => {
@@ -224,6 +224,62 @@ describe("a listed breach", () => {
   });
 });
 
+describe("a breach in a method with a computed key", () => {
+  it("is found and named by what holds it, without the check hanging", async () => {
+    const dir = await copy();
+    await plant(dir, {
+      "src/iter.ts":
+        "export const bag = { *[Symbol.iterator](a: number, b: number, c: number, d: number, e: number) { yield a + b + c + d + e; } };\n",
+      "src/tpl.ts": `export const o = { [\`k\${1}\`](n: number) { return n > 1 ? "a" : n > 0 ? "b" : "c"; } };\n`,
+    });
+    const r = run("limits", dir);
+    expect(r.out).not.toContain("killed by");
+    expect(r.status).toBe(1);
+    expect(missing(r.out)).toEqual(["src/iter.ts\tmax-params\t(top)\t5", "src/tpl.ts\tno-nested-ternary\t(top)\t1"]);
+  });
+
+  it("is measured by the rule's own number, not one in the key", async () => {
+    const dir = await copy();
+    await plant(dir, {
+      "src/paren.ts": `export const api = {\n  async ["(1)"](n: number) {\n    let t = 0;\n${ifs(41)}    return t;\n  },\n};\n`,
+    });
+    await appendFile(join(dir, LIST), "src/paren.ts\tcomplexity\t(top)\t13\tlisted at 13\n");
+    const r = run("limits", dir);
+    expect(r.status).toBe(1);
+    expect(missing(r.out)).toEqual(["src/paren.ts\tcomplexity\t(top)\t42"]);
+    expect(r.out).toContain("above the cap of 13 its line gives");
+  });
+});
+
+describe("nesting depth", () => {
+  // try blocks count toward depth and not toward complexity, so only the depth breaks a limit.
+  const deep = (depth: number) => `${"  try {\n".repeat(depth)}    n++;\n${"  } finally {\n  }\n".repeat(depth)}`;
+
+  it("is one line per function, capped at its deepest block", async () => {
+    const dir = await copy();
+    await plant(dir, {
+      "src/d.ts": `export function f(n: number) {\n${deep(4)}${deep(5)}${deep(4)}  return n;\n}\n`,
+      "src/twice.ts": `export class A {\n  run(n: number) {\n${deep(4)}    return n;\n  }\n}\nexport class B {\n  run(n: number) {\n${deep(5)}    return n;\n  }\n}\n`,
+    });
+    expect(missing(run("limits", dir).out)).toEqual([
+      "src/d.ts\tmax-depth\tf\t5",
+      "src/twice.ts\tmax-depth\trun\t4",
+      "src/twice.ts\tmax-depth\trun #2\t5",
+    ]);
+  });
+
+  it("passes any block at or below the function's cap, and fails one deeper", async () => {
+    const dir = await copy();
+    await appendFile(join(dir, LIST), "src/d.ts\tmax-depth\tf\t5\tlisted at 5\n");
+    await plant(dir, { "src/d.ts": `export function f(n: number) {\n${deep(5)}${deep(5)}  return n;\n}\n` });
+    expect(run("limits", dir)).toMatchObject({ status: 0 });
+    await plant(dir, { "src/d.ts": `export function f(n: number) {\n${deep(5)}${deep(6)}  return n;\n}\n` });
+    const r = run("limits", dir);
+    expect(r.status).toBe(1);
+    expect(missing(r.out)).toEqual(["src/d.ts\tmax-depth\tf\t6"]);
+  });
+});
+
 describe("the eslint the check runs", () => {
   it("is the one the repository installs, not a folder of the same name committed under scripts/", async () => {
     const dir = await copy();
@@ -268,51 +324,76 @@ describe("a limit's key", () => {
         "}",
         'export const table = ((n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c"))(1);',
         'export const bare = 1 > 0 ? "a" : 0 > 1 ? "b" : "c";',
+        "exports.assigned = function (n: number) {",
+        '  return n > 1 ? "a" : n > 0 ? "b" : "c";',
+        "};",
+        "let late: (n: number) => string;",
+        'late = (n) => (n > 1 ? "a" : n > 0 ? "b" : "c");',
+        'export const cast = ((n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c")) as (n: number) => string;',
+        'export const sat = ((n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c")) satisfies (n: number) => string;',
+        'export const bang = ((n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c"))!;',
+        'export const old = <(n: number) => string>((n: number) => (n > 1 ? "a" : n > 0 ? "b" : "c"));',
+        "export class P {",
+        "  many(a: number, b: number, c: number, d: number, e: number) {",
+        "    return a + b + c + d + e;",
+        "  }",
+        "  #go(a: number, b: number, c: number, d: number, e: number) {",
+        "    return a + b + c + d + e + late(1).length;",
+        "  }",
+        "}",
         "export default (a: number, b: number, c: number, d: number, e: number) => a + b + c + d + e;",
         "",
       ].join("\n"),
     });
     expect(missing(run("limits", dir).out)).toEqual([
+      "src/names.ts\tmax-params\t#go\t5",
       "src/names.ts\tmax-params\tdefault\t5",
+      "src/names.ts\tmax-params\tmany\t5",
       "src/names.ts\tno-nested-ternary\t(top)\t1",
+      "src/names.ts\tno-nested-ternary\tassigned\t1",
+      "src/names.ts\tno-nested-ternary\tbang\t1",
+      "src/names.ts\tno-nested-ternary\tcast\t1",
       "src/names.ts\tno-nested-ternary\tfield\t1",
       "src/names.ts\tno-nested-ternary\tkey\t1",
+      "src/names.ts\tno-nested-ternary\tlate\t1",
+      "src/names.ts\tno-nested-ternary\told\t1",
       "src/names.ts\tno-nested-ternary\tquoted key\t1",
       "src/names.ts\tno-nested-ternary\trun\t1",
+      "src/names.ts\tno-nested-ternary\tsat\t1",
       "src/names.ts\tno-nested-ternary\ttable\t1",
       "src/names.ts\tno-nested-ternary\ttop\t1",
     ]);
   });
 
   it("numbers breaches of the same file, rule and name in order, so one more is a finding of its own", () => {
-    const at = (line: number) => ({
-      file: "src/a.ts",
-      rule: "max-depth",
-      name: "run",
-      line,
-      column: 3,
-      message: `nested (${line % 7})`,
-    });
-    const shadow = {
-      file: "src/a.ts",
-      rule: "no-shadow",
-      name: "run",
-      line: 1,
-      column: 1,
-      message: "'x' is already declared",
-    };
-    expect([...limitFindings([at(40), shadow, at(9)], [])]).toEqual([
-      ["src/a.ts\tno-shadow\trun\t1", "line 1: 'x' is already declared"],
-      ["src/a.ts\tmax-depth\trun\t2", "line 9: nested (2)"],
-      ["src/a.ts\tmax-depth\trun #2\t5", "line 40: nested (5)"],
+    const at = (line: number) => ({ file: "src/a.ts", rule: "no-nested-ternary", name: "run", line, column: 3 });
+    const ternary = "Do not nest ternary expressions.";
+    expect([
+      ...limitFindings(
+        [
+          { ...at(40), message: ternary },
+          { ...at(9), message: ternary },
+        ],
+        [],
+      ),
+    ]).toEqual([
+      ["src/a.ts\tno-nested-ternary\trun\t1", `line 9: ${ternary}`],
+      ["src/a.ts\tno-nested-ternary\trun #2\t1", `line 40: ${ternary}`],
     ]);
   });
 
-  it("reads the measure from eslint's message, and counts a breach eslint does not measure as 1", () => {
-    expect(measured("Async function 'scan' has too many lines (114). Maximum allowed is 50.")).toBe(114);
-    expect(measured("Arrow function has a complexity of 12. Maximum allowed is 10.")).toBe(12);
-    expect(measured("Blocks are nested too deeply (4). Maximum allowed is 3.")).toBe(4);
-    expect(measured("'line' is already declared in the upper scope on line 12 column 5.")).toBe(1);
-    expect(measured("Do not nest ternary expressions.")).toBe(1);
+  it("reads the measure from each rule's own wording, and counts a breach eslint does not measure as 1", () => {
+    expect(measured("max-lines", "File has too many lines (454). Maximum allowed is 300.")).toBe(454);
+    expect(measured("max-lines-per-function", "Method '(9)' has too many lines (114). Maximum allowed is 50.")).toBe(
+      114,
+    );
+    expect(measured("complexity", "Method 'complexity of 99' has a complexity of 12. Maximum allowed is 10.")).toBe(12);
+    expect(measured("max-depth", "Blocks are nested too deeply (4). Maximum allowed is 3.")).toBe(4);
+    expect(measured("max-params", "Method '(7)' has too many parameters (5). Maximum allowed is 4.")).toBe(5);
+    expect(
+      measured("@typescript-eslint/no-shadow", "'line' is already declared in the upper scope on line 12 column 5."),
+    ).toBe(1);
+    expect(measured("no-nested-ternary", "Do not nest ternary expressions.")).toBe(1);
+    expect(() => measured("complexity", "Method 'x' is complex (12).")).toThrow("could not read the complexity");
   });
 });

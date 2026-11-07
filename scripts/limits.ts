@@ -20,7 +20,7 @@ const LIMITS = {
 
 const CODE = /\.[cm]?[jt]sx?$/;
 const FUNCTION = /^(FunctionDeclaration|FunctionExpression|ArrowFunctionExpression|StaticBlock)$/;
-const KEYED = /^(MethodDefinition|TSAbstractMethodDefinition|Property|PropertyDefinition|AccessorProperty)$/;
+const KEYED = /^(MethodDefinition|Property|PropertyDefinition)$/;
 // What can stand between a function and the name it is given: a cast, or the call of a function invoked at once.
 const WRAPPER = /^(TSAsExpression|TSSatisfiesExpression|TSNonNullExpression|TSTypeAssertion|CallExpression)$/;
 
@@ -30,13 +30,34 @@ type Node = { type: string; parent?: Node; id?: Node | null; key?: Node; value?:
   left?: Node;
   property?: Node;
 };
-type Breach = { file: string; rule: string; name: string; line: number; column: number; message: string };
+// Each measuring rule's wording, read from the end, where a function's name in the message cannot reach.
+const MEASURES: Record<string, RegExp> = {
+  "max-lines": /too many lines \((\d+)\)\. Maximum allowed is \d+\.$/,
+  "max-lines-per-function": /too many lines \((\d+)\)\. Maximum allowed is \d+\.$/,
+  complexity: /complexity of (\d+)\. Maximum allowed is \d+\.$/,
+  "max-depth": /too deeply \((\d+)\)\. Maximum allowed is \d+\.$/,
+  "max-params": /too many parameters \((\d+)\)\. Maximum allowed is \d+\.$/,
+};
+
+/** A breach, with `fn` the function it sits in, so depth is counted once per function. */
+type Breach = {
+  file: string;
+  rule: string;
+  name: string;
+  line: number;
+  column: number;
+  message: string;
+  fn?: object | undefined;
+};
 type Line = { line: number; finding: string };
 
-/** The number eslint's message measures (lines, complexity, depth, parameters); 1 for a breach it does not measure. */
-export function measured(message: string) {
-  const m = /complexity of (\d+)|\((\d+)\)/.exec(message);
-  return m ? Number(m[1] ?? m[2]) : 1;
+/** The number `rule` measures in its message (lines, complexity, depth, parameters); 1 for a rule that measures none. */
+export function measured(rule: string, message: string) {
+  const wording = MEASURES[rule];
+  if (!wording) return 1;
+  const m = wording.exec(message);
+  if (!m) throw new Error(`could not read the ${rule} measure in eslint's message: ${message}`);
+  return Number(m[1]);
 }
 
 /** A property key as written, unless it is computed. */
@@ -78,14 +99,18 @@ function ownerOf(node: Node | undefined) {
   return undefined;
 }
 
-/** The nearest named function around the place eslint reports, or `(top)` at the top of the file. */
+/** What holds a function from outside: past the method or property whose value it is. */
+const outside = (fn: Node) => (fn.parent && KEYED.test(fn.parent.type) ? fn.parent.parent : fn.parent);
+
+/** The function eslint reports in, and the nearest named function around it, or `(top)` outside any function. */
 function owner(code: SourceCode, line: number, column: number) {
   const at = code.getNodeByRangeIndex(code.getIndexFromLoc({ line, column: column - 1 })) as Node | null;
-  for (let fn = ownerOf(at ?? undefined); fn; fn = ownerOf(fn.parent)) {
-    const name = nameOf(fn);
-    if (name) return name;
+  const fn = ownerOf(at ?? undefined);
+  for (let around = fn; around; around = ownerOf(outside(around))) {
+    const name = nameOf(around);
+    if (name) return { fn, name };
   }
-  return "(top)";
+  return { fn, name: "(top)" };
 }
 
 /**
@@ -95,7 +120,7 @@ function owner(code: SourceCode, line: number, column: number) {
  */
 export function limitFindings(breaches: readonly Breach[], lines: readonly Line[]): ReadonlyMap<string, string> {
   const listed = new Map(lines.map((l) => [l.finding.split("\t").slice(0, 3).join("\t"), l.finding]));
-  const sorted = [...breaches].sort(
+  const sorted = deepest(breaches).sort(
     (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column || a.rule.localeCompare(b.rule),
   );
   const count = new Map<string, number>();
@@ -110,10 +135,22 @@ export function limitFindings(breaches: readonly Breach[], lines: readonly Line[
   return found;
 }
 
+/** The breaches, with only the deepest block of each function kept for nesting depth. */
+function deepest(breaches: readonly Breach[]) {
+  const kept = new Map<unknown, Breach>();
+  const others = breaches.filter((b) => b.rule !== "max-depth");
+  for (const b of breaches.filter((d) => d.rule === "max-depth")) {
+    const at = `${b.file}\t${b.name}`;
+    const seen = kept.get(b.fn ?? at);
+    if (!seen || measured(b.rule, b.message) > measured(seen.rule, seen.message)) kept.set(b.fn ?? at, b);
+  }
+  return [...others, ...kept.values()];
+}
+
 /** What a breach is found as, given the listed line of the same key, if any. */
 function place(key: string, b: Breach, line: string | undefined): [string, string][] {
   const cap = line?.split("\t")[3] ?? "";
-  const measure = measured(b.message);
+  const measure = measured(b.rule, b.message);
   const note = `line ${b.line}: ${b.message}`;
   if (!line || !/^\d+$/.test(cap)) return [[`${key}\t${measure}`, note]];
   if (measure <= Number(cap)) return [[line, note]];
@@ -131,7 +168,9 @@ function sources(root: string) {
     .filter((p) => {
       const at = join(src, p);
       if (lstatSync(at).isSymbolicLink() && statSync(at).isDirectory())
-        throw new Error(`src/${p} links to a folder, which the limits check does not read; move the code into src/`);
+        throw new Error(
+          `src/${p} is a link to a folder; keep the code in src/ itself, so each breach is listed under the path it is edited at`,
+        );
       return CODE.test(p) && statSync(at).isFile();
     })
     .map((p) => join("src", p))
@@ -163,8 +202,8 @@ export function limits(dir: string, lines: readonly Line[] = []): ReadonlyMap<st
     const code = linter.getSourceCode();
     return messages.map((m) => {
       if (!m.ruleId) throw new Error(`eslint could not check ${file}:${m.line}: ${m.message}`);
-      const name = m.ruleId === "max-lines" ? "(file)" : owner(code, m.line, m.column);
-      return { file, rule: m.ruleId, name, line: m.line, column: m.column, message: m.message };
+      const { fn, name } = m.ruleId === "max-lines" ? { fn: undefined, name: "(file)" } : owner(code, m.line, m.column);
+      return { file, rule: m.ruleId, name, fn, line: m.line, column: m.column, message: m.message };
     });
   });
   return limitFindings(breaches, lines);

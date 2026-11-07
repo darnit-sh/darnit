@@ -122,9 +122,13 @@ These limits hold for any code a change writes or touches. For every file in `sr
 with the rules `scripts/limits.ts` holds: it reads no eslint config file and ignores comments that turn a rule off,
 so neither can widen them, and it runs the eslint the repository installs. A breach from before the check is listed
 in `scripts/allow/limits.tsv` under the nearest named function around it, with a cap: what it measured when it was
-listed (lines, complexity, depth or parameters; one for a nested ternary or a shadowed name). A change does not make
-a breach worse: one above its cap fails, and one at or below it passes, so a change that shrinks a listed function
-need not touch the list. The lines of a class `static {}` block are not counted, as no rule measures them; its
+listed, which is the lines, complexity or parameters of the function, the depth of its deepest block, or one for
+each nested ternary or shadowed name. A breach above its cap fails, and one at or below it passes, so a change that
+shrinks a listed function need not touch the list. Inside one listed function a change can still trade: it may move
+or add blocks as long as none is deeper than the function's cap, and replace a nested ternary or a shadowed name
+with another in the same function. Functions with no name of their own, and functions of the same name in one file,
+are numbered in order under one name, so a breach in one of them can take the place of another's at or below its
+cap. The lines of a class `static {}` block are not counted, as no rule measures them; its
 complexity and nesting are. In `scripts/` and the tests, the change holds to them itself.
 
 | Limit | Value |

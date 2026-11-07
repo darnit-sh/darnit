@@ -1,14 +1,13 @@
 # Size and shape limits broken in src/ that stay for now, one per line: the file, the rule, the nearest named
 # function around the breach ((file) for a file too long, (top) outside any function, name #2 for a repeat), the
-# cap, then the reason, tab separated. The cap is what the breach measured when it was listed (lines, complexity,
-# depth, parameters; 1 for a nested ternary or a shadowed name). npm run limits fails on a breach missing here, on
-# one above its cap and on a line whose breach is gone; a breach at or below its cap passes.
+# cap, then the reason, tab separated. The cap is what the breach measured when it was listed: lines, complexity,
+# parameters, or for nesting the depth of the function's deepest block, one line per function; 1 for each nested
+# ternary or shadowed name. npm run limits fails on a breach missing here, on one above its cap and on a line whose
+# breach is gone; a breach at or below its cap passes.
 src/check.ts	complexity	render	25	over complexity 10 before the limit was checked; goes when the function is split
 src/check.ts	complexity	scan	21	over complexity 10 before the limit was checked; goes when the function is split
 src/check.ts	complexity	scanCode	13	over complexity 10 before the limit was checked; goes when the function is split
-src/check.ts	max-depth	scan	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/check.ts	max-depth	scan #2	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/check.ts	max-depth	scan #3	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/check.ts	max-depth	scan	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/check.ts	max-lines	(file)	454	over 300 lines before the limit was checked; goes when the file is split by job
 src/check.ts	max-lines-per-function	scan	114	over 50 lines before the limit was checked; goes when the function is split
 src/check.ts	max-params	render	5	over 4 parameters before the limit was checked; goes when they become an options object
@@ -21,13 +20,8 @@ src/corpus/accounting.ts	complexity	removalItems	15	over complexity 10 before th
 src/corpus/accounting.ts	complexity	requestSchemas	16	over complexity 10 before the limit was checked; goes when the function is split
 src/corpus/accounting.ts	complexity	target	11	over complexity 10 before the limit was checked; goes when the function is split
 src/corpus/accounting.ts	complexity	walk	16	over complexity 10 before the limit was checked; goes when the function is split
-src/corpus/accounting.ts	max-depth	deprecatedItems	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/corpus/accounting.ts	max-depth	deprecatedItems #2	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/corpus/accounting.ts	max-depth	deprecatedItems #3	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/corpus/accounting.ts	max-depth	deprecatedItems	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/corpus/accounting.ts	max-depth	requestSchemas	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/corpus/accounting.ts	max-depth	requestSchemas #2	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/corpus/accounting.ts	max-depth	requestSchemas #3	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/corpus/accounting.ts	max-depth	requestSchemas #4	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/corpus/accounting.ts	max-lines	(file)	408	over 300 lines before the limit was checked; goes when the file is split by job
 src/corpus/accounting.ts	max-lines-per-function	account	102	over 50 lines before the limit was checked; goes when the function is split
 src/corpus/accounting.ts	no-nested-ternary	openItems	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
@@ -56,7 +50,6 @@ src/corpus/replacements.ts	complexity	replacementsFor	13	over complexity 10 befo
 src/corpus/replacements.ts	complexity	shutdownDate	11	over complexity 10 before the limit was checked; goes when the function is split
 src/corpus/replacements.ts	complexity	wholeRows	12	over complexity 10 before the limit was checked; goes when the function is split
 src/corpus/replacements.ts	max-depth	readPage	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/corpus/replacements.ts	max-depth	readPage #2	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/corpus/replacements.ts	max-lines	(file)	540	over 300 lines before the limit was checked; goes when the file is split by job
 src/corpus/replacements.ts	max-lines-per-function	readPage	52	over 50 lines before the limit was checked; goes when the function is split
 src/corpus/replacements.ts	max-lines-per-function	replacementsFor	86	over 50 lines before the limit was checked; goes when the function is split
@@ -72,14 +65,7 @@ src/detect.ts	complexity	detectApis	24	over complexity 10 before the limit was c
 src/detect.ts	complexity	inEmoji	15	over complexity 10 before the limit was checked; goes when the function is split
 src/detect.ts	complexity	readText	12	over complexity 10 before the limit was checked; goes when the function is split
 src/detect.ts	complexity	walk	15	over complexity 10 before the limit was checked; goes when the function is split
-src/detect.ts	max-depth	detectApis	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/detect.ts	max-depth	detectApis #2	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/detect.ts	max-depth	detectApis #3	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/detect.ts	max-depth	detectApis #4	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/detect.ts	max-depth	detectApis #5	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/detect.ts	max-depth	detectApis #6	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/detect.ts	max-depth	detectApis #7	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/detect.ts	max-depth	detectApis #8	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/detect.ts	max-depth	detectApis	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/detect.ts	max-lines	(file)	384	over 300 lines before the limit was checked; goes when the file is split by job
 src/detect.ts	no-nested-ternary	byPath	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
 src/detect.ts	no-nested-ternary	detectApis	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
@@ -151,10 +137,8 @@ src/git.ts	no-nested-ternary	git	1	a nested ternary from before the limit was ch
 src/git.ts	no-nested-ternary	switchTo	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
 src/init.ts	complexity	init	19	over complexity 10 before the limit was checked; goes when the function is split
 src/init.ts	max-depth	init	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/init.ts	max-depth	init #2	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/init.ts	max-lines-per-function	init	73	over 50 lines before the limit was checked; goes when the function is split
-src/packs/apply.ts	max-depth	applyRules	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/packs/apply.ts	max-depth	applyRules #2	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/packs/apply.ts	max-depth	applyRules	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/packs/fixtures.ts	complexity	checkDetection	11	over complexity 10 before the limit was checked; goes when the function is split
 src/packs/fixtures.ts	complexity	checkRewrite	15	over complexity 10 before the limit was checked; goes when the function is split
 src/packs/fixtures.ts	complexity	runPackFixtures	11	over complexity 10 before the limit was checked; goes when the function is split
@@ -163,15 +147,11 @@ src/plan.ts	complexity	duplicateKey	17	over complexity 10 before the limit was c
 src/plan.ts	complexity	wellFormed	37	over complexity 10 before the limit was checked; goes when the function is split
 src/plan.ts	max-depth	duplicateKey	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/plan.ts	max-depth	wellFormed	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/plan.ts	max-depth	wellFormed #2	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/plan.ts	max-depth	wellFormed #3	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/plan.ts	max-depth	wellFormed #4	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/scan/astgrep.ts	@typescript-eslint/no-shadow	requests	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
 src/scan/astgrep.ts	complexity	findMatches	21	over complexity 10 before the limit was checked; goes when the function is split
 src/scan/astgrep.ts	complexity	requests	13	over complexity 10 before the limit was checked; goes when the function is split
 src/scan/astgrep.ts	complexity	ruleFor	18	over complexity 10 before the limit was checked; goes when the function is split
 src/scan/astgrep.ts	max-depth	findMatches	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/scan/astgrep.ts	max-depth	findMatches #2	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/scan/astgrep.ts	max-lines	(file)	487	over 300 lines before the limit was checked; goes when the file is split by job
 src/scan/astgrep.ts	max-lines-per-function	endpointTest	55	over 50 lines before the limit was checked; goes when the function is split
 src/scan/astgrep.ts	max-lines-per-function	findMatches	72	over 50 lines before the limit was checked; goes when the function is split
@@ -187,10 +167,7 @@ src/scan/clients.ts	complexity	importsOf	29	over complexity 10 before the limit 
 src/scan/clients.ts	complexity	indexOf	35	over complexity 10 before the limit was checked; goes when the function is split
 src/scan/clients.ts	complexity	reachingAssignments	28	over complexity 10 before the limit was checked; goes when the function is split
 src/scan/clients.ts	max-depth	importsOf	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/scan/clients.ts	max-depth	importsOf #2	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/scan/clients.ts	max-depth	indexOf	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/scan/clients.ts	max-depth	indexOf #2	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
-src/scan/clients.ts	max-depth	indexOf #3	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/scan/clients.ts	max-depth	indexOf	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/scan/clients.ts	max-lines	(file)	505	over 300 lines before the limit was checked; goes when the file is split by job
 src/scan/clients.ts	max-lines-per-function	indexOf	57	over 50 lines before the limit was checked; goes when the function is split
 src/scan/clients.ts	max-params	clientOrigin	5	over 4 parameters before the limit was checked; goes when they become an options object
