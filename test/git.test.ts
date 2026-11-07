@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { type ChildProcess, execFile, execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { access, appendFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import {
@@ -43,11 +43,18 @@ async function listen(server: Server | HttpServer): Promise<number> {
   return (server.address() as AddressInfo).port;
 }
 
-/** git http-backend serving the bare repos under `remote`; `send` writes each answer's body, then `exited` runs. */
-function backend(remote: string, send = (res: ServerResponse, body: Buffer) => void res.end(body), exited = () => {}) {
+const GIT_CORE = execFileSync("git", ["--exec-path"], { encoding: "utf8" }).trim();
+
+/** git-http-backend serving the bare repos under `remote`; `send` writes each answer's body. */
+function backend(
+  remote: string,
+  send = (res: ServerResponse, body: Buffer) => void res.end(body),
+  spawned: (cgi: ChildProcess) => void = () => {},
+) {
   return (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url!, "http://x");
-    const cgi = spawn("git", ["http-backend"], {
+    // Not through `git`, which a kill can end alone: git-http-backend then reads for ever at the end of a cut-off body.
+    const cgi = spawn(join(GIT_CORE, "git-http-backend"), {
       env: {
         ...process.env,
         GIT_PROJECT_ROOT: remote,
@@ -82,8 +89,44 @@ function backend(remote: string, send = (res: ServerResponse, body: Buffer) => v
       res.writeHead(parseInt(status), rest);
       send(res, all.subarray(end + 4));
     });
-    cgi.on("close", exited);
+    spawned(cgi);
   };
+}
+
+const opened: (Socket | HttpServer)[] = [];
+afterEach(() => opened.splice(0).forEach((s) => (s instanceof Socket ? s.destroy() : s.close())));
+function serveBackend(...args: Parameters<typeof backend>) {
+  const server = createHttpServer(backend(...args));
+  opened.push(server);
+  return server;
+}
+
+const WAIT = { timeout: 30_000, interval: 50 };
+
+const parents = async () =>
+  (await promisify(execFile)("ps", ["-axo", "pid=,ppid=,stat=,command="], { maxBuffer: 2 ** 28 })).stdout
+    .split("\n")
+    .map((l) => l.trim().split(/\s+/))
+    .filter(([, , stat]) => stat && !stat.startsWith("Z"))
+    .map(([pid, ppid, , ...command]) => ({ pid: Number(pid), ppid: Number(ppid), command: command.join(" ") }));
+
+const noneLeft = (...pids: number[]) =>
+  vi.waitFor(async () => expect((await parents()).filter((p) => pids.includes(p.pid))).toEqual([]), WAIT);
+
+/** Sends a request that promises more than it holds, and returns once the backend for it has started. */
+async function postPart(remote: string, body: string) {
+  let spawned!: (cgi: ChildProcess) => void;
+  const started = new Promise<ChildProcess>((resolve) => (spawned = resolve));
+  const server = serveBackend(remote, undefined, spawned);
+  const client = new Socket();
+  opened.push(client);
+  client.connect(await listen(server), "127.0.0.1");
+  client.write(
+    "POST /r.git/git-receive-pack HTTP/1.1\r\nHost: x\r\nContent-Type: application/x-git-receive-pack-request\r\n" +
+      `Content-Length: ${2 ** 24}\r\n\r\n${body}`,
+  );
+  const cgi = await started;
+  return { cgi, hangUp: () => (client.destroy(), once(cgi, "close")) };
 }
 
 describe("git treats the repo as untrusted", () => {
@@ -437,19 +480,11 @@ describe("git calls that reach the remote end when it stalls", () => {
 });
 
 describe("a push over HTTP to git http-backend", () => {
-  const open: (Socket | HttpServer)[] = [];
-  afterEach(() => open.splice(0).forEach((s) => (s instanceof Socket ? s.destroy() : s.close())));
-  const serve = (...args: Parameters<typeof backend>) => {
-    const server = createHttpServer(backend(...args));
-    open.push(server);
-    return server;
-  };
-
   // No clock and the limit real pushes use, so a pause cannot fail this. test/zz-spawns.test.ts holds the process timeout.
   it("lands on a server that answers a byte at a time", async () => {
     const remote = await bareRemote();
     const port = await listen(
-      serve(remote, (res, body) => {
+      serveBackend(remote, (res, body) => {
         let at = 0;
         const timer = setInterval(
           () => (at < body.length ? res.write(body.subarray(at, ++at)) : (clearInterval(timer), res.end())),
@@ -462,29 +497,29 @@ describe("a push over HTTP to git http-backend", () => {
     await g.git(dir, ["push", "-q", "origin", "HEAD:refs/heads/x"], 60);
     expect(await g.git(join(remote, "r.git"), ["rev-parse", "x"])).toBe(await g.git(dir, ["rev-parse", "HEAD"]));
   });
+});
 
-  // A throw in the helper reaches no test: vitest reports it as an unhandled error, and `exited` never runs.
+describe("a client that hangs up on git-http-backend", () => {
+  // A throw in the helper reaches no test: vitest reports it as an unhandled error, and `close` is never seen here.
   it.each([
-    ["before sending anything", ""],
+    ["at once", ""],
     ["while sending what the backend refuses", "0".repeat(2 ** 20)],
-  ])(
-    "leaves the server up when the client hangs up %s",
-    async (_, body) => {
-      let exited!: () => void;
-      const gone = new Promise<void>((resolve) => (exited = resolve));
-      const server = serve(await bareRemote(), undefined, exited);
-      const client = new Socket();
-      open.push(client);
-      server.once("request", () => client.destroy());
-      client.connect(await listen(server), "127.0.0.1");
-      client.write(
-        "POST /r.git/git-receive-pack HTTP/1.1\r\nHost: x\r\nContent-Type: application/x-git-receive-pack-request\r\n" +
-          `Content-Length: ${2 ** 24}\r\n\r\n${body}`,
-      );
-      await gone;
-    },
-    10_000,
-  );
+  ])("leaves the server up and the backend gone when the client hangs up %s", async (_, body) => {
+    const { cgi, hangUp } = await postPart(await bareRemote(), body);
+    await hangUp();
+    await noneLeft(cgi.pid!);
+  });
+
+  // The parent check fails every time under `git http-backend`, not only when a kill lands in its first milliseconds.
+  it("kills the process that reads the body, and what it started goes too", async () => {
+    const { cgi, hangUp } = await postPart(await bareRemote(), "");
+    const child = await vi.waitFor(async () => {
+      const found = (await parents()).find((p) => p.ppid === cgi.pid && p.command.includes("receive-pack"));
+      return found ?? expect.fail("no receive-pack under the backend");
+    }, WAIT);
+    await hangUp();
+    await noneLeft(cgi.pid!, child.pid);
+  });
 });
 
 describe("push", () => {
