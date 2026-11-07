@@ -10,6 +10,7 @@
   "files": [
     "CHANGELOG.md",
     "dist",
+    "!dist/**/*.map",
     "packs/**/change.json",
     "packs/**/rules/**"
   ],
