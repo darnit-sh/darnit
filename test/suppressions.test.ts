@@ -1,13 +1,15 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { posix } from "node:path";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, sep } from "node:path";
 import { Lang, parse } from "@ast-grep/napi";
 import { describe, expect, it } from "vitest";
 import { problems } from "../scripts/allowlist.js";
-import { readSources, type Sources } from "./import-graph.js";
+import type { Sources } from "./import-graph.js";
 
 // Every comment in src/ and scripts/ that turns a check off is listed in scripts/allow/suppressions.tsv with the
-// reason it stays. Comments are read from each file's syntax tree, so words inside a string, a template or a regex
-// are not a comment. In shell files only jscpd reads suppressions, so only its marker counts there, in any # comment.
+// reason it stays. In JavaScript and TypeScript, comments are read from each file's syntax tree, so words inside a
+// string, a template or a regex are not a comment. In any other file only jscpd reads a suppression, so only its
+// marker counts there, on any line, apart from the .tsv lists, which jscpd does not read and which name markers.
 
 const LIST = "scripts/allow/suppressions.tsv";
 /** The tags knip skips an export for and the ends of a jscpd marker, as scripts/check-refactor.sh's grown rule has them. */
@@ -16,33 +18,31 @@ const JSCPD_ENDS = ["start", "end"];
 /** The coverage plugin's ignore hint, as scripts/check-coverage.sh counts it. */
 const COVERAGE_HINT = /(?:istanbul|[cv]8|node:coverage)\s+ignore\s+(?:if|else|next|file|start|stop)(?=\W|$)/gi;
 const JSCPD = new RegExp(`jscpd\\s*:\\s*ignore\\s*-\\s*(?:${JSCPD_ENDS.join("|")})`, "gi");
-/** Each suppression in any case and spacing; an eslint one is named with the rules after it, up to `--`. */
+/** Each suppression in any case and spacing; an eslint one is named with the rest of its comment, up to `--`. */
 const FORMS: { pattern: RegExp; rules?: boolean }[] = [
   { pattern: /eslint\s*-\s*disable(?:\s*-\s*next)?(?:\s*-\s*line)?/gi, rules: true },
-  { pattern: /(?<=^\/\*\s*)eslint(?=\s+[\w@/-]+\s*:)/gi, rules: true },
+  // A block comment eslint reads as config: its text starts with one of these words and whitespace.
+  { pattern: /(?<=^\/\*\s*)(?:eslint|globals?|exported)(?=\s)(?!\s*-)/gi, rules: true },
   { pattern: /@\s*ts\s*-\s*(?:expect\s*-\s*error|ignore|nocheck)/gi },
   { pattern: COVERAGE_HINT },
   { pattern: JSCPD },
   { pattern: new RegExp(`@\\s*(?:${KNIP_TAGS.join("|")})(?![A-Za-z0-9_])`, "gi") },
   { pattern: /prettier\s*-\s*ignore(?:\s*-\s*(?:start|end))?/gi },
 ];
-const SHELL = /\.sh$/;
+const CODE = /\.[cm]?[jt]sx?$/;
 
 type Comment = { text: string; line: number };
 
-/** Each comment in `text`; in a shell file each line from its first #, over-reading quotes and words. */
+/** Each comment in a code file's `text`; in any other file each line. */
 function comments(file: string, text: string): Comment[] {
-  if (SHELL.test(file))
-    return text
-      .split("\n")
-      .flatMap((l, i) => (l.includes("#") ? [{ text: l.slice(l.indexOf("#")), line: i + 1 }] : []));
+  if (!CODE.test(file)) return text.split("\n").map((l, i) => ({ text: l, line: i + 1 }));
   return parse(/x$/.test(file) ? Lang.Tsx : Lang.TypeScript, text)
     .root()
     .findAll({ rule: { kind: "comment" } })
     .map((n) => ({ text: n.text(), line: n.range().start.line + 1 }));
 }
 
-/** The suppression `m` names: its words in lower case and single spaced, and an eslint one's rules. */
+/** The suppression `m` names: its words in lower case and single spaced, and an eslint one's rules on every line. */
 function suppression(c: Comment, m: RegExpExecArray, rules: boolean | undefined) {
   const name = m[0]
     .toLowerCase()
@@ -51,17 +51,19 @@ function suppression(c: Comment, m: RegExpExecArray, rules: boolean | undefined)
   const after = rules
     ? c.text
         .slice(m.index + m[0].length)
-        .split(/\n|--|\*\//)[0]!
+        .replace(/\*\/$/, "")
+        .replace(/\s+/g, " ")
+        .split(/ -{2,} /)[0]!
         .trim()
     : "";
-  return after ? `${name} ${after.replace(/\s+/g, " ")}` : name;
+  return after ? `${name} ${after}` : name;
 }
 
 /** Each suppression in `sources` as its list line names it, `file<TAB>suppression<TAB>#n`, noted with its line. */
 function findings(sources: Sources): Map<string, string> {
   const found = new Map<string, string>();
   for (const [file, text] of sources) {
-    const forms = SHELL.test(file) ? [{ pattern: JSCPD }] : FORMS;
+    const forms = CODE.test(file) ? FORMS : [{ pattern: JSCPD }];
     const keys = comments(file, text).flatMap((c) =>
       forms.flatMap((f) =>
         [...c.text.matchAll(f.pattern)].map((m) => ({
@@ -80,13 +82,13 @@ function findings(sources: Sources): Map<string, string> {
   return found;
 }
 
-/** Every code file under src/ and scripts/, and every shell file under scripts/. */
-function sources(): Sources {
-  const all = readSources();
-  for (const entry of readdirSync("scripts", { recursive: true, withFileTypes: true }))
-    if (entry.isFile() && SHELL.test(entry.name)) {
-      const file = posix.join(entry.parentPath.split("\\").join("/"), entry.name);
-      all.set(file, readFileSync(file, "utf8"));
+/** Every file under `root`'s src/ and scripts/ but the .tsv lists, by path from `root`. */
+function sources(root = "."): Sources {
+  const all: Sources = new Map();
+  for (const dir of ["src", "scripts"])
+    for (const entry of readdirSync(join(root, dir), { recursive: true, withFileTypes: true })) {
+      const file = relative(root, join(entry.parentPath, entry.name)).split(sep).join("/");
+      if (!entry.isDirectory() && !file.endsWith(".tsv")) all.set(file, readFileSync(join(root, file), "utf8"));
     }
   return all;
 }
@@ -112,6 +114,13 @@ describe("suppression comments", () => {
     ["x; // eslint-disable-line no-eval -- why", "eslint-disable-line no-eval"],
     ["/* eslint -\n  disable  no-eval */", "eslint-disable no-eval"],
     ["/* eslint no-eval: off */", "eslint no-eval: off"],
+    ["/* eslint-disable no-control-regex,\n   no-debugger */", "eslint-disable no-control-regex, no-debugger"],
+    ['/* eslint "no-debugger": "off" */', 'eslint "no-debugger": "off"'],
+    ['/* eslint {"no-debugger": "off"} */', 'eslint {"no-debugger": "off"}'],
+    ["/* eslint 'no-debugger': 0 */", "eslint 'no-debugger': 0"],
+    ["/* global zzz */", "global zzz"],
+    ["/*globals zzz: writable*/", "globals zzz: writable"],
+    ["/* Exported dbg */", "exported dbg"],
     ["// @ts-expect-error", "@ts-expect-error"],
     ["// @ts-ignore: why", "@ts-ignore"],
     ["/* @TS-Ignore */", "@ts-ignore"],
@@ -131,6 +140,12 @@ describe("suppression comments", () => {
   ])("fail when %j is added to a clean file", (comment, name) => {
     expect(withFile("src/refusal.ts", `${clean}\n${comment}\nexport const x = 1;\n`)).toEqual([
       expect.stringContaining(missing(`src/refusal.ts\t${name}\t#1`)),
+    ]);
+  });
+
+  it("count a global comment in a JavaScript script, which turns no-undef off for the name", () => {
+    expect(withFile("scripts/zz.js", "/* global zzz */\nzzz();\n")).toEqual([
+      `${missing("scripts/zz.js\tglobal zzz\t#1 (line 1)")}${STAYS}`,
     ]);
   });
 
@@ -163,6 +178,16 @@ describe("suppression comments", () => {
     ]);
   });
 
+  it("keep the rules on every line of a block comment in the key", () => {
+    const listed = `${list}src/refusal.ts\teslint-disable no-control-regex,\t#1\treason\n`;
+    const comment =
+      "/* eslint-disable no-control-regex,\n   no-debugger */\nexport function dbg(): void {\n  debugger;\n}\n";
+    expect(check(new Map([...sources(), ["src/refusal.ts", `${clean}${comment}`]]), listed)).toEqual([
+      `${missing("src/refusal.ts\teslint-disable no-control-regex, no-debugger\t#1 (line 3)")}${STAYS}`,
+      `${LIST}:12 is no longer found: src/refusal.ts\teslint-disable no-control-regex,\t#1; remove the line`,
+    ]);
+  });
+
   it("fail a list line whose comment is gone, and a line without a reason", () => {
     expect(check(sources(), `${list}src/refusal.ts\t@ts-ignore\t#1\twhy\n`)).toEqual([
       `${LIST}:12 is no longer found: src/refusal.ts\t@ts-ignore\t#1; remove the line`,
@@ -173,8 +198,41 @@ describe("suppression comments", () => {
   });
 });
 
-describe("suppressions in shell files", () => {
-  it("are jscpd's marker in a comment, the one suppression a tool reads there", () => {
+describe("suppressions outside JavaScript and TypeScript", () => {
+  it.each(["scripts/aa.bash", "scripts/bb.zsh", "src/x.py"])("are jscpd's markers on any line of %s", (file) => {
+    expect(withFile(file, "# jscpd:ignore-start\nx = 1\n# jscpd:ignore-end\n")).toEqual([
+      `${missing(`${file}\tjscpd:ignore-end\t#1 (line 3)`)}${STAYS}`,
+      `${missing(`${file}\tjscpd:ignore-start\t#1 (line 1)`)}${STAYS}`,
+    ]);
+  });
+
+  it("are found in every file under src/ and scripts/, in nested folders too, but the .tsv lists", () => {
+    const root = mkdtempSync(join(tmpdir(), "darnit-suppressions-"));
+    try {
+      const files = {
+        "src/n/m.py": "# jscpd:ignore-start\n",
+        "scripts/a/b/x.sh": "# jscpd:ignore-end\n",
+        "src/t.ts": "// @ts-ignore\n",
+        "scripts/notes.txt": "jscpd:ignore-start\n",
+        "scripts/allow/x.tsv": "src/a.ts\tjscpd:ignore-start\t#1\twhy\n",
+      };
+      for (const [file, text] of Object.entries(files)) {
+        mkdirSync(dirname(join(root, file)), { recursive: true });
+        writeFileSync(join(root, file), text);
+      }
+      writeFileSync(join(root, "plain.sh"), "# jscpd:ignore-start\n");
+      expect([...findings(sources(root)).keys()].sort()).toEqual([
+        "scripts/a/b/x.sh\tjscpd:ignore-end\t#1",
+        "scripts/notes.txt\tjscpd:ignore-start\t#1",
+        "src/n/m.py\tjscpd:ignore-start\t#1",
+        "src/t.ts\t@ts-ignore\t#1",
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("are jscpd's marker alone in a shell file, the one suppression a tool reads there", () => {
     const script = "#!/bin/sh\necho a # JSCPD:ignore-start\n# @public eslint-disable @ts-ignore c8 ignore next\n";
     expect(withFile("scripts/new.sh", script)).toEqual([
       `${missing("scripts/new.sh\tjscpd:ignore-start\t#1 (line 2)")}${STAYS}`,
