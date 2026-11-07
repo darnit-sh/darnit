@@ -18,7 +18,7 @@ import { show } from "./show.js";
 // which files a pull request changed, and a gate reads its line only when it finds something to waive, so a count
 // is of pull requests that hold the line, not of pull requests a gate let through on it.
 
-type Key = "proof" | "allowlist" | "coverage";
+type Key = "proof" | "allowlist" | "coverage" | "ceiling";
 const ROWS: { line: string; key: Key; since: Record<string, number> }[] = [
   // refactor and perf: scripts/check-refactor.sh since #102; fix and feat: scripts/check-proof.sh since #108.
   { line: "Proof: none", key: "proof", since: { fix: 108, feat: 108, refactor: 102, perf: 102 } },
@@ -29,6 +29,8 @@ const ROWS: { line: string; key: Key; since: Record<string, number> }[] = [
   { line: "Allowlist", key: "allowlist", since: { ci: 174 } },
   // scripts/check-coverage.sh, since #176.
   { line: "Coverage", key: "coverage", since: { ci: 176 } },
+  // scripts/check-ceiling.sh, read for any title type, since #208.
+  { line: "Ceiling", key: "ceiling", since: { any: 208 } },
 ];
 
 const PullRequests = z.array(
@@ -48,7 +50,8 @@ const READ = `BODY=$(cat); . "$COMMON"
 t=$(title_type); opt_out >/dev/null; p=$reason
 body_reason "Allowlist: " Allowlist >/dev/null; a=$reason
 body_reason "Coverage: " Coverage >/dev/null; c=$reason
-printf '%s\\0' "$t" "$p" "$a" "$c"`;
+body_reason "Ceiling: " Ceiling >/dev/null; g=$reason
+printf '%s\\0' "$t" "$p" "$a" "$c" "$g"`;
 
 /** The title's type and each line's reason as the gates read them, "" where a gate would not take the line. */
 export function read(title: string, body: string): Promise<Read> {
@@ -65,8 +68,9 @@ export function read(title: string, body: string): Promise<Read> {
     child.stdout.setEncoding("utf8").on("data", (d: string) => (out += d));
     child.stdin.on("error", () => {}).end(body);
     child.on("error", fail).on("close", (status) => {
-      const [type, proof, allowlist, coverage] = out.split("\0");
-      if (status === 0 && coverage !== undefined) done({ type: type!, proof: proof!, allowlist: allowlist!, coverage });
+      const [type, proof, allowlist, coverage, ceiling] = out.split("\0");
+      if (status === 0 && ceiling !== undefined)
+        done({ type: type!, proof: proof!, allowlist: allowlist!, coverage: coverage!, ceiling });
       else fail(new Error(`scripts/pr-common.sh exited ${status} on a body`));
     });
   });
@@ -111,7 +115,7 @@ export function count(prs: PullRequest[], reads: Read[], from?: number) {
     const start = new Map(starts.map(([type, n]) => [type, merged.get(n)!]));
     const window = prs
       .map((pr, i) => [pr, reads[i]!] as const)
-      .filter(([pr, r]) => (start.get(r.type) ?? Infinity) < Date.parse(pr.mergedAt));
+      .filter(([pr, r]) => (start.get(r.type) ?? start.get("any") ?? Infinity) < Date.parse(pr.mergedAt));
     const waived = window.filter(([, r]) => r[key]).length;
     return { line, types: Object.keys(since), after, counts: { waived, window: window.length } };
   });

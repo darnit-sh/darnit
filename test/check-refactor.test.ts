@@ -70,6 +70,7 @@ const guard = {
   "check-refactor.sh": readFileSync(script, "utf8"),
   "pr-common.sh": readFileSync("scripts/pr-common.sh", "utf8"),
   "check-coverage.sh": readFileSync("scripts/check-coverage.sh", "utf8"),
+  "check-ceiling.sh": readFileSync("scripts/check-ceiling.sh", "utf8"),
   "timed.sh": 'sh "$(dirname "$0")/check-refactor.sh" "$@"\ns=$?\ntimes\nexit $s\n',
 };
 
@@ -98,6 +99,7 @@ const baseFiles = [
   "scripts/golden.ts",
   "scripts/fixtures.ts",
   "scripts/accounting.ts",
+  "scripts/accounting-final.ts",
   "scripts/show.ts",
   "scripts/check-pr.sh",
   "scripts/pr-common.sh",
@@ -1393,7 +1395,9 @@ describe("the rule picked by the title's type", () => {
 
   it("fails an edit or removal of a runner behind a required check under any type but ci, and lets a new script in", async () => {
     // golden.ts imports e2e-env.ts, and golden.yml installs the CLI it scans with through installed.ts.
-    const runners = ["accounting", "golden", "fixtures", "show", "installed", "e2e-env"].map((r) => `scripts/${r}.ts`);
+    const runners = ["accounting", "accounting-final", "golden", "fixtures", "show", "installed", "e2e-env"].map(
+      (r) => `scripts/${r}.ts`,
+    );
     for (const f of runners) {
       for (const edit of [{ write: f, text: "process.exit(0);\n" }, { remove: f }]) {
         const changed = await repo([edit], [{ write: "scripts/installed.ts" }]);
@@ -1596,6 +1600,88 @@ describe("the rule picked by the title's type", () => {
     expect(failed.status).toBe(1);
     expect(failed.stdout).toContain("(b) failed:** a test from base");
     expect(failed.stdout).toContain("(b) failed:** a pack fixture from base");
+  });
+});
+
+describe("a record ceiling that goes up", () => {
+  const CEILING = "packs/openai/record-ceiling.txt";
+  const landed: Edit[] = [{ write: CEILING, text: "4\n" }];
+  const types = ["feat", "test", "docs", "ci"];
+
+  it("fails a raise under every type without a Ceiling line a reader sees, or with one under 10 characters", async () => {
+    const raised = await repo([{ write: CEILING, text: "5\n" }], landed);
+    for (const type of types)
+      for (const body of ["", "Ceiling: short\n", "<!-- Ceiling: hidden in a comment -->\n"]) {
+        const r = await check(raised, `${type}: x`, body);
+        expect(r.status, `${type} ${body}`).toBe(1);
+        expect(r.out).toContain("only with a `Ceiling: <reason>` line");
+        expect(r.out).toContain(`- ${CEILING}: 4 to 5`);
+      }
+  });
+
+  it("passes a raise under every type with a Ceiling line, and shows the reason", async () => {
+    const raised = await repo([{ write: CEILING, text: "5\n" }], landed);
+    for (const type of types) {
+      const r = await check(raised, `${type}: x`, "Ceiling: a new deprecation waits on its record\n");
+      expect(r.status, type).toBe(0);
+      expect(r.summary).toContain("Reason given: `a new deprecation waits on its record`");
+      expect(r.summary).toContain(`- ${CEILING}: 4 to 5`);
+    }
+  });
+
+  it("passes a lower ceiling, a removed one and a first ceiling of zero with no line", async () => {
+    for (const edits of [
+      [{ write: CEILING, text: "3\n" }],
+      [{ remove: CEILING }],
+      [{ write: "packs/new/record-ceiling.txt", text: "0\n" }],
+    ])
+      for (const type of types) expect((await rule(`${type}: x`, edits, "", {}, landed)).status, type).toBe(0);
+  });
+
+  it("refuses a ceiling read through a link or not a regular file, whatever the body says", async () => {
+    const routes: [Edit[], string][] = [
+      [
+        [{ write: "packs/openai/4", text: "6\n" }, { symlink: [CEILING, "4"] }],
+        `- ${CEILING} in head is not a regular file`,
+      ],
+      [
+        [
+          { move: ["packs/openai", "elsewhere"] },
+          { write: "elsewhere/record-ceiling.txt", text: "6\n" },
+          { symlink: ["packs/openai", "../elsewhere"] },
+        ],
+        "- packs/openai in head is not a folder",
+      ],
+      [
+        [
+          { move: ["packs", "packs-data"] },
+          { write: "packs-data/openai/record-ceiling.txt", text: "6\n" },
+          { symlink: ["packs", "packs-data"] },
+        ],
+        "- packs in head is not a folder",
+      ],
+      [[{ chmod: CEILING }], `- ${CEILING} in head is not a regular file`],
+    ];
+    for (const [edits, line] of routes) {
+      const r = await rule("feat: x", edits, "Ceiling: a new deprecation waits on its record\n", {}, landed);
+      expect(r.status, line).toBe(1);
+      expect(r.out).toContain("so the check and `npm run accounting -- --final` read the same number");
+      expect(r.out).toContain(line);
+    }
+  });
+
+  it("counts a new vendor's first ceiling as a rise from zero, and anything but a whole number as a rise", async () => {
+    const cases: [Edit, string][] = [
+      [{ write: "packs/new/record-ceiling.txt", text: "3\n" }, "- packs/new/record-ceiling.txt: 0 to 3"],
+      [{ write: CEILING, text: "five\n" }, `- ${CEILING}: 4 to something other than a whole number`],
+      [{ write: CEILING, text: `${"9".repeat(40)}\n` }, `- ${CEILING}: 4 to ${"9".repeat(40)}`],
+      [{ write: "packs/other/Record-Ceiling.TXT", text: "6\n" }, "- packs/other/Record-Ceiling.TXT: 0 to 6"],
+    ];
+    for (const [edit, line] of cases) {
+      const r = await rule("feat: x", [edit], "", {}, landed);
+      expect(r.status, line).toBe(1);
+      expect(r.out).toContain(line);
+    }
   });
 });
 
