@@ -1,110 +1,134 @@
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { availableParallelism } from "node:os";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { show } from "./show.js";
 
-// How often each gate is waived: for each line that lets a pull request past a gate, how many merged pull requests
-// carry it among those since the gate came in, so a gate people route around gets fixed or removed.
-//   tsx scripts/waivers.ts <file> [--from <pr number>]
-// <file> is `gh pr list --state merged --limit 1000 --json number,title,body` output. A line counts exactly when the
-// gate takes it: the readers below are scripts/pr-common.sh's, and test/waivers.test.ts runs both on the same bodies.
+// How often each gate is waived, so a gate people route around gets fixed or removed. Per line that lets a pull
+// request past a gate: how many merged pull requests hold one the gate would accept, among those of the title types
+// the gate reads it for, merged after the pull request that added the gate (pr.yml runs base's copy of each gate).
+//   gh pr list --state merged --limit 1000 --json number,title,body,mergedAt > prs.json
+//   tsx scripts/waivers.ts prs.json [--from <pr number>]
+// --from starts every window after that pull request merged, where it merged later than the gate's.
+// Each body is read by scripts/pr-common.sh itself, in the locale of the gates' ubuntu runner. It does not read
+// which files a pull request changed, and a gate reads its line only when it finds something to waive, so a count
+// is of pull requests that hold the line, not of pull requests a gate let through on it.
 
-const LINES = [
-  // opt_out in scripts/pr-common.sh, read by scripts/check-refactor.sh since #102 and scripts/check-proof.sh since #108.
-  { label: "Proof: none", prefix: "Proof: none, ", ciOnly: false, from: 102 },
+type Key = "proof" | "allowlist" | "coverage";
+const ROWS: { line: string; key: Key; since: Record<string, number> }[] = [
+  // refactor and perf: scripts/check-refactor.sh since #102; fix and feat: scripts/check-proof.sh since #108.
+  { line: "Proof: none", key: "proof", since: { fix: 108, feat: 108, refactor: 102, perf: 102 } },
+  // test and ci when they change the suite: scripts/check-refactor.sh since #137. CONTRIBUTING asks a ci change
+  // that changes how the checks run for one, so this row is mostly paperwork, not a gate routed around.
+  { line: "Proof: none", key: "proof", since: { test: 137, ci: 137 } },
   // scripts/check-refactor.sh, since #174.
-  { label: "Allowlist", prefix: "Allowlist: ", ciOnly: true, from: 174 },
+  { line: "Allowlist", key: "allowlist", since: { ci: 174 } },
   // scripts/check-coverage.sh, since #176.
-  { label: "Coverage", prefix: "Coverage: ", ciOnly: true, from: 176 },
-] as const;
-type Label = (typeof LINES)[number]["label"];
+  { line: "Coverage", key: "coverage", since: { ci: 176 } },
+];
 
 const PullRequests = z.array(
-  z.object({ number: z.number().int().positive(), title: z.string(), body: z.string().nullable() }),
+  z.object({
+    number: z.number().int().positive(),
+    title: z.string(),
+    body: z.string().nullable(),
+    mergedAt: z.iso.datetime(),
+  }),
 );
 type PullRequest = z.infer<typeof PullRequests>[number];
+export type Read = { type: string } & Record<Key, string>;
 
-/** `line` without the HTML comments in it, and whether one is still open after it, as the loop in `visible` reads it. */
-function uncommented(line: string, open: boolean): [string, boolean] {
-  let out = "";
-  let at = 0;
-  let inside = open;
-  while (at < line.length) {
-    const i = line.indexOf(inside ? "-->" : "<!--", at);
-    if (i < 0) {
-      if (!inside) out += line.slice(at);
-      break;
-    }
-    if (!inside) out += line.slice(at, i);
-    at = i + (inside ? 3 : 4);
-    inside = !inside;
-  }
-  return [out, inside];
-}
+// The gates' own calls. The body comes on stdin, where no limit on the size of an environment variable applies;
+// $(cat) drops only trailing newlines, which change no line a reader sees.
+const READ = `BODY=$(cat); . "$COMMON"
+t=$(title_type); opt_out >/dev/null; p=$reason
+body_reason "Allowlist: " Allowlist >/dev/null; a=$reason
+body_reason "Coverage: " Coverage >/dev/null; c=$reason
+printf '%s\\0' "$t" "$p" "$a" "$c"`;
 
-/** The body's lines as a reader sees them, as `visible` in scripts/pr-common.sh: HTML comments and fenced code blocks taken out. */
-export function visible(body: string): string[] {
-  const out: string[] = [];
-  let fence = "";
-  let inside = false;
-  for (const line of body.replaceAll("\r", "").split("\n")) {
-    const opened = inside || fence ? undefined : /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (opened) fence = opened[1]!;
-    else if (fence) {
-      const t = line.replace(/^ +/, "");
-      if (t.startsWith(fence) && /^(`+|~+)[ \t]*$/.test(t)) fence = "";
-    } else {
-      const [text, open] = uncommented(line, inside);
-      out.push(text);
-      inside = open;
-    }
-  }
-  return out;
-}
-
-/** The reason on the first line a reader sees that starts with `prefix`, or "" when under 10 characters, as `body_reason`. */
-export function bodyReason(body: string, prefix: string): string {
-  const line = visible(body).find((l) => l.startsWith(prefix));
-  const reason = line?.slice(prefix.length).replace(/[ \t\v\f]+$/, "") ?? "";
-  return [...reason].length < 10 ? "" : reason;
-}
-
-/** The type in a conventional title, as `title_type`, or "". */
-export const titleType = (title: string) => /^([a-z]+)(\([a-z0-9-]+\))?!?: /.exec(title.split("\n")[0]!)?.[1] ?? "";
-
-/** The reason each line gives in this pull request, "" where its gate would not take it. */
-export const reasons = (pr: Pick<PullRequest, "title" | "body">) =>
-  Object.fromEntries(
-    LINES.map((l) => [l.label, l.ciOnly && titleType(pr.title) !== "ci" ? "" : bodyReason(pr.body ?? "", l.prefix)]),
-  ) as Record<Label, string>;
-
-type Row = { label: Label; from: number; waived: number; window: number };
-
-export function count(prs: PullRequest[], from = 0): Row[] {
-  const given = prs.map((pr) => ({ number: pr.number, reasons: reasons(pr) }));
-  return LINES.map((l) => {
-    const start = Math.max(l.from, from);
-    const window = given.filter((pr) => pr.number >= start);
-    return {
-      label: l.label,
-      from: start,
-      waived: window.filter((pr) => pr.reasons[l.label]).length,
-      window: window.length,
-    };
+/** The title's type and each line's reason as the gates read them, "" where a gate would not take the line. */
+export function read(title: string, body: string): Promise<Read> {
+  const env = {
+    PATH: process.env.PATH ?? "",
+    LC_ALL: "C.UTF-8",
+    TITLE: title,
+    COMMON: fileURLToPath(new URL("pr-common.sh", import.meta.url)),
+    GITHUB_STEP_SUMMARY: "/dev/null",
+  };
+  return new Promise((done, fail) => {
+    const child = spawn("sh", ["-c", READ], { env, stdio: ["pipe", "pipe", "ignore"] });
+    let out = "";
+    child.stdout.setEncoding("utf8").on("data", (d: string) => (out += d));
+    child.stdin.on("error", () => {}).end(body);
+    child.on("error", fail).on("close", (status) => {
+      const [type, proof, allowlist, coverage] = out.split("\0");
+      if (status === 0 && coverage !== undefined) done({ type: type!, proof: proof!, allowlist: allowlist!, coverage });
+      else fail(new Error(`scripts/pr-common.sh exited ${status} on a body`));
+    });
   });
 }
 
+async function readAll(prs: PullRequest[]): Promise<Read[]> {
+  const out: Read[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < prs.length) {
+      const i = next++;
+      out[i] = await read(prs[i]!.title, prs[i]!.body ?? "");
+    }
+  };
+  await Promise.all(Array.from({ length: availableParallelism() }, worker));
+  return out;
+}
+
+type Row = { line: string; types: string[]; after: number[]; counts?: { waived: number; window: number } };
+
+/** Each row's window and count, and a warning for each pull request a window starts after that the file lacks. */
+export function count(prs: PullRequest[], reads: Read[], from?: number) {
+  const merged = new Map(prs.map((pr) => [pr.number, Date.parse(pr.mergedAt)]));
+  const lowest = Math.min(...merged.keys());
+  const warnings = new Set<string>();
+  const rows: Row[] = ROWS.map(({ line, key, since }) => {
+    const starts = Object.entries(since).map(([type, gate]) => {
+      const later = from !== undefined && (merged.get(from) ?? Infinity) > (merged.get(gate) ?? -Infinity);
+      return [type, later ? from : gate] as const;
+    });
+    const after = [...new Set(starts.map(([, n]) => n))].sort((a, b) => a - b);
+    const absent = [...Object.values(since), ...(from === undefined ? [] : [from])].filter((n) => !merged.has(n));
+    for (const n of absent)
+      warnings.add(
+        `#${n}, which a window starts after, is not in the file, whose lowest is #${lowest}: fetch with --limit 1000`,
+      );
+    if (absent.length) return { line, types: Object.keys(since), after };
+    const start = new Map(starts.map(([type, n]) => [type, merged.get(n)!]));
+    const window = prs
+      .map((pr, i) => [pr, reads[i]!] as const)
+      .filter(([pr, r]) => (start.get(r.type) ?? Infinity) < Date.parse(pr.mergedAt));
+    const waived = window.filter(([, r]) => r[key]).length;
+    return { line, types: Object.keys(since), after, counts: { waived, window: window.length } };
+  });
+  return { rows, warnings: [...warnings] };
+}
+
 export function table(rows: Row[]): string[] {
-  const line = ([first, ...rest]: string[]) =>
-    first!.padEnd(12) + rest.map((c, i) => c.padStart([9, 9, 8, 9][i]!)).join("");
+  const line = (cells: string[]) =>
+    cells[0]!.padEnd(13) +
+    cells[1]!.padEnd(24) +
+    cells
+      .slice(2, 5)
+      .map((c) => c.padStart(8))
+      .join("") +
+    cells[5];
   return [
-    line(["Line", "Waived", "Merged", "Share", "From"]),
-    ...rows.map((r) => {
-      const share = r.window ? `${((100 * r.waived) / r.window).toFixed(1)}%` : "-";
-      const over = r.waived * 10 > r.window ? "  over 10%" : "";
-      return line([r.label, String(r.waived), String(r.window), share, `#${r.from}`]) + over;
+    line(["Line", "Title types", "Waived", "Merged", "Share", "  After"]),
+    ...rows.map(({ line: name, types, after, counts }) => {
+      const share = counts?.window ? `${((100 * counts.waived) / counts.window).toFixed(1)}%` : "-";
+      const over = counts && counts.waived * 10 > counts.window ? "  over 10%" : "";
+      const cells = [String(counts?.waived ?? "-"), String(counts?.window ?? "-"), share];
+      return line([name, types.join(" "), ...cells, `  ${after.map((n) => `#${n}`).join(" ")}${over}`]);
     }),
   ];
 }
@@ -119,23 +143,34 @@ async function load(file: string): Promise<PullRequest[]> {
   const seen = new Set<number>();
   for (const pr of parsed.data) {
     if (seen.has(pr.number)) throw new Error(`pull request #${pr.number} is listed twice`);
+    if (pr.body?.includes("\0"))
+      throw new Error(`pull request #${pr.number} has a NUL in its body, which no gate reads`);
     seen.add(pr.number);
   }
+  if (!seen.size) throw new Error("the file lists no pull requests");
   return parsed.data;
 }
 
-const USAGE = "usage: tsx scripts/waivers.ts <file of gh pr list --json number,title,body> [--from <pr number>]";
+const USAGE =
+  "usage: gh pr list --state merged --limit 1000 --json number,title,body,mergedAt > prs.json\n       tsx scripts/waivers.ts prs.json [--from <pr number>]";
+const COUNTS =
+  "Counts merged pull requests whose body holds a line the gate would accept, of the title types it reads the line for, merged after the pull request named under After. It does not read which files each changed, so it does not count pull requests a gate let through on the line.";
+// A reason ending in U+3000 is cut by the runner's sed under C.UTF-8 and so too short; a shell that keeps it
+// reads other lines differently too.
+const PROBE = ["fix: x", "Proof: none, abcdefghi\u3000"] as const;
+const DIFFERS =
+  "warning: this machine's shell tools read the probe body differently from the gates' ubuntu runner under C.UTF-8; a count here can differ from what the gates accept";
 
 function args() {
   const { values, positionals } = parseArgs({ options: { from: { type: "string" } }, allowPositionals: true });
   if (positionals.length !== 1) throw new Error(`expected one file, got ${positionals.length}`);
   if (values.from !== undefined && !/^[1-9]\d*$/.test(values.from))
     throw new Error(`--from takes a pull request number, not ${values.from}`);
-  return { file: positionals[0]!, from: Number(values.from ?? 0) };
+  return { file: positionals[0]!, from: values.from === undefined ? undefined : Number(values.from) };
 }
 
 async function main() {
-  let file: string, from: number;
+  let file: string, from: number | undefined;
   try {
     ({ file, from } = args());
   } catch (err) {
@@ -145,7 +180,10 @@ async function main() {
   }
   try {
     const prs = await load(file);
-    console.log([`${prs.length} merged pull requests in ${show(file)}`, ...table(count(prs, from))].join("\n"));
+    const { rows, warnings } = count(prs, await readAll(prs), from);
+    const probe = (await read(...PROBE)).proof ? [DIFFERS] : [];
+    const head = [`${prs.length} merged pull requests in ${show(file)}.`, COUNTS];
+    console.log([...head, ...probe, ...warnings.map((w) => `warning: ${w}`), ...table(rows)].join("\n"));
   } catch (err) {
     console.error(`waivers stopped: ${show(err instanceof Error ? err.message : String(err))}`);
     process.exitCode = 1;

@@ -1,11 +1,10 @@
-import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { bodyReason, count, reasons, table } from "../scripts/waivers.js";
-import { slowdown } from "./helpers.js";
+import { read, table } from "../scripts/waivers.js";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const tsx = join(ROOT, "node_modules", ".bin", "tsx");
@@ -14,215 +13,155 @@ const tempDirs: string[] = [];
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
+const temp = async () => {
+  const dir = await mkdtemp(join(tmpdir(), "darnit-waivers-"));
+  tempDirs.push(dir);
+  return dir;
+};
 
-// Each gate's own lines: opt_out as check-proof.sh and check-refactor.sh call it, the Allowlist line as
-// check-refactor.sh reads it and the Coverage line as check-coverage.sh does. GitHub passes a null body as "".
+// The gates as pr.yml runs them, with the body in the environment, for the plumbing the script adds.
 const GATES = `. scripts/pr-common.sh
-opt_out >/dev/null; proof=$reason
-reason=; if [ "$(title_type)" = ci ]; then body_reason "Allowlist: " Allowlist >/dev/null; fi; allowlist=$reason
-reason=; [ "$(title_type)" = ci ] && body_reason "Coverage: " Coverage >/dev/null; coverage=$reason
-printf '%s\\0' "$proof" "$allowlist" "$coverage"`;
-function gates(title: string, body: string | null) {
-  const r = spawnSync("sh", ["-c", GATES], {
+t=$(title_type); opt_out >/dev/null; p=$reason
+body_reason "Allowlist: " Allowlist >/dev/null; a=$reason
+body_reason "Coverage: " Coverage >/dev/null; c=$reason
+printf '%s\\0' "$t" "$p" "$a" "$c"`;
+function gates(title: string, body: string) {
+  const env = { PATH: process.env.PATH, LC_ALL: "C.UTF-8", TITLE: title, BODY: body, GITHUB_STEP_SUMMARY: "/dev/null" };
+  const [type, proof, allowlist, coverage] = spawnSync("sh", ["-c", GATES], {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, TITLE: title, BODY: body ?? "", GITHUB_STEP_SUMMARY: "/dev/null" },
-  });
-  expect(r.status, r.stderr).toBe(0);
-  const [proof, allowlist, coverage] = r.stdout.split("\0");
-  return { "Proof: none": proof, Allowlist: allowlist, Coverage: coverage };
+    env,
+  }).stdout.split("\0");
+  return { type, proof, allowlist, coverage };
 }
 
-type Case = { name: string; title?: string; body: string | null; carries: string[] };
-const P = ["Proof: none"];
-const BOTH = ["Allowlist", "Coverage"];
-const ciBody = "Allowlist: a block stays for now\nCoverage: the folder moved away";
-const CASES: Case[] = [
-  { name: "a plain line", body: "Proof: none, a docs-only change", carries: P },
-  { name: "CRLF line endings", body: "Summary\r\n\r\nProof: none, moves a script only\r\n", carries: P },
-  { name: "a carriage return inside the prefix", body: "Proof: no\rne, the gate drops every CR", carries: P },
-  { name: "an HTML comment hides the line", body: "<!--\nProof: none, the template's own example\n-->", carries: [] },
-  {
-    name: "a comment closed earlier on the line",
-    body: "<!-- note -->Proof: none, after a closed comment",
-    carries: P,
-  },
-  {
-    name: "a comment hides the end of the reason",
-    body: "Proof: none, short <!-- the rest is hidden -->",
-    carries: [],
-  },
-  {
-    name: "a comment closing mid line",
-    body: "<!-- start\nstill hidden --> Proof: none, not at column 1",
-    carries: [],
-  },
-  { name: "a fenced block", body: "```\nProof: none, inside a fence\n```", carries: [] },
-  {
-    name: "an indented tilde fence, then a line after it",
-    body: "  ~~~~ text\nProof: none, inside tildes\n~~~~~  \nProof: none, after the fence closes",
-    carries: P,
-  },
-  { name: "an unclosed fence hides the rest", body: "```sh\nProof: none, never closed fence", carries: [] },
-  {
-    name: "a shorter, other or labelled fence does not close",
-    body: "````\n```\n~~~~\n``` js\nProof: none, still in the fence\n````\nProof: none, now outside it",
-    carries: P,
-  },
-  { name: "a shorter fence does not close", body: "````\n```\nProof: none, still inside the fence\n````", carries: [] },
-  { name: "tildes do not close backticks", body: "```\n~~~\nProof: none, still inside the fence\n```", carries: [] },
-  {
-    name: "a labelled fence does not close",
-    body: "```\n``` js\nProof: none, still inside the fence\n```",
-    carries: [],
-  },
-  { name: "four spaces open no fence", body: "    ```\nProof: none, no fence opened above", carries: P },
-  { name: "a fence inside a comment", body: "<!--\n```\n-->\nProof: none, after the comment", carries: P },
-  { name: "a comment inside a fence", body: "```\n<!--\n```\nProof: none, the comment was fenced", carries: P },
-  ...[
-    " Proof: none, a leading space here",
-    "\tProof: none, a leading tab here",
-    "Proof: None, a capital letter here",
-    "proof: none, lower case here",
-    "Proof: none,no space after the comma",
-    "Proof:  none, two spaces here",
-    "> Proof: none, quoted here",
-    "- Proof: none, a list item here",
-    "**Proof: none, in bold here**",
-  ].map((body) => ({ name: `the lookalike ${JSON.stringify(body)}`, body, carries: [] })),
-  { name: "only the first line counts", body: "Proof: none, short\nProof: none, a long enough reason", carries: [] },
-  { name: "ten characters", body: "Proof: none, 0123456789", carries: P },
-  { name: "nine characters", body: "Proof: none, 012345678", carries: [] },
-  { name: "trailing whitespace is not counted", body: "Proof: none, 012345678 \t ", carries: [] },
-  { name: "leading spaces are counted", body: "Proof: none,      abcde", carries: P },
-  { name: "nine check marks", body: `Proof: none, ${"\u2713".repeat(9)}`, carries: [] },
-  { name: "ten check marks", body: `Proof: none, ${"\u2713".repeat(10)}`, carries: P },
-  { name: "nine emoji", body: `Proof: none, ${"\u{1f600}".repeat(9)}`, carries: [] },
-  { name: "ten emoji", body: `Proof: none, ${"\u{1f600}".repeat(10)}`, carries: P },
-  { name: "combining marks count as characters", body: `Proof: none, ${"e\u0301".repeat(5)}`, carries: P },
-  { name: "Japanese", body: "Proof: none, 日本語で書いた理由です", carries: P },
-  { name: "backticks", body: "Proof: none, `npm run` only", carries: P },
-  { name: "an empty body", body: "", carries: [] },
-  { name: "a null body", body: null, carries: [] },
-  { name: "Proof whatever the type", title: "docs: x", body: "Proof: none, a docs change", carries: P },
-  { name: "Allowlist and Coverage in a ci change", title: "ci: x", body: ciBody, carries: BOTH },
-  { name: "with a scope and a bang", title: "ci(scan)!: x", body: ciBody, carries: BOTH },
-  { name: "on the first line of the title", title: "ci: x\nfix: y", body: ciBody, carries: BOTH },
-  ...["fix: x", "CI: x", "cis: x", " ci: x", "ci:x", "ci(Scan): x", ""].map((title) => ({
-    name: `the title ${JSON.stringify(title)}`,
-    title,
-    body: ciBody,
-    carries: [],
-  })),
-  { name: "a short Allowlist reason", title: "ci: x", body: "Allowlist: too short", carries: [] },
-  { name: "no space after the colon", title: "ci: x", body: "Allowlist:a long enough reason", carries: [] },
-  {
-    name: "all three",
-    title: "ci: x",
-    body: `Proof: none, the checks only\n${ciBody}`,
-    carries: [...P, ...BOTH],
-  },
-];
+describe("each body goes to scripts/pr-common.sh as the gates get it", () => {
+  const lines = "Proof: none, a long enough reason\nAllowlist: a long enough reason\nCoverage: a long enough reason";
+  it.each([
+    ["ci: x", lines],
+    ["ci: x", `\n\n${lines}\n\n\n`],
+    ["ci: x", lines.replaceAll("\n", "\r\n") + "\r\n"],
+    ["fix: x", `<!--\n${lines}\n-->`],
+    ["ci(scan)!: x", `\`\`\`\n\`\`\`\n${lines}\n\`\`\``],
+    ["ci: x", "\n\n\n"],
+    ["docs: x", ""],
+  ])("%j %j", async (title, body) => {
+    expect(await read(title, body)).toEqual(gates(title, body));
+  });
 
-describe("the count reads each line as its gate does", () => {
-  it.each(CASES)("$name", ({ title = "fix: x", body, carries }) => {
-    const ts = reasons({ title, body });
-    const sh = gates(title, body);
-    // The gates show the reason with backticks made quotes.
-    expect(Object.fromEntries(Object.entries(ts).map(([k, v]) => [k, v.replaceAll("`", "'")]))).toEqual(sh);
-    expect(Object.keys(ts).filter((k) => ts[k as keyof typeof ts])).toEqual(carries);
+  it.runIf(process.platform === "linux")("in the runner's locale, where sed cuts a trailing U+3000", async () => {
+    expect((await read("fix: x", "Proof: none, abcdefghi\u3000")).proof).toBe("");
+    expect((await read("fix: x", "Proof: none, abcdefghij\u3000")).proof).toBe("abcdefghij");
+  });
+
+  it("on stdin, so a body over the 128 KB a variable may hold on Linux is read", async () => {
+    const body = `${"\u65e5".repeat(60_000)}\nProof: none, the last line of a long body`;
+    expect((await read("fix: x", body)).proof).toBe("the last line of a long body");
   });
 });
 
-const run = (...args: string[]) => {
-  const r = spawnSync(tsx, ["scripts/waivers.ts", ...args], { cwd: ROOT, encoding: "utf8" });
+const run = (args: string[], env: NodeJS.ProcessEnv = process.env) => {
+  const r = spawnSync(tsx, ["scripts/waivers.ts", ...args], { cwd: ROOT, encoding: "utf8", env });
   return { status: r.status, out: r.stdout, err: r.stderr };
 };
+const rows = (out: string) => out.split("\n").filter((l) => /^(Proof|Allowlist|Coverage)/.test(l));
 
 describe("npm run waivers", () => {
-  it("prints a row per line over the window since its gate came in", () => {
-    expect(run(FIXTURE)).toEqual({
-      status: 0,
-      out: [
-        `23 merged pull requests in "${FIXTURE}"`,
-        "Line           Waived   Merged   Share     From",
-        "Proof: none         3       22   13.6%     #102  over 10%",
-        "Allowlist           1       16    6.3%     #174",
-        "Coverage            1       14    7.1%     #176",
-        "",
-      ].join("\n"),
-      err: "",
-    });
+  it("counts each line over the title types a gate reads it for, merged after the gate's pull request", () => {
+    const r = run([FIXTURE]);
+    expect(r.status).toBe(0);
+    expect(r.out).toContain(`45 merged pull requests in "${FIXTURE}".\nCounts merged pull requests whose body holds`);
+    expect(r.out).toContain("It does not read which files each changed");
+    expect(r.out).not.toContain("warning");
+    expect(rows(r.out)).toEqual([
+      "Proof: none  fix feat refactor perf         2      14   14.3%  #102 #108  over 10%",
+      "Proof: none  test ci                        3      24   12.5%  #137  over 10%",
+      "Allowlist    ci                             1      19    5.3%  #174",
+      "Coverage     ci                             1      17    5.9%  #176",
+    ]);
   });
 
-  it("starts the window at --from where that is later than the gate", () => {
-    expect(run(FIXTURE, "--from", "176").out.split("\n").slice(2, 5)).toEqual([
-      "Proof: none         1       14    7.1%     #176",
-      "Allowlist           0       14    0.0%     #176",
-      "Coverage            1       14    7.1%     #176",
+  it("starts each window after --from merged, where that is later than the gate's", () => {
+    expect(rows(run([FIXTURE, "--from", "176"]).out)).toEqual([
+      "Proof: none  fix feat refactor perf         0      11    0.0%  #176",
+      "Proof: none  test ci                        0      18    0.0%  #176",
+      "Allowlist    ci                             0      17    0.0%  #176",
+      "Coverage     ci                             1      17    5.9%  #176",
     ]);
-    expect(run(FIXTURE, "--from=300").out).toContain("Proof: none         0        0       -     #300\n");
+    expect(rows(run([FIXTURE, "--from=100"]).out)[0]).toBe(
+      "Proof: none  fix feat refactor perf         2      14   14.3%  #102 #108  over 10%",
+    );
+  });
+
+  it("warns, and counts no row, where the file does not reach back to a window's start", async () => {
+    const prs = JSON.parse(await readFile(FIXTURE, "utf8")) as { number: number }[];
+    const file = join(await temp(), "recent.json");
+    await writeFile(file, JSON.stringify(prs.filter((pr) => pr.number >= 150)));
+    const r = run([file]);
+    for (const n of [102, 108, 137])
+      expect(r.out).toContain(`warning: #${n}, which a window starts after, is not in the file, whose lowest is #150`);
+    expect(rows(r.out).slice(0, 2)).toEqual([
+      "Proof: none  fix feat refactor perf         -       -       -  #102 #108",
+      "Proof: none  test ci                        -       -       -  #137",
+    ]);
+    expect(rows(run([FIXTURE, "--from", "50"]).out)[3]).toBe(
+      "Coverage     ci                             -       -       -  #50",
+    );
+  });
+
+  it("warns when this machine's sed does not read a line as the runner's does", async () => {
+    const dir = await temp();
+    const sed = execFileSync("sh", ["-c", "command -v sed"], { encoding: "utf8" }).trim();
+    await writeFile(join(dir, "sed"), `#!/bin/sh\nLC_ALL=C exec ${sed} "$@"\n`);
+    await chmod(join(dir, "sed"), 0o755);
+    const r = run([FIXTURE], { ...process.env, PATH: `${dir}${delimiter}${process.env.PATH}` });
+    expect(r.out).toContain("warning: this machine's shell tools read the probe body differently");
   });
 
   it("marks a share over 10%, not one at it", () => {
-    const row = (waived: number, window: number) => table([{ label: "Coverage", from: 1, waived, window }])[1];
-    expect(row(1, 10)).toBe("Coverage            1       10   10.0%       #1");
-    expect(row(2, 19)).toBe("Coverage            2       19   10.5%       #1  over 10%");
-    expect(row(0, 0)).toBe("Coverage            0        0       -       #1");
+    const row = (waived: number, window: number) =>
+      table([{ line: "Coverage", types: ["ci"], after: [1], counts: { waived, window } }])[1];
+    expect(row(1, 10)).toBe("Coverage     ci                             1      10   10.0%  #1");
+    expect(row(2, 19)).toBe("Coverage     ci                             2      19   10.5%  #1  over 10%");
+    expect(row(0, 0)).toBe("Coverage     ci                             0       0       -  #1");
   });
 
   it("refuses arguments it cannot use, escaped", () => {
     for (const args of [[], [FIXTURE, FIXTURE], [FIXTURE, "--from", "0"], [FIXTURE, "--to", "1"]]) {
-      const r = run(...args);
+      const r = run(args);
       expect(r.status).toBe(2);
-      expect(r.err).toContain("usage: tsx scripts/waivers.ts");
+      expect(r.err).toContain("gh pr list --state merged --limit 1000 --json number,title,body,mergedAt");
     }
-    expect(run(FIXTURE, "--from", "1\u001b[2J").err).toContain('not 1\\u001b[2J"');
+    expect(run([FIXTURE, "--from", "1\u001b[2J"]).err).toContain('not 1\\u001b[2J"');
   });
 
   it("stops on a file it cannot read as gh's output, and prints none of it raw", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "darnit-waivers-"));
-    tempDirs.push(dir);
-    const file = async (name: string, text: string) => {
-      await writeFile(join(dir, name), text);
+    const dir = await temp();
+    const file = async (name: string, value: unknown) => {
+      await writeFile(join(dir, name), typeof value === "string" ? value : JSON.stringify(value));
       return join(dir, name);
     };
-    const pr = { number: 1, title: "ci: x", body: "" };
+    const pr = { number: 1, title: "ci: x", body: "", mergedAt: "2026-10-01T00:00:00Z" };
     const stops = {
       [join(dir, "missing.json")]: "ENOENT",
       [await file("hostile.json", "[x\u001b]8;;\u0007\u202e]")]: "[x\\u001b]8;;\\u0007\\u202e]",
-      [await file("nobody.json", JSON.stringify([{ number: 1, title: "x" }]))]: "entry 0.body",
-      [await file("object.json", JSON.stringify({ prs: [pr] }))]: "the file: Invalid input: expected array",
-      [await file("twice.json", JSON.stringify([pr, pr]))]: "pull request #1 is listed twice",
+      [await file("nobody.json", [{ ...pr, body: undefined }])]: "entry 0.body",
+      [await file("unmerged.json", [{ ...pr, mergedAt: null }])]: "entry 0.mergedAt",
+      [await file("when.json", [{ ...pr, mergedAt: "yesterday" }])]: "entry 0.mergedAt",
+      [await file("zero.json", [{ ...pr, number: 0 }])]: "entry 0.number",
+      [await file("half.json", [{ ...pr, number: 1.5 }])]: "entry 0.number",
+      [await file("object.json", { prs: [pr] })]: "the file: Invalid input: expected array",
+      [await file("empty.json", [])]: "the file lists no pull requests",
+      [await file("twice.json", [pr, pr])]: "pull request #1 is listed twice",
+      [await file("nul.json", [{ ...pr, body: "a\u0000b" }])]: "pull request #1 has a NUL in its body",
     };
     for (const [path, says] of Object.entries(stops)) {
-      const r = run(path);
-      expect(r.status).toBe(1);
+      const r = run([path]);
+      expect(r.status, path).toBe(1);
       expect(r.out).toBe("");
       expect(r.err).toMatch(/^waivers stopped: "/);
       expect(r.err).toContain(says);
       expect(r.err).not.toMatch(/[^\n\x20-\x7e]/);
     }
   });
-
-  it("counts a pull request once, however many lines it holds", () => {
-    const body = "Proof: none, a long enough reason\nProof: none, a second line";
-    expect(count([{ number: 200, title: "ci: x", body }])[0]).toEqual({
-      label: "Proof: none",
-      from: 102,
-      waived: 1,
-      window: 1,
-    });
-  });
-});
-
-it("reads a body in time linear in its size, comments and fences included", { tags: ["cpu-time"] }, async () => {
-  const hostile = (n: number) => `${"<!-- a -->".repeat(n)}\n${"```\n".repeat(n)}Proof: none, a long enough reason`;
-  const [small, large] = [hostile(10_000), hostile(80_000)];
-  const time = await slowdown(
-    () => bodyReason(large, "Proof: none, "),
-    () => bodyReason(small, "Proof: none, "),
-    16,
-  );
-  expect(time).toBeLessThan(16);
 });
