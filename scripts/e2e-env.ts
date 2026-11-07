@@ -1,7 +1,27 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+
+export function run(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env) {
+  const r = spawnSync(cmd, args, { cwd, env, encoding: "utf8", timeout: 5 * 60 * 1000 });
+  if (r.error) return { exit: -1, out: `${cmd} did not finish: ${r.error.message}` };
+  return { exit: r.status ?? -1, out: `${r.stdout}${r.stderr}` };
+}
+
+export function must(cmd: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv): string {
+  const r = run(cmd, args, cwd, env);
+  if (r.exit !== 0) throw new Error(`${cmd} ${args.join(" ")} failed in ${cwd}:\n${r.out}`);
+  return r.out;
+}
+
+/** Installs `tarball` into the empty folder `dir` with npm, as a user would, and returns the version darnit prints. */
+export function npmInstall(tarball: string, dir: string): string {
+  must("npm", ["init", "-y"], dir);
+  must("npm", ["install", "--silent", tarball], dir);
+  return must(join(dir, "node_modules", ".bin", "darnit"), ["--version"], dir).trim();
+}
 
 // CI sets npm's script-shell so that a change's .npmrc cannot replace its own npm runs. A user's shell does
 // not, and npm would let it override a scenario's .npmrc, so scenarios run without it, in any spelling npm reads.

@@ -6,6 +6,16 @@ name: golden
 # gone or force-pushed away turns it red; it can also be started on any branch.
 on:
   workflow_call:
+    inputs:
+      # A calling workflow can have it scan with the package users get instead of the build: the name of an
+      # artifact of that run holding one darnit .tgz, and that file's integrity (sha512-..., as npm pack --json
+      # reports it). The tarball is installed as the end-to-end run installs one (scripts/installed.ts).
+      tarball:
+        type: string
+        default: ""
+      integrity:
+        type: string
+        default: ""
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
@@ -65,6 +75,20 @@ jobs:
         with:
           path: ~/.cache/darnit-golden
           key: golden-${{ hashFiles('test/golden/repos.tsv') }}
+      - if: steps.scope.outputs.set != 'skip' && inputs.tarball != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.tarball }}
+          path: ${{ runner.temp }}/package
+      # The installed CLI's path, set only when the integrity matches and npm installed that file.
+      - if: steps.scope.outputs.set != 'skip' && inputs.tarball != ''
+        id: installed
+        env:
+          INTEGRITY: ${{ inputs.integrity }}
+        run: |
+          cli=$(npx tsx scripts/installed.ts --tarball "$RUNNER_TEMP"/package/*.tgz --integrity "$INTEGRITY")
+          echo "cli=$cli" >> "$GITHUB_OUTPUT"
+      # npm run golden builds dist/ first; with an installed CLI nothing is built.
       - if: steps.scope.outputs.set != 'skip'
         timeout-minutes: ${{ steps.scope.outputs.set == 'all' && 45 || 15 }}
         env:
@@ -72,7 +96,11 @@ jobs:
           RECHECK: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'yes' || '' }}
           BASE: ${{ github.event.pull_request.base.sha }}
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: time npm run golden -- --out "$RUNNER_TEMP/golden-update" ${ALL:+--all} ${RECHECK:+--recheck} ${BASE:+--base "$BASE"}
+          TARBALL: ${{ inputs.tarball }}
+          CLI: ${{ steps.installed.outputs.cli }}
+        run: |
+          set -- --out "$RUNNER_TEMP/golden-update" ${ALL:+--all} ${RECHECK:+--recheck} ${BASE:+--base "$BASE"}
+          if [ -z "$TARBALL" ]; then time npm run golden -- "$@"; else time npx tsx scripts/golden.ts --cli "$CLI" "$@"; fi
       - if: failure() && steps.scope.outputs.set != 'skip'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
