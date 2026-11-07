@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WORKFLOW } from "../src/init.js";
-import { givenTarball, installTarball, must, notUser, npmInstall, run, userEnv } from "./e2e-env.js";
+import { givenTarball, installTarball, must, notUser, npmInstall, run, usage, userEnv } from "./e2e-env.js";
 
 // No run may reach the npm registry.
 process.env.DARNIT_NO_UPDATE_CHECK = "1";
@@ -187,13 +187,7 @@ if (JSON.stringify(folders) !== JSON.stringify(Object.keys(EXPECT).sort())) {
   );
 }
 
-let given: ReturnType<typeof givenTarball>;
-try {
-  given = givenTarball(process.argv.slice(2));
-} catch (e) {
-  console.error(`e2e: ${(e as Error).message}`);
-  process.exit(2);
-}
+const given = usage("e2e", () => givenTarball(process.argv.slice(2)));
 
 const work = mkdtempSync(join(tmpdir(), "darnit-e2e-"));
 let failures = 0;

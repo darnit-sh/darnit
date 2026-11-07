@@ -1383,10 +1383,12 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("fails an edit or removal of a runner behind a required check under any type but ci, and lets a new script in", async () => {
-    for (const f of ["scripts/accounting.ts", "scripts/golden.ts", "scripts/fixtures.ts"]) {
+    // golden.ts imports e2e-env.ts, and golden.yml installs the CLI it scans with through installed.ts.
+    const runners = ["accounting", "golden", "fixtures", "installed", "e2e-env"].map((r) => `scripts/${r}.ts`);
+    for (const f of runners) {
       for (const edit of [{ write: f, text: "process.exit(0);\n" }, { remove: f }]) {
-        const changed = await repo([edit]);
-        for (const type of ["docs", "fix", "feat", "test"]) {
+        const changed = await repo([edit], [{ write: "scripts/installed.ts" }]);
+        for (const type of ["docs", "chore", "fix", "feat", "test"]) {
           const r = await check(changed, `${type}: tidy`, "Proof: none, the runner prints one more line\n");
           expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
           expect(r.out).toContain(`- ${f} (a runner behind a required check)`);

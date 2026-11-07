@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { cliAt, usage } from "./installed.js";
+import { cliAt, usage } from "./e2e-env.js";
 
 // Scans pinned real repositories with the built CLI and compares each result with test/golden/<owner>_<name>.txt.
 // Usage: npm run golden [-- --update] [--all] [--recheck] [--dir <clones>] [--out <dir for changed results>] [--base <sha>]

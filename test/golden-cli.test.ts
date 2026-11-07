@@ -1,9 +1,10 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { integrity } from "../scripts/e2e-env.js";
 
 // A project folder holding one pinned repo, already cloned at its SHA so nothing is fetched, and stand-ins for
 // the CLI: each answers --version and reports a different file, so the stored result shows which one scanned.
@@ -106,6 +107,7 @@ describe("golden workflow with a tarball input", () => {
   const steps = (
     parse(readFileSync(".github/workflows/golden.yml", "utf8")) as { jobs: { compare: { steps: Step[] } } }
   ).jobs.compare.steps;
+  const guard = steps[0]!;
   const compare = steps.find((s) => s.run?.includes("--cli"))!;
   const install = steps.find((s) => s.id === "installed")!;
   // npm and npx stand-ins that print what they were asked to run; `fails` makes npx exit 2.
@@ -114,29 +116,50 @@ describe("golden workflow with a tarball input", () => {
   for (const cmd of ["npm", "npx"])
     writeFileSync(join(bin, cmd), `#!/bin/sh\nprintf '%s|' ${cmd} "$@"\n[ "$FAILS" != ${cmd} ]\n`, { mode: 0o755 });
   const sh = (step: Step, env: Record<string, string>) => {
-    const out = join(root, "github-output");
-    writeFileSync(out, "");
+    const [out, summary] = [join(root, "github-output"), join(root, "summary")];
+    for (const f of [out, summary]) writeFileSync(f, "");
     const r = spawnSync("bash", ["-e", "-c", step.run!], {
       encoding: "utf8",
-      env: { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: "/rt", GITHUB_OUTPUT: out, ...env },
+      env: {
+        PATH: `${bin}:${process.env.PATH}`,
+        RUNNER_TEMP: "/rt",
+        GITHUB_OUTPUT: out,
+        GITHUB_STEP_SUMMARY: summary,
+        ...env,
+      },
     });
-    return { exit: r.status, ran: r.stdout, output: readFileSync(out, "utf8") };
+    const read = (f: string) => readFileSync(f, "utf8");
+    return { exit: r.status, ran: r.stdout, output: read(out), summary: read(summary) };
   };
 
-  it("passes inputs through env only, and runs npm run golden as before without one", () => {
+  it("passes inputs through env only, and runs npm run golden as before without one, saying so", () => {
     for (const step of steps) expect(step.run ?? "").not.toContain("${{");
-    expect(sh(compare, { ALL: "yes", BASE: "b a", TARBALL: "", CLI: "" }).ran).toBe(
-      "npm|run|golden|--|--out|/rt/golden-update|--all|--base|b a|",
-    );
+    const r = sh(compare, { ALL: "yes", BASE: "b a", TARBALL: "", CLI: "" });
+    expect(r.ran).toBe("npm|run|golden|--|--out|/rt/golden-update|--all|--base|b a|");
+    expect(r.summary).toBe("Golden scans with dist/cli.js, built from this commit.\n");
   });
 
-  it("scans with the installed CLI and builds nothing, and never falls back to the build", () => {
-    expect(sh(compare, { TARBALL: "package", CLI: "/x/darnit" }).ran).toBe(
-      "npx|tsx|scripts/golden.ts|--cli|/x/darnit|--out|/rt/golden-update|",
-    );
+  it("scans with the installed CLI and builds nothing, saying which, and never falls back to the build", () => {
+    const r = sh(compare, { TARBALL: "package", INTEGRITY: "sha512-x", CLI: "/x/darnit" });
+    expect(r.ran).toBe("npx|tsx|scripts/golden.ts|--cli|/x/darnit|--out|/rt/golden-update|");
+    expect(r.summary).toBe("Golden scans with the darnit installed from artifact package, integrity sha512-x.\n");
     expect(sh(compare, { TARBALL: "package", CLI: "" }).ran).toBe(
       "npx|tsx|scripts/golden.ts|--cli||--out|/rt/golden-update|",
     );
+  });
+
+  it("fails the job before anything else when only one of tarball and integrity is set", () => {
+    expect(guard.run).toContain("tarball and integrity together");
+    for (const [TARBALL, INTEGRITY, exit] of [
+      ["package", "", 1],
+      ["", "sha512-x", 1],
+      ["package", "sha512-x", 0],
+      ["", "", 0],
+    ] as const) {
+      const r = sh(guard, { TARBALL, INTEGRITY });
+      expect(r.exit, `${TARBALL}/${INTEGRITY}`).toBe(exit);
+      expect(r.ran.includes("::error::"), `${TARBALL}/${INTEGRITY}`).toBe(exit === 1);
+    }
   });
 
   it("installs with the integrity from env, and fails the step without an output when the install fails", () => {
@@ -145,5 +168,49 @@ describe("golden workflow with a tarball input", () => {
     const failed = sh(install, { INTEGRITY: "sha512-x", FAILS: "npx" });
     expect(failed.exit).not.toBe(0);
     expect(failed.output).toBe("");
+  });
+});
+
+describe("scripts/installed.ts", () => {
+  // npm records each call, so a run that reaches the install shows up; its own temp folder holds the work folder.
+  const dir = join(root, "installed");
+  const npmBin = join(dir, "bin");
+  mkdirSync(npmBin, { recursive: true });
+  writeFileSync(join(npmBin, "npm"), `#!/bin/sh\necho "$@" >> "$NPM_LOG"\n`, { mode: 0o755 });
+  const tarball = join(dir, "darnit.tgz");
+  writeFileSync(tarball, "not really a tarball\n");
+  const installed = (sri: string) => {
+    const tmp = mkdtempSync(join(dir, "tmp-"));
+    const log = join(tmp, "npm.log");
+    const r = spawnSync(
+      resolve("node_modules/.bin/tsx"),
+      [resolve("scripts/installed.ts"), "--tarball", tarball, "--integrity", sri],
+      {
+        encoding: "utf8",
+        timeout: 60_000,
+        env: { ...process.env, PATH: `${npmBin}:${process.env.PATH}`, TMPDIR: tmp, NPM_LOG: log, INIT_CWD: "" },
+      },
+    );
+    const work = readdirSync(tmp).filter((f) => f.startsWith("darnit-installed-"));
+    return {
+      r,
+      npm: existsSync(log) ? readFileSync(log, "utf8") : "",
+      work: work.flatMap((w) => readdirSync(join(tmp, w))),
+    };
+  };
+
+  it("exits 1 naming both hashes when the tarball's integrity differs, and installs nothing", () => {
+    const { r, npm, work } = installed("sha512-AAAA");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(`has integrity ${integrity(tarball)}, expected sha512-AAAA`);
+    expect(r.stdout).toBe("");
+    expect(npm).toBe("");
+    expect(work).toEqual(["darnit.tgz"]);
+  });
+
+  it("reaches npm with the matching integrity, so the run above would show an install", () => {
+    const { npm, work } = installed(integrity(tarball));
+    expect(npm.split("\n")[0]).toBe("init -y");
+    expect(work).toContain("install");
   });
 });

@@ -110,6 +110,8 @@ describe("golden workflow scope", () => {
       "packs/openai/x/rules/é.yml",
       "test/golden/a_b.txt",
       "scripts/golden.ts",
+      "scripts/installed.ts",
+      "scripts/e2e-env.ts",
       ".github/workflows/golden.yml",
       "package-lock.json",
       "tsconfig.build.json",
