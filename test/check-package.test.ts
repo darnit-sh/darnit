@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { chmodSync, mkdirSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -11,7 +12,7 @@ const TSX = join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
 const PKG = await readFile(join(ROOT, "package.json"), "utf8");
 const { version: VERSION } = JSON.parse(PKG) as { version: string };
 type File = { path?: string; data?: string | Buffer; type?: string; link?: string; raw?: Buffer } & Partial<
-  Record<"magic" | "prefix", string> & { pax: Record<string, string> }
+  Record<"magic" | "prefix", string> & { pax: Record<string, string>; mode: number | string }
 >;
 
 // A tar writer that can write what npm never would: links, escaping paths, odd magic, paths only a pax header holds.
@@ -20,7 +21,7 @@ const pad = (b: Buffer) => Buffer.concat([b, Buffer.alloc(-b.length & 511)]);
 function header(f: File, size: number): Buffer {
   const h = Buffer.alloc(512);
   h.write(f.path ?? "", 0, 100);
-  h.write(field(0o644, 8), 100);
+  h.write(typeof f.mode === "string" ? f.mode : field(f.mode ?? 0o644, 8), 100);
   h.write(field(size, 12), 124);
   h.write(`${" ".repeat(8)}${f.type ?? "0"}`, 148);
   h.write(f.link ?? "", 157, 100);
@@ -70,7 +71,7 @@ beforeAll(async () => {
     .filter((p) => /\/change\.json$|\/rules\//.test(p));
   base = [
     { path: "package/package.json", data: PKG },
-    { path: "package/dist/cli.js", data: "#!/usr/bin/env node\n" },
+    { path: "package/dist/cli.js", data: "#!/usr/bin/env node\n", mode: 0o755 },
     ...(await Promise.all(records.map(async (p) => ({ path: `package/${p}`, data: await readFile(join(ROOT, p)) })))),
   ];
 });
@@ -82,6 +83,21 @@ describe("check-package", () => {
     const r = run([join(dir, `darnit-${VERSION}.tgz`), "--version", VERSION]);
     expect(r.stdout).toMatch(/^\S+: nothing that should not ship\n$/);
     expect(r.status).toBe(0);
+  });
+
+  it("finds a setuid file in a tarball npm packs, which npm pack keeps", () => {
+    const helper = join(ROOT, "dist", "check.js");
+    expect(npm("run", "build")).toBe(0);
+    mkdirSync(join(dir, "setuid"));
+    chmodSync(helper, 0o6777);
+    try {
+      expect(npm("pack", "--pack-destination", join(dir, "setuid"))).toBe(0);
+    } finally {
+      chmodSync(helper, 0o644);
+    }
+    const r = run([join(dir, "setuid", `darnit-${VERSION}.tgz`)]);
+    expect(r.stdout).toMatch(/^package\/dist\/check\.js: mode [67]755 \(setuid/);
+    expect(r.status).toBe(1);
   });
 
   it("passes the package.json and records as the checkout holds them", async () => {
@@ -123,9 +139,24 @@ describe("check-package", () => {
     ["a path in a pax header", add({ path: "package/dist/ok.js", pax: { path: "package/.env" } }), /\.env: a dot/],
     ["a GNU long name", add({ path: "L", type: "L", data: "package/.npmrc" }, { path: "package/a" }), /\.npmrc: a dot/],
     ["a missing bin", without("package/dist/cli.js"), /bin dist\/cli\.js is not in/],
+    ["a setuid file", add({ path: "package/dist/a.js", mode: 0o6777 }), /a\.js: mode 6777 \(setuid, setgid\), where/],
+    ["a sticky file", add({ path: "package/dist/a.js", mode: 0o1644 }), /a\.js: mode 1644 \(sticky\), where/],
+    ["a file others can write", add({ path: "package/dist/a.js", mode: 0o666 }), /a\.js: mode 0666, where npm/],
+    ["a file its owner cannot write", add({ path: "package/dist/a.js", mode: 0o444 }), /a\.js: mode 0444, where/],
+    ["a file inside package.json", add({ path: "package/package.json/a.js" }), /inside package\/package\.json, which/],
+    ["a file inside a file", add({ path: "package/CHANGELOG.md" }, { path: "package/CHANGELOG.md/a.js" }), /a file$/],
     ["over the size limit", add({ path: "package/dist/a.js", data: Buffer.alloc(MAX_UNPACKED) }), /more than/],
   ])("finds %s", async (_, breach, finding) => {
     expect(await check(breach(base), VERSION)).toEqual([expect.stringMatching(finding)]);
+  });
+
+  it("finds a mode the two readers read apart", async () => {
+    expect(await check(add({ path: "package/dist/a.js", mode: " ".repeat(8) })(base))).toEqual([
+      expect.stringMatching(
+        /^npm's tar reads entry \d+ as package\/dist\/a\.js 0 0 undefined, this script as .* 0 0 0$/,
+      ),
+      "package/dist/a.js: mode 0000, where npm pack writes 0644 or 0755",
+    ]);
   });
 
   it("finds a wrong version", async () => {
@@ -155,7 +186,11 @@ describe("check-package", () => {
     ["a NUL in a pax path", () => write(add(pax)(base)), /NUL/],
     ["a record inside a pax value", () => write([{ path: "package/a", pax: { c: "x\n9 path=.e\n" } }]), /newline/],
     ["a pax size that differs", () => write([{ path: "package/a", data: "abc", pax: { size: "5" } }]), /pax size/],
-    ["an unreadable pax header", () => write([{ path: "P", type: "x", data: "bad" }, { path: "package/a" }]), /pax/],
+    ["a pax record with no length", () => write([{ path: "P", type: "x", data: "bad" }, { path: "package/a" }]), /pax/],
+    ["a pax length not in digits", () => write([{ path: "P", type: "x", data: "0x0c path=a\n" }]), /unreadable pax/],
+    ["a pax length past its header", () => write([{ path: "P", type: "x", data: "99 path=a\n" }]), /unreadable pax/],
+    ["a pax record with no newline", () => write([{ path: "P", type: "x", data: "10 path=a!" }]), /unreadable pax/],
+    ["a pax record with no =", () => write([{ path: "P", type: "x", data: "9 pathaa\n" }]), /unreadable pax/],
     ["five pax headers in a row", () => write(Array<File>(5).fill({ path: "P", type: "x" })), /in a row/],
     ["a bad checksum", () => write(base, (t) => (t.writeUInt8(t[100]! ^ 1, 100), t)), /checksum/],
     ["a field that is not octal", () => write(base, (t) => (t.write("zz", 148), t)), /not octal/],
@@ -176,7 +211,9 @@ describe("check-package", () => {
     PREFIXED.add("ustar\0xx");
     try {
       expect(checkPackage(file)).toEqual([
-        expect.stringMatching(/^npm's tar reads entry \d+ as package\/package\.json 0 0, this script as package\/dist/),
+        expect.stringMatching(
+          /^npm's tar reads entry \d+ as package\/package\.json 0 0 644, this script as package\/dist/,
+        ),
       ]);
     } finally {
       PREFIXED.delete("ustar\0xx");
@@ -185,7 +222,7 @@ describe("check-package", () => {
 
   it("finds an entry npm's reader skips", async () => {
     expect(await check(add({ path: "package/z", type: "Z" })(base))).toEqual([
-      expect.stringMatching(/^npm's tar reads entry \d+ as package\/z ignored, this script as package\/z Z 0$/),
+      expect.stringMatching(/^npm's tar reads entry \d+ as package\/z ignored, this script as package\/z Z 0 644$/),
       'package/z: tar entry type "Z"',
     ]);
   });
@@ -199,6 +236,11 @@ describe("check-package", () => {
     expect(run([file, "--version="]).status).toBe(2);
     expect(run([join(dir, "missing.tgz")]).status).toBe(2);
     expect(run([join(ROOT, "package.json")]).status).toBe(2);
+    const fake = join(dir, "fake-npm");
+    await mkdir(fake);
+    await writeFile(join(fake, "npm"), `#!/bin/sh\necho ${join(dir, "no-npm-here")}\n`, { mode: 0o755 });
+    const noTar = run([await write(base)], { PATH: fake });
+    expect([noTar.status, noTar.stderr]).toEqual([2, expect.stringMatching(/^npm's tar reader is not under /)]);
     const noNpm = run([await write(base)], { PATH: dir });
     expect([noNpm.status, noNpm.stderr]).toEqual([2, expect.stringMatching(/npm/)]);
   });

@@ -29,20 +29,21 @@ const DENY: [RegExp, string][] = [
   [/(^|\/)(tests?|__tests__)\/|(^|[/.])(test|spec)\.[cm]?[jt]sx?$/i, "a test file"],
   [/\.map$/i, "a source map"],
   [/(^|[/.])env(\.[^/]*)?$/i, "an env file"],
-  [
-    /\.(pem|key|crt|cer|der|p8|p12|pfx|jks|keystore|ppk|gpg|asc)$|(^|\/)id_(rsa|dsa|ecdsa|ed25519)/i,
-    "named like a key",
-  ],
+  [/\.(pem|key|crt|cer|der|p8|p12|pfx|jks|keystore|ppk|gpg|asc)$/i, "named like a key"],
+  [/(^|\/)id_(rsa|dsa|ecdsa|ed25519)/i, "named like a key"],
   [/(^|[/._-])(secrets?|credentials?|private[-_]?key)([._-][^/]*)?$/i, "named like a key"],
 ];
+// npm pack writes a file's own mode with owner read and write added and group and other write removed: 0644, or
+// 0755 for an executable. It keeps setuid, setgid and sticky, which npm installs as they are; no package needs them.
+const SPECIAL = { setuid: 0o4000, setgid: 0o2000, sticky: 0o1000 };
 // What each tar entry type from 1 to 6 is; only 0, a plain file, ships.
 const TYPES = ["", "a hard link", "a symlink", "a device", "a device", "a folder", "a pipe"];
 const USAGE = "usage: tsx scripts/check-package.ts <file.tgz> [--version <v>]";
 
 type Manifest = { version?: string; bin?: Record<string, string> };
-type Entry = { path: string; type: string; size: number; data: Buffer; link: string };
+type Entry = { path: string; type: string; size: number; mode: number; data: Buffer; link: string };
 type Rules = { denied: (p: string) => string | undefined; allowed: (p: string) => boolean };
-type NpmEntry = { path: string; size: number; header: { typeKey: string }; resume(): void };
+type NpmEntry = { path: string; size: number; mode?: number; header: { typeKey: string }; resume(): void };
 type NpmParser = { on(event: string, f: (e: NpmEntry) => void): void; end(data: Buffer): void };
 
 const text = (b: Buffer, from: number, len: number) => {
@@ -68,8 +69,7 @@ function pax(data: Buffer): Record<string, string> {
     const end = at + Number(digits);
     const record = data.toString("utf8", space + 1, end - 1);
     const eq = record.indexOf("=");
-    if (space < 0 || !/^\d+$/.test(digits) || end > data.length || data[end - 1] !== 0x0a || eq < 1)
-      throw new Error("unreadable pax header");
+    if (!/^\d+$/.test(digits) || data[end - 1] !== 0x0a || eq < 1) throw new Error("unreadable pax header");
     if (/[\0\n]/.test(record)) throw new Error(`a pax record holds a NUL or newline: ${JSON.stringify(record)}`);
     out[record.slice(0, eq)] = record.slice(eq + 1);
     at = end;
@@ -88,17 +88,18 @@ function header(tar: Buffer, at: number) {
   return {
     type: String.fromCharCode(h[156] || 48),
     size: octal(h, 124, 12),
+    mode: octal(h, 100, 8),
     name: prefix ? `${prefix}/${name}` : name,
   };
 }
 
 // One header and its data, with what the pax and long name headers before it set.
 function entry(tar: Buffer, at: number, ext: Record<string, string>): Entry {
-  const { type, size, name } = header(tar, at);
+  const { type, size, mode, name } = header(tar, at);
   if (ext.size !== undefined && ext.size !== String(size)) throw new Error(`a pax size differs at byte ${at}`);
   const data = tar.subarray(at + 512, at + 512 + size);
   if (data.length < size) throw new Error(`tar entry at byte ${at} is cut short`);
-  return { path: ext.path ?? name, type, size, data, link: ext.linkpath ?? text(tar, at + 157, 100) };
+  return { path: ext.path ?? name, type, size, mode, data, link: ext.linkpath ?? text(tar, at + 157, 100) };
 }
 
 function readTar(tar: Buffer): Entry[] {
@@ -124,7 +125,8 @@ function readTar(tar: Buffer): Entry[] {
   return entries;
 }
 
-// The same tarball through the tar reader inside the npm on PATH, as path, type code and size per entry.
+// The same tarball through the tar reader inside the npm on PATH, as path, type code, size and mode per entry.
+// It trusts the job's PATH to find npm, as the rest of the publish pipeline does.
 function npmListing(tar: Buffer): string[] {
   const root = execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
   let Parser: new (o: { strict: boolean }) => NpmParser;
@@ -136,7 +138,7 @@ function npmListing(tar: Buffer): string[] {
   const out: string[] = [];
   const parser = new Parser({ strict: true });
   parser.on("entry", (e) => {
-    out.push(`${e.path} ${e.header.typeKey} ${e.size}`);
+    out.push(`${e.path} ${e.header.typeKey} ${e.size} ${e.mode?.toString(8)}`);
     e.resume();
   });
   parser.on("ignoredEntry", (e) => out.push(`${e.path} ignored`));
@@ -149,7 +151,7 @@ function npmListing(tar: Buffer): string[] {
 }
 
 function listingFindings(entries: Entry[], tar: Buffer): string[] {
-  const ours = entries.map((e) => `${e.path} ${e.type} ${e.size}`);
+  const ours = entries.map((e) => `${e.path} ${e.type} ${e.size} ${e.mode.toString(8)}`);
   const npm = npmListing(tar);
   const at = Array.from({ length: Math.max(ours.length, npm.length) }, (_, n) => n).find((n) => ours[n] !== npm[n]);
   if (at === undefined) return [];
@@ -171,15 +173,28 @@ function rules(root: string): Rules {
   return { denied, allowed };
 }
 
-function pathFinding(e: Entry, { denied, allowed }: Rules): string | undefined {
+const escapes = (p: string) => !p.startsWith("package/") || p.includes("\\") || p.split("/").includes("..");
+// The nearest folder of a path that the tarball also holds as a file.
+const fileParent = (p: string, shipped: Set<string>) =>
+  [...p.matchAll(/\//g)].map((m) => p.slice(0, m.index)).find((parent) => shipped.has(parent));
+
+function modeFinding({ path, mode }: Entry): string | undefined {
+  if ((mode & ~0o755) === 0 && (mode & 0o600) === 0o600) return undefined;
+  const special = Object.entries(SPECIAL).flatMap(([name, bit]) => (mode & bit ? [name] : []));
+  const named = special.length ? ` (${special.join(", ")})` : "";
+  return `${path}: mode ${mode.toString(8).padStart(4, "0")}${named}, where npm pack writes 0644 or 0755`;
+}
+
+function pathFinding(e: Entry, { denied, allowed }: Rules, shipped: Set<string>): string | undefined {
   if (e.type !== "0")
     return `${e.path}: ${TYPES[parseInt(e.type)] || `tar entry type ${JSON.stringify(e.type)}`}${e.link && ` to ${e.link}`}`;
-  const rel = e.path.slice("package/".length);
-  if (!e.path.startsWith("package/") || e.path.includes("\\") || e.path.split("/").includes(".."))
-    return `${e.path}: outside package/`;
-  const deny = denied(rel);
+  if (escapes(e.path)) return `${e.path}: outside package/`;
+  const parent = fileParent(e.path, shipped);
+  if (parent) return `${e.path}: inside ${parent}, which is a file`;
+  const deny = denied(e.path.slice("package/".length));
   if (deny) return `${e.path}: ${deny}`;
-  return allowed(rel) ? undefined : `${e.path}: not in package.json "files"`;
+  if (!allowed(e.path.slice("package/".length))) return `${e.path}: not in package.json "files"`;
+  return modeFinding(e);
 }
 
 // Every record file in the tarball is the checkout's copy.
@@ -245,11 +260,13 @@ export function checkPackage(file: string, options: { root?: string; version?: s
   const tar = unpack(file);
   const entries = readTar(tar);
   const r = rules(root);
-  const files = new Map(entries.filter((e) => !pathFinding(e, r)).map((e) => [e.path, e]));
+  const shipped = new Set(entries.filter((e) => e.type === "0").map((e) => e.path));
+  const found = entries.map((e) => pathFinding(e, r, shipped));
+  const files = new Map(entries.filter((_, i) => !found[i]).map((e) => [e.path, e]));
   const unpacked = entries.reduce((sum, e) => sum + e.size, 0);
   return [
     ...listingFindings(entries, tar),
-    ...entries.map((e) => pathFinding(e, r)).filter((f) => f !== undefined),
+    ...found.filter((f) => f !== undefined),
     ...changedRecords(files, root),
     ...missingRecords(files, root, r),
     ...manifestFindings(files, root, version),
