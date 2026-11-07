@@ -1,0 +1,11 @@
+# Comments in src/ and scripts/ that turn a check off and stay for now, one per line: the file, the suppression as
+# test/suppressions.test.ts names it (eslint's with the rules it names), its place among the same suppressions in
+# that file (#1, #2), then the reason, tab separated. The key holds no line number, so moving a listed comment leaves
+# its line as it is, and a second copy in one file is a new finding. The test fails on a suppression missing here and
+# on a line whose suppression is gone.
+src/detect.ts	eslint-disable-next-line no-control-regex	#1	the pattern matches control characters on purpose, to replace them
+src/fix.ts	eslint-disable-next-line no-control-regex	#1	the pattern matches control characters on purpose, to escape them
+src/fix.ts	eslint-disable-next-line no-control-regex	#2	the pattern matches control characters on purpose, to drop them
+src/github.ts	eslint-disable-next-line preserve-caught-error	#1	fetch's error can hold the token, so the new error leaves it out
+src/plan.ts	eslint-disable-next-line no-control-regex	#1	the pattern matches control characters on purpose, to quote them as git does
+src/tests.ts	eslint-disable-next-line no-control-regex	#1	the pattern matches terminal escapes, which start with a control character

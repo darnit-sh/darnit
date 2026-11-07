@@ -98,12 +98,13 @@ new class is listed here, with its invariant, by the change that adds it.
 ## Limits
 The checks below run in CI. Anything that broke one before it existed is listed in its file under `scripts/allow/`
 (`scripts/allow/imports.tsv`, `scripts/allow/unused.tsv`, `scripts/allow/duplicates.tsv`,
-`scripts/allow/limits.tsv`), one finding per line, tab-separated with the reason last. One shared reader
-(`scripts/allowlist.ts`) checks every list the same way: a finding not listed fails, and a listed line whose finding
-is gone fails, so each list can only shrink. Only a `ci` change with an `Allowlist: <reason>` line in its
-description may add a line to a list (a line edited in place counts as added), or add anywhere a tag that makes knip
-skip an export or a `jscpd:ignore` marker, and only a `ci` change with a `Proof: none, <reason>` line may change a
-tool's settings (`scripts/check-refactor.sh`). Any change may remove a line whose finding is gone.
+`scripts/allow/limits.tsv`, `scripts/allow/suppressions.tsv`), one finding per line, tab-separated with the reason
+last. One shared reader (`scripts/allowlist.ts`) checks every list the same way: a finding not listed fails, and a
+listed line whose finding is gone fails, so each list can only shrink. Only a `ci` change with an `Allowlist:
+<reason>` line in its description may add a line to a list (a line edited in place counts as added), or add anywhere
+a tag that makes knip skip an export or a `jscpd:ignore` marker, and only a `ci` change with a `Proof: none,
+<reason>` line may change a tool's settings (`scripts/check-refactor.sh`). Any change may remove a line whose
+finding is gone.
 
 Coverage has a floor rather than a list: each threshold in `coverage-thresholds.json`, which `vitest.config.ts`
 reads, only goes up. Whatever its type, a change fails when it lowers or removes a threshold, changes a vitest
@@ -115,6 +116,8 @@ hint there. A folder a change adds to the thresholds must start at or above what
 | Check | Value |
 |---|---|
 | Import floors and cycles | the map above, checked by `npm test` |
+| Comments that turn a check off in `src/` and `scripts/` | none: eslint-disable in any form, eslint config, `global` and `exported` comments, `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, coverage ignore hints, knip tags and `prettier-ignore` in JavaScript and TypeScript, and `jscpd:ignore` markers in any file, checked by `npm test` (`test/suppressions.test.ts`) |
+| Tool settings pinned by `npm test` (`test/tool-ignores.test.ts`) | `knip.json` whole, the `ignores` block in `eslint.config.js`, the lines of `.prettierignore`, no `knip` or `jscpd` key in `package.json` and no jscpd config file in the root |
 | Unused files, exports and dependencies | none, checked by `npm run knip` |
 | Duplicated blocks in `src/` and `scripts/` | none of 50 tokens or more, checked by `npm run duplicates` |
 | Coverage per folder of `src/` | at or above each line and branch percent in `coverage-thresholds.json`, measured by `npm test -- --coverage` on one CI runner |
