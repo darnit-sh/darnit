@@ -2,7 +2,5 @@
 # place among the blocks between them (#1, #2), then the reason, tab separated. The key holds no lines or text, so
 # an edit to a listed block or elsewhere in either file leaves the line as it is; npm run duplicates shows the lines
 # of a block missing here. It fails on a block missing here and on a line whose block is gone.
-scripts/accounting.ts	scripts/backfill-removals.ts	#1	the same --root handling; goes with a shared script helper
-scripts/accounting.ts	scripts/corpus.ts	#1	the same imports and --root handling; goes with a shared script helper
 src/scan/astgrep.ts	src/scan/astgrep.ts	#1	two copies of one binary search; goes when they share one
 src/versions.ts	src/versions.ts	#1	pins and locked read a file the same way; goes when they share one reader

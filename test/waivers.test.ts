@@ -24,19 +24,21 @@ const GATES = `. scripts/pr-common.sh
 t=$(title_type); opt_out >/dev/null; p=$reason
 body_reason "Allowlist: " Allowlist >/dev/null; a=$reason
 body_reason "Coverage: " Coverage >/dev/null; c=$reason
-printf '%s\\0' "$t" "$p" "$a" "$c"`;
+body_reason "Ceiling: " Ceiling >/dev/null; g=$reason
+printf '%s\\0' "$t" "$p" "$a" "$c" "$g"`;
 function gates(title: string, body: string) {
   const env = { PATH: process.env.PATH, LC_ALL: "C.UTF-8", TITLE: title, BODY: body, GITHUB_STEP_SUMMARY: "/dev/null" };
-  const [type, proof, allowlist, coverage] = spawnSync("sh", ["-c", GATES], {
+  const [type, proof, allowlist, coverage, ceiling] = spawnSync("sh", ["-c", GATES], {
     cwd: ROOT,
     encoding: "utf8",
     env,
   }).stdout.split("\0");
-  return { type, proof, allowlist, coverage };
+  return { type, proof, allowlist, coverage, ceiling };
 }
 
 describe("each body goes to scripts/pr-common.sh as the gates get it", () => {
-  const lines = "Proof: none, a long enough reason\nAllowlist: a long enough reason\nCoverage: a long enough reason";
+  const lines =
+    "Proof: none, a long enough reason\nAllowlist: a long enough reason\nCoverage: a long enough reason\nCeiling: a long enough reason";
   it.each([
     ["ci: x", lines],
     ["ci: x", `\n\n${lines}\n\n\n`],
@@ -64,7 +66,7 @@ const run = (args: string[], env: NodeJS.ProcessEnv = process.env) => {
   const r = spawnSync(tsx, ["scripts/waivers.ts", ...args], { cwd: ROOT, encoding: "utf8", env });
   return { status: r.status, out: r.stdout, err: r.stderr };
 };
-const rows = (out: string) => out.split("\n").filter((l) => /^(Proof|Allowlist|Coverage)/.test(l));
+const rows = (out: string) => out.split("\n").filter((l) => /^(Proof|Allowlist|Coverage|Ceiling)/.test(l));
 
 describe("npm run waivers", () => {
   it("counts each line over the title types a gate reads it for, merged after the gate's pull request", () => {
@@ -78,6 +80,7 @@ describe("npm run waivers", () => {
       "Proof: none  test ci                        3      24   12.5%  #137  over 10%",
       "Allowlist    ci                             1      19    5.3%  #174",
       "Coverage     ci                             1      17    5.9%  #176",
+      "Ceiling      any                            1      17    5.9%  #208",
     ]);
   });
 
@@ -87,6 +90,7 @@ describe("npm run waivers", () => {
       "Proof: none  test ci                        0      18    0.0%  #176",
       "Allowlist    ci                             0      17    0.0%  #176",
       "Coverage     ci                             1      17    5.9%  #176",
+      "Ceiling      any                            1      17    5.9%  #208",
     ]);
     expect(rows(run([FIXTURE, "--from=100"]).out)[0]).toBe(
       "Proof: none  fix feat refactor perf         2      14   14.3%  #102 #108  over 10%",
@@ -107,6 +111,7 @@ describe("npm run waivers", () => {
       "Proof: none  test ci                        -       -       -  #137",
       "Allowlist    ci                             1      19    5.3%  #174",
       "Coverage     ci                             1      17    5.9%  #176",
+      "Ceiling      any                            1      17    5.9%  #208",
     ]);
     await writeFile(join(dir, "gap.json"), JSON.stringify(prs.filter((pr) => pr.number !== 174)));
     const gap = run([join(dir, "gap.json")]);

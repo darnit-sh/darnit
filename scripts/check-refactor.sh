@@ -315,7 +315,7 @@ gates() {
   gate '^"?\.github/' "the workflows and settings that run and review every pull request"
   gate '^"?\.(npmrc|yarnrc[^/]*)"?$' "npm and yarn config, which decides what every npm command runs"
   gate '^"?test/no-credentials\.ts"?$' "what vitest runs in every worker before the tests"
-  gate '^"?scripts/(accounting|golden|installed|e2e-env|fixtures|allowlist|unseen|show|limits)\.ts"?$' "a runner behind a required check" "$edited"
+  gate '^"?scripts/(accounting|accounting-final|golden|installed|e2e-env|fixtures|allowlist|unseen|show|limits)\.ts"?$' "a runner behind a required check" "$edited"
   gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*)"?$' "the pull request checks"
   gate '^"?test/(suppressions\.test|tool-ignores\.test|import-graph)\.ts"?$' "a test that guards the allowlists and tool settings"
   # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
@@ -371,6 +371,8 @@ if [ -n "$grown" ]; then
   say "**Allowlist grown** under the Allowlist line in the pull request body. Reason given: \`$reason\`"
   list "$grown"
 fi
+# Every type: a record ceiling goes up only with a reason (scripts/check-ceiling.sh).
+sh "$(dirname "$0")/check-ceiling.sh" "$mb" "$head"
 [ "$coverage" = 0 ] || exit 1
 
 case $type in

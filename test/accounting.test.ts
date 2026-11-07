@@ -996,6 +996,11 @@ describe("npm run corpus", () => {
         removals: await file("removals.json"),
         spec: await file("openapi.yaml"),
         readme: await readFile(join(dir, "README.md"), "utf8").catch(() => undefined),
+        hand: await Promise.all(
+          ["not-covered.yaml", "record-ceiling.txt"].map((f) =>
+            readFile(join(dir, "packs", "openai", f), "utf8").catch(() => undefined),
+          ),
+        ),
       };
     } finally {
       server.close();
@@ -1035,6 +1040,20 @@ describe("npm run corpus", () => {
       `against ${records.length} change records.\n| OpenAI: ${retiringModels(records)} retiring models listed |\nagainst ${records.length} change records.\n`,
     );
     expect(retiringModels(records)).toBeGreaterThan(1);
+  });
+
+  it("leaves the not-covered file and the record ceiling as they were, so a refresh never raises a ceiling", async () => {
+    // The weekly job commits what this run leaves in corpus/ and packs/; a ceiling there changes only by hand.
+    const hand = ["- items: [schema Kept]\n  needs-record: A record.\n", "1\n"];
+    const out = await refresh(async (dir) => {
+      const packs = join(dir, "..", "..", "packs", "openai");
+      await mkdir(packs, { recursive: true });
+      await writeFile(join(packs, "not-covered.yaml"), hand[0]!);
+      await writeFile(join(packs, "record-ceiling.txt"), hand[1]!);
+    });
+    expect(out.run).toBe(0);
+    expect(out.removals).toContain("api-schema-removed");
+    expect(out.hand).toEqual(hand);
   });
 
   it("keeps the old spec when the log cannot be read, so the removals are taken again next run", async () => {
