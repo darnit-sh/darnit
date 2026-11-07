@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,6 +36,22 @@ const notInHistory = (ids: string[]) =>
       git("cat-file", "-t", id).stdout.trim() !== "commit" || git("merge-base", "--is-ancestor", id, "HEAD").status,
   );
 
+/** The exit code of prettier run with `args` over a folder holding only a badly formatted `file`, which .gitignore lists. */
+async function checkAlone(args: string[], file: string): Promise<number | null> {
+  const dir = await mkdtemp(join(tmpdir(), "darnit-format-"));
+  try {
+    for (const f of [".prettierignore", ".prettierrc.json"]) await copyFile(join(ROOT, f), join(dir, f));
+    await writeFile(join(dir, ".gitignore"), "src/\n");
+    await mkdir(join(dir, "src"));
+    await writeFile(join(dir, file), "export   const badly={a:1}\n");
+    const prettier = join(ROOT, "node_modules/prettier/bin/prettier.cjs");
+    const child = spawn(process.execPath, [prettier, ...args], { cwd: dir, stdio: "ignore" });
+    return await new Promise((done, fail) => child.on("error", fail).on("close", done));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 // CI's test job fetches two commits; history older than that is only there in a full clone.
 const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: ROOT }).toString().trim();
 
@@ -71,23 +87,10 @@ describe("the format check", () => {
     expect(format).toBe(check!.replace("--check", "--write"));
     const [bin, ...args] = check!.split(" ");
     expect(bin).toBe("prettier");
-    const dir = await mkdtemp(join(tmpdir(), "darnit-format-"));
-    try {
-      for (const f of [".prettierignore", ".prettierrc.json"]) await copyFile(join(ROOT, f), join(dir, f));
-      await writeFile(join(dir, ".gitignore"), "src/\n");
-      await mkdir(join(dir, "src"));
-      const files = ["ts", "js", "mjs", "cjs", "mts", "cts", "tsx", "jsx"].map((e) => `src/bad.${e}`);
-      for (const f of files) await writeFile(join(dir, f), "export   const badly={a:1}\n");
-      await writeFile(join(dir, "src/notes.md"), "a  *b*\n");
-      const prettier = join(ROOT, "node_modules/prettier/bin/prettier.cjs");
-      const run = spawnSync(process.execPath, [prettier, ...args], { cwd: dir, encoding: "utf8" });
-      expect(run.status).toBe(1);
-      expect([...(run.stdout + run.stderr).matchAll(/^\[warn\] (src\/\S+)$/gm)].map((m) => m[1]).sort()).toEqual(
-        files.sort(),
-      );
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    const code = ["ts", "js", "mjs", "cjs", "mts", "cts", "tsx", "jsx"].map((e) => `src/bad.${e}`);
+    const status = await Promise.all([...code, "src/notes.md"].map(async (f) => [f, await checkAlone(args, f)]));
+    // 1 is prettier's exit code for unformatted files; only the exit code is read, as CI colors the output.
+    expect(Object.fromEntries(status)).toEqual({ ...Object.fromEntries(code.map((f) => [f, 1])), "src/notes.md": 0 });
   });
 });
 
