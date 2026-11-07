@@ -1790,6 +1790,7 @@ describe("lines added to an allowlist under scripts/allow/", () => {
     for (const file of [
       "scripts/allowlist.ts",
       "scripts/unseen.ts",
+      "scripts/limits.ts",
       "knip.json",
       "Knip.JSON",
       ".knip.jsonc",

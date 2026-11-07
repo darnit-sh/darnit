@@ -29,6 +29,7 @@
     "lint": "eslint .",
     "knip": "tsx scripts/allowlist.ts unused",
     "duplicates": "tsx scripts/allowlist.ts duplicates",
+    "limits": "tsx scripts/allowlist.ts limits",
     "test": "vitest run",
     "test:fixtures": "tsx scripts/fixtures.ts",
     "test:e2e": "npm run build && tsx scripts/e2e.ts",

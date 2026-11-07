@@ -1,8 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { appendFile, mkdir, readFile, rename as move, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { copy, run } from "./allowlist-copy.js";
+import { copy, npm, run } from "./allowlist-copy.js";
+import { checking, ci, loosened } from "./ci-steps.js";
 
 describe("what the check reads", () => {
   it("reads a list only as a file at its own path, never through a link", async () => {
@@ -68,18 +68,15 @@ describe("what the check reads", () => {
 });
 
 describe("the checks as the lint job runs them", () => {
-  /** `npm run <script>` in `dir`, as CI's lint job runs it, with npm's own settings left out. */
-  const npm = (dir: string, script: string) => {
-    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_/i.test(k)));
-    const r = spawnSync("npm", ["run", "--silent", script], { cwd: dir, encoding: "utf8", env });
-    return { status: r.status, out: r.stdout + r.stderr };
-  };
-
   it("pass on a copy of this repository, and say so", async () => {
     const dir = await copy();
     expect(npm(dir, "knip")).toMatchObject({
       status: 0,
       out: "unused: every finding is in scripts/allow/unused.tsv\n",
+    });
+    expect(npm(dir, "limits")).toMatchObject({
+      status: 0,
+      out: "limits: every finding is in scripts/allow/limits.tsv\n",
     });
   });
 
@@ -91,6 +88,7 @@ describe("the checks as the lint job runs them", () => {
     for (const [script, file] of [
       ["knip", "unused"],
       ["duplicates", "duplicates"],
+      ["limits", "limits"],
     ]) {
       const r = npm(dir, script!);
       expect(r.status, script).toBe(1);
@@ -104,10 +102,20 @@ describe("the checks as the lint job runs them", () => {
     for (const [script, file] of [
       ["knip", "unused"],
       ["duplicates", "duplicates"],
+      ["limits", "limits"],
     ]) {
       const r = npm(dir, script!);
       expect(r.status, script).toBe(1);
       expect(r.out).toContain(`scripts/allow/${file}.tsv is missing`);
+    }
+  });
+
+  it("run in the lint job every time, and fail the run when they fail", async () => {
+    for (const script of ["knip", "duplicates", "limits"]) {
+      const step = `npm run ${script}`;
+      expect(checking(await ci(), step), script).toEqual(["lint"]);
+      for await (const { workflow, how } of loosened("lint", step))
+        expect(checking(workflow, step), `${script}: ${how}`).toEqual([]);
     }
   });
 });
