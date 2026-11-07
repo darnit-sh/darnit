@@ -113,7 +113,10 @@ const TAIL_LINES = 40;
 export const TAIL_CHARS = 16 * 1024;
 const CUT_MARGIN = 1024;
 
-const base64 = (s: string) => Buffer.from(s).toString("base64").replace(/=+$/, "");
+const base64 = (s: string) =>
+  Buffer.from(s)
+    .toString("base64")
+    .replace(/(?<!=)=+$/, "");
 
 /**
  * `text` with every credential darnit holds replaced by `***`, also in the base64 form a git auth

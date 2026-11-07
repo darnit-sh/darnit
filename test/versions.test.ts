@@ -115,6 +115,28 @@ describe("pypiVersions", () => {
       { version: "1.52.0", from: "uv.lock" },
     ]);
   });
+
+  it.each([
+    ['version = "1.2.3"', "1.2.3"],
+    ['version = "1.2.3rc1"', "1.2.3rc1"],
+    ['version = "10.20.30.post1+local"', "10.20.30.post1+local"],
+    ['version="1.1.1111111"', "1.1.1111111"],
+    ['version =\n"1.2.3"', "1.2.3"],
+    ['version = "1.2.3\nmore"', "1.2.3\nmore"],
+    ['version = "1.2.3"tail', "1.2.3"],
+    ['version = "1.2"', undefined],
+    ['version = "1.2."', undefined],
+    ['version = "1.2.a"', undefined],
+    ['version = "1..3"', undefined],
+    ['version = ""', undefined],
+    ['version = "v1.2.3"', undefined],
+    ['version = "1.2.3', undefined],
+    ['  version = "1.2.3"', undefined],
+    ["version = '1.2.3'", undefined],
+  ])("reads the lock file line %j as earlier versions did", async (line, version) => {
+    const dir = await dirWith({ "uv.lock": `[[package]]\nname = "openai"\n${line}\n` });
+    expect(await pypiVersions(dir, "openai")).toEqual(version ? [{ version, from: "uv.lock" }] : []);
+  });
 });
 
 describe("versions on a repository built to slow it down", () => {
@@ -127,6 +149,17 @@ describe("versions on a repository built to slow it down", () => {
     );
     expect(time).toBeLessThan(2000);
   });
+
+  it(
+    "finishes quickly on a lock file version left open after a long run of digits",
+    { tags: ["cpu-time"] },
+    async () => {
+      const open = `[[package]]\nname = "openai"\nversion = "1.1.${"1".repeat(100_000)}`;
+      const dir = await dirWith({ "poetry.lock": open, "uv.lock": open });
+      const time = await cpuTime(async () => expect(await pypiVersions(dir, "openai")).toEqual([]), 3, 1000);
+      expect(time).toBeLessThan(1000);
+    },
+  );
 
   it("does not read a lock file over the size limit", async () => {
     const big = lock({ "node_modules/openai": "4.60.0" }).replace(/^\{/, `{${" ".repeat(MAX_FILE_BYTES)}`);

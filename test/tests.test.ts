@@ -279,6 +279,28 @@ describe("runTests", () => {
     }
   });
 
+  it("hides a token's base64 form whatever padding it ends in, leaving the padding as earlier versions did", async () => {
+    const b64 = (s: string) => Buffer.from(s).toString("base64");
+    const saved = { GITHUB_TOKEN: process.env.GITHUB_TOKEN, GITHUB_ACTIONS: process.env.GITHUB_ACTIONS };
+    delete process.env.GITHUB_ACTIONS;
+    try {
+      for (const [token, out] of [
+        ["ghp_test1", "*** ***"],
+        ["ghp_test12", "***== ***=="],
+        ["ghp_test123", "***= ***="],
+      ] as const) {
+        process.env.GITHUB_TOKEN = token;
+        const dir = await dirWith({ "leak.txt": `${b64(`x-access-token:${token}`)} ${b64(token)}` });
+        expect((await runTests(dir, "cat leak.txt")).output).toBe(out);
+      }
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
   it("hides the credential on a basic, bearer or token Authorization line, and nothing else", async () => {
     const lines = [
       "Authorization: see the docs",

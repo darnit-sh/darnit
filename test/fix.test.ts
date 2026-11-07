@@ -3573,6 +3573,27 @@ describe("prose", () => {
     expect(out).not.toMatch(INVISIBLE);
   });
 
+  // What earlier versions wrote, punctuation around a word kept outside its code span.
+  it.each([
+    ['see ("@octocat").', 'see \\("`@octocat`"\\).'],
+    ['"#12"', '"`#12`"'],
+    ["'GH-1'", "'`GH-1`'"],
+    ["[JIRA-123]!?", "\\[`JIRA-123`\\]\\!?"],
+    ["((x/y))", "\\(\\(`x/y`\\)\\)"],
+    ['"@"', '"`@`"'],
+    ["...@...", "`...@`..."],
+    ["a-1 abc-x abc--1 _-1 1-1", "`a-1` abc-x abc--1 \\_-1 1-1"],
+    ["x-1y", "`x-1y`"],
+    ['(("www.example.com"))', '\\(\\("`www.example.com`"\\)\\)'],
+    [")@(", "`)@(`"],
+    ["'.", "'."],
+    ['"(a/b', '"\\(`a/b`'],
+    ["deadbeef.", "`deadbeef`."],
+    ["plain (words), here.", "plain \\(words\\), here."],
+  ])("splits %j into punctuation and word as earlier versions did", (input, out) => {
+    expect(prose(input)).toBe(out);
+  });
+
   it("writes out invisible and direction-changing characters in its input", () => {
     expect(prose("a\u200Bb\u202Ec\uFEFFd")).toBe("a\\\\u200bb\\\\u202ec\\\\ufeffd");
   });
