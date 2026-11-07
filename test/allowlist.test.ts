@@ -7,8 +7,9 @@ import { cloneFindings, compare, knipFindings, parseAllowlist, problems } from "
 import { block, copy, edit, run, tempDirs } from "./allowlist-copy.js";
 
 describe("the allowlists", () => {
-  it("name exactly what knip and jscpd find in this repository", () => {
-    for (const kind of ["unused", "duplicates"] as const) expect(run(kind), kind).toMatchObject({ status: 0 });
+  it("name exactly what knip, jscpd and the limits find in this repository", () => {
+    for (const kind of ["unused", "duplicates", "limits"] as const)
+      expect(run(kind), kind).toMatchObject({ status: 0 });
   });
 
   it("need a reason on every line, and name each finding once", () => {

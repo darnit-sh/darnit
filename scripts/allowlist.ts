@@ -3,14 +3,17 @@ import { lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { limits } from "./limits.js";
 import { stillUnused } from "./unseen.js";
 
-// Runs knip (unused files, exports and dependencies) or jscpd (duplicated blocks) and compares what it finds with
-// scripts/allow/<kind>.tsv, one finding per line with the reason it stays. Fails on a finding the list lacks and on
-// a line whose finding is gone, so the list only shrinks. Neither tool reads git's ignore files, and jscpd gets an
-// empty config in place of a .jscpd.json, so a local run finds what CI finds. knip reads a "knip" key in package.json
-// whatever --config says, so the check refuses to run with one, or with a "jscpd" key.
-// Usage: tsx scripts/allowlist.ts unused|duplicates [--root <dir>]
+// Runs knip (unused files, exports and dependencies), jscpd (duplicated blocks) or the size and shape limits of
+// scripts/limits.ts, and compares what it finds with scripts/allow/<kind>.tsv, one finding per line with the reason
+// it stays. Fails on a finding the list lacks and on a line whose finding is gone, so the list only shrinks. Neither
+// tool reads git's ignore files, and jscpd gets an empty config in place of a .jscpd.json, so a local run finds what
+// CI finds. knip reads a "knip" key in package.json whatever --config says, so the check refuses to run with one, or
+// with a "jscpd" key. The limits read no config file and no comments that turn a rule off, and each of their lines
+// gives a cap its breach fails above.
+// Usage: tsx scripts/allowlist.ts unused|duplicates|limits [--root <dir>]
 
 // Tests and data are left out of the duplicate search: tests repeat setup on purpose, so each reads on its own.
 const DUPLICATE_PATHS = ["src", "scripts"];
@@ -172,7 +175,11 @@ function duplicates(root: string): Found {
   }
 }
 
-const KINDS = { unused: { find: unused, fields: 3 }, duplicates: { find: duplicates, fields: 3 } };
+const KINDS = {
+  unused: { find: unused, fields: 3 },
+  duplicates: { find: duplicates, fields: 3 },
+  limits: { find: limits, fields: 4 },
+};
 
 /** The problems with `root`'s allowlist for `kind`, one message each. It is read only as a file at its own path. */
 export function check(kind: keyof typeof KINDS, root: string): string[] {
@@ -197,12 +204,12 @@ function main() {
   const at = process.argv.indexOf("--root");
   // npm runs the script from the folder holding package.json, which is the repository checked.
   const root = resolve(at > 0 ? (process.argv[at + 1] ?? "") : ".");
-  if (kind !== "unused" && kind !== "duplicates") {
-    console.error("usage: tsx scripts/allowlist.ts unused|duplicates [--root <dir>]");
+  if (kind === undefined || !Object.hasOwn(KINDS, kind)) {
+    console.error("usage: tsx scripts/allowlist.ts unused|duplicates|limits [--root <dir>]");
     process.exitCode = 2;
     return;
   }
-  const found = check(kind, root);
+  const found = check(kind as keyof typeof KINDS, root);
   for (const p of found) console.error(p);
   if (found.length > 0) process.exitCode = 1;
   else console.log(`${kind}: every finding is in scripts/allow/${kind}.tsv`);

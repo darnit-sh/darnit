@@ -1,0 +1,190 @@
+# Size and shape limits broken in src/ that stay for now, one per line: the file, the rule, the nearest named
+# function around the breach ((file) for a file too long, (top) outside any function, name #2 for a repeat), the
+# cap, then the reason, tab separated. The cap is what the breach measured when it was listed: lines, complexity,
+# parameters, or for nesting the depth of the function's deepest block, one line per function; 1 for each nested
+# ternary or shadowed name. npm run limits fails on a breach missing here, on one above its cap and on a line whose
+# breach is gone; a breach at or below its cap passes.
+src/check.ts	complexity	render	25	over complexity 10 before the limit was checked; goes when the function is split
+src/check.ts	complexity	scan	21	over complexity 10 before the limit was checked; goes when the function is split
+src/check.ts	complexity	scanCode	13	over complexity 10 before the limit was checked; goes when the function is split
+src/check.ts	max-depth	scan	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/check.ts	max-lines	(file)	454	over 300 lines before the limit was checked; goes when the file is split by job
+src/check.ts	max-lines-per-function	scan	114	over 50 lines before the limit was checked; goes when the function is split
+src/check.ts	max-params	render	5	over 4 parameters before the limit was checked; goes when they become an options object
+src/check.ts	no-nested-ternary	exitCodeForCheck	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/cli.ts	complexity	(top)	21	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/accounting.ts	complexity	account	11	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/accounting.ts	complexity	coveredBy	17	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/accounting.ts	complexity	deprecatedItems	20	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/accounting.ts	complexity	removalItems	15	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/accounting.ts	complexity	requestSchemas	16	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/accounting.ts	complexity	target	11	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/accounting.ts	complexity	walk	16	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/accounting.ts	max-depth	deprecatedItems	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/corpus/accounting.ts	max-depth	requestSchemas	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/corpus/accounting.ts	max-lines	(file)	408	over 300 lines before the limit was checked; goes when the file is split by job
+src/corpus/accounting.ts	max-lines-per-function	account	102	over 50 lines before the limit was checked; goes when the function is split
+src/corpus/accounting.ts	no-nested-ternary	openItems	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/accounting.ts	no-nested-ternary	removalItems	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/candidates.ts	complexity	deriveCandidates	68	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/candidates.ts	max-lines	(file)	335	over 300 lines before the limit was checked; goes when the file is split by job
+src/corpus/candidates.ts	max-lines-per-function	deriveCandidates	193	over 50 lines before the limit was checked; goes when the function is split
+src/corpus/candidates.ts	max-params	covers	6	over 4 parameters before the limit was checked; goes when they become an options object
+src/corpus/candidates.ts	no-nested-ternary	deriveCandidates	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/candidates.ts	no-nested-ternary	deriveCandidates #2	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/candidates.ts	no-nested-ternary	deriveCandidates #3	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/candidates.ts	no-nested-ternary	deriveCandidates #4	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/oasdiff.ts	no-nested-ternary	assetName	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	cellModels	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	choice	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	entry	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	offered	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	recommended	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	replacementsFor	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	resolve	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	retiring	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	wholeRows	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	@typescript-eslint/no-shadow	wholeRows #2	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/corpus/replacements.ts	complexity	readPage	31	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/replacements.ts	complexity	replacementsFor	13	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/replacements.ts	complexity	shutdownDate	11	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/replacements.ts	complexity	wholeRows	12	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/replacements.ts	max-depth	readPage	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/corpus/replacements.ts	max-lines	(file)	540	over 300 lines before the limit was checked; goes when the file is split by job
+src/corpus/replacements.ts	max-lines-per-function	readPage	52	over 50 lines before the limit was checked; goes when the function is split
+src/corpus/replacements.ts	max-lines-per-function	replacementsFor	86	over 50 lines before the limit was checked; goes when the function is split
+src/corpus/replacements.ts	no-nested-ternary	readPage	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/replacements.ts	no-nested-ternary	retiring	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/replacements.ts	no-nested-ternary	shutdownDate	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/replacements.ts	no-nested-ternary	text	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/replacements.ts	no-nested-ternary	text #2	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/replacements.ts	no-nested-ternary	text #3	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/corpus/spec.ts	complexity	requestProperty	12	over complexity 10 before the limit was checked; goes when the function is split
+src/corpus/spec.ts	complexity	resolve	14	over complexity 10 before the limit was checked; goes when the function is split
+src/detect.ts	complexity	detectApis	24	over complexity 10 before the limit was checked; goes when the function is split
+src/detect.ts	complexity	inEmoji	15	over complexity 10 before the limit was checked; goes when the function is split
+src/detect.ts	complexity	readText	12	over complexity 10 before the limit was checked; goes when the function is split
+src/detect.ts	complexity	walk	15	over complexity 10 before the limit was checked; goes when the function is split
+src/detect.ts	max-depth	detectApis	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/detect.ts	max-lines	(file)	384	over 300 lines before the limit was checked; goes when the file is split by job
+src/detect.ts	no-nested-ternary	byPath	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/detect.ts	no-nested-ternary	detectApis	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	@typescript-eslint/no-shadow	applyAndVerify	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	@typescript-eslint/no-shadow	applyAndVerify #2	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	@typescript-eslint/no-shadow	changedSince	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	@typescript-eslint/no-shadow	changedSince #2	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	@typescript-eslint/no-shadow	paint	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	@typescript-eslint/no-shadow	prBody	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	@typescript-eslint/no-shadow	pullRequests	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	@typescript-eslint/no-shadow	pullRequests #2	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	@typescript-eslint/no-shadow	renderSummary	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	@typescript-eslint/no-shadow	restore	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/fix.ts	complexity	classified	23	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	colored	11	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	fix	58	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	groupHits	15	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	prBody	23	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	prepare	13	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	publish	13	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	pullRequests	24	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	readPlanFolder	14	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	renderSummary	43	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	testLine	12	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	complexity	versionGate	17	over complexity 10 before the limit was checked; goes when the function is split
+src/fix.ts	max-depth	fix	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/fix.ts	max-depth	pullRequests	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/fix.ts	max-depth	renderSummary	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/fix.ts	max-lines	(file)	1595	over 300 lines before the limit was checked; goes when the file is split by job
+src/fix.ts	max-lines-per-function	fix	148	over 50 lines before the limit was checked; goes when the function is split
+src/fix.ts	max-lines-per-function	openOne	59	over 50 lines before the limit was checked; goes when the function is split
+src/fix.ts	max-lines-per-function	prBody	74	over 50 lines before the limit was checked; goes when the function is split
+src/fix.ts	max-lines-per-function	prepare	56	over 50 lines before the limit was checked; goes when the function is split
+src/fix.ts	max-lines-per-function	publish	117	over 50 lines before the limit was checked; goes when the function is split
+src/fix.ts	max-lines-per-function	pullRequests	114	over 50 lines before the limit was checked; goes when the function is split
+src/fix.ts	max-lines-per-function	renderSummary	60	over 50 lines before the limit was checked; goes when the function is split
+src/fix.ts	max-params	openOne	11	over 4 parameters before the limit was checked; goes when they become an options object
+src/fix.ts	max-params	prepare	6	over 4 parameters before the limit was checked; goes when they become an options object
+src/fix.ts	max-params	pullRequests	5	over 4 parameters before the limit was checked; goes when they become an options object
+src/fix.ts	no-nested-ternary	checkLines	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	checkLines #2	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	checkLines #3	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	classified	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	classified #2	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	classified #3	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	classified #4	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	groupHits	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	prBody	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	prepare	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	readPlanFolder	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	readPlanFolder #2	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	renderSummary	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/fix.ts	no-nested-ternary	testLine	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/git.ts	@typescript-eslint/no-shadow	filterConfig	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/git.ts	@typescript-eslint/no-shadow	pushStaged	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/git.ts	@typescript-eslint/no-shadow	stage	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/git.ts	@typescript-eslint/no-shadow	start	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/git.ts	complexity	filterConfig	11	over complexity 10 before the limit was checked; goes when the function is split
+src/git.ts	complexity	git	19	over complexity 10 before the limit was checked; goes when the function is split
+src/git.ts	max-lines	(file)	759	over 300 lines before the limit was checked; goes when the file is split by job
+src/git.ts	max-lines-per-function	git	57	over 50 lines before the limit was checked; goes when the function is split
+src/git.ts	max-lines-per-function	withCleanClone	56	over 50 lines before the limit was checked; goes when the function is split
+src/git.ts	max-params	git	5	over 4 parameters before the limit was checked; goes when they become an options object
+src/git.ts	max-params	pushStaged	5	over 4 parameters before the limit was checked; goes when they become an options object
+src/git.ts	max-params	withCleanClone	6	over 4 parameters before the limit was checked; goes when they become an options object
+src/git.ts	no-nested-ternary	credentialIn	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/git.ts	no-nested-ternary	credentialIn #2	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/git.ts	no-nested-ternary	git	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/git.ts	no-nested-ternary	switchTo	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/init.ts	complexity	init	19	over complexity 10 before the limit was checked; goes when the function is split
+src/init.ts	max-depth	init	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/init.ts	max-lines-per-function	init	73	over 50 lines before the limit was checked; goes when the function is split
+src/packs/apply.ts	max-depth	applyRules	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/packs/fixtures.ts	complexity	checkDetection	11	over complexity 10 before the limit was checked; goes when the function is split
+src/packs/fixtures.ts	complexity	checkRewrite	15	over complexity 10 before the limit was checked; goes when the function is split
+src/packs/fixtures.ts	complexity	runPackFixtures	11	over complexity 10 before the limit was checked; goes when the function is split
+src/packs/fixtures.ts	max-lines-per-function	checkRewrite	51	over 50 lines before the limit was checked; goes when the function is split
+src/plan.ts	complexity	duplicateKey	17	over complexity 10 before the limit was checked; goes when the function is split
+src/plan.ts	complexity	wellFormed	37	over complexity 10 before the limit was checked; goes when the function is split
+src/plan.ts	max-depth	duplicateKey	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/plan.ts	max-depth	wellFormed	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/scan/astgrep.ts	@typescript-eslint/no-shadow	requests	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/scan/astgrep.ts	complexity	findMatches	21	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/astgrep.ts	complexity	requests	13	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/astgrep.ts	complexity	ruleFor	18	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/astgrep.ts	max-depth	findMatches	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/scan/astgrep.ts	max-lines	(file)	487	over 300 lines before the limit was checked; goes when the file is split by job
+src/scan/astgrep.ts	max-lines-per-function	endpointTest	55	over 50 lines before the limit was checked; goes when the function is split
+src/scan/astgrep.ts	max-lines-per-function	findMatches	72	over 50 lines before the limit was checked; goes when the function is split
+src/scan/astgrep.ts	max-lines-per-function	requests	51	over 50 lines before the limit was checked; goes when the function is split
+src/scan/astgrep.ts	max-params	findMatches	5	over 4 parameters before the limit was checked; goes when they become an options object
+src/scan/astgrep.ts	max-params	requests	6	over 4 parameters before the limit was checked; goes when they become an options object
+src/scan/astgrep.ts	no-nested-ternary	covered	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/scan/astgrep.ts	no-nested-ternary	ruleFor	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/scan/clients.ts	complexity	baseAddress	22	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/clients.ts	complexity	clientOrigin	22	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/clients.ts	complexity	constructed	11	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/clients.ts	complexity	importsOf	29	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/clients.ts	complexity	indexOf	35	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/clients.ts	complexity	reachingAssignments	28	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/clients.ts	max-depth	importsOf	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/scan/clients.ts	max-depth	indexOf	5	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/scan/clients.ts	max-lines	(file)	505	over 300 lines before the limit was checked; goes when the file is split by job
+src/scan/clients.ts	max-lines-per-function	indexOf	57	over 50 lines before the limit was checked; goes when the function is split
+src/scan/clients.ts	max-params	clientOrigin	5	over 4 parameters before the limit was checked; goes when they become an options object
+src/scan/clients.ts	no-nested-ternary	constructed	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/scan/clients.ts	no-nested-ternary	indexOf	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/scan/mentions.ts	complexity	commentsAndStrings	28	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/mentions.ts	complexity	findMentions	27	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/mentions.ts	max-params	setting	5	over 4 parameters before the limit was checked; goes when they become an options object
+src/scan/mentions.ts	no-nested-ternary	commentsAndStrings	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
+src/scan/values.ts	@typescript-eslint/no-shadow	findModelValues	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
+src/scan/values.ts	complexity	boundName	17	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/values.ts	complexity	findModelValues	24	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/values.ts	complexity	isModelValue	23	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/values.ts	complexity	namedOption	13	over complexity 10 before the limit was checked; goes when the function is split
+src/scan/values.ts	max-depth	findModelValues	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
+src/scan/values.ts	max-lines-per-function	findModelValues	72	over 50 lines before the limit was checked; goes when the function is split
+src/scan/values.ts	max-params	findModelValues	5	over 4 parameters before the limit was checked; goes when they become an options object
+src/tests.ts	complexity	detectTestCommand	11	over complexity 10 before the limit was checked; goes when the function is split
+src/update.ts	complexity	updateNotice	13	over complexity 10 before the limit was checked; goes when the function is split
+src/versions.ts	complexity	npmVersionFor	12	over complexity 10 before the limit was checked; goes when the function is split

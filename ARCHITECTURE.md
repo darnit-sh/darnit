@@ -96,12 +96,13 @@ new class is listed here, with its invariant, by the change that adds it.
 
 ## Limits
 The checks below run in CI. Anything that broke one before it existed is listed in its file under `scripts/allow/`
-(`scripts/allow/imports.tsv`, `scripts/allow/unused.tsv`, `scripts/allow/duplicates.tsv`), one finding per line,
-tab-separated with the reason last. One shared reader (`scripts/allowlist.ts`) checks every list the same way: a
-finding not listed fails, and a listed line whose finding is gone fails, so each list can only shrink. Only a `ci`
-change with an `Allowlist: <reason>` line in its description may add a line to a list, or add anywhere a tag that
-makes knip skip an export or a `jscpd:ignore` marker, and only a `ci` change with a `Proof: none, <reason>` line may
-change a tool's settings (`scripts/check-refactor.sh`).
+(`scripts/allow/imports.tsv`, `scripts/allow/unused.tsv`, `scripts/allow/duplicates.tsv`,
+`scripts/allow/limits.tsv`), one finding per line, tab-separated with the reason last. One shared reader
+(`scripts/allowlist.ts`) checks every list the same way: a finding not listed fails, and a listed line whose finding
+is gone fails, so each list can only shrink. Only a `ci` change with an `Allowlist: <reason>` line in its
+description may add a line to a list (a line edited in place counts as added), or add anywhere a tag that makes knip
+skip an export or a `jscpd:ignore` marker, and only a `ci` change with a `Proof: none, <reason>` line may change a
+tool's settings (`scripts/check-refactor.sh`). Any change may remove a line whose finding is gone.
 
 Coverage has a floor rather than a list: each threshold in `coverage-thresholds.json`, which `vitest.config.ts`
 reads, only goes up. Whatever its type, a change fails when it lowers or removes a threshold, changes a vitest
@@ -117,8 +118,18 @@ hint there. A folder a change adds to the thresholds must start at or above what
 | Duplicated blocks in `src/` and `scripts/` | none of 50 tokens or more, checked by `npm run duplicates` |
 | Coverage per folder of `src/` | at or above each line and branch percent in `coverage-thresholds.json`, measured by `npm test -- --coverage` on one CI runner |
 
-These limits hold for any code a change writes or touches. No lint rule enforces them, so the change holds to
-them itself, and does not make an existing breach worse.
+These limits hold for any code a change writes or touches. For every file in `src/`, `npm run limits` checks them
+with the rules `scripts/limits.ts` holds: it reads no eslint config file and ignores comments that turn a rule off,
+so neither can widen them, and it runs the eslint the repository installs. A breach from before the check is listed
+in `scripts/allow/limits.tsv` under the nearest named function around it, with a cap: what it measured when it was
+listed, which is the lines, complexity or parameters of the function, the depth of its deepest block, or one for
+each nested ternary or shadowed name. A breach above its cap fails, and one at or below it passes, so a change that
+shrinks a listed function need not touch the list. Inside one listed function a change can still trade: it may move
+or add blocks as long as none is deeper than the function's cap, and replace a nested ternary or a shadowed name
+with another in the same function. Functions with no name of their own, and functions of the same name in one file,
+are numbered in order under one name, so a breach in one of them can take the place of another's at or below its
+cap. The lines of a class `static {}` block are not counted, as no rule measures them; its
+complexity and nesting are. In `scripts/` and the tests, the change holds to them itself.
 
 | Limit | Value |
 |---|---|
