@@ -181,6 +181,14 @@ const KINDS = {
   limits: { find: limits, fields: 4 },
 };
 
+/** A message for each "knip" or "jscpd" key in `root`'s package.json, which knip or jscpd would read on top of this check. */
+export function configKeys(root: string): string[] {
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as object;
+  return ["knip", "jscpd"]
+    .filter((k) => Object.hasOwn(pkg, k))
+    .map((k) => `package.json has a "${k}" key, which would add to what knip.json and this check set; remove it`);
+}
+
 /** The problems with `root`'s allowlist for `kind`, one message each. It is read only as a file at its own path. */
 export function check(kind: keyof typeof KINDS, root: string): string[] {
   const file = `scripts/allow/${kind}.tsv`;
@@ -190,12 +198,8 @@ export function check(kind: keyof typeof KINDS, root: string): string[] {
   const plain = steps.every((step, i) => (i < 2 ? step!.isDirectory() : step!.isFile()));
   if (!plain || realpathSync(at) !== join(realpathSync(root), file))
     return [`${file} is reached through a link or is not a file; it is read only as a file at that path`];
-  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as object;
-  const keys = ["knip", "jscpd"].filter((k) => Object.hasOwn(pkg, k));
-  if (keys.length > 0)
-    return keys.map(
-      (k) => `package.json has a "${k}" key, which would add to what knip.json and this check set; remove it`,
-    );
+  const keys = configKeys(root);
+  if (keys.length > 0) return keys;
   return problems(file, readFileSync(at, "utf8"), KINDS[kind].fields, (lines) => KINDS[kind].find(root, lines));
 }
 
