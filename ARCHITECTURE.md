@@ -128,4 +128,4 @@ them itself, and does not make an existing breach worse.
 | Nesting depth | 3 |
 | Parameters | 4 (an options object beyond) |
 | Nested ternaries, shadowed names | none |
-| Formatting | what the pinned prettier writes (`npx prettier --write <files>`); CI checks it only for a `style` change |
+| Formatting | what the pinned prettier writes (`npx prettier --write <files>`); CI's lint job checks every file (`npm run format:check`) |
