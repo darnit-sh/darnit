@@ -89,14 +89,14 @@ describe("check-package", () => {
     const helper = join(ROOT, "dist", "check.js");
     expect(npm("run", "build")).toBe(0);
     mkdirSync(join(dir, "setuid"));
-    chmodSync(helper, 0o6777);
+    chmodSync(helper, 0o4755);
     try {
       expect(npm("pack", "--pack-destination", join(dir, "setuid"))).toBe(0);
     } finally {
       chmodSync(helper, 0o644);
     }
     const r = run([join(dir, "setuid", `darnit-${VERSION}.tgz`)]);
-    expect(r.stdout).toMatch(/^package\/dist\/check\.js: mode [67]755 \(setuid/);
+    expect(r.stdout).toMatch(/^package\/dist\/check\.js: mode 4755 \(setuid\), where/);
     expect(r.status).toBe(1);
   });
 
