@@ -11,8 +11,9 @@ import { show } from "./show.js";
 // request past a gate: how many merged pull requests hold one the gate would accept, among those of the title types
 // the gate reads it for, merged after the pull request that added the gate (pr.yml runs base's copy of each gate).
 //   gh pr list --state merged --limit 1000 --json number,title,body,mergedAt > prs.json
-//   tsx scripts/waivers.ts prs.json [--from <pr number>]
-// --from starts every window after that pull request merged, where it merged later than the gate's.
+//   tsx scripts/waivers.ts prs.json [--from <number of a merged pull request in the file>]
+// --from starts every window after that pull request merged, where it merged later than the gate's. A pull request
+// merged in the same second as the one a window starts after is left out, as gh gives merge times to the second.
 // Each body is read by scripts/pr-common.sh itself, in the locale of the gates' ubuntu runner. It does not read
 // which files a pull request changed, and a gate reads its line only when it finds something to waive, so a count
 // is of pull requests that hold the line, not of pull requests a gate let through on it.
@@ -86,23 +87,27 @@ async function readAll(prs: PullRequest[]): Promise<Read[]> {
 
 type Row = { line: string; types: string[]; after: number[]; counts?: { waived: number; window: number } };
 
-/** Each row's window and count, and a warning for each pull request a window starts after that the file lacks. */
+/** Why `n` cannot start a window, or undefined when the file holds it. */
+export function absent(prs: PullRequest[], n: number): string | undefined {
+  if (prs.some((pr) => pr.number === n)) return undefined;
+  const lowest = Math.min(...prs.map((pr) => pr.number));
+  const more = n < lowest ? `, whose lowest is #${lowest}: fetch with --limit 1000` : "";
+  return `#${n} is not a merged pull request in the file${more}`;
+}
+
+/** Each row's window and count, and a warning for each gate's pull request the file lacks. `from` is in the file. */
 export function count(prs: PullRequest[], reads: Read[], from?: number) {
   const merged = new Map(prs.map((pr) => [pr.number, Date.parse(pr.mergedAt)]));
-  const lowest = Math.min(...merged.keys());
   const warnings = new Set<string>();
   const rows: Row[] = ROWS.map(({ line, key, since }) => {
     const starts = Object.entries(since).map(([type, gate]) => {
-      const later = from !== undefined && (merged.get(from) ?? Infinity) > (merged.get(gate) ?? -Infinity);
+      const later = from !== undefined && merged.get(from)! > (merged.get(gate) ?? -Infinity);
       return [type, later ? from : gate] as const;
     });
     const after = [...new Set(starts.map(([, n]) => n))].sort((a, b) => a - b);
-    const absent = [...Object.values(since), ...(from === undefined ? [] : [from])].filter((n) => !merged.has(n));
-    for (const n of absent)
-      warnings.add(
-        `#${n}, which a window starts after, is not in the file, whose lowest is #${lowest}: fetch with --limit 1000`,
-      );
-    if (absent.length) return { line, types: Object.keys(since), after };
+    const why = Object.values(since).flatMap((n) => absent(prs, n) ?? []);
+    for (const w of why) warnings.add(w);
+    if (why.length) return { line, types: Object.keys(since), after };
     const start = new Map(starts.map(([type, n]) => [type, merged.get(n)!]));
     const window = prs
       .map((pr, i) => [pr, reads[i]!] as const)
@@ -152,14 +157,13 @@ async function load(file: string): Promise<PullRequest[]> {
 }
 
 const USAGE =
-  "usage: gh pr list --state merged --limit 1000 --json number,title,body,mergedAt > prs.json\n       tsx scripts/waivers.ts prs.json [--from <pr number>]";
+  "usage: gh pr list --state merged --limit 1000 --json number,title,body,mergedAt > prs.json\n       tsx scripts/waivers.ts prs.json [--from <number of a merged pull request in the file>]";
 const COUNTS =
   "Counts merged pull requests whose body holds a line the gate would accept, of the title types it reads the line for, merged after the pull request named under After. It does not read which files each changed, so it does not count pull requests a gate let through on the line.";
-// A reason ending in U+3000 is cut by the runner's sed under C.UTF-8 and so too short; a shell that keeps it
-// reads other lines differently too.
+// A reason ending in U+3000: the runner's sed cuts it under C.UTF-8, which leaves it too short.
 const PROBE = ["fix: x", "Proof: none, abcdefghi\u3000"] as const;
 const DIFFERS =
-  "warning: this machine's shell tools read the probe body differently from the gates' ubuntu runner under C.UTF-8; a count here can differ from what the gates accept";
+  "note: this machine's shell tools keep a trailing Unicode space, such as U+3000, that the gates' ubuntu runner cuts under C.UTF-8. macOS has no C.UTF-8 locale, so this note shows on every run there. A reason ending in such a space can count here and not in the gate.";
 
 function args() {
   const { values, positionals } = parseArgs({ options: { from: { type: "string" } }, allowPositionals: true });
@@ -180,6 +184,8 @@ async function main() {
   }
   try {
     const prs = await load(file);
+    const unknown = from === undefined ? undefined : absent(prs, from);
+    if (unknown) throw new Error(`--from ${unknown}`);
     const { rows, warnings } = count(prs, await readAll(prs), from);
     const probe = (await read(...PROBE)).proof ? [DIFFERS] : [];
     const head = [`${prs.length} merged pull requests in ${show(file)}.`, COUNTS];

@@ -93,29 +93,61 @@ describe("npm run waivers", () => {
     );
   });
 
-  it("warns, and counts no row, where the file does not reach back to a window's start", async () => {
+  it("warns, and counts no row, where the file lacks the pull request a gate's window starts after", async () => {
     const prs = JSON.parse(await readFile(FIXTURE, "utf8")) as { number: number }[];
-    const file = join(await temp(), "recent.json");
-    await writeFile(file, JSON.stringify(prs.filter((pr) => pr.number >= 150)));
-    const r = run([file]);
+    const dir = await temp();
+    await writeFile(join(dir, "recent.json"), JSON.stringify(prs.filter((pr) => pr.number >= 150)));
+    const recent = run([join(dir, "recent.json")]);
     for (const n of [102, 108, 137])
-      expect(r.out).toContain(`warning: #${n}, which a window starts after, is not in the file, whose lowest is #150`);
-    expect(rows(r.out).slice(0, 2)).toEqual([
+      expect(recent.out).toContain(
+        `warning: #${n} is not a merged pull request in the file, whose lowest is #150: fetch with --limit 1000\n`,
+      );
+    expect(rows(recent.out)).toEqual([
       "Proof: none  fix feat refactor perf         -       -       -  #102 #108",
       "Proof: none  test ci                        -       -       -  #137",
+      "Allowlist    ci                             1      19    5.3%  #174",
+      "Coverage     ci                             1      17    5.9%  #176",
     ]);
-    expect(rows(run([FIXTURE, "--from", "50"]).out)[3]).toBe(
-      "Coverage     ci                             -       -       -  #50",
+    await writeFile(join(dir, "gap.json"), JSON.stringify(prs.filter((pr) => pr.number !== 174)));
+    const gap = run([join(dir, "gap.json")]);
+    expect(gap.out).toContain("warning: #174 is not a merged pull request in the file\n");
+    expect(rows(gap.out)[2]).toBe("Allowlist    ci                             -       -       -  #174");
+  });
+
+  it("stops on --from that is not a merged pull request in the file, with the --limit hint only below it", () => {
+    expect(run([FIXTURE, "--from", "106"])).toEqual({
+      status: 1,
+      out: "",
+      err: 'waivers stopped: "--from #106 is not a merged pull request in the file"\n',
+    });
+    expect(run([FIXTURE, "--from", "50"]).err).toBe(
+      'waivers stopped: "--from #50 is not a merged pull request in the file, whose lowest is #98: fetch with --limit 1000"\n',
     );
   });
 
-  it("warns when this machine's sed does not read a line as the runner's does", async () => {
+  it("leaves out a pull request merged in the same second as the one its window starts after", async () => {
+    const at = (s: number) => `2026-10-01T00:00:0${s}Z`;
+    const pr = (number: number, s: number, body = "Allowlist: a long enough reason") => ({
+      number,
+      title: "ci: x",
+      body,
+      mergedAt: at(s),
+    });
+    const file = join(await temp(), "same.json");
+    await writeFile(file, JSON.stringify([pr(174, 1), pr(180, 1), pr(181, 2), pr(182, 2, "")]));
+    expect(rows(run([file]).out)[2]).toBe(
+      "Allowlist    ci                             1       2   50.0%  #174  over 10%",
+    );
+  });
+
+  it("notes when this machine's sed does not trim as the runner's does, as on macOS", async () => {
     const dir = await temp();
     const sed = execFileSync("sh", ["-c", "command -v sed"], { encoding: "utf8" }).trim();
     await writeFile(join(dir, "sed"), `#!/bin/sh\nLC_ALL=C exec ${sed} "$@"\n`);
     await chmod(join(dir, "sed"), 0o755);
     const r = run([FIXTURE], { ...process.env, PATH: `${dir}${delimiter}${process.env.PATH}` });
-    expect(r.out).toContain("warning: this machine's shell tools read the probe body differently");
+    expect(r.out).toContain("note: this machine's shell tools keep a trailing Unicode space, such as U+3000");
+    expect(r.out).toContain("macOS has no C.UTF-8 locale, so this note shows on every run there.");
   });
 
   it("marks a share over 10%, not one at it", () => {
