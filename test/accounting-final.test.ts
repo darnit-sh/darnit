@@ -31,13 +31,17 @@ async function corpus(files: Record<string, string | undefined> = {}) {
   return dir;
 }
 
-async function accounting(dir: string, ...args: string[]) {
-  const run = await promisify(execFile)(tsx, ["scripts/accounting.ts", "--root", dir, ...args], { cwd: ROOT }).then(
+// Outside GitHub Actions, which fences the output with a token line at each end (its own test below), wherever this runs.
+const local = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "GITHUB_ACTIONS"));
+
+async function script(args: string[], env: NodeJS.ProcessEnv = local) {
+  const run = await promisify(execFile)(tsx, ["scripts/accounting.ts", ...args], { cwd: ROOT, env }).then(
     (r) => ({ ...r, code: 0 }),
     (e: { stdout: string; stderr: string; code: number }) => e,
   );
   return { stdout: run.stdout, stderr: run.stderr, status: run.code };
 }
+const accounting = (dir: string, ...args: string[]) => script(["--root", dir, ...args]);
 
 const lastLine = (stdout: string) => stdout.trimEnd().split("\n").at(-1);
 const passes = (says: string) => `final release passes, openai: ${says}`;
@@ -155,13 +159,8 @@ describe("npm run accounting --final", () => {
     }
     await expect(readFile(notes)).rejects.toThrow("ENOENT");
     // --root=<dir> reads that folder: its 4 open items against its ceiling of 3.
-    const inline = await promisify(execFile)(tsx, ["scripts/accounting.ts", `--root=${dir}`, "--final"], {
-      cwd: ROOT,
-    }).catch((e: { stdout: string; code: number }) => e);
-    expect(["code" in inline ? inline.code : 0, lastLine(inline.stdout)]).toEqual([
-      1,
-      refused(`4 need a record, above ${at("3")}`),
-    ]);
+    const inline = await script([`--root=${dir}`, "--final"]);
+    expect([inline.status, lastLine(inline.stdout)]).toEqual([1, refused(`4 need a record, above ${at("3")}`)]);
   });
 
   it("writes the notes only on a pass, and only to a new file: an existing file or link is refused", async () => {
@@ -183,6 +182,29 @@ describe("npm run accounting --final", () => {
     }
     expect(await readFile(join(dir, "old.md"), "utf8")).toBe("old notes\n");
     await expect(readFile(join(dir, "nowhere.md"))).rejects.toThrow("ENOENT");
+  });
+
+  it("in GitHub Actions, keeps each verdict the last line inside its fence, and the notes free of it", async () => {
+    const actions = { ...local, GITHUB_ACTIONS: "true" };
+    // The runner reads the first and last lines as commands; every line between shows in the log as text.
+    const inside = (stdout: string) => {
+      const lines = stdout.trimEnd().split("\n");
+      const token = /^::stop-commands::([0-9a-f-]{36})$/.exec(lines[0]!)?.[1];
+      expect(token, lines[0]).toBeDefined();
+      expect(lines.at(-1)).toBe(`::${token}::`);
+      expect(lines.slice(1, -1).filter((l) => l.startsWith("::"))).toEqual([]);
+      return lines.slice(1, -1);
+    };
+    const above = await script(["--root", await corpus({ [CEILING]: "3\n" }), "--final"], actions);
+    expect([above.status, inside(above.stdout).at(-1)]).toEqual([1, refused(`4 need a record, above ${at("3")}`)]);
+
+    const dir = await corpus({ [CEILING]: "4\n" });
+    const [fenced, plain] = [join(dir, "fenced.md"), join(dir, "plain.md")];
+    const passed = await script(["--root", dir, "--final", "--notes", fenced], actions);
+    expect([passed.status, inside(passed.stdout).at(-1)]).toEqual([0, passes(`4 need a record, at ${at("4")}`)]);
+    expect((await accounting(dir, "--final", "--notes", plain)).status).toBe(0);
+    expect(await readFile(fenced, "utf8")).toBe(await readFile(plain, "utf8"));
+    expect(await readFile(fenced, "utf8")).not.toMatch(/stop-commands|^::/m);
   });
 
   it("writes the open items to the notes in the printed order, with no name able to forge a line or Markdown", async () => {
