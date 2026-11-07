@@ -346,16 +346,26 @@ ships() {
 DIFF_FILES='/^diff --git / { h = 1 } /^@@/ { h = 0 }
   h && /^\+\+\+ / { f = substr($0, 5); sub(/\t$/, "", f); if (!sub(/^b\//, "", f)) sub(/^"b\//, "\"", f); files[f] } h { next }'
 # The lists under scripts/allow/ this change edits without growing, which the gate and the Allowlist rule below leave
-# out: each only loses lines, so the change that removes dead code can drop its line too, or, in a refactor, changes
-# only the paths in its lines, so moved code carries them along. Each added line, its path fields blanked, must match
-# a removed one.
+# out: each only loses lines, so the change that removes dead code can drop its line too, or, in a refactor, moves
+# lines into files the change adds, so moved code carries them along. Each added line matches its own removed one.
 kept_lists() {
+  added=$(git -c core.quotePath=false diff --no-renames --name-only --diff-filter=A "$base...$head")
   git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' |
-    awk -v type="$type" "$DIFF_FILES"'
-      { n = split(substr($0, 2), p, "\t"); l = f "\t"
-        for (i = 1; i <= n; i++) l = l (i > 1 ? "\t" : "") (p[i] ~ /^(src|scripts|test|packs)\// ? SUBSEP : p[i])
-        if (/^-/) gone[l]++; else if (/^\+/) added[l]++ }
-      END { for (l in added) if (type != "refactor" || added[l] > gone[l]) grew[substr(l, 1, index(l, "\t") - 1)]
+    ADDED=$added awk -v type="$type" -v l=scripts/allow/ '
+      # Each list line as a key, with the columns named in blank set apart from any text.
+      function key(blank, i, k) { k = f; for (i = 1; i <= n; i++) k = k "\t" (index(blank, " " i " ") ? SUBSEP : p[i]); return k }
+      # The columns that say where a finding sits: its file, or both files of a duplicate, but not what an import names.
+      BEGIN { at[l "limits.tsv"] = at[l "imports.tsv"] = at[l "suppressions.tsv"] = " 1 "; at[l "duplicates.tsv"] = " 1 2 "; at[l "unused.tsv"] = " 2 " }
+      '"$DIFF_FILES"'
+      { n = split(substr($0, 2), p, "\t"); m = split(type == "refactor" ? at[f] : "", cols, " "); vars[1] = "" }
+      # A removed line, under each set of its location columns blanked; an added one, with those naming an added file.
+      /^-/ { for (j = 1; j <= m; j++) for (v = 1; v <= 2 ^ (j - 1); v++) vars[v + 2 ^ (j - 1)] = vars[v] " " cols[j] " "
+        r++; for (v = 1; v <= 2 ^ m; v++) gone[key(vars[v])] = gone[key(vars[v])] " " r }
+      /^\+/ { b = ""; for (j = 1; j <= m; j++) if (p[cols[j]] != "" && index("\n" ENVIRON["ADDED"] "\n", "\n" p[cols[j]] "\n")) b = b " " cols[j] " "
+        want[++w] = key(b); wf[w] = f; if (type != "refactor") grew[f] }
+      END { for (i = 1; i <= w; i++) { left = split(gone[want[i]], rs, " ")
+          for (j = 1; j <= left && used[rs[j]]; j++);
+          if (j > left) grew[wf[i]]; else used[rs[j]] = 1 }
         for (f in files) if (!(f in grew)) print f }'
 }
 kept=$(kept_lists)
@@ -367,10 +377,10 @@ if [ "$type" != ci ] && [ -n "$gated" ]; then
 fi
 
 # What lets a finding of the unused or duplicate code checks pass besides the paths gates() lists: a line added to a
-# list under scripts/allow/ that kept_lists does not name (one edited in place counts as added), or an added line
-# anywhere with a tag knip skips an export for (@public, @beta, @alias) or a jscpd:ignore marker. These are lines, not
-# paths, so they are not entries in gates(): a marker lands in code, and growing a list takes its own reason beside
-# the ci one. Names match in any case.
+# list under scripts/allow/ (one edited in place counts as added), or an added line anywhere with a tag knip skips an
+# export for (@public, @beta, @alias) or a jscpd:ignore marker. These are lines, not paths, so they are not entries in
+# gates(): a marker lands in code, and growing a list takes its own reason beside the ci one. Names match in any case.
+# A list kept_lists names is left out.
 grown=$(
   git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" |
     KEPT=$kept awk "$DIFF_FILES"'

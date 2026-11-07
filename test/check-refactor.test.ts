@@ -1868,44 +1868,73 @@ describe("lines added to an allowlist under scripts/allow/", () => {
 describe("a refactor that moves listed code", () => {
   const NOTE = "# what stays for now, tab separated\n";
   const OTHER = "src/z.ts\tother\t#1\tkept for now\n";
-  // Each list's line before and after the code it names moves; duplicates.tsv names two files and moves both.
-  const moves: Record<string, [string, string]> = {
-    "scripts/allow/limits.tsv": [
+  const LIMITS = "scripts/allow/limits.tsv";
+  // Each list's line before and after the code it names moves into files the change adds: only the columns that say
+  // where a finding sits move, so duplicates.tsv moves one or both of its files, and a scripts/ path moves too.
+  const moves: [string, string, string, string[]][] = [
+    [
+      LIMITS,
       "src/a.ts\tcomplexity\tscan\t21\tsplit later",
       "src/check/scan.ts\tcomplexity\tscan\t21\tsplit later",
+      ["src/check/scan.ts"],
     ],
-    "scripts/allow/imports.tsv": ["src/a.ts\tsrc/b.ts\tkept for now", "src/check/a.ts\tsrc/b.ts\tkept for now"],
-    "scripts/allow/duplicates.tsv": [
+    [
+      "scripts/allow/imports.tsv",
+      "src/a.ts\tsrc/b.ts\tkept for now",
+      "src/check/a.ts\tsrc/b.ts\tkept for now",
+      ["src/check/a.ts"],
+    ],
+    [
+      "scripts/allow/duplicates.tsv",
       "src/a.ts\tsrc/b.ts\t#1\tone copy goes",
       "src/check/a.ts\tsrc/scan/b.ts\t#1\tone copy goes",
+      ["src/check/a.ts", "src/scan/b.ts"],
     ],
-    "scripts/allow/unused.tsv": ["exports\tsrc/a.ts\told\tkept for now", "exports\tsrc/check/a.ts\told\tkept for now"],
-    "scripts/allow/suppressions.tsv": [
-      "src/a.ts\teslint-disable-next-line no-console\t#1\tprints",
-      "src/check/a.ts\teslint-disable-next-line no-console\t#1\tprints",
+    [
+      "scripts/allow/duplicates.tsv",
+      "src/a.ts\tsrc/b.ts\t#1\tone copy goes",
+      "src/a.ts\tsrc/scan/b.ts\t#1\tone copy goes",
+      ["src/scan/b.ts"],
     ],
-    "scripts/allow/odd name.tsv": ["src/a.ts\tx\twhy", "src/b.ts\tx\twhy"],
-    'scripts/allow/q"uote.tsv': ["test/a.ts\tx\twhy", "packs/v/a.ts\tx\twhy"],
-  };
-  const before = (line: string) => `${NOTE}${line}\n${OTHER}`;
+    [
+      "scripts/allow/unused.tsv",
+      "exports\tsrc/a.ts\told\tkept for now",
+      "exports\tsrc/check/a.ts\told\tkept for now",
+      ["src/check/a.ts"],
+    ],
+    [
+      "scripts/allow/suppressions.tsv",
+      "scripts/a.ts\teslint-disable-next-line no-console\t#1\tprints",
+      "scripts/check/a.ts\teslint-disable-next-line no-console\t#1\tprints",
+      ["scripts/check/a.ts"],
+    ],
+  ];
+  const [, was, now, adds] = moves[0]!;
+  const before = (...lines: string[]) => `${NOTE}${lines.map((l) => `${l}\n`).join("")}${OTHER}`;
   // The moved line sorts after the one beside it, as a list kept in order would.
   const after = (...lines: string[]) => `${NOTE}${OTHER}${lines.map((l) => `${l}\n`).join("")}`;
   const crlf = (text: string) => text.replace(/\n/g, "\r\n");
-  const move = (title: string, list: string, from: string, to: string, body = "") =>
-    rule(title, [{ write: "src/check/a.ts" }, { write: list, text: to }], body, {}, [{ write: list, text: from }]);
+  const move = (title: string, list: string, from: string, to: string, added = adds, landed: Edit[] = []) =>
+    rule(title, [...added.map((write) => ({ write })), { write: list, text: to }], "", {}, [
+      ...landed,
+      { write: list, text: from },
+    ]);
+  const refused = async (run: ReturnType<typeof rule>, list: string, what: string) => {
+    const r = await run;
+    expect(r.status, what).toBe(1);
+    expect(r.out).toContain(`- ${list} (the lists the pull request checks accept)`);
+  };
 
-  it("passes a refactor whose list lines change only in their paths, with no Allowlist line", async () => {
-    for (const [list, [was, now]] of Object.entries(moves))
+  it("passes a refactor whose list lines move into files it adds, with no Allowlist line", async () => {
+    for (const [list, from, to, added] of moves)
       for (const text of [(t: string) => t, crlf]) {
-        const r = await move("refactor: move the scan", list, text(before(was)), text(after(now)));
+        const r = await move("refactor: move the scan", list, text(before(from)), text(after(to)), added);
         expect(r.status, `${list}\n${r.out}`).toBe(0);
         expect(r.baseTests).toBe(true);
       }
   });
 
-  it("fails a refactor whose moved line changes in anything but a path, or appears twice", async () => {
-    const LIMITS = "scripts/allow/limits.tsv";
-    const [was, now] = moves[LIMITS]!;
+  it("fails a refactor whose moved line changes in anything but where it sits, or appears twice", async () => {
     for (const head of [
       after(now.replace("\t21\t", "\t22\t")),
       after(now.replace("\tscan\t", "\tscanAll\t")),
@@ -1915,20 +1944,105 @@ describe("a refactor that moves listed code", () => {
       after(was, now),
       after(now.replace("src/check/scan.ts", "")),
       after(now).replace(NOTE, "# what stays\n"),
-    ]) {
-      const r = await move("refactor: move the scan", LIMITS, before(was), head);
-      expect(r.status, head).toBe(1);
-      expect(r.out).toContain(`- ${LIMITS} (the lists the pull request checks accept)`);
-    }
+    ])
+      await refused(
+        move("refactor: move the scan", LIMITS, before(was), head, [...adds, "src/check/again.ts"]),
+        LIMITS,
+        head,
+      );
+  });
+
+  it("refuses what moves no code: a cap swap, a line repointed at a file base has, an import target or a reason", async () => {
+    const files = (...fs: string[]): Edit[] => fs.map((write) => ({ write }));
+    const caps = [
+      "src/check.ts\tmax-lines\t(file)\t454\tsplit later",
+      "src/scan/astgrep.ts\tmax-lines\t(file)\t487\tsplit later",
+    ];
+    const swapped = caps.map((l, i) => l.replace(/\t\d+\t/, `\t${caps[1 - i]!.split("\t")[3]}\t`));
+    const both = files("src/check.ts", "src/scan/astgrep.ts");
+    await refused(
+      move(
+        "refactor: move helpers",
+        LIMITS,
+        before(...caps),
+        before(...swapped),
+        ["src/check.ts", "src/scan/astgrep.ts"],
+        both,
+      ),
+      LIMITS,
+      "cap swap",
+    );
+    await refused(
+      move(
+        "refactor: move the scan",
+        LIMITS,
+        before(was),
+        after(was.replace("src/a.ts", "src/b.ts")),
+        [],
+        files("src/b.ts"),
+      ),
+      LIMITS,
+      "into an existing file",
+    );
+    const IMPORTS = "scripts/allow/imports.tsv";
+    const target = "src/fix.ts\tsrc/packs/apply.ts\tfix applies the rule packs";
+    await refused(
+      move(
+        "refactor: move the applier",
+        IMPORTS,
+        before(target),
+        after(target.replace("src/packs/apply.ts", "src/cli/apply.ts")),
+        ["src/cli/apply.ts"],
+      ),
+      IMPORTS,
+      "import target",
+    );
+    const DUPLICATES = "scripts/allow/duplicates.tsv";
+    const pair = "src/a.ts\tsrc/b.ts\t#1\tone copy goes";
+    await refused(
+      move(
+        "refactor: move the copies",
+        DUPLICATES,
+        before(pair),
+        after(pair.replace("src/a.ts\tsrc/b.ts", "src/c.ts\tsrc/d.ts")),
+        [],
+        files("src/b.ts", "src/c.ts", "src/d.ts"),
+      ),
+      DUPLICATES,
+      "existing pair",
+    );
+    const UNUSED = "scripts/allow/unused.tsv";
+    // Even a reason that is only a path, naming a file the change adds, is a reason.
+    for (const jscpd of [
+      "devDependencies\tpackage.json\tjscpd\tscripts/allowlist.ts runs it from node_modules/.bin",
+      "devDependencies\tpackage.json\tjscpd\tscripts/allowlist.ts",
+    ])
+      await refused(
+        move(
+          "refactor: move the runner",
+          UNUSED,
+          before(jscpd),
+          after(jscpd.replace("scripts/allowlist.ts", "scripts/run.ts")),
+          ["scripts/run.ts"],
+        ),
+        UNUSED,
+        jscpd,
+      );
+    // A list the rule does not know has no column that says where a finding sits, so only lines dropped pass.
+    const ODD = "scripts/allow/odd name.tsv";
+    await refused(
+      move("refactor: move", ODD, before("src/a.ts\tx\twhy"), after("src/b.ts\tx\twhy"), ["src/b.ts"]),
+      ODD,
+      "unknown list",
+    );
+    for (const title of ["refactor: drop", "fix: drop"])
+      expect((await move(title, ODD, before("src/a.ts\tx\twhy"), before(), ["src/b.ts"])).status, title).toBe(0);
   });
 
   it("holds every other type to the rule as it was: fix and feat fail, ci needs an Allowlist line", async () => {
-    const LIMITS = "scripts/allow/limits.tsv";
-    const [was, now] = moves[LIMITS]!;
     for (const title of ["fix: move the scan", "feat: move the scan"]) {
-      const r = await move(title, LIMITS, before(was), after(now));
-      expect(r.status, title).toBe(1);
-      expect(r.out).toContain(`- ${LIMITS} (the lists the pull request checks accept)`);
+      await refused(move(title, LIMITS, before(was), after(now)), LIMITS, title);
+      await refused(move(title, LIMITS, before(was), after(was)), LIMITS, `${title}, lines reordered`);
     }
     const ci = await rule("ci: x", [{ write: LIMITS, text: after(now) }], "Proof: none, moves a line\n", {}, [
       { write: LIMITS, text: before(was) },
@@ -1944,10 +2058,9 @@ describe("a refactor that moves listed code", () => {
   });
 
   it("reads a list line that starts like a diff header as a line, not as a file name", async () => {
-    const LIMITS = "scripts/allow/limits.tsv";
-    const text = `${before(moves[LIMITS]![0])}++ b/src/x.ts\tcomplexity\tf\t11\twhy\n`;
+    const text = `${before(was)}++ b/src/x.ts\tcomplexity\tf\t11\twhy\n`;
     const r = await rule("ci: x", [{ write: LIMITS, text }], "Proof: none, adds a line\n", {}, [
-      { write: LIMITS, text: before(moves[LIMITS]![0]) },
+      { write: LIMITS, text: before(was) },
     ]);
     expect(r.status).toBe(1);
     expect(r.out).toContain(`- ${LIMITS}: ++ b/src/x.ts`);
