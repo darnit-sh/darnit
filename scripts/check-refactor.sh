@@ -317,6 +317,7 @@ gates() {
   gate '^"?test/no-credentials\.ts"?$' "what vitest runs in every worker before the tests"
   gate '^"?scripts/(accounting|golden|installed|e2e-env|fixtures|allowlist|unseen|show|limits)\.ts"?$' "a runner behind a required check" "$edited"
   gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*)"?$' "the pull request checks"
+  gate '^"?test/(suppressions\.test|tool-ignores\.test|import-graph)\.ts"?$' "a test that guards the allowlists and tool settings"
   # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
   shrunk=$(git diff --no-renames --text --numstat --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' | awk '$1 == 0 { print $3 }')
   gate '^"?scripts/allow/' "the lists the pull request checks accept" "$(printf '%s\n' "$all" | grep -vixF -- "${shrunk:-//}" || true)"

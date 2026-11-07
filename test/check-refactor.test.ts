@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -1412,20 +1412,43 @@ describe("the rule picked by the title's type", () => {
     ).toBe(0);
   });
 
-  it("lists every script a listed runner imports, all the way down", () => {
+  it("fails a change to a test that guards the lists and tool settings under any type but ci", async () => {
+    const why = "a test that guards the allowlists and tool settings";
+    const reason = "Proof: none, the guard reads one more file\n";
+    for (const f of ["test/suppressions.test.ts", "test/tool-ignores.test.ts", "test/import-graph.ts"]) {
+      const changed = await repo([{ write: f, text: "export {};\n" }]);
+      for (const type of ["fix", "feat", "test", "refactor", "docs"]) {
+        const r = await check(changed, `${type}: x`, reason);
+        expect(r.status, `${type} ${f}`).toBe(1);
+        expect(r.out).toContain(`- ${f} (${why})`);
+      }
+      expect((await check(changed, "ci: x", reason)).status, f).toBe(0);
+      expect((await check(changed, "ci: x")).status, f).toBe(1);
+    }
+    expect((await rule("test: x", [{ write: "test/other.test.ts" }], reason)).status).toBe(0);
+  });
+
+  it("lists every script a listed runner or guarding test imports, all the way down", () => {
     const rule = readFileSync("scripts/check-refactor.sh", "utf8");
     const names = /gate '\^"\?scripts\/\(([a-z0-9|-]+)\)\\\.ts"\?\$' "a runner behind a required check"/.exec(
       rule,
     )?.[1];
+    const tests = /gate '\^"\?test\/\(([a-z0-9|\\.-]+)\)\\\.ts"\?\$' "a test that guards/.exec(rule)?.[1];
     expect(names, "the runner list in scripts/check-refactor.sh").toBeTruthy();
-    const listed = new Set(names!.split("|").map((n) => `scripts/${n}.ts`));
-    const { graph } = buildGraph(readSources(), []);
+    expect(tests, "the guarding tests in scripts/check-refactor.sh").toBeTruthy();
+    const guards = tests!.split("|").map((n) => `test/${n.replaceAll("\\.", ".")}.ts`);
+    expect(guards).toContain("test/suppressions.test.ts");
+    const listed = new Set([...names!.split("|").map((n) => `scripts/${n}.ts`), ...guards]);
+    const sources = readSources();
+    for (const f of readdirSync("test").filter((f) => f.endsWith(".ts")))
+      sources.set(`test/${f}`, readFileSync(`test/${f}`, "utf8"));
+    const { graph } = buildGraph(sources, []);
     const missing: string[] = [];
     const queue = [...listed];
     for (const seen = new Set(queue); queue.length > 0;) {
       const from = queue.pop()!;
       for (const to of graph.get(from) ?? []) {
-        if (!to.startsWith("scripts/") || seen.has(to)) continue;
+        if (!/^(scripts|test)\//.test(to) || seen.has(to)) continue;
         seen.add(to);
         queue.push(to);
         if (!listed.has(to)) missing.push(`${to}, imported by ${from}`);
@@ -1433,7 +1456,7 @@ describe("the rule picked by the title's type", () => {
     }
     expect(
       missing,
-      "each is a runner behind a required check too: add it to that list in gates() in scripts/check-refactor.sh",
+      "each guards a required check too: add it to its list in gates() in scripts/check-refactor.sh",
     ).toEqual([]);
   });
 
