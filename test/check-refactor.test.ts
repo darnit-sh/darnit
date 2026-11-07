@@ -332,8 +332,9 @@ describe("the rule picked by the title's type", () => {
       { write: "scripts/e2e.ts" },
       { write: "scripts/golden.ts" },
       { write: "scripts/e2e-env.ts" },
+      { write: "scripts/installed.ts", text: "edited\n" },
     ]) {
-      const r = await rule("refactor: x", [{ write: "src/a.ts" }, edit]);
+      const r = await rule("refactor: x", [{ write: "src/a.ts" }, edit], "", {}, [{ write: "scripts/installed.ts" }]);
       expect(r.status, JSON.stringify(edit)).toBe(1);
       expect(r.out).toContain(`- ${Object.values(edit)[0]}`);
     }
@@ -1103,6 +1104,12 @@ describe("the rule picked by the title's type", () => {
       expect(r.status, JSON.stringify(edit)).toBe(1);
       expect(r.out).toContain("**Failed:**");
     }
+    // A file added beside the installer that golden.yml runs, as test/helpers.js beside test/helpers.ts.
+    const shadow = await rule("test: x", [{ write: "scripts/installed.js" }], "", {}, [
+      { write: "scripts/installed.ts" },
+    ]);
+    expect(shadow.status).toBe(1);
+    expect(shadow.out).toContain("- scripts/installed.js");
   });
 
   it("fails docs, chore, ci and build changes that change what the suite proves", async () => {
@@ -1387,16 +1394,14 @@ describe("the rule picked by the title's type", () => {
   });
 
   it("fails an edit or removal of a runner behind a required check under any type but ci, and lets a new script in", async () => {
-    for (const f of [
-      "scripts/accounting.ts",
-      "scripts/accounting-final.ts",
-      "scripts/golden.ts",
-      "scripts/fixtures.ts",
-      "scripts/show.ts",
-    ]) {
+    // golden.ts imports e2e-env.ts, and golden.yml installs the CLI it scans with through installed.ts.
+    const runners = ["accounting", "accounting-final", "golden", "fixtures", "show", "installed", "e2e-env"].map(
+      (r) => `scripts/${r}.ts`,
+    );
+    for (const f of runners) {
       for (const edit of [{ write: f, text: "process.exit(0);\n" }, { remove: f }]) {
-        const changed = await repo([edit]);
-        for (const type of ["docs", "fix", "feat", "test"]) {
+        const changed = await repo([edit], [{ write: "scripts/installed.ts" }]);
+        for (const type of ["docs", "chore", "fix", "feat", "test"]) {
           const r = await check(changed, `${type}: tidy`, "Proof: none, the runner prints one more line\n");
           expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
           expect(r.out).toContain(`- ${f} (a runner behind a required check)`);
@@ -1413,7 +1418,9 @@ describe("the rule picked by the title's type", () => {
 
   it("lists every script a listed runner imports, all the way down", () => {
     const rule = readFileSync("scripts/check-refactor.sh", "utf8");
-    const names = /gate '\^"\?scripts\/\(([a-z|-]+)\)\\\.ts"\?\$' "a runner behind a required check"/.exec(rule)?.[1];
+    const names = /gate '\^"\?scripts\/\(([a-z0-9|-]+)\)\\\.ts"\?\$' "a runner behind a required check"/.exec(
+      rule,
+    )?.[1];
     expect(names, "the runner list in scripts/check-refactor.sh").toBeTruthy();
     const listed = new Set(names!.split("|").map((n) => `scripts/${n}.ts`));
     const { graph } = buildGraph(readSources(), []);
