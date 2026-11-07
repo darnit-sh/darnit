@@ -5,6 +5,10 @@
 !*.js
 !*.mjs
 !*.cjs
+!*.mts
+!*.cts
+!*.tsx
+!*.jsx
 # As eslint.config.js ignores, plus test data and generated records.
 dist/
 node_modules/

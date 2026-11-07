@@ -13,12 +13,12 @@ set -eu
 . "$(dirname "$0")/pr-common.sh"
 if queued; then exit 0; fi
 
-# Fails a style change that touches anything but edits to existing .ts, .js, .mjs and .cjs files that keep
-# their mode. An added or removed file shows mode 000000 on one side. Workflow actions and formatter config
-# written in code are among what only a ci change may touch (gates below).
+# Fails a style change that touches anything but edits to existing .ts, .js, .mjs, .cjs, .mts, .cts, .tsx and
+# .jsx files that keep their mode. An added or removed file shows mode 000000 on one side. Workflow actions and
+# formatter config written in code are among what only a ci change may touch (gates below).
 style_scope() {
   outside=$(git diff --raw --no-renames "$base...$head" | awk -F '\t' '{ split($1, m, " ") }
-    m[1] != ":" m[2] || m[2] !~ /^100(644|755)$/ || $2 !~ /\.(ts|js|mjs|cjs)$/ { print $2 }')
+    m[1] != ":" m[2] || m[2] !~ /^100(644|755)$/ || $2 !~ /\.(ts|js|mjs|cjs|mts|cts|tsx|jsx)$/ { print $2 }')
   [ -z "$outside" ] && return
   say "**(a) failed:** a style change only edits existing code files the formatter covers. Touched:"
   list "$outside"
@@ -79,8 +79,8 @@ if [ "${1:-}" = --style ]; then
       if (!["string", "number", "boolean"].includes(typeof v)) return console.log(`${at} to ${JSON.stringify(v)}, not a plain value`);
       if (k === "embeddedLanguageFormatting" && v !== "off") return console.log(`${at} to ${JSON.stringify(v)}, where only "off" keeps templates as they are`);
     }
-    // As the CLI reads them: .gitignore and .prettierignore at the root.
-    const ignorePath = [join(tree, ".gitignore"), join(tree, ".prettierignore")];
+    // Only the root .prettierignore, as the format scripts read it: .gitignore decides nothing here.
+    const ignorePath = join(tree, ".prettierignore");
     for (const f of files) {
       const file = join(tree, f);
       const info = await prettier.getFileInfo(file, { ignorePath, resolveConfig: false });
@@ -438,7 +438,7 @@ test | docs | chore | ci | build)
   say "**Passed:** nothing the rule keeps changed."
   ;;
 style)
-  say "**Rule for \`style\`:** (a) only edits to existing .ts, .js, .mjs and .cjs files that base's .prettierignore keeps: no added, removed or renamed file, and no package.json, lock, formatter config, workflow or other file; (b) each is exactly what base's pinned prettier writes over base's copy with the layout options in base's root .prettierrc.json, tagged templates left as they are."
+  say "**Rule for \`style\`:** (a) only edits to existing .ts, .js, .mjs, .cjs, .mts, .cts, .tsx and .jsx files that base's .prettierignore keeps: no added, removed or renamed file, and no package.json, lock, formatter config, workflow or other file; (b) each is exactly what base's pinned prettier writes over base's copy with the layout options in base's root .prettierrc.json, tagged templates left as they are."
   style_scope
   say "**(a) passed:** every changed path is an existing code file; base's .prettierignore and (b) are checked next."
   echo "style=true" >>"${GITHUB_OUTPUT:-/dev/null}"
