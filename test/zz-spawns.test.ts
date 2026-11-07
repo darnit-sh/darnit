@@ -3,18 +3,38 @@ import { chmod, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Record every child process darnit spawns, then run it for real, so one --publish run can be checked spawn by spawn.
 const spawns = vi.hoisted(
-  () => [] as { file: string; args: string[]; cwd?: string | undefined; env?: NodeJS.ProcessEnv | undefined }[],
+  () =>
+    [] as {
+      file: string;
+      args: string[];
+      cwd?: string | undefined;
+      env?: NodeJS.ProcessEnv | undefined;
+      timeout?: number | undefined;
+      signal?: AbortSignal | undefined;
+    }[],
 );
 vi.mock("node:child_process", async (orig) => {
   const real = await orig<typeof import("node:child_process")>();
   const util = await import("node:util");
   const note = (file: string, args: unknown, opts: unknown) => {
-    const o = (opts && typeof opts === "object" ? opts : {}) as { cwd?: string; env?: NodeJS.ProcessEnv };
-    spawns.push({ file, args: Array.isArray(args) ? (args as string[]) : [], cwd: o.cwd, env: o.env });
+    const o = (opts && typeof opts === "object" ? opts : {}) as {
+      cwd?: string;
+      env?: NodeJS.ProcessEnv;
+      timeout?: number;
+      signal?: AbortSignal;
+    };
+    spawns.push({
+      file,
+      args: Array.isArray(args) ? (args as string[]) : [],
+      cwd: o.cwd,
+      env: o.env,
+      timeout: o.timeout,
+      signal: o.signal,
+    });
   };
   const execFile = function (file: string, ...rest: unknown[]) {
     note(
@@ -175,4 +195,91 @@ it("runs every --publish spawn with the expected arguments and an allowlisted en
     expect(s.env).not.toHaveProperty("GITHUB_TOKEN");
     expect(s.env).not.toHaveProperty("SSH_ASKPASS");
   }
+});
+
+const HTTP = "http://127.0.0.1:1/r.git";
+const HTTPS = "https://127.0.0.1:1/r.git";
+const SSH = "ssh://example.invalid/r.git";
+const stall = 2;
+const killAfter = stall * 4 * 1000;
+
+const PUSH = ["push", "-q", "origin", "HEAD:x"];
+
+// Nothing listens on port 1 and the ssh command exits, so every call fails at once and no test waits on a clock.
+// The last spawn is the call itself: the ones before it read the remote's URLs.
+const failedCall = async (dir: string, args: string[], limit = stall, more?: { env: NodeJS.ProcessEnv }) => {
+  vi.stubEnv("GIT_SSH_COMMAND", "false");
+  await expect(git(dir, args, limit, undefined, more)).rejects.toThrow();
+  const call = spawns.at(-1)!;
+  expect(call.args).toEqual(expect.arrayContaining(args));
+  expect(call.signal).toBeUndefined();
+  return call;
+};
+const repoWithOrigin = async (urls: string[], pushUrls = urls) => {
+  const dir = await temp("darnit-limits-");
+  await git(dir, ["init", "-q"]);
+  await git(dir, ["remote", "add", "origin", urls[0]!]);
+  for (const url of urls.slice(1)) await git(dir, ["remote", "set-url", "--add", "origin", url]);
+  for (const url of pushUrls) await git(dir, ["remote", "set-url", "--add", "--push", "origin", url]);
+  return dir;
+};
+
+describe("the process timeout on a call to origin", () => {
+  it.each<[string, string[], number]>([
+    ["http", [HTTP], 0],
+    ["https", [HTTPS], 0],
+    ["a scheme in capitals", ["HTTPS://127.0.0.1:1/r.git"], 0],
+    ["two HTTP URLs", [HTTP, HTTPS], 0],
+    ["ssh", [SSH], killAfter],
+    ["http and then ssh", [HTTP, SSH], killAfter],
+    ["ssh and then http", [SSH, HTTP], killAfter],
+    ["scp form", ["git@example.invalid:r.git"], killAfter],
+    ["a scheme that starts like http", ["httpsx://127.0.0.1:1/r.git"], killAfter],
+    ["http only inside an ssh URL", [`ssh://example.invalid/${HTTP}`], killAfter],
+  ])("sets the process timeout for a push to %s", async (_, urls, timeout) => {
+    expect((await failedCall(await repoWithOrigin(urls), PUSH)).timeout).toBe(timeout);
+  });
+
+  it("judges a push by its push URL, past git's own options, and any other call by the fetch URL", async () => {
+    const dir = await repoWithOrigin([HTTP], [SSH]);
+    expect((await failedCall(dir, ["-c", "x.y=z", ...PUSH])).timeout).toBe(killAfter);
+    expect((await failedCall(dir, ["fetch", "-q", "origin"])).timeout).toBe(0);
+    expect((await failedCall(dir, ["ls-remote", "origin"])).timeout).toBe(0);
+  });
+
+  it.each([
+    ["ssh", [SSH]],
+    ["http and then ssh", [HTTP, SSH]],
+    ["ssh and then http", [SSH, HTTP]],
+  ])("sets the process timeout for a fetch or ls-remote from %s, whatever the push URL", async (_, urls) => {
+    const dir = await repoWithOrigin(urls, [HTTP]);
+    expect((await failedCall(dir, PUSH)).timeout).toBe(0);
+    for (const args of [
+      ["fetch", "-q", "origin"],
+      ["ls-remote", "origin"],
+    ]) {
+      expect((await failedCall(dir, args)).timeout).toBe(killAfter);
+      expect((await failedCall(dir, args, stall, { env: {} })).timeout).toBe(killAfter);
+    }
+  });
+
+  it("keeps the process timeout on a push that passes its own environment", async () => {
+    const call = await failedCall(await repoWithOrigin([SSH]), PUSH, stall, { env: {} });
+    expect(call.timeout).toBe(killAfter);
+  });
+});
+
+describe("the limit given to a call to origin", () => {
+  it("gives git its own stall limit, whatever the transport", async () => {
+    for (const url of [HTTP, SSH]) {
+      const call = await failedCall(await repoWithOrigin([url]), PUSH);
+      expect(call.env).toMatchObject({ GIT_HTTP_LOW_SPEED_LIMIT: "1", GIT_HTTP_LOW_SPEED_TIME: String(stall) });
+    }
+  });
+
+  it("sets both limits from the value passed", async () => {
+    const call = await failedCall(await repoWithOrigin([SSH]), PUSH, 3);
+    expect(call.timeout).toBe(12_000);
+    expect(call.env).toMatchObject({ GIT_HTTP_LOW_SPEED_TIME: "3" });
+  });
 });
