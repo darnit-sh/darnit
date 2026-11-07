@@ -115,8 +115,8 @@ hint there. A folder a change adds to the thresholds must start at or above what
 | Check | Value |
 |---|---|
 | Import floors and cycles | the map above, checked by `npm test` |
-| Comments that turn a check off in `src/` and `scripts/` | none: eslint-disable in any form, `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, coverage ignore hints, `jscpd:ignore` markers, knip tags and `prettier-ignore`, checked by `npm test` (`test/suppressions.test.ts`) |
-| What knip, eslint and prettier leave out | the lists in `test/tool-ignores.test.ts`, checked by `npm test` |
+| Comments that turn a check off in `src/` and `scripts/` | none: eslint-disable in any form, eslint config, `global` and `exported` comments, `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, coverage ignore hints, knip tags and `prettier-ignore` in JavaScript and TypeScript, and `jscpd:ignore` markers in any file, checked by `npm test` (`test/suppressions.test.ts`) |
+| Tool settings pinned by `npm test` (`test/tool-ignores.test.ts`) | `knip.json` whole, the `ignores` block in `eslint.config.js`, the lines of `.prettierignore`, no `knip` or `jscpd` key in `package.json` and no jscpd config file in the root |
 | Unused files, exports and dependencies | none, checked by `npm run knip` |
 | Duplicated blocks in `src/` and `scripts/` | none of 50 tokens or more, checked by `npm run duplicates` |
 | Coverage per folder of `src/` | at or above each line and branch percent in `coverage-thresholds.json`, measured by `npm test -- --coverage` on one CI runner |

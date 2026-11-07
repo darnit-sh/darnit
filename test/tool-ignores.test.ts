@@ -6,17 +6,14 @@ import { configKeys } from "../scripts/allowlist.js";
 // What each check leaves out, pinned here, so widening one changes this test beside the config in plain sight.
 
 describe("what the checks leave out", () => {
-  it("is knip.json's entry and project, with no other key", () => {
-    const knip = JSON.parse(readFileSync("knip.json", "utf8")) as Record<string, unknown>;
-    expect(Object.keys(knip).sort()).toEqual(["$schema", "entry", "eslint", "project", "vitest"]);
-    expect(knip.entry).toEqual(["scripts/*.ts", "test/**/*.test.ts", "test/helpers.ts", "test/offer-graph.ts"]);
-    expect(knip.project).toEqual([
-      "src/**/*.ts",
-      "scripts/**/*.ts",
-      "test/**/*.ts",
-      "!test/samples/**",
-      "!test/e2e/**",
-    ]);
+  it("is knip.json, whole", () => {
+    expect(JSON.parse(readFileSync("knip.json", "utf8"))).toEqual({
+      $schema: "https://unpkg.com/knip@6/schema.json",
+      entry: ["scripts/*.ts", "test/**/*.test.ts", "test/helpers.ts", "test/offer-graph.ts"],
+      project: ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts", "!test/samples/**", "!test/e2e/**"],
+      vitest: { config: ["vitest.config.ts"] },
+      eslint: { config: ["eslint.config.js"] },
+    });
   });
 
   it("is the one ignores block in eslint.config.js", async () => {
