@@ -4,14 +4,6 @@ import { cellModels, readPage } from "../src/corpus/replacements.js";
 import { ModelId, parseChangeRecord, type ChangeRecord } from "../src/records/schema.js";
 import { slowdown } from "./helpers.js";
 
-// The corpus regexes as they were before each became linear: every rewrite must read exactly what these read.
-const OLD = {
-  list: /\s*[|,]\s*/,
-  prose: /,\s*|\s+and\s+/,
-  important: /\s*!\s*important$/,
-  setting: /["']?([A-Za-z_]\w*)["']?\s*[:=]\s*(\$|"([^"]*)"|'([^']*)')?/g,
-};
-
 const isModel = (s: string) => ModelId.safeParse(s).success;
 const BASE = parseChangeRecord(
   {
@@ -45,19 +37,48 @@ function strings(tokens: string[], length: number): string[] {
   return out;
 }
 
-// What each regex read before the rewrite: the parts of a model cell, of the prose in its parentheses, a style value
-// without "!important", and the keys a pattern sets.
+// What each regex read before the rewrite, worked out here another way: the parts of a model cell split at each | or
+// comma with the spaces on both sides of it, the prose in its parentheses split at each comma with the spaces after it
+// and at each "and" with spaces around it, a style value without "!important", and the keys a pattern sets.
 const listed = (text: string) => {
-  const parts = text.split(OLD.list);
+  const parts = text.split(/[|,]/).map((part, i, all) => {
+    const start = i > 0 ? part.trimStart() : part;
+    return i < all.length - 1 ? start.trimEnd() : start;
+  });
   return parts.every(isModel) ? parts : undefined;
 };
+const space = (s: string) => /^\s/.test(s);
 const prose = (inner: string) => {
-  const parts = inner.split(OLD.prose);
+  const parts = [""];
+  const tokens = inner.match(/\s+|,|[^\s,]+/g) ?? [];
+  for (let i = 0; i < tokens.length; i++) {
+    const [token = "", next = "", after = ""] = tokens.slice(i, i + 3);
+    if (token === ",") i += space(next) ? 1 : 0;
+    else if (space(token) && next === "and" && space(after)) i += 2;
+    else {
+      parts[parts.length - 1] += token;
+      continue;
+    }
+    parts.push("");
+  }
   return parts.every(isModel) ? ["gpt-4o", ...parts] : undefined;
 };
-const hidden = (value: string) => value.trim().toLowerCase().replace(OLD.important, "") === "none";
-const settings = (context: string) =>
-  [...context.matchAll(OLD.setting)].map((m) => ({ key: m[1], any: m[2] === "$", value: m[3] ?? m[4] }));
+const hidden = (value: string) => /^none(?:\s*!\s*important)?$/.test(value.trim().toLowerCase());
+// A key is a word without its leading digits, set when a quote, spaces and `:` or `=` follow it.
+const SET = /["']?\s*[:=]\s*(\$|"([^"]*)"|'([^']*)')?/y;
+const settings = (context: string) => {
+  const found: { key: string; any: boolean; value: string | undefined }[] = [];
+  const word = /\w+/g;
+  for (let w = word.exec(context); w; w = word.exec(context)) {
+    const key = w[0].replace(/^\d+/, "");
+    SET.lastIndex = word.lastIndex;
+    const set = key ? SET.exec(context) : null;
+    if (!set) continue;
+    found.push({ key, any: set[1] === "$", value: set[2] ?? set[3] });
+    word.lastIndex = SET.lastIndex;
+  }
+  return found;
+};
 
 describe("the corpus regexes read what they read before", () => {
   it.each([

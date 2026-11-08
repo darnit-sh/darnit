@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import regexp from "eslint-plugin-regexp";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -11,6 +12,11 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
+  },
+  // A regex that can backtrack for a time that grows faster than its input hangs on crafted text.
+  {
+    plugins: { regexp },
+    rules: { "regexp/no-super-linear-backtracking": "error", "regexp/no-super-linear-move": "error" },
   },
   {
     files: ["**/*.js"],

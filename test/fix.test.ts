@@ -1347,7 +1347,7 @@ function workflowCommands(output: string): { ran: string[]; stopped: boolean } {
   let token: string | undefined;
   for (const line of output.split(/\r\n|\r|\n/)) {
     const [command, name, data] =
-      /^[\s\u0085]*::([^\s:]+)[^:]*::(.*)$/.exec(line) ?? /##\[([^\s\]]+)[^\]]*\](.*)$/.exec(line) ?? [];
+      /^[\s\u0085]*::([^\s:]+)(?:\s[^:]*)?::(.*)$/.exec(line) ?? /##\[([^\s\]]+)(?:\s[^\]]*)?\](.*)$/.exec(line) ?? [];
     if (command === undefined || name === undefined) continue;
     if (token !== undefined) {
       if (name.toLowerCase() === token.toLowerCase()) token = undefined;
@@ -1746,7 +1746,7 @@ describe("fix in GitHub Actions", () => {
     const dir = await repoWith({ "::error::pwned.js": SDK_CALL, "b.js": SDK_CALL });
     const run = await darnitWith({ GITHUB_ACTIONS: "true" }, dir, "check");
     expect(run.code).toBe(1);
-    expect(run.stdout).toMatch(/^\s*::error::pwned\.js:/m);
+    expect(run.stdout).toMatch(/^[^\S\n\r\u2028\u2029]*::error::pwned\.js:/m);
     expect(notDarnits(run.stdout + run.stderr)).toEqual({ ran: [], stopped: false });
   });
 
@@ -2277,7 +2277,10 @@ describe("fix --pr", () => {
   // RUNNER_TEMP and in their own environment, and print what git config shows.
   it("leaves the job token where the tests can't read it in the README workflow, and never shows it", async () => {
     const token = "ghs_fake_for_test";
-    const b64 = (s: string) => Buffer.from(s).toString("base64").replace(/=+$/, "");
+    const b64 = (s: string) =>
+      Buffer.from(s)
+        .toString("base64")
+        .replace(/(?<!=)=+$/, "");
     const forms = [token, b64(`x-access-token:${token}`), b64(token)];
     const lab = await mkdtemp(join(tmpdir(), "darnit-lab-"));
     tempDirs.push(lab);
@@ -2830,8 +2833,12 @@ describe("fix --prepare", () => {
   const TOKEN = "ghp_fake0123456789abcdefghijklmnopqrstuv";
   const forms = [
     TOKEN,
-    Buffer.from(TOKEN).toString("base64").replace(/=+$/, ""),
-    Buffer.from(`x-access-token:${TOKEN}`).toString("base64").replace(/=+$/, ""),
+    Buffer.from(TOKEN)
+      .toString("base64")
+      .replace(/(?<!=)=+$/, ""),
+    Buffer.from(`x-access-token:${TOKEN}`)
+      .toString("base64")
+      .replace(/(?<!=)=+$/, ""),
   ];
   const readPlan = async (dir: string) => JSON.parse(await readFile(join(dir, "plan.json"), "utf8")) as Plan;
 

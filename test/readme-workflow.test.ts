@@ -123,7 +123,7 @@ describe("the README's two-job fix workflow", () => {
     expect(matchersAtDarnit(prepare.steps)).toEqual([]);
     // matchersAtDarnit finds darnit by `npx darnit`; the publish job runs it from node_modules/.bin.
     const fromBin = publish.steps.map((s) =>
-      s.run ? { ...s, run: s.run.replace(/\S*\/\.bin\/darnit\b/, "npx darnit") } : s,
+      s.run ? { ...s, run: s.run.replace(/(?<!\S)\S*\/\.bin\/darnit\b/, "npx darnit") } : s,
     );
     expect(matchersAtDarnit(fromBin)).toEqual([]);
   });

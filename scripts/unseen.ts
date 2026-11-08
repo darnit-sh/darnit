@@ -52,6 +52,25 @@ function sources(root: string, dir = ""): string[] {
 const resolved = (from: string, spec: string) =>
   posix.normalize(posix.join(posix.dirname(from), spec)).replace(/\.js$/, ".ts");
 
+const IMPORTED_FROM = /\s*(?:from\s*|=\s*await\s+import\(\s*)["']([^"']+)["']/y;
+
+/**
+ * Each `{ ... } from "spec"` and `{ ... } = await import("spec")` in `text`, as the text in the braces and the spec.
+ * The braces run from the first `{` after the last match or `}` to the next `}`, each tried once.
+ */
+function namedImports(text: string): [string, string][] {
+  const found: [string, string][] = [];
+  for (let open = text.indexOf("{"); open !== -1;) {
+    const close = text.indexOf("}", open);
+    if (close === -1) break;
+    IMPORTED_FROM.lastIndex = close + 1;
+    const m = IMPORTED_FROM.exec(text);
+    if (m) found.push([text.slice(open + 1, close), m[1]!]);
+    open = text.indexOf("{", m ? IMPORTED_FROM.lastIndex : close + 1);
+  }
+  return found;
+}
+
 /** The names other files take from `file`: imported or destructured by name, or read from a namespace import. */
 export function imported(root: string, file: string): Set<string> {
   const names = new Set<string>();
@@ -67,8 +86,7 @@ export function imported(root: string, file: string): Set<string> {
   for (const other of sources(root).filter((f) => f !== file)) {
     const text = strip(readFileSync(join(root, other), "utf8"), true);
     const from = (spec: string) => spec.startsWith(".") && resolved(other, spec) === file;
-    for (const m of text.matchAll(/\{([^}]*)\}\s*(?:from\s*|=\s*await\s+import\(\s*)["']([^"']+)["']/g))
-      if (from(m[2]!)) add(m[1]!);
+    for (const [list, spec] of namedImports(text)) if (from(spec)) add(list);
     for (const m of text.matchAll(
       /(?:\*\s+as|const|let|var)\s+(\w+)\s*(?:from\s*|=\s*await\s+import\(\s*)["']([^"']+)["']/g,
     )) {

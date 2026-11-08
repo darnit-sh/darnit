@@ -157,7 +157,7 @@ describe("records whose patterns do not compile", () => {
       /^✗ invalid ChangeRecord at openai\/2026-01-01-bad-python-pattern\/change\.json:\nopenai:2026-01-01:bad-python-pattern: py pattern 1 does not compile for python: /,
     );
     expect(run.stdout).toMatch(/upgrade darnit, or report it/);
-    expect(run.stdout + run.stderr).not.toMatch(/\n\s+at /);
+    expect(run.stdout + run.stderr).not.toMatch(/\n(?:[^\S\n]+|[^\S\n]*\n)at /);
   });
 
   it("fail for each grammar the language is scanned with, not only the one it is written for", () => {

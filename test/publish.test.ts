@@ -843,7 +843,10 @@ describe("fix --publish", () => {
     const { dir, bare, branch } = await origin();
     const plan = await prepare(dir, { noTest: true });
     const value = await readPlan(plan);
-    const b64 = (s: string) => Buffer.from(s).toString("base64").replace(/=+$/, "");
+    const b64 = (s: string) =>
+      Buffer.from(s)
+        .toString("base64")
+        .replace(/(?<!=)=+$/, "");
     const noise = Array.from({ length: 1000 }, (_, i) => `noise ${i}`).join("\n");
     const hostile = [
       noise,

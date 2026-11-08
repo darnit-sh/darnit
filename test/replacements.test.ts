@@ -755,7 +755,10 @@ describe("fix.models from the page", () => {
     const offered = (h: string) =>
       [
         ...h
-          .replace(/\S+ \(retiring too\)|^OpenAI recommends \S+, which also shuts down; /g, "")
+          .replace(
+            /(?:(?<!\S)|(?<=\(retiring too\)))\S+ \(retiring too\)|^OpenAI recommends \S+, which also shuts down; /g,
+            "",
+          )
           .matchAll(/[a-z0-9][a-z0-9._:-]*/g),
       ].map((m) => m[0]);
     expect(

@@ -40,7 +40,7 @@ describe("docs match the CLI", () => {
       const wrong: string[] = [];
       for (const piece of code(await read(file))) {
         for (const [line, rest] of piece.matchAll(
-          /(?:^\s*(?:\$ )?|npx (?:-y |--yes )?|\/\.bin\/)darnit(?:@[\w.-]+)?((?: +[\w-]+)+)/gm,
+          /(?:^(?<!^\s+?)\s*(?:\$ )?|npx (?:-y |--yes )?|\/\.bin\/)darnit(?:@[\w.-]+)?((?: +[\w-]+)+)/gm,
         )) {
           seen.push(line);
           const words = rest!.trim().split(/ +/);
@@ -68,7 +68,7 @@ describe("docs match the CLI", () => {
 
   it("the README says what init --force does in the words of its --help", async () => {
     const row = /^\| `--force` \| (.*) \|$/m.exec(await read("README.md"))?.[1]?.replaceAll("`", "");
-    const said = /^ {2}--force +([^]*?)\n {2}-/m
+    const said = /^ {2}--force +(?! )([^]*?)\n {2}-/m
       .exec(await help("init"))?.[1]
       ?.replace(/\s+/g, " ")
       .trim();

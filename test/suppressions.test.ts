@@ -22,7 +22,7 @@ const JSCPD = new RegExp(`jscpd\\s*:\\s*ignore\\s*-\\s*(?:${JSCPD_ENDS.join("|")
 const FORMS: { pattern: RegExp; rules?: boolean }[] = [
   { pattern: /eslint\s*-\s*disable(?:\s*-\s*next)?(?:\s*-\s*line)?/gi, rules: true },
   // A block comment eslint reads as config: its text starts with one of these words and whitespace.
-  { pattern: /(?<=^\/\*\s*)(?:eslint|globals?|exported)(?=\s)(?!\s*-)/gi, rules: true },
+  { pattern: /(?=[eg])(?<=^\/\*\s*)(?:eslint|globals?|exported)(?=\s)(?!\s*-)/gi, rules: true },
   { pattern: /@\s*ts\s*-\s*(?:expect\s*-\s*error|ignore|nocheck)/gi },
   { pattern: COVERAGE_HINT },
   { pattern: JSCPD },
@@ -46,7 +46,7 @@ function comments(file: string, text: string): Comment[] {
 function suppression(c: Comment, m: RegExpExecArray, rules: boolean | undefined) {
   const name = m[0]
     .toLowerCase()
-    .replace(/\s*([-:@])\s*/g, "$1")
+    .replace(/(?:(?<!\s)\s+)?([-:@])\s*/g, "$1")
     .replace(/\s+/g, " ");
   const after = rules
     ? c.text
