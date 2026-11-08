@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { pageRowsJson } from "../src/corpus/page-rows.js";
 import { modelDetection, modelNotes, readPage } from "../src/corpus/replacements.js";
 import { parseSpec } from "../src/corpus/spec.js";
+import { pageTooOld } from "../scripts/accounting-final.js";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const FIXTURE = join(ROOT, "test", "fixtures", "accounting");
@@ -16,6 +17,7 @@ const PAGE = "https://example.com/deprecations";
 const ROWS = join("corpus", "openai", "page-rows.json");
 const SPEC = join("corpus", "openai", "openapi.yaml");
 const NON_MODEL = join("corpus", "openai", "non-model-rows.txt");
+const WHOLE_ROWS = join("corpus", "openai", "whole-rows.txt");
 const local = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "GITHUB_ACTIONS"));
 // The fixture's spec lists no model, so the page's replacement is for a person.
 const HUMAN = "not a plain swap: OpenAI recommends zzq-new, which its API spec does not list";
@@ -81,6 +83,9 @@ async function corpus(
   await writeFile(join(dir, "vendors.yml"), `${await readFile(join(FIXTURE, "vendors.yml"), "utf8")}  page: ${PAGE}\n`);
   const page = readPage(table(models.map((m) => [m, "zzq-new"])) + tables);
   await writeFile(join(dir, NOT_COVERED), await notCovered());
+  // The two lists npm run replacements reads beside the rows, empty unless a test writes them.
+  await writeFile(join(dir, WHOLE_ROWS), "");
+  await writeFile(join(dir, NON_MODEL), "");
   await writeFile(join(dir, ROWS), pageRowsJson(page, { source: PAGE, fetchedAt: daysAgo(age) }));
   for (const r of records) {
     const pack = join(dir, "packs/openai", (r as { id: string }).id.split(":").pop()!);
@@ -132,7 +137,9 @@ describe("npm run accounting and the deprecations page rows", () => {
     expect(out).toContain(
       'items a record covers (remove them):\n  "page 2027-03-01 zzq-two": openai:2026-11-01:zzq-two-shut-down',
     );
-    expect(out).toContain('no longer in the spec or the corpus history (remove them):\n  "page 2027-03-01 zzq-gone"');
+    expect(out).toContain(
+      'no longer in the spec, the corpus history or the deprecations page rows (remove them):\n  "page 2027-03-01 zzq-gone"',
+    );
   });
 
   it("fails on a record whose replacements or notes are not what the page gives, naming each", async () => {
@@ -216,6 +223,32 @@ describe("npm run accounting and the deprecations page rows", () => {
     );
     expect(noList.out).toContain("may name zzq-two, which darnit did not read from it");
     expect([noSpec.code, noList.code]).toEqual([1, 1]);
+  });
+
+  it("checks a whole-row date's record as npm run replacements does, and stops when either list file is missing", async () => {
+    const one = record("zzq-two");
+    const js = one.detection.astGrepPatterns.js;
+    const odd = { ...one, detection: { astGrepPatterns: { ...one.detection.astGrepPatterns, js: [...js, js[0]!] } } };
+    const dir = await corpus(["zzq-two"], [odd], { [WHOLE_ROWS]: "2027-03-01\n" });
+    const whole = await accounting(dir);
+    expect(whole.out).toContain("\"openai:2026-11-01:zzq-two-shut-down: its detection is not one model record's");
+    expect(whole.code).toBe(1);
+    for (const file of [WHOLE_ROWS, NON_MODEL]) {
+      const missing = await corpus(["zzq-two"], [record("zzq-two")]);
+      expect((await accounting(missing)).code, file).toBe(0);
+      await rm(join(missing, file));
+      const stopped = await accounting(missing);
+      expect(stopped.out, file).toContain("accounting stopped: ");
+      expect(stopped.out, file).toContain(file.split("/").pop());
+      expect(stopped.code, file).toBe(1);
+    }
+  });
+
+  it("refuses a fetch date it cannot read", () => {
+    expect(pageTooOld("rows", "not a date", "2026-11-08")).toBe(
+      "rows says it was fetched on not a date, a date darnit cannot read",
+    );
+    expect(pageTooOld("rows", "2026-11-08", "2026-11-08")).toBeUndefined();
   });
 
   it("holds the ceiling to every item, page models included", async () => {

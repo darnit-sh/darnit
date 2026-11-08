@@ -427,21 +427,23 @@
     that have not run fine-tuning or used a fine-tuned model lately, then for every existing
     customer on this date.
 
-# Deprecations page items with no record needed
-
 - items:
     - "page 2027-02-26 row [\"/v1/audio/translations\",\"v1/realtime/translations\"]"
-  reason: >-
-    openai:2026-08-26:audio-translations-deprecated reports every audio.translations.create call for
-    this removal, as `darnit check` shows on a sample call.
+  date: "2027-02-26"
+  needs-record: >-
+    Add raw HTTP calls to /v1/audio/translations to openai:2026-08-26:audio-translations-deprecated,
+    which reports audio.translations.create SDK calls only, as `darnit check` shows on a sample
+    call.
+
+# Deprecations page items with no record needed
 
 - items:
     - "page 2024-10-28 row [\"New fine-tuning training on babbage-002\",\"gpt-4o-mini\"]"
     - "page 2024-10-28 row [\"New fine-tuning training on davinci-002\",\"gpt-4o-mini\"]"
   reason: >-
-    openai:2025-09-26:legacy-gpt-model-snapshots-shut-down reports babbage-002 and davinci-002 in
-    every call, a fine_tuning.jobs.create call included, as `darnit check` shows on a sample call;
-    both models shut down on 2026-09-28.
+    openai:2025-09-26:legacy-gpt-model-snapshots-shut-down reports a call that names babbage-002 or
+    davinci-002 as its model, a fine_tuning.jobs.create call included, as `darnit check` shows on a
+    sample call; both models shut down on 2026-09-28.
 
 - items:
     - "page no date read row [\"Shutdown date\",\"Model / system\",\"Recommended replacement\"]"

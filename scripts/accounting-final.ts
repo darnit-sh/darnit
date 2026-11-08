@@ -69,9 +69,13 @@ async function againstCeiling(root: string, vendor: string, open: number, items:
 
 export const PAGE_DAYS = 14;
 
-/** Why a final release may not go out on page rows fetched on `fetchedAt`: over PAGE_DAYS days old, or dated after `today`. */
+/**
+ * Why a final release may not go out on page rows fetched on `fetchedAt`: over PAGE_DAYS days old, dated after `today`,
+ * or a date that cannot be read.
+ */
 export function pageTooOld(file: string, fetchedAt: string, today: string): string | undefined {
   const days = (Date.parse(today) - Date.parse(fetchedAt)) / 86_400_000;
+  if (!Number.isFinite(days)) return `${file} says it was fetched on ${fetchedAt}, a date darnit cannot read`;
   if (days < 0) return `${file} says it was fetched on ${fetchedAt}, after today`;
   if (days > PAGE_DAYS)
     return `${file} was fetched on ${fetchedAt}, ${days} days ago, over the ${PAGE_DAYS} a final release allows; the weekly corpus run fetches it again`;

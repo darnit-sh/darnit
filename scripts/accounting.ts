@@ -71,7 +71,8 @@ try {
       symbols: config.symbols,
       pageItems: page,
     });
-    const list = async (file: string) => new Set(listLines(await corpus(file).catch(() => "")));
+    // Read as the rows file is: a missing list stops the run, as npm run replacements does.
+    const list = async (file: string) => new Set(listLines(await corpus(file)));
     const disagreements = rows
       ? pageDisagreements(records, rows.page, {
           known: modelIds(spec),
@@ -98,7 +99,7 @@ try {
     );
     section(`Not accounted for (add a record, or an entry in ${notCoveredFile}):`, result.unaccounted.map(show));
     section(
-      `Entries in ${notCoveredFile} for items no longer in the spec or the corpus history (remove them):`,
+      `Entries in ${notCoveredFile} for items no longer in the spec${rows ? ", the corpus history or the deprecations page rows" : " or the corpus history"} (remove them):`,
       result.stale.map(show),
     );
     section(
