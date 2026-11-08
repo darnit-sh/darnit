@@ -67,17 +67,35 @@ async function againstCeiling(root: string, vendor: string, open: number, items:
   return { ok: true, says: `${open} need a record, at ${where}` };
 }
 
-/** One vendor's verdict for a final release: refused when the accounting above failed or the ceiling says so. */
+export const PAGE_DAYS = 14;
+
+/**
+ * Why a final release may not go out on page rows fetched on `fetchedAt`: over PAGE_DAYS days old, dated after `today`,
+ * or a date that cannot be read.
+ */
+export function pageTooOld(file: string, fetchedAt: string, today: string): string | undefined {
+  const days = (Date.parse(today) - Date.parse(fetchedAt)) / 86_400_000;
+  if (!Number.isFinite(days)) return `${file} says it was fetched on ${fetchedAt}, a date darnit cannot read`;
+  if (days < 0) return `${file} says it was fetched on ${fetchedAt}, after today`;
+  if (days > PAGE_DAYS)
+    return `${file} was fetched on ${fetchedAt}, ${days} days ago, over the ${PAGE_DAYS} a final release allows; the weekly corpus run fetches it again`;
+}
+
+/** One vendor's verdict for a final release: refused when the accounting above failed, the page rows are too old, or the ceiling says so. */
 export async function judgeCeiling(input: {
   root: string;
   vendor: string;
   open: number;
   items: number;
   failed: boolean;
+  tooOld?: string | undefined;
 }) {
   const ceiling = await againstCeiling(input.root, input.vendor, input.open, input.items);
-  const ok = ceiling.ok && !input.failed;
-  const why = input.failed ? "the accounting above failed; " : "";
+  const ok = ceiling.ok && !input.failed && input.tooOld === undefined;
+  const why = [input.failed ? "the accounting above failed" : "", input.tooOld ?? ""]
+    .filter(Boolean)
+    .map((s) => `${s}; `)
+    .join("");
   return { ok, line: `final release ${ok ? "passes" : "refused"}, ${input.vendor}: ${why}${ceiling.says}` };
 }
 
