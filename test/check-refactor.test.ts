@@ -1404,7 +1404,8 @@ describe("the rule picked by the title's type", () => {
       edit: (f) => ({ write: f, text: "process.exit(0);\n" }),
       removal: (f) => ({ remove: f }),
     };
-    // One change to every runner under every type lists each; each runner alone, under a type in turn, fails the check.
+    // One change to every runner under every type lists each; each runner edited alone and removed alone, under types in
+    // turn, fails the check.
     for (const [kind, edit] of Object.entries(edits)) {
       const changed = await repo(runners.map(edit), [{ write: "scripts/installed.ts" }]);
       for (const type of types) {
@@ -1416,10 +1417,15 @@ describe("the rule picked by the title's type", () => {
       expect((await check(changed, "ci: x", reason)).status, kind).toBe(0);
     }
     for (const [i, f] of runners.entries()) {
-      const type = types[i % types.length]!;
-      const r = await rule(`${type}: tidy`, [edits.edit!(f)], reason, {}, [{ write: "scripts/installed.ts" }]);
-      expect(r.status, `${type} ${f}`).toBe(1);
-      expect(r.out, `${type} ${f}`).toContain(`- ${f} (a runner behind a required check)`);
+      for (const [kind, shift] of [
+        ["edit", 0],
+        ["removal", 2],
+      ] as const) {
+        const type = types[(i + shift) % types.length]!;
+        const r = await rule(`${type}: tidy`, [edits[kind]!(f)], reason, {}, [{ write: "scripts/installed.ts" }]);
+        expect(r.status, `${type} ${kind} ${f}`).toBe(1);
+        expect(r.out, `${type} ${kind} ${f}`).toContain(`- ${f} (a runner behind a required check)`);
+      }
     }
     expect((await rule("feat: x", [{ write: "src/a.ts" }, { write: "scripts/report.ts" }])).status).toBe(0);
     expect(
@@ -1432,7 +1438,8 @@ describe("the rule picked by the title's type", () => {
     const why = "a test that guards the allowlists and tool settings";
     const reason = "Proof: none, the guard reads one more file\n";
     const types = ["fix", "feat", "test", "refactor", "docs"];
-    // As with the runners above: all three in one change, then each alone under a type in turn and under ci with no reason.
+    // As with the runners above: all three in one change, then each alone under two types in turn, which cover all five, and
+    // under ci with no reason.
     const guards = ["test/suppressions.test.ts", "test/tool-ignores.test.ts", "test/import-graph.ts"];
     const changed = await repo(guards.map((f) => ({ write: f, text: "export {};\n" })));
     for (const type of types) {
@@ -1448,6 +1455,7 @@ describe("the rule picked by the title's type", () => {
       const alone = await repo([{ write: f, text: "export {};\n" }]);
       for (const [title, body] of [
         [`${types[i]}: x`, reason],
+        [`${types[(i + 3) % types.length]}: x`, reason],
         ["ci: x", ""],
       ]) {
         const r = await check(alone, title!, body);
