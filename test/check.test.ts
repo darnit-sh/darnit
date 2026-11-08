@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,7 @@ import {
   type Hit,
 } from "../src/check.js";
 import { escapedPieces, escapeHidden, MAX_FILE_BYTES } from "../src/detect.js";
-import { loadRecords } from "../src/records/load.js";
+import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 import { compilePatterns, findMatches, grammarFor } from "../src/scan/astgrep.js";
 import { SDK_CLASSES } from "../src/scan/clients.js";
 import { findModelValues, inside, isTestPath } from "../src/scan/values.js";
@@ -206,7 +206,7 @@ describe("check tells OpenAI apart from look-alike clients", () => {
       "langfuse.py":
         "from langfuse.openai import OpenAI\n\nclient = OpenAI()\nr = client.chat.completions.create(model='m', max_tokens=5)\n",
       "image.js":
-        'export const r = fetch("https://api.openai.com/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gpt-4o", max_tokens: 5, messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "https://example.com/cat.png" } }] }] }) });\n',
+        'export const r = fetch("https://api.openai.com/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "gpt-test-model", max_tokens: 5, messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "https://example.com/cat.png" } }] }] }) });\n',
     });
     const { hits, coverage } = await checkReport(dir);
     expect(maxTokens(hits)).toEqual([
@@ -1131,8 +1131,34 @@ describe("model shutdowns", () => {
 
   it("marks every shutdown record as parser-verified until a person reviews it", async () => {
     const records = (await loadRecords()).map((l) => l.record).filter((r) => r.id.includes("shut-down"));
-    expect(records).toHaveLength(29);
+    const folders = (await readdir(join(PACKS_DIR, "openai"))).filter((f) => f.includes("shut-down"));
+    expect(records.length).toBeGreaterThan(0);
+    expect(records).toHaveLength(folders.length);
     expect(records.filter((r) => r.status !== "parser-verified").map((r) => r.id)).toEqual([]);
+  });
+
+  // The tests and samples use these for a current model, so a new shutdown record never changes what they expect.
+  it("reports nothing for the placeholder models the tests use", async () => {
+    const names = ["gpt-test-model", "gpt-4o-test-model", "gpt-4.1-test-model"];
+    const { hits, values, mentions } = await checkReport(
+      await scratch({
+        "app.ts": [
+          'import OpenAI from "openai";',
+          "const openai = new OpenAI();",
+          ...names.map((n) => `openai.chat.completions.create({ model: "${n}", messages });`),
+          ...names.map((n, i) => `export const MODEL_${i} = "${n}";`),
+          "",
+        ].join("\n"),
+        "app.py": [
+          "from openai import OpenAI",
+          "client = OpenAI()",
+          ...names.map((n) => `client.responses.create(model="${n}")`),
+          "",
+        ].join("\n"),
+        "README.md": `Uses ${names.join(", ")}.\n`,
+      }),
+    );
+    expect([...hits, ...values, ...mentions]).toEqual([]);
   });
 
   it("gives every shutdown record the same list of calls that take a model", async () => {
@@ -1481,7 +1507,7 @@ describe("model shutdowns", () => {
         'export const b = (o) => openai.audio.transcriptions.create({ file, model: o.model || "whisper-1" });',
         'export const c = (o) => openai.chat.completions.create({ messages, model: o.model ?? o.fallback ?? "gpt-4" });',
         'export const d = (o) => groq.audio.transcriptions.create({ file, model: o.model ?? "whisper-1" });',
-        'export const e = (o) => openai.chat.completions.create({ messages, model: o.model ?? "gpt-4o" });',
+        'export const e = (o) => openai.chat.completions.create({ messages, model: o.model ?? "gpt-test-model" });',
         "",
       ].join("\n"),
       "stt.py":
@@ -1500,7 +1526,7 @@ describe("model shutdowns", () => {
         'export const a = await openai.responses.create({ model: "o3-2025-04-16", input });',
         'export const b = await openai.responses.create({ model: "gpt-5-pro-2025-10-06", input });',
         "export const c = (o) => openai.audio.transcriptions.create({ file, model: o.model ?? 'whisper-1' });",
-        'export const d = await openai.chat.completions.create({ model: "gpt-4o", max_tokens: 5, messages });',
+        'export const d = await openai.chat.completions.create({ model: "gpt-test-model", max_tokens: 5, messages });',
         'export const e = await openai.images.generate({ model: "dall-e-3", prompt });',
         'export const f = await openai.images.generate({ model: "gpt-image-1.5", prompt });',
         "",

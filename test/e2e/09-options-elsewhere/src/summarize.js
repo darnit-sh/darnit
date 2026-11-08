@@ -3,7 +3,7 @@ import OpenAI from "openai";
 const openai = new OpenAI();
 
 const defaults = {
-  model: "gpt-4o",
+  model: "gpt-6-luna",
   max_tokens: 256,
 };
 

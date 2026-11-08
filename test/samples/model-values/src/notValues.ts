@@ -1,4 +1,4 @@
-type Options = { model: "gpt-4" | "gpt-4o" };
+type Options = { model: "gpt-4" | "gpt-test-model" };
 let model: "gpt-4";
 const prices = { "gpt-4": 1, "o1": 2 };
 const models = ["gpt-4", "o1-mini"];

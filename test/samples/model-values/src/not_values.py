@@ -10,7 +10,7 @@ def describe(model):
     return model
 
 
-MODEL_FAST = "gpt-4o"
-NEWER_MODEL = "gpt-4.1"
-mini = ChatOpenAI(model="gpt-4o-mini")
+MODEL_FAST = "gpt-test-model"
+NEWER_MODEL = "gpt-test-model"
+mini = ChatOpenAI(model="gpt-test-model")
 label = "gpt-4"

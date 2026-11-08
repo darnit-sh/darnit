@@ -22,7 +22,7 @@ Not checked: request options built elsewhere and passed in as a variable.
 $ npx darnit fix
 @@ -8,7 +8,7 @@ export async function summarize(messages) {
    return openai.chat.completions.create({
-     model: "gpt-4o",
+     model: "gpt-6-luna",
      messages,
 -    max_tokens: 256,
 +    max_completion_tokens: 256,
