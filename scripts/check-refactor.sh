@@ -350,12 +350,21 @@ DIFF_FILES='/^diff --git / { h = 1 } /^@@/ { h = 0 }
 # lines into files the change adds, so moved code carries them along. Each added line matches its own removed one.
 kept_lists() {
   added=$(git -c core.quotePath=false diff --no-renames --name-only --diff-filter=A "$base...$head")
+  # Each path of the module map with its floor, read from base's test/architecture.test.ts as docs-facts.test.ts does.
+  floors=$(git show "$mb:test/architecture.test.ts" 2>/dev/null | awk '/^  [a-z]+: (at\(|\{ floor: NaN)/ {
+    fl = $0; if (!sub(/^[^(]*at\(/, "", fl)) sub(/.*kind: "/, "", fl); sub(/[^0-9a-z].*/, "", fl)
+    ps = $0; sub(/^[^[]*\[/, "", ps); sub(/\].*/, "", ps); np = split(ps, q, "\""); for (i = 2; i < np; i += 2) print q[i] "\t" fl }')
   git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' |
-    ADDED=$added awk -v type="$type" -v l=scripts/allow/ '
-      # Each list line as a key, with the columns named in blank set apart from any text.
-      function key(blank, i, k) { k = f; for (i = 1; i <= n; i++) k = k "\t" (index(blank, " " i " ") ? SUBSEP : p[i]); return k }
+    ADDED=$added FLOORS=$floors awk -v type="$type" -v l=scripts/allow/ '
+      # The floor of a path, or the path itself when the map has none, so that it matches no other.
+      function floor(path, i) { for (i = 1; i <= nf; i++) if (path == fp[i] || (fp[i] ~ /\/$/ && index(path, fp[i]) == 1)) return ff[i]; return path }
+      # Each list line as a key, with the columns named in blank set apart from any text; a moved importer keeps its floor.
+      function key(blank, i, k, v) { k = f
+        for (i = 1; i <= n; i++) { v = p[i]; if (index(blank, " " i " ")) v = SUBSEP (f == l "imports.tsv" ? floor(v) : ""); k = k "\t" v }
+        return k }
       # The columns that say where a finding sits: its file, or both files of a duplicate, but not what an import names.
-      BEGIN { at[l "limits.tsv"] = at[l "imports.tsv"] = at[l "suppressions.tsv"] = " 1 "; at[l "duplicates.tsv"] = " 1 2 "; at[l "unused.tsv"] = " 2 " }
+      BEGIN { nf = split(ENVIRON["FLOORS"], fs, "\n"); for (i = 1; i <= nf; i++) { split(fs[i], g, "\t"); fp[i] = g[1]; ff[i] = g[2] }
+        at[l "limits.tsv"] = at[l "imports.tsv"] = at[l "suppressions.tsv"] = " 1 "; at[l "duplicates.tsv"] = " 1 2 "; at[l "unused.tsv"] = " 2 " }
       '"$DIFF_FILES"'
       { n = split(substr($0, 2), p, "\t"); m = split(type == "refactor" ? at[f] : "", cols, " "); vars[1] = "" }
       # A removed line, under each set of its location columns blanked; an added one, with those naming an added file.

@@ -1880,9 +1880,9 @@ describe("a refactor that moves listed code", () => {
     ],
     [
       "scripts/allow/imports.tsv",
-      "src/a.ts\tsrc/b.ts\tkept for now",
-      "src/check/a.ts\tsrc/b.ts\tkept for now",
-      ["src/check/a.ts"],
+      "src/fix.ts\tsrc/packs/apply.ts\tfix applies the rule packs",
+      "src/fix/apply-rules.ts\tsrc/packs/apply.ts\tfix applies the rule packs",
+      ["src/fix/apply-rules.ts"],
     ],
     [
       "scripts/allow/duplicates.tsv",
@@ -1914,7 +1914,9 @@ describe("a refactor that moves listed code", () => {
   // The moved line sorts after the one beside it, as a list kept in order would.
   const after = (...lines: string[]) => `${NOTE}${OTHER}${lines.map((l) => `${l}\n`).join("")}`;
   const crlf = (text: string) => text.replace(/\n/g, "\r\n");
-  const move = (title: string, list: string, from: string, to: string, added = adds, landed: Edit[] = []) =>
+  // An import's floor comes from base's module map, so each base holds this repository's.
+  const map: Edit = { write: "test/architecture.test.ts", text: readFileSync("test/architecture.test.ts", "utf8") };
+  const move = (title: string, list: string, from: string, to: string, added = adds, landed: Edit[] = [map]) =>
     rule(title, [...added.map((write) => ({ write })), { write: list, text: to }], "", {}, [
       ...landed,
       { write: list, text: from },
@@ -1996,6 +1998,15 @@ describe("a refactor that moves listed code", () => {
       ),
       IMPORTS,
       "import target",
+    );
+    // An importer moved to another floor turns its break into another, here a same-floor import into an upward one.
+    const upward = after(target.replace("src/fix.ts", "src/scan/rules.ts"));
+    await refused(move("refactor: x", IMPORTS, before(target), upward, ["src/scan/rules.ts"]), IMPORTS, "floor");
+    const same = after(target.replace("src/fix.ts", "src/fix/apply-rules.ts"));
+    await refused(
+      move("refactor: x", IMPORTS, before(target), same, ["src/fix/apply-rules.ts"], []),
+      IMPORTS,
+      "no map",
     );
     const DUPLICATES = "scripts/allow/duplicates.tsv";
     const pair = "src/a.ts\tsrc/b.ts\t#1\tone copy goes";
