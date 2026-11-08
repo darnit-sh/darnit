@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { account } from "../src/corpus/accounting.js";
-import { pageModels, staleRecords } from "../src/corpus/page-rows.js";
+import { pageItems, pageDisagreements } from "../src/corpus/page-rows.js";
 import { modelDetection, modelNotes, readPage } from "../src/corpus/replacements.js";
 import { parseChangeRecord, type ChangeRecord } from "../src/records/schema.js";
 
@@ -42,22 +42,43 @@ function record(model: string, change: { replacement?: object; replacedBy?: stri
 
 const lists = { known: new Set<string>(), notModels: new Set<string>(), wholeDates: new Set<string>() };
 
-describe("pageModels", () => {
+describe("pageItems", () => {
   it("keys each shutdown date and model once, with the vendor's records that detect the model", () => {
     const page = table([
       ["2027-03-01", "zzq-one | zzq-one-2026-01-01", "zzq-new"],
       ["2027-03-01", "zzq-one", "zzq-new"],
       ["2027-04-01", "zzq-one", "zzq-new"],
       ["soon", "zzq-two", "zzq-new"],
-      ["2027-03-01", "Assistants API", "Responses API"],
     ]);
     const records = [record("zzq-one"), record("zzq-one", { vendor: "other" })];
-    expect(pageModels(page, records, "openai")).toEqual([
+    expect(pageItems(page, records, "openai")).toEqual([
       { key: "page 2027-03-01 zzq-one", ids: ["openai:2026-11-01:zzq-one-shut-down"] },
       { key: "page 2027-03-01 zzq-one-2026-01-01", ids: [] },
       { key: "page 2027-04-01 zzq-one", ids: ["openai:2026-11-01:zzq-one-shut-down"] },
       { key: "page no date read zzq-two", ids: [] },
     ]);
+  });
+
+  it("keeps every other row of a shutdown table as an item no record detects, and leaves other tables out", () => {
+    const shutdowns = table([
+      ["2027-03-01", "Assistants API", "Responses API"],
+      ["2027-03-01", "zzq-a and zzq-b", "zzq-new"],
+      ["2027-03-01", "zzq-c (1M context)", "zzq-new"],
+      ["2024-10-28", "New fine-tuning training on zzq-one", "zzq-new"],
+    ]);
+    const noReplacements = readPage(
+      "<table><tr><th>Shutdown date</th><th>Endpoint</th></tr><tr><td>2027-05-01</td><td>/v1/zzq</td></tr></table>",
+    );
+    const other = readPage("<table><tr><th>Model</th><th>Price</th></tr><tr><td>zzq-one</td><td>1</td></tr></table>");
+    const records = [record("zzq-one")];
+    expect(pageItems(shutdowns, records, "openai")).toEqual([
+      { key: "page 2027-03-01 Assistants API", ids: [] },
+      { key: "page 2027-03-01 zzq-a and zzq-b", ids: [] },
+      { key: "page 2027-03-01 zzq-c (1M context)", ids: [] },
+      { key: "page 2024-10-28 New fine-tuning training on zzq-one", ids: [] },
+    ]);
+    expect(pageItems(noReplacements, records, "openai")).toEqual([{ key: "page 2027-05-01 /v1/zzq", ids: [] }]);
+    expect(pageItems(other, records, "openai")).toEqual([]);
   });
 });
 
@@ -69,7 +90,7 @@ describe("account with page models", () => {
       removals: [],
       records,
       notCovered,
-      pageModels: pageModels(table(models.map((m) => ["2027-03-01", m, "zzq-new"])), records, "openai"),
+      pageItems: pageItems(table(models.map((m) => ["2027-03-01", m, "zzq-new"])), records, "openai"),
     });
 
   it("holds a page model no record detects to an entry, like a spec item", () => {
@@ -93,38 +114,48 @@ describe("account with page models", () => {
   });
 });
 
-describe("staleRecords", () => {
+describe("pageDisagreements", () => {
   const page = table([
     ["2027-03-01", "zzq-one", "zzq-new"],
     ["2027-03-01", "zzq-two", "zzq-new"],
   ]);
 
   it("passes records whose notes and replacements are what the page gives", () => {
-    expect(staleRecords([record("zzq-one"), record("zzq-two")], page, lists)).toEqual([]);
+    expect(pageDisagreements([record("zzq-one"), record("zzq-two")], page, lists)).toEqual([]);
   });
 
   it("names a record whose replacements or notes are not what the page gives", () => {
     const wrongFix = record("zzq-one", { replacement: { model: "zzq-other", source: PAGE } });
     const wrongNotes = record("zzq-two", { replacedBy: "zzq-older" });
-    expect(staleRecords([wrongFix, wrongNotes], page, lists)).toEqual([
+    expect(pageDisagreements([wrongFix, wrongNotes], page, lists)).toEqual([
       "openai:2026-11-01:zzq-two-shut-down: notes say zzq-two to zzq-older, the page says zzq-new",
       "openai:2026-11-01:zzq-one-shut-down: its replacements are not what the page gives",
     ]);
   });
 
+  it("names a record detecting a model the page has no row for, as npm run replacements --check does", () => {
+    // Notes that name no replacement, as for a model OpenAI gives none, so only the missing row speaks.
+    expect(pageDisagreements([record("zzq-gone", { replacedBy: "\u2014" })], page, lists)).toEqual([
+      "openai:2026-11-01:zzq-gone-shut-down: the page has no row for zzq-gone",
+    ]);
+  });
+
   it("reads replacements against the spec's models, as npm run replacements does", () => {
     const renamed = record("zzq-one", { replacement: { model: "zzq-new", source: PAGE } });
-    expect(staleRecords([renamed], page, lists)).toEqual([
+    expect(pageDisagreements([renamed], page, lists)).toEqual([
       "openai:2026-11-01:zzq-one-shut-down: its replacements are not what the page gives",
     ]);
-    expect(staleRecords([renamed], page, { ...lists, known: new Set(["zzq-new"]) })).toEqual([]);
+    expect(pageDisagreements([renamed], page, { ...lists, known: new Set(["zzq-new"]) })).toEqual([]);
   });
 
   it("names a record of a whole-row date missing a model its rows list, as npm run replacements --check does", () => {
     const rows = table([["2027-03-01", "zzq-one | zzq-one-2026-01-01", "zzq-new"]]);
-    expect(staleRecords([record("zzq-one")], rows, lists)).toEqual([]);
-    expect(staleRecords([record("zzq-one")], rows, { ...lists, wholeDates: new Set(["2027-03-01"]) })).toEqual([
+    expect(pageDisagreements([record("zzq-one")], rows, lists)).toEqual([]);
+    expect(pageDisagreements([record("zzq-one")], rows, { ...lists, wholeDates: new Set(["2027-03-01"]) })).toEqual([
       "openai:2026-11-01:zzq-one-shut-down: its replacements are not what the page gives",
+    ]);
+    expect(pageDisagreements([record("zzq-one")], rows, { ...lists, wholeDates: new Set(["2027-09-09"]) })).toEqual([
+      "no model row on the page shuts down on 2027-09-09; take it off the list",
     ]);
   });
 });

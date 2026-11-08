@@ -291,7 +291,7 @@ export function account(input: {
   notCovered: NotCovered;
   /** "POST /chat/completions" -> "chat.completions.create", as in vendors.yml */
   symbols?: Record<string, string> | undefined;
-  pageModels?: { key: string; ids: string[] }[] | undefined;
+  pageItems?: { key: string; ids: string[] }[] | undefined;
 }): Accounting {
   const { vendor, spec, records } = input;
   const deprecated = deprecatedItems(spec);
@@ -368,7 +368,7 @@ export function account(input: {
     contradicted: [],
   };
   const known = new Set<string>();
-  for (const item of [...deprecated, ...removals, ...(input.pageModels ?? [])]) {
+  for (const item of [...deprecated, ...removals, ...(input.pageItems ?? [])]) {
     known.add(item.key);
     const ids = "ids" in item ? item.ids : coveredBy(item).map((r) => r.id);
     const entry = entries.get(item.key);

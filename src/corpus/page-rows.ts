@@ -8,6 +8,7 @@ import {
   pageMismatches,
   readPage,
   replacementsFor,
+  shutdownDate,
   TABLE_ERRORS,
   wholeRows,
   type Page,
@@ -72,36 +73,51 @@ export function wholeRowRecords(records: readonly ChangeRecord[], page: Page, da
 }
 
 /**
- * Each shutdown date and model of the page's model rows, keyed as "page <date> <model>" for npm run accounting, with
- * the ids of the vendor's records that detect the model.
+ * One item for npm run accounting per shutdown date and model of the page's model rows, keyed "page <date> <model>",
+ * with the ids of the vendor's records that detect the model. Every other row of a table headed "Shutdown date", such
+ * as an endpoint, an API or a row darnit reads no model from, is an item too, keyed by its second cell and detected by
+ * no record, so no row of such a table goes unaccounted.
  */
-export function pageModels(page: Page, records: readonly ChangeRecord[], vendor: string) {
-  const detecting = new Map<string, string[]>();
-  for (const r of records)
-    if (r.vendor === vendor) for (const m of recordModels(r)) detecting.set(m, [...(detecting.get(m) ?? []), r.id]);
+export function pageItems(page: Page, records: readonly ChangeRecord[], vendor: string) {
+  const detecting = detectedBy(records, vendor);
+  const shutdownTables = new Set(
+    page.rows.filter((r) => r.label.endsWith(" row 1") && r.cells[0]?.toLowerCase() === "shutdown date").map(tableOf),
+  );
   const items = new Map<string, string[]>();
-  for (const row of page.rows)
-    for (const m of row.models ?? []) items.set(`page ${row.shutdown ?? "no date read"} ${m}`, detecting.get(m) ?? []);
+  for (const row of page.rows.filter((r) => !r.label.endsWith(" row 1") && shutdownTables.has(tableOf(r)))) {
+    const at = `page ${shutdownDate(row.cells[0] ?? "") ?? "no date read"}`;
+    if (!row.models) items.set(`${at} ${row.cells[1] || row.cells.join(" | ")}`, []);
+    for (const m of row.models ?? []) items.set(`${at} ${m}`, detecting.get(m) ?? []);
+  }
   return [...items].map(([key, ids]) => ({ key, ids }));
 }
 
+/** Each model the vendor's records detect, with the ids of those records. */
+function detectedBy(records: readonly ChangeRecord[], vendor: string) {
+  const detecting = new Map<string, string[]>();
+  for (const r of records)
+    if (r.vendor === vendor) for (const m of recordModels(r)) detecting.set(m, [...(detecting.get(m) ?? []), r.id]);
+  return detecting;
+}
+
+const tableOf = (row: { label: string }) => row.label.slice(0, row.label.lastIndexOf(" row "));
+
 /**
- * The records whose notes or replacements are not what the page gives, read as npm run replacements --check reads
- * them: pageMismatches, and each record whose fix.models differs from what replacementsFor gives it.
+ * What npm run replacements --check finds between the records and the page, but for the shape of a record's files:
+ * every problem wholeRows, replacementsFor and pageMismatches give, and each record whose fix.models is not what
+ * replacementsFor gives it.
  */
-export function staleRecords(
+export function pageDisagreements(
   records: readonly ChangeRecord[],
   page: Page,
   lists: { known: ReadonlySet<string>; notModels: ReadonlySet<string>; wholeDates: ReadonlySet<string> },
 ): string[] {
-  const { models } = replacementsFor(
-    wholeRowRecords(records, page, lists.wholeDates).records,
-    page,
-    lists.known,
-    lists.notModels,
-  );
+  const { whole, records: checked } = wholeRowRecords(records, page, lists.wholeDates);
+  const { models, problems } = replacementsFor(checked, page, lists.known, lists.notModels);
   const fixes = records.filter((r) => models.has(r.id) && !isDeepStrictEqual(r.fix?.models, models.get(r.id)));
   return [
+    ...whole.problems,
+    ...problems,
     ...pageMismatches(records, page),
     ...fixes.map((r) => `${r.id}: its replacements are not what the page gives`),
   ];
