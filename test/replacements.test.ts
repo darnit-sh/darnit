@@ -23,6 +23,9 @@ import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/records/schema.js";
 
 const PAGE = "https://developers.openai.com/api/docs/deprecations";
+// A model a reason names as retiring too, and the lead-in naming a replacement that shuts down, each word tried once.
+const RETIRING =
+  /(?:(?<!\S)|(?<=\(retiring too\)))\S+ \(retiring too\)|^OpenAI recommends \S+, which also shuts down; /g;
 const notes = (pairs: string) =>
   `OpenAI removes these models. Recommended replacements: ${pairs}. A newer model can answer differently, so test the switch.`;
 // Real rows from OpenAI's deprecations page, trimmed to its tables.
@@ -752,12 +755,7 @@ describe("fix.models from the page", () => {
     expect([...swaps.values()].flatMap((s) => ("model" in s && retiring.has(s.model) ? [s.model] : []))).toEqual([]);
     expect([...swaps.values()].flatMap((s) => ("model" in s && !known.has(s.model) ? [s.model] : []))).toEqual([]);
     // A reason offers a retiring model only when it says so.
-    const offered = (h: string) =>
-      [
-        ...h
-          .replace(/\S+ \(retiring too\)|^OpenAI recommends \S+, which also shuts down; /g, "")
-          .matchAll(/[a-z0-9][a-z0-9._:-]*/g),
-      ].map((m) => m[0]);
+    const offered = (h: string) => [...h.replace(RETIRING, "").matchAll(/[a-z0-9][a-z0-9._:-]*/g)].map((m) => m[0]);
     expect(
       [...swaps.values()].flatMap((s) => ("human" in s ? offered(s.human).filter((id) => retiring.has(id)) : [])),
     ).toEqual([]);

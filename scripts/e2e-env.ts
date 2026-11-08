@@ -26,7 +26,7 @@ export function cliAt(path: string): { path: string; version: string } {
     env: { ...process.env, DARNIT_NO_UPDATE_CHECK: "1" },
   });
   const version = r.stdout?.trim() ?? "";
-  if (r.status === 0 && /^\d+\.\d+\.\d+\S*$/.test(version)) return { path: cli, version };
+  if (r.status === 0 && /^\d+\.\d+\.\d\S*$/.test(version)) return { path: cli, version };
   const why = /^\w*Error\b.*$/m.exec(r.stderr ?? "")?.[0] ?? `printed ${JSON.stringify(version.slice(0, 80))}`;
   throw new Error(`--cli ${cli} does not run: --version exited ${r.status ?? r.signal ?? r.error?.message}, ${why}`);
 }

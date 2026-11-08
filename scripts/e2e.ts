@@ -295,7 +295,7 @@ try {
   cpSync(join(SCENARIOS, "16-hostile-repo"), hostile, { recursive: true });
   must(darnit, ["init"], hostile);
   // The line is taken from the source of what init writes, so no file content reaches the shell; the file init wrote must hold it.
-  const runLine = (yml: string) => /^\s*- run: (.*npx darnit@\S+.*)$/m.exec(yml)?.[1];
+  const runLine = (yml: string) => /^[^\S\n\r\u2028\u2029]*- run: (.*npx darnit@\S.*)$/m.exec(yml)?.[1];
   const line = runLine(WORKFLOW)!;
   const wrote = runLine(readFileSync(join(hostile, ".github", "workflows", "darnit.yml"), "utf8"));
   if (wrote !== line) {

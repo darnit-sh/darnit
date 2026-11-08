@@ -1244,7 +1244,7 @@ describe("the rule picked by the title's type", () => {
     [
       "a step deleted",
       [{ write: ".github/workflows/ci.yml", text: ciYml }],
-      [{ write: ".github/workflows/ci.yml", text: ciYml.replace(/.*--coverage\n/, "") }],
+      [{ write: ".github/workflows/ci.yml", text: ciYml.replace(/^.*--coverage\n/m, "") }],
       `.github/workflows/ci.yml (${workflow})`,
     ],
     [

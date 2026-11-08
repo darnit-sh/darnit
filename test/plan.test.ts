@@ -121,7 +121,7 @@ describe("parsePlan", () => {
     ["with a hunk short of the lines it counts", PATCH.replace("+max_completion_tokens=5\n", "")],
     ["with a hunk longer than it counts", PATCH + "+extra\n"],
     ["with a blank line in a hunk", PATCH.replace("@@ -1 +1 @@\n", "@@ -1,2 +1,2 @@\n\n")],
-    ["with no hunk", PATCH.replace(/@@[^]*$/, "")],
+    ["with no hunk", PATCH.replace(/@@[^]*/, "")],
     ["with the same file twice", PATCH + PATCH],
     ["with a space name missing git's tab", PATCH.replaceAll("app.py", "a p.py")],
     [

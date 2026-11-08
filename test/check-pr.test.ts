@@ -195,7 +195,7 @@ function commands(text: string): Record<string, string> {
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
-    const doc = /^([^=]+)<<(.+)$/.exec(line);
+    const doc = /^([^=]+)<(?![^=]*<<.)<(.+)$/.exec(line);
     if (doc) {
       const end = lines.indexOf(doc[2]!, i + 1);
       out[doc[1]!] = lines.slice(i + 1, end).join("\n");
@@ -236,6 +236,10 @@ type PullRequest = {
   path?: string;
 };
 
+// `${{ expr }}` with the spaces around expr left out, each run of spaces read once: the text from its first to its
+// last other character, or, when it holds only spaces, the last of them that does not end a line.
+const EXPRESSION = /\$\{\{(?=(\s*))\1(?:(\S(?:.*?\S)??)\s*|(?<=([^\S\n\r\u2028\u2029])[\n\r\u2028\u2029]*))\}\}/g;
+
 /**
  * Runs pr.yml's job `id` on `pr` as the runner would. Each run step gets the job's env, then what earlier steps
  * wrote to $GITHUB_ENV, then its own env, with the folders written to $GITHUB_PATH put before its PATH, and its
@@ -262,7 +266,7 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
   const outputs: Record<string, Record<string, string>> = {};
   const context = contextFor(pr);
   const value = (expr: string) => read(expr, outputs, context);
-  const expand = (s: string) => s.replace(/\$\{\{\s*(.+?)\s*\}\}/g, (_, e: string) => value(e));
+  const expand = (s: string) => s.replace(EXPRESSION, (_, _s: string, e?: string, b?: string) => value(e ?? b!));
   const vars = (env: Record<string, string> = {}) =>
     Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expand(String(v))]));
   const machine = {

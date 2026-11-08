@@ -47,10 +47,17 @@ export async function slowdown(f: () => unknown, baseline: () => unknown, bound:
 /**
  * The problem matchers `actions/setup-node@v7` registers on every run, by owner: the patterns in its .github/tsc.json,
  * eslint-stylish.json and eslint-compact.json at 949feb2413d6458794dcd2491c4babbbce0c15c1 (v7.1.0), the commit v7 names.
+ * Two match the same lines as there but read each run of spaces once: tsc's ends in `\s*:\s*(.*)$` there, and the
+ * second eslint-stylish pattern there is `^\s+(\d+):(\d+)\s+(error|warning|info)\s+(.*)\s\s+(.*)$`, which a line
+ * matches when what follows the severity starts with a space and holds two spaces in a row, and every line break after
+ * its first other character sits in one run of two or more spaces, with no line break after that run.
  */
 export const SETUP_NODE_MATCHERS: Record<string, RegExp[]> = {
-  tsc: [/^([^\s].*)[(:](\d+)[,:](\d+)(?:\):\s+|\s+-\s+)(error|warning|info)\s+TS(\d+)\s*:\s*(.*)$/],
-  "eslint-stylish": [/^\s*([^\s].*)$/, /^\s+(\d+):(\d+)\s+(error|warning|info)\s+(.*)\s\s+(.*)$/],
+  tsc: [/^([^\s].*)[(:](\d+)[,:](\d+)(?:\):\s+|\s+-\s+)(error|warning|info)\s+TS(\d+)\s*:\s*((?:\S.*)?)$/],
+  "eslint-stylish": [
+    /^\s*([^\s].*)$/,
+    /^\s+(\d+):(\d+)\s+(error|warning|info)\s(?:(?=\s*(?:\S.*)?$)[^]*?\s\s|\s*\S(?=(.*))\4(?:(?<=\s)\s+|\s\s+)(?:\S.*)?$)/,
+  ],
   "eslint-compact": [/^(.+):\sline\s(\d+),\scol\s(\d+),\s([Ee]rror|[Ww]arning|[Ii]nfo)\s-\s(.+)\s\((.+)\)$/],
 };
 

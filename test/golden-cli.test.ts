@@ -96,7 +96,9 @@ describe("golden --cli", () => {
       const r = golden(...args);
       expect(r.exit, args.join(" ")).toBe(2);
       expect(r.stderr, args.join(" ")).toContain(says);
-      expect(r.stderr, args.join(" ")).not.toMatch(/^\s+at /m);
+      expect(r.stderr, args.join(" ")).not.toMatch(
+        /^(?:[^\S\n\r\u2028\u2029]+|[^\S\n\r\u2028\u2029]*[\n\r\u2028\u2029])at /m,
+      );
       expect(r.out, args.join(" ")).not.toContain("Compared");
     }
   });

@@ -35,7 +35,7 @@ const index = () => {
 const wild = (part: string) => (part === "*" ? "[^/]*" : "[^/]+");
 const one = (name: string) =>
   name
-    .split(/(\*|<[^>]*>)/)
+    .split(/(\*|<(?<!<[^>]*?<)[^>]*>)/)
     .map((part, i) => (i % 2 === 0 ? escapeRegExp(part) : wild(part)))
     .join("");
 const segment = (name: string, last: boolean) => {

@@ -15,7 +15,7 @@ function namedPaths(md: string): { path: string; at: number }[] {
   const found: { path: string; at: number }[] = [];
   const words = (text: string, from: number) => {
     for (const w of text.matchAll(/\S+/g)) {
-      const path = w[0].replace(/^[("'*_]+|[)"'*_,.;:]+$/g, "");
+      const path = w[0].replace(/^[("'*_]+/, "").replace(/(?<![)"'*_,.;:])[)"'*_,.;:]+$/, "");
       if (looksLikePath(path)) found.push({ path, at: from + w.index + w[0].indexOf(path) });
     }
   };
