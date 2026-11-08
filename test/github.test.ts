@@ -194,9 +194,8 @@ describe("GitHub API calls", () => {
     const connected = once(server, "connection") as Promise<[Socket]>;
     const local = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const send = fetch;
-    vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
-      send(url.replace("https://api.github.com", local), init),
-    );
+    const calls = vi.fn((url: string, init?: RequestInit) => send(url.replace("https://api.github.com", local), init));
+    vi.stubGlobal("fetch", calls);
     // The real limit, shortened so the test does not wait it out.
     const timeout = AbortSignal.timeout.bind(AbortSignal);
     const limit = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => timeout(50));
@@ -205,6 +204,7 @@ describe("GitHub API calls", () => {
         "GitHub GET /repos/o/r timed out after 30 seconds",
       );
       expect(limit).toHaveBeenCalledWith(30_000);
+      expect(calls).toHaveBeenCalledOnce();
       const [socket] = await connected;
       socket.resume();
       await closed;
