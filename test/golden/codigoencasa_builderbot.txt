@@ -1,8 +1,9 @@
 exit 1
-scanned files=770 records=36 otherFiles=1163 foreign=0 tooLarge=0 skipped=2
+scanned files=770 records=37 otherFiles=1163 foreign=0 tooLarge=0 skipped=2
 H packages/provider-voice-sip/src/stt.ts:34:9 #93da5e03 openai:2026-08-26:transcription-models-shut-down
 H packages/provider-voice/src/stt.ts:34:9 #7465d6a8 openai:2026-08-26:transcription-models-shut-down
 H scripts/generate-release-summary.js:491:13 #e9db0771 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H scripts/generate-release-summary.js:478:13 #4a0f565e openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P packages/provider-voice-sip/src/sip/provider.ts:43:23 #81abab45 whisper-1 openai:2026-08-26:transcription-models-shut-down
 M packages/provider-voice-sip/src/stt.ts:14 whisper-1 openai:2026-08-26:transcription-models-shut-down
 M packages/provider-voice/README.md:51 whisper-1 openai:2026-08-26:transcription-models-shut-down

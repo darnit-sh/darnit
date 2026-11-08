@@ -1,5 +1,21 @@
 exit 1
-scanned files=134 records=36 otherFiles=88 foreign=0 tooLarge=0 skipped=0
+scanned files=134 records=37 otherFiles=88 foreign=0 tooLarge=0 skipped=0
+H agents/building-blocks/1-intelligence.py:13:40 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/2-memory.py:15:9 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/2-memory.py:25:9 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/2-memory.py:35:9 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/3-tools.py:53:9 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/3-tools.py:78:9 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/4-validation.py:25:9 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/5-control.py:20:9 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/5-control.py:49:9 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/6-recovery.py:22:9 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H agents/building-blocks/7-feedback.py:18:40 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H knowledge/docling/5-chat.py:83:9 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H knowledge/mem0/oss/memory_demo.py:33:9 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H knowledge/mem0/oss/support_agent.py:36:13 #7172d8a2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H mcp/crash-course/5-mcp-vs-function-calling/function-calling.py:39:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H mcp/crash-course/5-mcp-vs-function-calling/function-calling.py:55:9 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 H models/openai/01-introduction/03-streaming.py:6:5 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H models/openai/04-structured-output/01-introduction.py:26:5 #1e64d6b6 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H models/openai/04-structured-output/01-introduction.py:59:5 #1e64d6b6 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -16,6 +32,26 @@ H models/openai/04-structured-output/Instructor/02-output-validation.py:79:5 #1e
 H models/openai/04-structured-output/Instructor/03-content-filtering.py:32:5 #1e64d6b6 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H models/openai/04-structured-output/Instructor/03-content-filtering.py:66:9 #1e64d6b6 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H models/openai/04-structured-output/Instructor/04-ticket-system.py:40:9 #1e64d6b6 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+H models/openai/05-responses/01-introduction.py:14:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/01-introduction.py:31:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/01-introduction.py:41:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/01-introduction.py:63:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/02-text-prompting.py:25:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/02-text-prompting.py:38:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/02-text-prompting.py:56:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/02-text-prompting.py:67:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/03-conversation-state.py:14:5 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/03-conversation-state.py:31:36 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/03-conversation-state.py:43:5 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/03-conversation-state.py:53:5 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/03-conversation-state.py:59:5 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/04-function-calling.py:24:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/05-structured-output.py:14:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/05-structured-output.py:59:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/06-web-search.py:11:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/06-web-search.py:27:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/07-file-search.py:75:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/05-responses/07-file-search.py:87:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 H models/openai/05-responses/08-reasoning.py:15:5 #2dd14a2d openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H models/openai/08-video/1-sora-quickstart.py:13:5 #77f09111 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
 H models/openai/08-video/2-references.py:65:5 #77f09111 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
@@ -25,11 +61,32 @@ H models/openai/08-video/4-sora-prompting.py:22:5 #77f09111 openai:2026-03-24:so
 H models/openai/08-video/5-sora-remix.py:36:5 #77f09111 openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down
 H models/openai/08-video/utils/director.py:18:13 #c8c5dbf9 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 H models/openai/09-web/web_search.py:6:5 #4d5dde24 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+H models/openai/10-human-in-the-loop/1-structured-output.py:97:9 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H models/openai/10-human-in-the-loop/2-tool-call-approval.py:134:13 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H patterns/workflows/1-introduction/1-basic.py:9:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H patterns/workflows/1-introduction/2-structured.py:25:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H patterns/workflows/1-introduction/3-tools.py:60:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H patterns/workflows/1-introduction/3-tools.py:106:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H patterns/workflows/1-introduction/4-retrieval.py:58:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H patterns/workflows/1-introduction/4-retrieval.py:100:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+H patterns/workflows/1-introduction/4-retrieval.py:124:5 #86ed46cd openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P context/web/1-get-single-page.py:8:9 #4549d969 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P context/web/2-web-search.py:8:9 #3d129a59 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 P context/web/3-search-handbook.py:14:9 #4549d969 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P context/web/4-search-agent.py:14:9 #f208c67b gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P context/web/tools/agent.py:28:22 #521839bc gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P knowledge/mem0/oss/config.py:8:56 #5fee4864 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P mcp/crash-course/4-openai-integration/client-simple.py:27:9 #a1f43762 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P mcp/crash-course/4-openai-integration/client.py:27:37 #e8e7da3b gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P models/openai/04-structured-output/04-structured-output.py:10:9 #d8768afd gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P models/openai/04-structured-output/Instructor/01-instructor.py:17:9 #d8768afd gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P patterns/workflows/2-workflow-patterns/1-prompt-chaining.py:17:9 #a1f43762 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P patterns/workflows/2-workflow-patterns/2-routing.py:16:9 #a1f43762 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P patterns/workflows/2-workflow-patterns/3-parallizaton.py:20:9 #a1f43762 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P patterns/workflows/2-workflow-patterns/4-orchestrator.py:17:9 #f4997d41 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M knowledge/agentic-rag/6-production.py:220 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M knowledge/hybrid-retrieval/docs/build-your-own-eval.md:42 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M knowledge/hybrid-retrieval/docs/build-your-own-eval.md:56 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M knowledge/mem0/README.md:66 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M models/openai/04-structured-output/Instructor/README.md:40 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M models/openai/04-structured-output/Instructor/README.md:82 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

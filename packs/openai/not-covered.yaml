@@ -142,35 +142,6 @@
     finds nothing.
 
 - items:
-    - schema AssistantSupportedModels enum gpt-4.1
-    - schema AssistantSupportedModels enum gpt-4.1-mini
-    - schema AssistantSupportedModels enum gpt-4o
-    - schema AssistantSupportedModels enum gpt-4o-mini
-    - schema ModelIdsShared anyOf 1 enum gpt-4.1
-    - schema ModelIdsShared anyOf 1 enum gpt-4.1-2025-04-14
-    - schema ModelIdsShared anyOf 1 enum gpt-4.1-mini
-    - schema ModelIdsShared anyOf 1 enum gpt-4.1-mini-2025-04-14
-    - schema ModelIdsShared anyOf 1 enum gpt-4o
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-2024-08-06
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-2024-11-20
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini
-    - schema ModelIdsShared anyOf 1 enum gpt-4o-mini-2024-07-18
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-2025-04-14
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-mini
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4.1-mini-2025-04-14
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-2024-08-06
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-2024-11-20
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini
-    - schema BetaModelIdsShared anyOf 1 enum gpt-4o-mini-2024-07-18
-  date: "2027-01-14"
-  needs-record: >-
-    Deprecation, report-only model record in the same form as the others: finds these names as
-    the model of any OpenAI call. The spec gives this shutdown date; the record should cite
-    OpenAI's deprecations page for the date and the replacements.
-
-- items:
     - schema ModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
     - schema BetaModelIdsShared anyOf 1 enum gpt-audio-mini-2025-12-15
   date: "2027-01-20"
@@ -352,6 +323,17 @@
     Accounting cannot match them: vendors.yml maps no SDK call for POST /assistants/{assistant_id}
     or POST /threads/runs, and maps POST /threads/{thread_id}/runs to threads.runs.create, which is
     shorter than the record's beta.threads.runs.create.
+
+- items:
+    - schema AssistantSupportedModels enum gpt-4.1
+    - schema AssistantSupportedModels enum gpt-4.1-mini
+    - schema AssistantSupportedModels enum gpt-4o
+    - schema AssistantSupportedModels enum gpt-4o-mini
+  reason: >-
+    Covered by openai:2026-10-14:gpt-4-series-model-deprecations-shut-down: `darnit check` reports
+    these aliases as the model of beta.assistants.create, beta.assistants.update,
+    beta.threads.runs.create and beta.threads.createAndRun calls, create_and_run in Python.
+    Accounting cannot match them, for the reasons given for the gpt-5 entry above.
 
 - items:
     - schema RealtimeSessionCreateRequestGA property model anyOf 1 enum gpt-realtime

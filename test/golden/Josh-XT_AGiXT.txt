@@ -1,29 +1,49 @@
 exit 1
-scanned files=245 records=36 otherFiles=396 foreign=0 tooLarge=0 skipped=2
+scanned files=245 records=37 otherFiles=396 foreign=0 tooLarge=0 skipped=2
 H tests/endpoint_tests.py:1195:13 #b3b3ae33 openai:2024-09-12:max-tokens-to-max-completion-tokens
 H tests/endpoint_tests.py:1253:13 #b3b3ae33 openai:2024-09-12:max-tokens-to-max-completion-tokens
 P agixt/InternalClient.py:751:22 #30e603b2 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
 P agixt/Models.py:352:28 #9ef4a622 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
 P agixt/VoiceConversation.py:564:22 #f31b7f1c tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P agixt/extensions/azure.py:97:77 #1b9900db gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P agixt/extensions/ezlocalai.py:531:22 #f31b7f1c tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 P agixt/extensions/ezlocalai.py:573:22 #f31b7f1c tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P agixt/extensions/openai.py:92:32 #22db3186 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P agixt/extensions/openai.py:93:36 #ebeff61d gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P agixt/extensions/openai.py:94:36 #cc7beb22 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P agixt/extensions/openai.py:99:43 #b52b16c9 whisper-1 openai:2026-08-26:transcription-models-shut-down
+P agixt/extensions/openai.py:112:54 #75d4b185 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P agixt/extensions/openai.py:116:65 #dcee1a39 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P agixt/extensions/openai.py:117:77 #682a986e gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P agixt/extensions/openai.py:118:77 #6330805f gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P agixt/extensions/openai.py:124:75 #6ea19703 whisper-1 openai:2026-08-26:transcription-models-shut-down
 P agixt/extensions/openai.py:396:22 #f31b7f1c tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 P agixt/extensions/openai.py:422:22 #d14b027d dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
 P ui/src/client-actions.js:786:18 #bd3f9255 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 M agixt/DB.py:7148 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+M agixt/DB.py:7297 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M agixt/DB.py:7325 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M agixt/InternalClient.py:761 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
+M agixt/extensions/azure.py:77 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M agixt/extensions/openai.py:111 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M agixt/extensions/openrouter.py:78 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M agixt/extensions/openrouter.py:89 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M agixt/extensions/perplexity.py:34 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M agixt/extensions/perplexity.py:35 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M agixt/extensions/perplexity.py:108 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M agixt/extensions/perplexity.py:109 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M agixt/mcp_client.py:460 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M agixt/onnx/tokenizer.json:15424 ada openai:2023-07-06:gpt-and-embeddings-shut-down
+M examples/AGiXT-Expert-OAI.ipynb:13 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M examples/AGiXT-Expert-OAI.ipynb:68 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
 M examples/AGiXT-Expert-ezLocalai.ipynb:72 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+M tests/endpoint-tests.ipynb:226 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/endpoint-tests.ipynb:226 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M tests/endpoint-tests.ipynb:256 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/endpoint-tests.ipynb:256 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M tests/endpoint-tests.ipynb:287 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/endpoint-tests.ipynb:287 whisper-1 openai:2026-08-26:transcription-models-shut-down
+M tests/endpoint-tests.ipynb:319 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/endpoint-tests.ipynb:319 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/endpoint-tests.ipynb:319 whisper-1 openai:2026-08-26:transcription-models-shut-down
 S ui/src-tauri/vendor dependency or build folder

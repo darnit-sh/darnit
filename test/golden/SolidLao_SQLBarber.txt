@@ -1,5 +1,6 @@
 exit 0
-scanned files=17 records=36 otherFiles=403 foreign=0 tooLarge=0 skipped=0
+scanned files=17 records=37 otherFiles=403 foreign=0 tooLarge=0 skipped=0
+P src/llm/gpt.py:16:54 #0be97055 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P src/run_sqlbarber.py:48:9 #85b75a3f o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M README.md:106 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M README.md:226 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -11130,6 +11131,8 @@ M outputs/intermediate/logs/postgres_imdb_2025-07-22_02-56/llm.log:6529 o3-mini 
 M outputs/intermediate/logs/postgres_imdb_2025-07-22_02-56/llm.log:6856 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M outputs/intermediate/logs/postgres_imdb_2025-07-22_02-56/llm.log:7192 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M outputs/intermediate/logs/postgres_imdb_2025-07-22_02-56/llm.log:7538 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/llm/gpt.py:7 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/llm/gpt.py:8 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M src/llm/gpt.py:9 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M src/llm/gpt.py:10 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/llm/gpt.py:44 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28

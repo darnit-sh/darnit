@@ -1,7 +1,10 @@
 exit 1
-scanned files=752 records=36 otherFiles=99 foreign=0 tooLarge=0 skipped=1
+scanned files=752 records=37 otherFiles=99 foreign=0 tooLarge=0 skipped=1
 H vlmeval/api/glm_vision.py:60:17 #6abffd05 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P scripts/data_browser.py:30:34 #d5a259c2 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P vlmeval/api/gpt.py:86:31 #0adacf58 gpt-3.5-turbo-0613 openai:2023-11-06:chat-model-updates-shut-down
+P vlmeval/api/litellm_api.py:39:22 #55d0360f gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/api/openai_responses.py:120:22 #55d0360f gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P vlmeval/config.py:101:15 #17c22ace o1-2024-12-17 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P vlmeval/config.py:114:15 #dfd625e1 o3-2025-04-16 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 P vlmeval/config.py:126:15 #cc3722fc o4-mini-2025-04-16 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -11,20 +14,99 @@ P vlmeval/config.py:160:15 #c0583bff gpt-4-turbo-2024-04-09 openai:2026-04-22:le
 P vlmeval/config.py:169:15 #c0583bff gpt-4-turbo-2024-04-09 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P vlmeval/config.py:178:15 #e040b69b gpt-4o-2024-05-13 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P vlmeval/config.py:187:15 #e040b69b gpt-4o-2024-05-13 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/config.py:196:15 #ba7ea54c gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/config.py:205:15 #7e5290ab gpt-4o-2024-11-20 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P vlmeval/config.py:214:15 #275f8446 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+P vlmeval/config.py:223:15 #53809e20 gpt-4o-mini-2024-07-18 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/config.py:242:15 #90b3ca01 gpt-4.1-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/config.py:251:15 #a361364d gpt-4.1-mini-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P vlmeval/config.py:260:15 #ee52c5de gpt-4.1-nano-2025-04-14 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P vlmeval/config.py:269:15 #2a5cd704 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 P vlmeval/config.py:278:15 #6a1ccbd7 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 P vlmeval/config.py:287:15 #ebfd02de gpt-5-nano-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+P vlmeval/config.py:490:15 #63c2f638 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/config.py:497:15 #205d2ceb gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P vlmeval/dataset/SGI_Bench_1_0/deep_research.py:109:27 #670be480 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P vlmeval/dataset/SGI_Bench_1_0/dry_experiment.py:338:27 #670be480 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P vlmeval/dataset/SGI_Bench_1_0/experimental_reasoning.py:138:27 #670be480 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/dataset/asclepius.py:28:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/chartmimic.py:424:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/charxiv.py:106:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/dream.py:56:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/dude.py:61:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/dynamath.py:116:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/flames.py:59:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_mt.py:60:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_shortqa.py:71:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:267:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:600:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:732:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:877:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:1022:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:1155:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:1754:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P vlmeval/dataset/image_vqa.py:1945:27 #c5113e56 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/dataset/image_vqa.py:2047:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P vlmeval/dataset/image_vqa.py:2108:27 #c5113e56 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/dataset/image_vqa.py:3392:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:3686:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:3884:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:4069:27 #b8da0b52 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:4151:27 #ef689e8b gpt-4.1-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:4248:27 #b8da0b52 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/image_vqa.py:4345:27 #b8da0b52 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/macbench.py:144:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/miabench.py:105:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/mmalignbench.py:132:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P vlmeval/dataset/mmbench_video.py:71:27 #c5113e56 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P vlmeval/dataset/mmifeval.py:337:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/mmlongbenchdoc.py:453:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/mmsafetybench.py:98:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/moat.py:52:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/moviechat1k.py:25:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/mssbench.py:63:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/scidocbench.py:784:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/simplevqa.py:117:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/simplevqa.py:159:49 #6292dfd5 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/siuo.py:24:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/siuo_gen.py:88:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/slidevqa.py:72:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/utils/megabench/scoring/ascii_art_gpt4o_judge.py:18:45 #2b67df74 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/utils/megabench/scoring/vlm_as_judge.py:21:15 #ba7ea54c gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/videomme.py:61:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/videommev2.py:187:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/vl_rewardbench.py:78:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/vlmbias.py:15:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/wildvision.py:99:27 #de8aa672 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P vlmeval/dataset/xstest.py:65:27 #b2292415 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M .gitignore:197 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/en/ConfigSystem.md:12 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/en/ConfigSystem.md:18 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/en/ConfigSystem.md:52 gpt-4o-2024-11-20 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/zh-CN/ConfigSystem.md:13 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/zh-CN/ConfigSystem.md:19 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/zh-CN/ConfigSystem.md:53 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M run.py:468 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M run.py:474 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M scripts/mmb_eval_gradio.py:16 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/test_dataset_alias.py:120 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/test_dataset_alias.py:138 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test_litellm_api.py:69 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:83 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:94 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:95 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:122 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:128 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:136 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:152 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:168 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:176 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:186 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:211 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:230 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:251 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:273 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_litellm_api.py:309 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/api/gpt.py:62 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M vlmeval/api/gpt.py:63 gpt-4-0613 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M vlmeval/api/gpt.py:64 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
@@ -43,9 +125,13 @@ M vlmeval/api/gpt.py:179 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations
 M vlmeval/api/gpt.py:180 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M vlmeval/api/gpt.py:180 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M vlmeval/api/gpt.py:366 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/api/litellm_api.py:27 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/api/litellm_api.py:27 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/config.py:99 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M vlmeval/config.py:112 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M vlmeval/config.py:124 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/config.py:240 gpt-4.1-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/config.py:249 gpt-4.1-mini-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/config.py:258 gpt-4.1-nano-2025-04-14 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M vlmeval/config.py:267 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M vlmeval/config.py:276 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
@@ -57,13 +143,29 @@ M vlmeval/config.py:917 gpt-5-mini-2025-08-07 openai:2026-06-11:gpt-5-and-o3-mod
 M vlmeval/config.py:918 gpt-5-nano openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M vlmeval/config.py:918 gpt-5-nano-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M vlmeval/dataset/SGI_Bench_1_0/idea_generation.py:795 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M vlmeval/dataset/__init__.py:246 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/chartmuseum.py:157 gpt-4.1-mini-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/chartmuseum.py:159 gpt-4.1-mini-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/chartmuseum.py:160 gpt-4.1-mini-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/charxiv.py:201 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/charxiv.py:203 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/docscope.py:342 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/image_base.py:230 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/dataset/image_mcq.py:1498 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/image_mcq.py:1498 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/dataset/image_mcq.py:1750 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/image_mcq.py:1750 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/dataset/image_mcq.py:1838 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/image_mcq.py:1838 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/dataset/image_mcq.py:1905 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/image_mcq.py:1905 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/image_mcq.py:1977 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/image_vqa.py:1319 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/dataset/image_vqa.py:1769 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/image_vqa.py:1770 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/dataset/superchem.py:427 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M vlmeval/dataset/superchem.py:429 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/text_base.py:44 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/dataset/utils/ccocr_evaluator/common.py:29 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M vlmeval/dataset/utils/judge_util.py:42 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M vlmeval/dataset/utils/judge_util.py:42 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -72,5 +174,20 @@ M vlmeval/dataset/utils/judge_util.py:44 gpt-4-0125-preview openai:2025-09-26:le
 M vlmeval/dataset/utils/judge_util.py:45 gpt-4-turbo-2024-04-09 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M vlmeval/dataset/utils/judge_util.py:46 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
 M vlmeval/dataset/utils/judge_util.py:47 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/judge_util.py:48 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M vlmeval/dataset/utils/judge_util.py:48 gpt-4o-2024-05-13 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M vlmeval/dataset/utils/judge_util.py:49 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/judge_util.py:50 gpt-4o-2024-11-20 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/judge_util.py:51 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/judge_util.py:51 gpt-4o-mini-2024-07-18 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/judge_util.py:74 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/megabench/scoring/ascii_art_gpt4o_judge.py:104 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/megabench/scoring/ascii_art_gpt4o_judge.py:107 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/megabench/scoring/vlm_as_judge.py:179 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/megabench/scoring/vlm_as_judge.py:194 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/megabench/scoring/vlm_as_judge.py:197 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/utils/omni_verifier.py:181 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/video_base.py:113 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/worldvqa.py:366 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M vlmeval/dataset/worldvqa.py:367 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 S vlmeval/dataset/utils/Ocrbench_v2/spotting_eval/__pycache__ dependency or build folder

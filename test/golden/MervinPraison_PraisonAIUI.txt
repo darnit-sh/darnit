@@ -1,5 +1,6 @@
 exit 1
-scanned files=666 records=36 otherFiles=221 foreign=0 tooLarge=0 skipped=0
+scanned files=666 records=37 otherFiles=221 foreign=0 tooLarge=0 skipped=0
+H examples/python/03-chat-with-ai/app.py:81:9 #51db1eb2 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 H examples/python/voice-agent/integrations/voice/call_finalize.py:72:17 #c8bd1cba openai:2024-09-12:max-tokens-to-max-completion-tokens
 H examples/python/voice-agent/integrations/voice/speech_engine.py:231:13 #6d36f107 openai:2024-09-12:max-tokens-to-max-completion-tokens
 H tests/unit/instrumentation/test_openai_instrument.py:116:9 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -11,39 +12,182 @@ H tests/unit/instrumentation/test_openai_instrument.py:253:13 #f8e7994b openai:2
 H tests/unit/instrumentation/test_openai_instrument.py:276:13 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H tests/unit/instrumentation/test_openai_instrument.py:298:9 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H tests/unit/instrumentation/test_openai_instrument.py:324:9 #f8e7994b openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P app.py:41:47 #cd2ccca3 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P app.py:52:47 #cd2ccca3 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P app.py:64:47 #cd2ccca3 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/14-all-features/app.py:82:18 #02599edb gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/14-all-features/app.py:104:18 #51fe4e20 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/14-all-features/app.py:197:18 #51fe4e20 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/16-gateway-integration/app.py:79:18 #493f47f6 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/16-gateway-integration/app.py:91:18 #493f47f6 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/16-gateway-integration/app.py:103:18 #493f47f6 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/17-three-column-demo/app.py:56:47 #cd2ccca3 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/17-three-column-demo/app.py:67:47 #cd2ccca3 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/17-three-column-demo/app.py:79:47 #cd2ccca3 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/18-full-chat/app.py:69:47 #cd2ccca3 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/18-full-chat/app.py:80:47 #cd2ccca3 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/18-full-chat/app.py:92:47 #cd2ccca3 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/26-clean-chat/app.py:77:44 #7a041ee7 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/27-custom-theme-chat/app.py:86:44 #7a041ee7 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/_shared/seed_data.py:54:18 #51fe4e20 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/_shared/seed_data.py:59:18 #52e61b85 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/_shared/seed_data.py:71:18 #493f47f6 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/_shared/seed_data.py:79:29 #782ad23e gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/meeting-agent/app.py:172:15 #205d2ceb gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/video-studio/app.py:37:47 #c589d418 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/voice-agent/integrations/voice/agent_runner.py:63:46 #42dc3b6a gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/voice-agent/integrations/voice/agent_runner.py:152:53 #a407ecde gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/voice-agent/integrations/voice/call_finalize.py:61:54 #42dc3b6a gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P examples/python/voice-agent/integrations/voice/realtime.py:76:61 #1e063c1b gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+P examples/python/voice-agent/integrations/voice/speech_engine.py:184:44 #488272fd gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/voice-agent/setup_voice_provider.py:125:45 #5329cee9 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/voice-agent/setup_voice_provider.py:144:60 #24775714 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/voice-agent/setup_voice_provider.py:209:51 #847a74d5 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/python/voice-agent/speech_engine_routes.py:51:53 #a407ecde gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P src/frontend/src/views/RealtimeView.tsx:117:39 #ebf87069 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+P src/praisonaiui/_workflow_runner.py:45:51 #e8e657d1 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/config_store.py:49:18 #493f47f6 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/agents.py:126:45 #e0859fef gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/agents.py:245:40 #df50befb gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/agents.py:308:43 #c91fc2ea gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/agents.py:368:18 #31437af0 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/agents.py:550:37 #18eefbca gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/agents.py:675:48 #d2fd8853 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/agents.py:689:53 #e0859fef gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/channels.py:368:55 #c589d418 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/guardrails.py:329:26 #4778e098 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/guardrails.py:441:74 #5df1e54b gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/guardrails.py:524:79 #cc077ef2 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/jobs.py:598:68 #05677cec gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/openai_api.py:155:35 #ed33700b gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/openai_api.py:213:45 #18eefbca gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P src/praisonaiui/features/openai_api.py:270:35 #3b4941b7 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
 P src/praisonaiui/features/openai_api.py:376:35 #29deb3cd dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
 P src/praisonaiui/features/openai_api.py:410:35 #e25b6135 whisper-1 openai:2026-08-26:transcription-models-shut-down
 P src/praisonaiui/features/openai_api.py:439:41 #7416a8ea tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 P src/praisonaiui/features/openai_api.py:464:41 #422c6d4a text-moderation-latest openai:2025-04-28:text-moderation-shut-down
 P src/praisonaiui/features/openai_api.py:471:48 #f925575b text-moderation-latest openai:2025-04-28:text-moderation-shut-down
+P src/praisonaiui/features/openai_api.py:494:41 #18eefbca gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P src/praisonaiui/features/openai_api.py:641:41 #18eefbca gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P src/praisonaiui/features/realtime.py:32:52 #3635eb49 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
 P src/praisonaiui/features/realtime.py:71:52 #3635eb49 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
 P src/praisonaiui/features/realtime.py:289:67 #7408fb64 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
 P src/praisonaiui/features/tts.py:32:64 #7ad94be8 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 P src/praisonaiui/features/tts.py:91:64 #7ad94be8 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
 P src/praisonaiui/features/tts.py:191:37 #7416a8ea tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+P src/praisonaiui/server.py:1483:75 #85bc672c gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M README.md:46 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M README.md:172 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M README.md:181 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M README.md:338 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/cli.md:195 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/components.md:728 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:205 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:289 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:292 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:552 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:555 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:591 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:614 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:622 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:625 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:642 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:653 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:661 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:678 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:681 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/features-api.md:1207 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/python.md:96 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/testing.md:48 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/testing.md:98 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/testing.md:128 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/testing.md:133 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/testing.md:165 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/testing.md:170 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/testing.md:176 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/testing.md:214 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/concepts/configuration.md:266 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/concepts/configuration.md:277 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/concepts/configuration.md:290 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/deployment.md:111 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M docs/features/gap-analysis.md:144 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M docs/features/gateway-chat.md:120 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/gateway-chat.md:138 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/integration-analysis.md:79 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/integration-analysis.md:113 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:16 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:16 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:23 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:25 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:44 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:44 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:55 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:58 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:58 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:62 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:62 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:81 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:82 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:86 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/model-fallback.md:86 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/protocol-architecture.md:84 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/protocol-architecture.md:93 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/video-studio.md:33 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/getting-started/cli.md:317 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/getting-started/quickstart.md:36 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/getting-started/quickstart.md:62 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/02-chat-app/aiui.template.yaml:70 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/02-chat-app/aiui.template.yaml:71 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/06-dashboard/app.py:47 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/08-streaming/app.py:39 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/13-real-dashboard/app.py:8 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/13-real-dashboard/app.py:75 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/20-email-bot/app.py:65 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/22-agentmail-bot/app.py:66 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/25-custom-design/app.py:167 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/25-custom-design/app.py:278 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/25-custom-design/app.py:279 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/voice-agent/.env.example:8 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/voice-agent/plugin.js:388 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/python/voice-agent/setup_voice_provider.py:198 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/yaml/03-clean-chat/clean-chat.yaml:16 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/yaml/04-tools/chat.yaml:20 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M src/praisonaiui/chat_settings.py:134 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/chat_settings.py:134 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/chat_settings.py:135 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/chat_settings.py:251 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/chat_settings.py:252 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/chat_settings.py:256 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/cli.py:1116 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/agents.py:32 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/agents.py:33 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M src/praisonaiui/features/agents.py:34 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/features/agents.py:35 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/features/agents.py:42 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/features/agents.py:43 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M src/praisonaiui/features/agents.py:44 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/agents.py:161 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/agents.py:500 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/agents.py:502 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/agents.py:594 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/config_runtime.py:97 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/config_runtime.py:98 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M src/praisonaiui/features/config_runtime.py:99 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/features/config_runtime.py:100 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/features/config_runtime.py:106 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/media_analysis.py:98 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/media_analysis.py:153 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/model_fallback.py:63 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/model_fallback.py:64 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/openai_api.py:509 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/openai_api.py:510 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M src/praisonaiui/features/openai_api.py:511 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/features/openai_api.py:512 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/features/openai_api.py:519 dall-e-3 openai:2025-11-14:dall-e-model-snapshots-shut-down
 M src/praisonaiui/features/openai_api.py:520 whisper-1 openai:2026-08-26:transcription-models-shut-down
 M src/praisonaiui/features/openai_api.py:521 tts-1 openai:2026-10-01:text-to-speech-models-shut-down
+M src/praisonaiui/features/usage.py:58 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/features/usage.py:59 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M src/praisonaiui/features/usage.py:60 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/features/usage.py:61 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/praisonaiui/features/usage.py:62 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -51,9 +195,46 @@ M src/praisonaiui/features/usage.py:63 o1 openai:2026-04-22:legacy-gpt-model-sna
 M src/praisonaiui/features/usage.py:64 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M src/praisonaiui/features/usage.py:65 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M src/praisonaiui/features/usage.py:66 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/praisonaiui/server.py:364 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M src/praisonaiui/templates/frontend/assets/index.js:95 ada openai:2023-07-06:gpt-and-embeddings-shut-down
+M src/praisonaiui/templates/frontend/plugins/agents.js:34 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/templates/frontend/plugins/agents.js:186 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/templates/frontend/plugins/agents.js:214 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M src/praisonaiui/templates/frontend/plugins/api.js:64 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_a2ui_agentic.py:51 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_agents_gateway.sh:25 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_chat_gateway.sh:25 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_feature_apis.py:100 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_feature_apis.py:103 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_feature_apis.py:106 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_feature_apis.py:156 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_feature_apis.py:171 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_feature_apis.py:203 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_feature_apis.py:363 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/integration/test_gaps_3_9.sh:49 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_all_gap_features.py:150 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_all_gap_features.py:150 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_all_gap_features.py:151 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_all_gap_features.py:151 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_feature_config_runtime.py:41 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_feature_config_runtime.py:44 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_feature_config_runtime.py:49 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_feature_config_runtime.py:68 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_feature_config_runtime.py:70 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_features_e2e.py:279 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test_features_e2e.py:285 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_chat_schema.py:191 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_compiler_chat.py:123 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_compiler_chat.py:137 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_config_store.py:175 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/unit/test_config_store.py:243 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/test_config_store.py:257 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/test_dx_polish.py:444 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_finops_strip.py:109 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_finops_strip.py:152 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_finops_strip.py:247 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_finops_strip.py:249 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_protocol_parity.py:37 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_protocol_parity.py:48 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/unit/test_realtime.py:110 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
 M tests/unit/test_realtime.py:115 gpt-4o-realtime-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down

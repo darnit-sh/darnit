@@ -1,26 +1,56 @@
 exit 1
-scanned files=202 records=36 otherFiles=79 foreign=0 tooLarge=0 skipped=0
+scanned files=202 records=37 otherFiles=79 foreign=0 tooLarge=0 skipped=0
 H examples/06-ai-pipeline-demo.ts:78:5 #466dd65a openai:2024-09-12:max-tokens-to-max-completion-tokens
+H examples/06-ai-pipeline-demo.ts:72:5 #f3230eb1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 H examples/07-full-showcase.ts:77:45 #514eecaa openai:2024-09-12:max-tokens-to-max-completion-tokens
+H examples/07-full-showcase.ts:77:5 #4a0f565e openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P adapters/codex-adapter.ts:280:51 #aa12b428 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P adapters/codex-adapter.ts:313:32 #9638441e gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P adapters/codex-adapter.ts:395:32 #349c54d8 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
 P adapters/copilot-adapter.ts:69:34 #bb3310fd gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P adapters/openai-agents-adapter.ts:134:32 #b7a35cdf gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P adapters/openai-responses-adapter.ts:252:45 #3edf6dfd gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P adapters/openai-responses-adapter.ts:289:32 #6afea4c0 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P test-adapters.ts:1754:44 #7c8ba011 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P test-adapters.ts:1755:46 #45af98e8 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P test-codex.ts:142:12 #1ec59b56 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P test-codex.ts:164:12 #62f7e3b6 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+P test-codex.ts:187:12 #1ec59b56 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M BENCHMARKS.md:26 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M BENCHMARKS.md:27 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M BENCHMARKS.md:34 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M BENCHMARKS.md:38 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M BENCHMARKS.md:39 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M BENCHMARKS.md:118 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M BENCHMARKS.md:144 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M CHANGELOG.md:1236 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M CHANGELOG.md:1236 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M CHANGELOG.md:1237 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M README.md:539 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M adapters/codex-adapter.ts:4 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M adapters/codex-adapter.ts:4 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M adapters/codex-adapter.ts:4 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M adapters/codex-adapter.ts:8 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M adapters/codex-adapter.ts:9 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M adapters/codex-adapter.ts:9 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M adapters/codex-adapter.ts:17 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M adapters/codex-adapter.ts:31 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M adapters/codex-adapter.ts:100 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M adapters/codex-adapter.ts:100 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M adapters/codex-adapter.ts:100 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M adapters/codex-adapter.ts:230 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M adapters/copilot-adapter.ts:39 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M adapters/openai-agents-adapter.ts:83 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M adapters/openai-responses-adapter.ts:23 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M adapters/openai-responses-adapter.ts:84 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M adapters/openai-responses-adapter.ts:84 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M adapters/openai-responses-adapter.ts:212 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/05-code-review-swarm.ts:909 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M examples/09-real-langchain.ts:82 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M lib/cost-heatmap.ts:76 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M references/adapter-system.md:376 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M references/adapter-system.md:816 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M test-codex.ts:153 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M test-codex.ts:173 code-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
 M test-phase10.ts:705 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M test-phase10.ts:715 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

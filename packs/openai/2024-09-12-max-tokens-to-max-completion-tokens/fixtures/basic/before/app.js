@@ -7,7 +7,7 @@ const anthropic = new Anthropic();
 
 export async function summarize(messages) {
   const res = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-test-model",
     messages,
     max_tokens: 256,
   });
@@ -17,7 +17,7 @@ export async function summarize(messages) {
 export async function summarizeTrimmed(messages) {
   // trim() has its own max_tokens; only the create() one is OpenAI's.
   const res = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-test-model",
     messages: await trim(messages, { max_tokens: 4096 }),
     max_tokens: 256,
   });

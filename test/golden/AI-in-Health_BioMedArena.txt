@@ -1,15 +1,26 @@
 exit 1
-scanned files=192 records=36 otherFiles=23 foreign=0 tooLarge=0 skipped=0
+scanned files=192 records=37 otherFiles=23 foreign=0 tooLarge=0 skipped=0
 H harness/llm_client.py:612:25 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
 H harness/llm_client.py:1106:17 #82421a13 openai:2024-09-12:max-tokens-to-max-completion-tokens
+P harness/eval/benchmark_suite.py:51:40 #b4874cf7 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P harness/llm_client.py:221:63 #55ec7191 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P scripts/verify_all.py:45:46 #5af3c55c gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M config.yaml:3 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M configs/matrix_default.yaml:14 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/metrics_guide.md:285 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M harness/cli.py:183 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M harness/context/budget.py:16 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M harness/context_managers/base.py:22 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M harness/cost_monitor.py:25 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M harness/cost_monitor.py:26 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M harness/cost_monitor.py:27 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M harness/cost_monitor.py:28 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M harness/eval/llm_judge.py:323 gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M harness/llm_client.py:446 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M harness/llm_client.py:447 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M harness/llm_client.py:447 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M harness/llm_client.py:455 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M harness/llm_client.py:542 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M harness/llm_client.py:739 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M harness/llm_client.py:740 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M harness/llm_client.py:740 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
@@ -19,4 +30,15 @@ M harness/llm_client.py:1004 o4-mini openai:2026-04-22:legacy-gpt-model-snapshot
 M harness/llm_client.py:1016 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M harness/llm_client.py:1016 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M harness/llm_client.py:1017 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M harness/scorers/__init__.py:90 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M quick_run.sh:15 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/smoke/test_cost_monitor.py:23 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/smoke/test_cost_monitor.py:41 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/smoke/test_vendor_agents.py:46 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/smoke/test_vendor_agents.py:52 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_cli_contract.py:27 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/unit/test_llm_client_openai_tools.py:54 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/test_llm_client_openai_tools.py:84 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_llm_judge.py:57 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_llm_judge.py:74 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/test_llm_judge.py:162 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down

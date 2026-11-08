@@ -1,20 +1,31 @@
 exit 0
-scanned files=88 records=36 otherFiles=111 foreign=0 tooLarge=0 skipped=0
+scanned files=88 records=37 otherFiles=111 foreign=0 tooLarge=0 skipped=0
 P lwe/core/constants.py:13:29 #507089af gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+P lwe/core/preset_manager.py:94:35 #6b33b8c0 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P scripts/tool_calling_stub.py:36:33 #03a3a9e6 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M COMMIT_LOG.md:55 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M COMMIT_LOG.md:63 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M COMMIT_LOG.md:63 o3-pro openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M COMMIT_LOG.md:69 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M COMMIT_LOG.md:69 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M COMMIT_LOG.md:74 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M COMMIT_LOG.md:104 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M COMMIT_LOG.md:114 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M COMMIT_LOG.md:120 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+M COMMIT_LOG.md:120 gpt-4o-2024-11-20 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M COMMIT_LOG.md:121 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M COMMIT_LOG.md:132 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M COMMIT_LOG.md:149 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M COMMIT_LOG.md:149 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
+M COMMIT_LOG.md:158 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M COMMIT_LOG.md:181 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M COMMIT_LOG.md:188 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M COMMIT_LOG.md:198 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M COMMIT_LOG.md:203 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M COMMIT_LOG.md:248 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M COMMIT_LOG.md:248 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M COMMIT_LOG.md:308 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M COMMIT_LOG.md:358 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M COMMIT_LOG.md:381 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M COMMIT_LOG.md:382 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M COMMIT_LOG.md:387 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -24,8 +35,14 @@ M COMMIT_LOG.md:393 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapsh
 M COMMIT_LOG.md:442 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
 M docs/configuration.rst:99 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M docs/model_access.rst:11 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/model_access.rst:27 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/model_access.rst:29 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/model_access.rst:40 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/model_access.rst:46 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M docs/plugins.rst:176 text-davinci-003 openai:2023-07-06:gpt-and-embeddings-shut-down
 M docs/presets.rst:16 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M docs/tools.rst:93 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/backends/api/repl.py:717 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M lwe/backends/api/schema/alembic/versions/28ec77033b2e_conversation_add_provider_preset.py:32 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/backends/api/schema/alembic/versions/28ec77033b2e_conversation_add_provider_preset.py:32 gpt-3.5-turbo-0301 openai:2023-06-13:updated-chat-models-shut-down-2024-09-13
 M lwe/backends/api/schema/alembic/versions/28ec77033b2e_conversation_add_provider_preset.py:32 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -38,8 +55,10 @@ M lwe/backends/api/schema/alembic/versions/28ec77033b2e_conversation_add_provide
 M lwe/backends/api/schema/alembic/versions/28ec77033b2e_conversation_add_provider_preset.py:41 text-davinci-001 openai:2023-07-06:gpt-and-embeddings-shut-down
 M lwe/backends/api/schema/alembic/versions/28ec77033b2e_conversation_add_provider_preset.py:41 text-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
 M lwe/backends/api/schema/alembic/versions/28ec77033b2e_conversation_add_provider_preset.py:41 text-davinci-003 openai:2023-07-06:gpt-and-embeddings-shut-down
+M lwe/examples/presets/gpt-4-exploratory-code-writing.yaml:7 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M lwe/examples/presets/turbo-16k-code-generation.yaml:7 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/examples/presets/turbo.yaml:7 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M lwe/examples/workflows/example-file-summarizer.yaml:30 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:44 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/plugins/provider_chat_openai.py:50 gpt-3.5-turbo-0613 openai:2023-11-06:chat-model-updates-shut-down
 M lwe/plugins/provider_chat_openai.py:53 gpt-3.5-turbo-16k-0613 openai:2023-11-06:chat-model-updates-shut-down
@@ -54,8 +73,17 @@ M lwe/plugins/provider_chat_openai.py:77 gpt-4-turbo-2024-04-09 openai:2026-04-2
 M lwe/plugins/provider_chat_openai.py:80 gpt-4-turbo-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
 M lwe/plugins/provider_chat_openai.py:83 gpt-4-1106-preview openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/plugins/provider_chat_openai.py:86 gpt-4-0125-preview openai:2025-09-26:legacy-gpt-model-snapshots-march-2026-shutdown-shut-down
+M lwe/plugins/provider_chat_openai.py:89 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:92 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
 M lwe/plugins/provider_chat_openai.py:95 gpt-4o-2024-05-13 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M lwe/plugins/provider_chat_openai.py:98 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:101 gpt-4o-2024-11-20 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:104 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:107 gpt-4o-mini-2024-07-18 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:110 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:113 gpt-4.1-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:116 gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/plugins/provider_chat_openai.py:119 gpt-4.1-mini-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M lwe/plugins/provider_chat_openai.py:122 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/plugins/provider_chat_openai.py:125 gpt-4.1-nano-2025-04-14 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/plugins/provider_chat_openai.py:128 gpt-4.5-preview openai:2025-04-14:gpt-4-5-preview-shut-down
@@ -92,4 +120,19 @@ M lwe/plugins/provider_chat_openai.py:285 o1-preview openai:2025-04-28:o1-previe
 M lwe/plugins/provider_fake_llm.py:186 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M lwe/plugins/provider_fake_llm.py:189 gpt-3.5-turbo-1106 openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
 M lwe/plugins/provider_fake_llm.py:192 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M lwe/plugins/provider_fake_llm.py:195 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/presets/gpt-4-chatbot-responses.yaml:7 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M lwe/presets/gpt-4-code-generation.yaml:7 gpt-4-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M lwe/presets/gpt-4-creative-writing.yaml:7 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/presets/gpt-4o-mini.yaml:2 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M lwe/presets/gpt-4o-mini.yaml:6 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend.py:448 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend.py:468 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend.py:557 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend.py:577 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend.py:579 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend_template.py:370 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend_template.py:388 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend_template.py:444 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend_template.py:446 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/system/test_api_backend_template/test_template_overrides_provider_model_when_in_request_overrides.md:6 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
