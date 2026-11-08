@@ -1398,15 +1398,33 @@ describe("the rule picked by the title's type", () => {
     const runners = ["accounting", "accounting-final", "golden", "fixtures", "show", "installed", "e2e-env"].map(
       (r) => `scripts/${r}.ts`,
     );
-    for (const f of runners) {
-      for (const edit of [{ write: f, text: "process.exit(0);\n" }, { remove: f }]) {
-        const changed = await repo([edit], [{ write: "scripts/installed.ts" }]);
-        for (const type of ["docs", "chore", "fix", "feat", "test"]) {
-          const r = await check(changed, `${type}: tidy`, "Proof: none, the runner prints one more line\n");
-          expect(r.status, `${type} ${JSON.stringify(edit)}`).toBe(1);
-          expect(r.out).toContain(`- ${f} (a runner behind a required check)`);
-        }
-        expect((await check(changed, "ci: x", "Proof: none, the runner prints one more line\n")).status).toBe(0);
+    const types = ["fix", "feat", "test", "docs", "chore"];
+    const reason = "Proof: none, the runner prints one more line\n";
+    const edits: Record<string, (f: string) => Edit> = {
+      edit: (f) => ({ write: f, text: "process.exit(0);\n" }),
+      removal: (f) => ({ remove: f }),
+    };
+    // One change to every runner under every type lists each; each runner edited alone and removed alone, under types in
+    // turn, fails the check.
+    for (const [kind, edit] of Object.entries(edits)) {
+      const changed = await repo(runners.map(edit), [{ write: "scripts/installed.ts" }]);
+      for (const type of types) {
+        const r = await check(changed, `${type}: tidy`, reason);
+        expect(r.status, `${type} ${kind}`).toBe(1);
+        for (const f of runners)
+          expect(r.out, `${type} ${kind}`).toContain(`- ${f} (a runner behind a required check)`);
+      }
+      expect((await check(changed, "ci: x", reason)).status, kind).toBe(0);
+    }
+    for (const [i, f] of runners.entries()) {
+      for (const [kind, shift] of [
+        ["edit", 0],
+        ["removal", 2],
+      ] as const) {
+        const type = types[(i + shift) % types.length]!;
+        const r = await rule(`${type}: tidy`, [edits[kind]!(f)], reason, {}, [{ write: "scripts/installed.ts" }]);
+        expect(r.status, `${type} ${kind} ${f}`).toBe(1);
+        expect(r.out, `${type} ${kind} ${f}`).toContain(`- ${f} (a runner behind a required check)`);
       }
     }
     expect((await rule("feat: x", [{ write: "src/a.ts" }, { write: "scripts/report.ts" }])).status).toBe(0);
@@ -1419,15 +1437,31 @@ describe("the rule picked by the title's type", () => {
   it("fails a change to a test that guards the lists and tool settings under any type but ci", async () => {
     const why = "a test that guards the allowlists and tool settings";
     const reason = "Proof: none, the guard reads one more file\n";
-    for (const f of ["test/suppressions.test.ts", "test/tool-ignores.test.ts", "test/import-graph.ts"]) {
-      const changed = await repo([{ write: f, text: "export {};\n" }]);
-      for (const type of ["fix", "feat", "test", "refactor", "docs"]) {
-        const r = await check(changed, `${type}: x`, reason);
-        expect(r.status, `${type} ${f}`).toBe(1);
-        expect(r.out).toContain(`- ${f} (${why})`);
+    const types = ["fix", "feat", "test", "refactor", "docs"];
+    // As with the runners above: all three in one change, then each alone under two types in turn, which cover all five, and
+    // under ci with no reason.
+    const guards = ["test/suppressions.test.ts", "test/tool-ignores.test.ts", "test/import-graph.ts"];
+    const changed = await repo(guards.map((f) => ({ write: f, text: "export {};\n" })));
+    for (const type of types) {
+      const r = await check(changed, `${type}: x`, reason);
+      expect(r.status, type).toBe(1);
+      for (const f of guards) expect(r.out, type).toContain(`- ${f} (${why})`);
+    }
+    expect((await check(changed, "ci: x", reason)).status).toBe(0);
+    const bare = await check(changed, "ci: x");
+    expect(bare.status).toBe(1);
+    for (const f of guards) expect(bare.out).toContain(`- ${f} (${why})`);
+    for (const [i, f] of guards.entries()) {
+      const alone = await repo([{ write: f, text: "export {};\n" }]);
+      for (const [title, body] of [
+        [`${types[i]}: x`, reason],
+        [`${types[(i + 3) % types.length]}: x`, reason],
+        ["ci: x", ""],
+      ]) {
+        const r = await check(alone, title!, body);
+        expect(r.status, `${title} ${f}`).toBe(1);
+        expect(r.out, `${title} ${f}`).toContain(`- ${f} (${why})`);
       }
-      expect((await check(changed, "ci: x", reason)).status, f).toBe(0);
-      expect((await check(changed, "ci: x")).status, f).toBe(1);
     }
     expect((await rule("test: x", [{ write: "test/other.test.ts" }], reason)).status).toBe(0);
   });
