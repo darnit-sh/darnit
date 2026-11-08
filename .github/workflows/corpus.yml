@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# bash, not GitHub's default bash -e, so a step fails when any command in a pipe fails, not only the last.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -31,7 +36,10 @@ jobs:
       - run: npm ci
       - run: npm run corpus | tee "$RUNNER_TEMP/corpus.log"
       - id: changes
-        run: echo "count=$(git status --porcelain | wc -l)" >> "$GITHUB_OUTPUT"
+        # Assigned on its own line, so a git failure fails the step instead of counting no changes.
+        run: |
+          count=$(git status --porcelain | wc -l)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
       - if: steps.changes.outputs.count != '0'
         run: npm run check
       - if: steps.changes.outputs.count != '0'
