@@ -933,7 +933,7 @@ async function publish(opts: FixOptions): Promise<FixResult> {
   const plan = await readPlanFolder(opts.publish!);
   const version = opts.version ?? "dev";
   const repo = publishRepo(opts);
-  const server = process.env.GITHUB_SERVER_URL?.trim().replace(/\/+$/, "");
+  const server = process.env.GITHUB_SERVER_URL?.trim().replace(/(?<!\/)\/+$/, "");
   if (server && server.toLowerCase() !== "https://github.com") {
     throw new Refusal(
       `GITHUB_SERVER_URL is ${process.env.GITHUB_SERVER_URL!.trim()}, not https://github.com; --publish sends its token only to github.com, so it does not run on another GitHub host`,
@@ -1303,9 +1303,9 @@ const plain = (text: string) => {
   return t ? `\`${t}\`` : "";
 };
 
-// Characters GitHub can turn into something live: mentions, references, URLs, emoji, math,
-// commit links, custom references like ABC-123, HTML and entities.
-const RISKY = /[@#/$]|:\S|www[.)\]]?$|www\.|[0-9a-f]{7}|[A-Za-z]+-\d|^[<&]/i;
+// What GitHub can make live: mentions, references like ABC-123, URLs, emoji, math, commit links, HTML and entities.
+const RISKY = /[@#/$]|:\S|www[.)\]]?$|www\.|[0-9a-f]{7}|[A-Za-z]-\d|^[<&]/i;
+const WORD = /^(?=([("'[]*))\1((?:.*[^.,;:!?)"'\]\n\r\u2028\u2029])?)([.,;:!?)"'\]]*)$/;
 const escapeMarkdown = (s: string) => s.replace(/[\\`*_[\]()<>!|~{}&#$]/g, (c) => `\\${c}`);
 
 /**
@@ -1326,7 +1326,7 @@ export function prose(text: string): string {
         : part
             .split(" ")
             .map((word) => {
-              const [, lead = "", core = "", trail = ""] = /^([("'[]*)(.*?)([.,;:!?)"'\]]*)$/.exec(word) ?? [];
+              const [, lead = "", core = "", trail = ""] = WORD.exec(word) ?? [];
               if (!RISKY.test(word) || !core) return escapeMarkdown(word);
               return `${escapeMarkdown(lead)}\`${core.replaceAll("`", "")}\`${escapeMarkdown(trail)}`;
             })

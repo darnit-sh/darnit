@@ -69,7 +69,7 @@ async function locked(root: string, file: string, want: string): Promise<Found[]
   const found: Found[] = [];
   for (const block of (await read(join(root, file)))?.split("[[package]]").slice(1) ?? []) {
     const name = /^name\s*=\s*"([^"]+)"/m.exec(block)?.[1];
-    const version = /^version\s*=\s*"(\d+\.\d+\.\d+[^"]*)"/m.exec(block)?.[1];
+    const version = /^version\s*=\s*"(\d+\.\d+\.\d[^"]*)"/m.exec(block)?.[1];
     if (name && version && pyName(name) === want) found.push({ version, from: file });
   }
   return found;

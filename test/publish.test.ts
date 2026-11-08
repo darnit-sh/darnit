@@ -13,6 +13,7 @@ import { git, patch, trustedProgram, withCleanClone } from "../src/git.js";
 import { onPath } from "../src/detect.js";
 import { serializePlan, type Plan } from "../src/plan.js";
 import { loadRecords } from "../src/records/load.js";
+import { cpuTime } from "./helpers.js";
 
 // A second record with the same rules, so a plan can hold two changes.
 vi.mock("../src/records/load.js", async (original) => {
@@ -732,6 +733,41 @@ describe("fix --publish", () => {
     // A trailing slash on the real host still runs.
     vi.stubEnv("GITHUB_SERVER_URL", "https://github.com/");
     expect((await publish(await fresh(bare), plan)).records.map((r) => r.pr?.state)).toEqual(["opened", "opened"]);
+  });
+
+  it("tells github.com from another host as earlier versions did", async () => {
+    const { dir, bare } = await origin();
+    const plan = await prepare(dir, { noTest: true });
+    const job = await fresh(bare);
+    // In Actions with no GITHUB_SHA, a host the check lets through stops at the commit check next.
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    for (const [url, refused] of [
+      ["https://github.com", false],
+      ["https://github.com/", false],
+      ["https://github.com///", false],
+      [" HTTPS://GitHub.com// ", false],
+      ["", false],
+      ["///", false],
+      ["https://github.com/x", true],
+      ["https://github.com/x/", true],
+      ["https://github.com/ /", true],
+      ["https://github.com//x//", true],
+      ["https://github.example.com/", true],
+    ] as const) {
+      vi.stubEnv("GITHUB_SERVER_URL", url);
+      await expect(publish(job, plan), url).rejects.toThrow(
+        refused ? "not https://github.com" : "GITHUB_SHA is not set",
+      );
+    }
+  });
+
+  it("checks a GITHUB_SERVER_URL padded with slashes quickly", { tags: ["cpu-time"] }, async () => {
+    const { dir, bare } = await origin();
+    const plan = await prepare(dir, { noTest: true });
+    const job = await fresh(bare);
+    vi.stubEnv("GITHUB_SERVER_URL", `https://github.com${"/".repeat(130_000)}x`);
+    const time = await cpuTime(() => expect(publish(job, plan)).rejects.toThrow("not https://github.com"), 3, 1000);
+    expect(time).toBeLessThan(1000);
   });
 
   it("opens no pull request for a change whose patch in the plan is not darnit's, and still opens the others", async () => {
