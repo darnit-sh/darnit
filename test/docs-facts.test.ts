@@ -353,7 +353,7 @@ const SAMPLES: Record<Doc, string[]> = {
 
 // A number, with any unit or hyphen after it (20MB, 15-minute, 2020-10-05), a v before it (v7), and after a dot or
 // underscore that follows no letter or digit (.5, _20 MB_), but not inside a name such as gpt-4, gpt-4.1, o1 or TS2322.
-const NUMBER = /(?<![\p{L}\p{N}]|[\p{L}\p{N}_][.-])v?\d+(?:[.,]\d+)*/gu;
+const NUMBER = /(?<![\p{L}\p{N}])(?<![\p{L}\p{N}_][.-])v?\d+(?:[.,]\d+)*/gu;
 
 async function samples(file: Doc, text: string, covered: [number, number][], problems: string[]) {
   const blocks = [...text.matchAll(/^```\n(\$ npx darnit check\n[^]*?)^```$/gm)];

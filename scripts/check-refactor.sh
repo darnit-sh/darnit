@@ -97,7 +97,7 @@ if [ "${1:-}" = --style ]; then
     list "$differ"
     exit 1
   fi
-  say "**(b) passed:** every changed file is what prettier $(node -p 'require(process.cwd() + "/node_modules/prettier").version') writes over base's copy with base's layout options."
+  say "**(b) passed:** every changed file is what prettier $(node -e 'console.log(require(process.cwd() + "/node_modules/prettier").version)') writes over base's copy with base's layout options."
   exit 0
 fi
 
@@ -181,7 +181,13 @@ sources() {
       return /^[\w.*^~<>=|+ -]*$/.test(spec) && !spec.startsWith(".") && !/[.](?:tgz|tar.gz|tar)$/i.test(spec);
     };
     const root = (j, ref) => ["devDependencies", "optionalDependencies", "dependencies", "peerDependencies"].map((f) => Object.hasOwn(obj(j[f]), ref) && j[f][ref]).find(Boolean);
-    const named = (at) => String(at.at(-1) === "." ? at.at(-2) : at.at(-1)).replace(/(.)@.*$/, "$1");
+    // The name before the first @ after the start, with no line break before that @ or anywhere after it.
+    const named = (at) => {
+      const key = String(at.at(-1) === "." ? at.at(-2) : at.at(-1));
+      const line = Math.max(...["\n", "\r", "\u2028", "\u2029"].map((c) => key.lastIndexOf(c)));
+      const i = key.indexOf("@", Math.max(1, line + 2));
+      return i < 0 ? key : key.slice(0, i);
+    };
     changed("package.json", specs, (say, at, v, a, was, b) => {
       const spec = at[0] === "overrides" && typeof v === "string" && v.startsWith("$") ? root(b, v.slice(1)) : v;
       if (!registry(spec)) return say(JSON.stringify(v) ?? "(none)");
