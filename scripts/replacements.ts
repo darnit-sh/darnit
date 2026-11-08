@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
+import { listLines, readPageRows } from "../src/corpus/page-rows.js";
 import {
   modelDetection,
   modelFixtures,
@@ -23,25 +24,32 @@ import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/recor
 // a table darnit cannot read as a person would, or any row on the page that may name one darnit did not read from it,
 // is not in corpus/openai/non-model-rows.txt. Model names outside the page's tables, in lists or paragraphs, are not
 // checked, nor a table hidden by a CSS class.
-// Usage: npm run replacements -- --page <saved page> [--write | --check]
+// Usage: npm run replacements -- --page <saved page> [--write | --check], or --rows corpus/openai/page-rows.json, the
+// rows the weekly corpus job saves from the page, in place of --page.
 // With neither flag it writes nothing and lists what --write would change. --write writes nothing when the run finds
 // any problem. --check also fails when a record is not what the page gives, naming each model the page lists that the
 // record does not detect.
 
 const { values } = parseArgs({
-  options: { check: { type: "boolean" }, write: { type: "boolean" }, page: { type: "string" } },
+  options: {
+    check: { type: "boolean" },
+    write: { type: "boolean" },
+    page: { type: "string" },
+    rows: { type: "string" },
+  },
 });
-if (values.page === undefined || (values.check && values.write)) {
+if ((values.page === undefined) === (values.rows === undefined) || (values.check && values.write)) {
   console.error(
-    "usage: npm run replacements -- --page <saved copy of https://developers.openai.com/api/docs/deprecations> [--write | --check]",
+    "usage: npm run replacements -- {--page <saved copy of https://developers.openai.com/api/docs/deprecations> | --rows corpus/openai/page-rows.json} [--write | --check]",
   );
   process.exit(2);
 }
-const page = readPage(await readFile(values.page, "utf8"));
+const page = values.rows
+  ? readPageRows(await readFile(values.rows, "utf8")).page
+  : readPage(await readFile(values.page!, "utf8"));
 const loaded = await loadRecords();
 const corpus = join(PACKS_DIR, "../corpus/openai");
-const lines = async (file: string) =>
-  (await readFile(join(corpus, file), "utf8")).split("\n").filter((l) => l !== "" && !l.startsWith("#"));
+const lines = async (file: string) => listLines(await readFile(join(corpus, file), "utf8"));
 const known = modelIds(parseSpec(await readFile(join(corpus, "openapi.yaml"), "utf8")));
 const whole = wholeRows(
   loaded.map((l) => l.record),

@@ -40,13 +40,11 @@ src/corpus/replacements.ts	@typescript-eslint/no-shadow	choice	1	a shadowed name
 src/corpus/replacements.ts	@typescript-eslint/no-shadow	entry	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
 src/corpus/replacements.ts	@typescript-eslint/no-shadow	offered	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
 src/corpus/replacements.ts	@typescript-eslint/no-shadow	recommended	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
-src/corpus/replacements.ts	@typescript-eslint/no-shadow	replacementsFor	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
 src/corpus/replacements.ts	@typescript-eslint/no-shadow	resolve	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
 src/corpus/replacements.ts	@typescript-eslint/no-shadow	retiring	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
 src/corpus/replacements.ts	@typescript-eslint/no-shadow	wholeRows	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
 src/corpus/replacements.ts	@typescript-eslint/no-shadow	wholeRows #2	1	a shadowed name from before the limit was checked; goes when one of the two is renamed
 src/corpus/replacements.ts	complexity	readPage	31	over complexity 10 before the limit was checked; goes when the function is split
-src/corpus/replacements.ts	complexity	replacementsFor	13	over complexity 10 before the limit was checked; goes when the function is split
 src/corpus/replacements.ts	complexity	shutdownDate	11	over complexity 10 before the limit was checked; goes when the function is split
 src/corpus/replacements.ts	complexity	wholeRows	12	over complexity 10 before the limit was checked; goes when the function is split
 src/corpus/replacements.ts	max-depth	readPage	4	nested deeper than 3 before the limit was checked; goes when the block is flattened

@@ -52,9 +52,9 @@ const EM_DASH = "\u2014";
 const NONE = "no replacement named";
 // What a cell of a deprecation table may hold besides text, each with the attributes it may carry.
 const INLINE: Record<string, readonly string[]> = { code: [], a: ["href"], strong: [], em: [], br: [], sup: [] };
-const MAX_CELL = 10_000;
+export const MAX_CELL = 10_000;
 // A cell holding these is refused: markup characters, controls and bidi controls.
-const UNSAFE = /[<>\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+export const UNSAFE = /[<>\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 // A letter, digit or mark outside ASCII, such as a Cyrillic o: a table holding one is not read as a person would.
 const NON_ASCII = /(?![\0-\x7f])[\p{L}\p{N}\p{M}]/u;
 const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
@@ -158,20 +158,7 @@ export type Row = {
   shutdown?: string;
 };
 
-const MONTHS = [
-  "january",
-  "february",
-  "march",
-  "april",
-  "may",
-  "june",
-  "july",
-  "august",
-  "september",
-  "october",
-  "november",
-  "december",
-];
+const MONTHS = "january february march april may june july august september october november december".split(" ");
 /** A shutdown date cell as YYYY-MM-DD: "Dec 11, 2026", "December 11, 2026" or "2026-12-11". Undefined for anything else. */
 export function shutdownDate(cell: string): string | undefined {
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cell.replaceAll("\u2011", "-"));
@@ -320,14 +307,48 @@ function listed(r: Replacement, known: ReadonlySet<string>, vendor: string): Rep
 const flat = (id: string) => id.replace(/[^a-z0-9]/g, "");
 
 /**
+ * Every table a browser shows that darnit cannot read strictly, and every row of a table it read whose folded text
+ * holds a model a record detects that darnit did not read from it: an older row must never stand in for a newer one.
+ * It over-reports on purpose: a table or row a person has confirmed names no model goes in `notModels`, by its exact
+ * folded text, and an entry there matching nothing on the page is a problem. Names outside tables are not checked.
+ */
+export function pageProblems(
+  records: readonly ChangeRecord[],
+  page: Page,
+  known: ReadonlySet<string>,
+  notModels: ReadonlySet<string>,
+): { problems: string[]; unread: Set<string> } {
+  const detected = [...new Set(records.flatMap(recordModels))];
+  const real = new Set([...detected, ...known]);
+  const onPage = new Set([...page.tables, ...page.rows].map((r) => r.folded));
+  const problems = [...notModels]
+    .filter((n) => !onPage.has(n))
+    .map((n) => `the known non-model table or row ${n} is no longer on the page; take it off the list`);
+  for (const table of page.tables.filter((t) => t.error !== undefined && !notModels.has(t.folded)))
+    problems.push(`${table.label} (folded: ${table.folded.slice(0, 200)}): ${table.error}`);
+  const unread = new Set<string>();
+  for (const row of page.rows.filter((r) => !notModels.has(r.folded))) {
+    // What darnit read from the row is taken out, longest first, so only names it did not read are left.
+    const read = [...row.read, ...(row.exempt && real.has(row.exempt) ? [row.exempt] : [])]
+      .map(flat)
+      .sort((a, b) => b.length - a.length);
+    const rest = read.reduce((left, id) => left.replaceAll(id, " "), row.folded);
+    for (const m of detected.filter((d) => rest.includes(flat(d)))) {
+      unread.add(m);
+      problems.push(
+        `${row.label} (folded: ${row.folded.slice(0, 200)}) may name ${m}, which darnit did not read from it`,
+      );
+    }
+  }
+  return { problems, unread };
+}
+
+/**
  * fix.models for every record that detects models, keyed by record id, from the newest row naming each model.
  * A replacement the page retires too is followed to one it does not; one that ends with no plain swap, or loops,
  * becomes `human`, and so does one the API spec does not list. A model a reason offers is followed the same way, or
  * said to retire too, and the model being replaced is never offered. A detected model the page has no row for is a
- * problem. So is every table a browser shows that darnit cannot read strictly, and every row of a table it read whose
- * folded text holds a detected model darnit did not read from it: an older row must never stand in for a newer one. That check over-reports on purpose; a table or row a person has confirmed names no
- * model goes in `notModels`, by its exact folded text. Model names outside the page's tables are not checked, nor a
- * table hidden by a CSS class rather than an attribute.
+ * problem, and so is everything pageProblems finds.
  */
 export function replacementsFor(
   records: readonly ChangeRecord[],
@@ -378,28 +399,7 @@ export function replacementsFor(
     }
     return at;
   };
-  const detected = [...new Set(records.flatMap(recordModels))];
-  const real = new Set([...detected, ...known]);
-  const onPage = new Set([...page.tables, ...page.rows].map((r) => r.folded));
-  const problems = [...notModels]
-    .filter((n) => !onPage.has(n))
-    .map((n) => `the known non-model table or row ${n} is no longer on the page; take it off the list`);
-  for (const table of page.tables.filter((t) => t.error !== undefined && !notModels.has(t.folded)))
-    problems.push(`${table.label} (folded: ${table.folded.slice(0, 200)}): ${table.error}`);
-  const unread = new Set<string>();
-  for (const row of page.rows.filter((r) => !notModels.has(r.folded))) {
-    // What darnit read from the row is taken out, longest first, so only names it did not read are left.
-    const read = [...row.read, ...(row.exempt && real.has(row.exempt) ? [row.exempt] : [])]
-      .map(flat)
-      .sort((a, b) => b.length - a.length);
-    const rest = read.reduce((text, id) => text.replaceAll(id, " "), row.folded);
-    for (const m of detected.filter((d) => rest.includes(flat(d)))) {
-      unread.add(m);
-      problems.push(
-        `${row.label} (folded: ${row.folded.slice(0, 200)}) may name ${m}, which darnit did not read from it`,
-      );
-    }
-  }
+  const { problems, unread } = pageProblems(records, page, known, notModels);
   const models = new Map<string, Record<string, Replacement>>();
   for (const r of records) {
     const ids = recordModels(r);
