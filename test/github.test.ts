@@ -182,12 +182,12 @@ describe("GitHub API calls", () => {
 
   // Sends `reply` once the request arrives, then goes quiet with the connection open.
   async function stall(reply: string) {
-    let closed: Promise<unknown> = Promise.resolve();
+    let closed: Promise<unknown> | undefined;
     let reset: NodeJS.ErrnoException | undefined;
     const server = createServer((socket) => {
-      // A reset counts as the client hanging up.
-      socket.on("error", (err) => (reset = err));
-      closed = new Promise((done) => socket.once("close", done));
+      // A reset counts as the client hanging up. The first connection is the one that must close.
+      socket.on("error", (err) => (reset ??= err));
+      closed ??= new Promise((done) => socket.once("close", done));
       socket.once("data", () => socket.write(reply));
     }).listen(0, "127.0.0.1");
     await once(server, "listening");
