@@ -76,12 +76,8 @@ const shaped = loaded.map(({ record, packDir, file }, i) => {
   const raw = JSON.parse(disk[i]!) as ChangeRecord;
   if (!ids) return { raw, record, packDir, file, files: {} };
   const missing = ids.filter((m) => !recordModels(record).includes(m));
-  if (!oneModelRecord(record)) {
-    problems.push(
-      `${file}: its detection is not one model record's, so darnit does not add ${missing.join(", ") || "models"} to it`,
-    );
-    return { raw, record, packDir, file, files: {} };
-  }
+  // wholeRowRecords names it in the problems.
+  if (!oneModelRecord(record)) return { raw, record, packDir, file, files: {} };
   if (values.check)
     for (const m of missing)
       problems.push(

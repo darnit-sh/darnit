@@ -42,6 +42,10 @@ function record(model: string, change: { replacement?: object; replacedBy?: stri
 
 const lists = { known: new Set<string>(), notModels: new Set<string>(), wholeDates: new Set<string>() };
 
+// The header row every table() page starts with, an item like any other row.
+const HEAD = 'page no date read row ["Shutdown date","Model","Recommended replacement"]';
+const row = (date: string, cells: string[]) => ({ key: `page ${date} row ${JSON.stringify(cells)}`, ids: [] });
+
 describe("pageItems", () => {
   it("keys each shutdown date and model once, with the vendor's records that detect the model", () => {
     const page = table([
@@ -52,6 +56,7 @@ describe("pageItems", () => {
     ]);
     const records = [record("zzq-one"), record("zzq-one", { vendor: "other" })];
     expect(pageItems(page, records, "openai")).toEqual([
+      { key: HEAD, ids: [] },
       { key: "page 2027-03-01 zzq-one", ids: ["openai:2026-11-01:zzq-one-shut-down"] },
       { key: "page 2027-03-01 zzq-one-2026-01-01", ids: [] },
       { key: "page 2027-04-01 zzq-one", ids: ["openai:2026-11-01:zzq-one-shut-down"] },
@@ -59,7 +64,7 @@ describe("pageItems", () => {
     ]);
   });
 
-  it("keeps every other row of every table as an item no record detects, keyed by all of it", () => {
+  it("keeps every other row of every table as an item no record detects, keyed by all its cells", () => {
     const shutdowns = table([
       ["2027-03-01", "Assistants API", "Responses API"],
       ["2027-03-01", "zzq-a and zzq-b", "zzq-new"],
@@ -68,22 +73,24 @@ describe("pageItems", () => {
     ]);
     const records = [record("zzq-one")];
     expect(pageItems(shutdowns, records, "openai")).toEqual([
-      { key: "page 2027-03-01 Assistants API | Responses API", ids: [] },
-      { key: "page 2027-03-01 zzq-a and zzq-b | zzq-new", ids: [] },
-      { key: "page 2027-03-01 zzq-c (1M context) | zzq-new", ids: [] },
-      { key: "page 2024-10-28 New fine-tuning training on zzq-one | zzq-new", ids: [] },
+      { key: HEAD, ids: [] },
+      row("2027-03-01", ["Assistants API", "Responses API"]),
+      row("2027-03-01", ["zzq-a and zzq-b", "zzq-new"]),
+      row("2027-03-01", ["zzq-c (1M context)", "zzq-new"]),
+      row("2024-10-28", ["New fine-tuning training on zzq-one", "zzq-new"]),
     ]);
     // Rows alike up to their last cell are two items, so an entry for one never stands for the other.
     const endpoints = readPage(
       "<table><tr><th>Shutdown date</th><th>Endpoint</th><th>Model</th></tr><tr><td>2027-03-01</td><td>/v1/zzq</td><td>zzq-a</td></tr><tr><td>2027-03-01</td><td>/v1/zzq</td><td>zzq-b</td></tr></table>",
     );
     expect(pageItems(endpoints, records, "openai")).toEqual([
-      { key: "page 2027-03-01 /v1/zzq | zzq-a", ids: [] },
-      { key: "page 2027-03-01 /v1/zzq | zzq-b", ids: [] },
+      row("no date read", ["Shutdown date", "Endpoint", "Model"]),
+      row("2027-03-01", ["/v1/zzq", "zzq-a"]),
+      row("2027-03-01", ["/v1/zzq", "zzq-b"]),
     ]);
   });
 
-  it("trusts no header: a row under any header gives an item, and only a first row with no date is left out", () => {
+  it("trusts no header: every row under any header, the header too, gives an item", () => {
     const records = [record("zzq-one")];
     // A no-break space, a note mark, another name, a dated update, and a title row above the header.
     const rows = "<tr><td>2027-03-01</td><td>zzq-a</td><td>zzq-new</td></tr>";
@@ -95,21 +102,17 @@ describe("pageItems", () => {
       "<th>Models</th></tr><tr><th>Shutdown date</th><th>Model</th><th>Recommended replacement</th>",
     ]) {
       const page = readPage(`<table><tr>${head}</tr>${rows}</table>`);
-      expect(pageItems(page, records, "openai"), head).toContainEqual({
-        key: "page 2027-03-01 zzq-a | zzq-new",
-        ids: [],
-      });
+      expect(pageItems(page, records, "openai"), head).toContainEqual(row("2027-03-01", ["zzq-a", "zzq-new"]));
+      expect(pageItems(page, records, "openai"), head).toHaveLength(page.rows.length);
     }
     const modelFirst = readPage(
       "<table><tr><th>Model</th><th>Shutdown date</th></tr><tr><td>zzq-a</td><td>2027-03-01</td></tr><tr><td>zzq-b</td><td>2027-03-01</td></tr></table>",
     );
     expect(pageItems(modelFirst, records, "openai")).toEqual([
-      { key: "page no date read zzq-a | 2027-03-01", ids: [] },
-      { key: "page no date read zzq-b | 2027-03-01", ids: [] },
+      row("no date read", ["Model", "Shutdown date"]),
+      row("no date read", ["zzq-a", "2027-03-01"]),
+      row("no date read", ["zzq-b", "2027-03-01"]),
     ]);
-    // No header row at all: the first row is a row like the others.
-    const headless = readPage("<table><tr><td>2027-03-01</td><td>zzq-a</td><td>zzq-new</td></tr></table>");
-    expect(pageItems(headless, records, "openai")).toEqual([{ key: "page 2027-03-01 zzq-a | zzq-new", ids: [] }]);
   });
 });
 
@@ -125,9 +128,9 @@ describe("account with page models", () => {
     });
 
   it("holds a page model no record detects to an entry, like a spec item", () => {
-    expect(run(["zzq-old"], [], []).unaccounted).toEqual(["page 2027-03-01 zzq-old"]);
+    expect(run(["zzq-old"], [], []).unaccounted).toEqual([HEAD, "page 2027-03-01 zzq-old"]);
     const listed = run(["zzq-old"], [], [{ items: ["page 2027-03-01 zzq-old"], "needs-record": "A record for it." }]);
-    expect(listed.unaccounted).toEqual([]);
+    expect(listed.unaccounted).toEqual([HEAD]);
     expect(listed.needsRecord).toEqual([{ key: "page 2027-03-01 zzq-old", proposal: "A record for it." }]);
   });
 
@@ -188,5 +191,76 @@ describe("pageDisagreements", () => {
     expect(pageDisagreements([record("zzq-one")], rows, { ...lists, wholeDates: new Set(["2027-09-09"]) })).toEqual([
       "no model row on the page shuts down on 2027-09-09; take it off the list",
     ]);
+  });
+});
+
+describe("page item keys", () => {
+  const records = [record("zzq-one")];
+  const keys = (html: string) => pageItems(readPage(html), records, "openai").map((i) => i.key);
+  const rows = (...cells: string[][]) =>
+    cells.map((row) => `<tr>${row.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("");
+
+  it("never gives two rows one key, whatever their cells hold", () => {
+    const head = "<tr><th>Date</th><th>Update</th><th>Note</th></tr>";
+    const split = keys(
+      `<table>${rows(["2027-03-01", "zzq-a | zzq-b"])}</table><table>${rows(["2027-03-01", "zzq-a", "zzq-b"])}</table>`,
+    );
+    expect(new Set(split).size).toBe(split.length);
+    expect(split).toHaveLength(2);
+    const shifted = keys(
+      `<table>${head}${rows(["2027-03-01", "zzq-a | zzq-b", "zzq-c"], ["2027-03-01", "zzq-a", "zzq-b | zzq-c"])}</table>`,
+    );
+    expect(new Set(shifted).size).toBe(shifted.length);
+    expect(shifted).toHaveLength(3);
+  });
+
+  it("keeps a row whose text is a model id apart from that model's row", () => {
+    const update = `<table><tr><th>Date</th><th>Update</th></tr>${rows(["2027-03-01", "zzq-one"])}</table>`;
+    const items = pageItems(readPage(update), records, "openai").concat(
+      pageItems(table([["2027-03-01", "zzq-one", "zzq-new"]]), records, "openai"),
+    );
+    const update1 = items.filter((i) => i.ids.length === 0 && i.key.includes("zzq-one"));
+    const model = items.filter((i) => i.ids.length === 1);
+    expect(update1).toHaveLength(1);
+    expect(model).toHaveLength(1);
+    expect(update1[0]!.key).not.toBe(model[0]!.key);
+  });
+
+  it("drops no row of a table with no header, whatever its first cell holds", () => {
+    for (const [first, second] of [
+      ["Nov 30 2026", "Agent Builder is scheduled to shut down."],
+      ["TBD", "Prompts API shuts down"],
+      ["Agent Builder", "2026-11-30"],
+    ])
+      expect(keys(`<table>${rows([first!, second!])}</table>`).join("\n"), first).toContain(second);
+  });
+});
+
+describe("pageDisagreements and the corpus lists", () => {
+  it("names a whole-row record whose detection is not one model record's, as npm run replacements does", () => {
+    const one = record("zzq-one");
+    const odd = {
+      ...one,
+      detection: {
+        astGrepPatterns: {
+          ...one.detection.astGrepPatterns,
+          js: [...one.detection.astGrepPatterns.js!, one.detection.astGrepPatterns.js![0]!],
+        },
+      },
+    };
+    const rows = table([["2027-03-01", "zzq-one | zzq-one-2026-01-01", "zzq-new"]]);
+    expect(pageDisagreements([odd], rows, { ...lists, wholeDates: new Set(["2027-03-01"]) })).toContain(
+      "openai:2026-11-01:zzq-one-shut-down: its detection is not one model record's, so darnit does not add zzq-one-2026-01-01 to it",
+    );
+  });
+
+  it("leaves out a row non-model-rows.txt lists, and names it otherwise", () => {
+    const page = table([
+      ["2027-03-01", "zzq-one", "zzq-new"],
+      ["2027-03-01", "Models like zzq-one", "zzq-new"],
+    ]);
+    const unread = page.rows.find((r) => r.cells[1] === "Models like zzq-one")!.folded;
+    expect(pageDisagreements([record("zzq-one")], page, lists).join("\n")).toContain("may name zzq-one");
+    expect(pageDisagreements([record("zzq-one")], page, { ...lists, notModels: new Set([unread]) })).toEqual([]);
   });
 });

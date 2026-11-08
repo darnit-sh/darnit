@@ -62,39 +62,42 @@ export const oneModelRecord = (r: ChangeRecord): r is ChangeRecord & { effective
 /**
  * The records a page is checked against, by npm run corpus and npm run replacements alike: the record shutting down on
  * each date in `dates` (corpus/<vendor>/whole-rows.txt) detects every model of that date's rows, as --write makes it.
+ * A record of such a date whose detection is not one model record's is left as it is, and named in the problems.
  */
 export function wholeRowRecords(records: readonly ChangeRecord[], page: Page, dates: ReadonlySet<string>) {
   const whole = wholeRows(records, page, dates);
   const checked = records.map((r) => {
     const ids = whole.models.get(r.id);
-    return ids && oneModelRecord(r) ? { ...r, detection: modelDetection(ids) } : r;
+    if (!ids) return r;
+    if (oneModelRecord(r)) return { ...r, detection: modelDetection(ids) };
+    const missing = ids.filter((m) => !recordModels(r).includes(m));
+    whole.problems.push(
+      `${r.id}: its detection is not one model record's, so darnit does not add ${missing.join(", ") || "models"} to it`,
+    );
+    return r;
   });
   return { whole, records: checked };
 }
 
 /**
  * One item for npm run accounting per shutdown date and model of the page's model rows, keyed "page <date> <model>",
- * with the ids of the vendor's records that detect the model. Every other row of a table is an item too, keyed by the
- * date in its first cell and the text of the rest of the row (all of it when no date is read), and detected by no
- * record: an endpoint, an API, a dated update, or a row whose models darnit cannot read. Only a table's first row is
- * left out, and only when its first cell holds no date, as a header's does. So no row goes unaccounted, whatever its
- * table's header says.
+ * with the ids of the vendor's records that detect the model. Every other row of every table, its header included, is
+ * an item too, detected by no record: an endpoint, an API, a dated update, a header, or a row whose models darnit
+ * cannot read. It is keyed "page <date> row <cells as JSON>", the date read from its first cell and the cells after it,
+ * or all its cells when no date is read: JSON quotes each cell, so no cell text can make two rows share a key, and a
+ * model id holds no space, so no row takes a model's key. No row is left out, as no header can be told from a row.
  */
 export function pageItems(page: Page, records: readonly ChangeRecord[], vendor: string) {
   const detecting = detectedBy(records, vendor);
   const items = new Map<string, string[]>();
   for (const row of page.rows) {
     const date = shutdownDate(row.cells[0] ?? "");
-    if (row.label.endsWith(" row 1") && date === undefined) continue;
     const at = `page ${date ?? "no date read"}`;
-    if (!row.models) items.set(`${at} ${restOf(row.cells, date)}`, []);
+    if (!row.models) items.set(`${at} row ${JSON.stringify(date ? row.cells.slice(1) : row.cells)}`, []);
     for (const m of row.models ?? []) items.set(`${at} ${m}`, detecting.get(m) ?? []);
   }
   return [...items].map(([key, ids]) => ({ key, ids }));
 }
-
-/** A row's text after its date, or all of it when no date was read from it. */
-const restOf = (cells: string[], date: string | undefined) => (date ? cells.slice(1) : cells).join(" | ");
 
 /** Each model the vendor's records detect, with the ids of those records. */
 function detectedBy(records: readonly ChangeRecord[], vendor: string) {

@@ -1070,7 +1070,7 @@ describe("npm run replacements on a copy of the repository", () => {
         const failed = await at.script("--write");
         expect(failed.code).toBe(1);
         expect(failed.out).toContain(
-          "2026-06-11-gpt-5-and-o3-model-deprecations-shut-down/change.json: its detection is not one model record's, so darnit does not add gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3, o3-pro to it",
+          "openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down: its detection is not one model record's, so darnit does not add gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3, o3-pro to it",
         );
         expect(await at.packs()).toEqual(before);
       } finally {
