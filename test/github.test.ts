@@ -182,14 +182,20 @@ describe("GitHub API calls", () => {
 
   // Sends `reply` once the request arrives, then goes quiet with the connection open.
   async function stall(reply: string) {
-    const server = createServer((socket) => socket.once("data", () => socket.write(reply))).listen(0, "127.0.0.1");
+    let closed: Promise<unknown> | undefined;
+    let reset: NodeJS.ErrnoException | undefined;
+    const server = createServer((socket) => {
+      // A reset counts as the client hanging up. The first connection is the one that must close.
+      socket.on("error", (err) => (reset ??= err));
+      closed ??= new Promise((done) => socket.once("close", done));
+      socket.once("data", () => socket.write(reply));
+    }).listen(0, "127.0.0.1");
     await once(server, "listening");
     const connected = once(server, "connection") as Promise<[Socket]>;
     const local = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const send = fetch;
-    vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
-      send(url.replace("https://api.github.com", local), init),
-    );
+    const calls = vi.fn((url: string, init?: RequestInit) => send(url.replace("https://api.github.com", local), init));
+    vi.stubGlobal("fetch", calls);
     // The real limit, shortened so the test does not wait it out.
     const timeout = AbortSignal.timeout.bind(AbortSignal);
     const limit = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => timeout(50));
@@ -198,9 +204,11 @@ describe("GitHub API calls", () => {
         "GitHub GET /repos/o/r timed out after 30 seconds",
       );
       expect(limit).toHaveBeenCalledWith(30_000);
+      expect(calls).toHaveBeenCalledOnce();
       const [socket] = await connected;
       socket.resume();
-      if (!socket.closed) await once(socket, "close");
+      await closed;
+      if (reset) expect(reset.code).toBe("ECONNRESET");
     } finally {
       server.close();
     }
