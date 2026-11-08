@@ -1,14 +1,16 @@
 exit 0
-scanned files=589 records=36 otherFiles=103 foreign=0 tooLarge=0 skipped=0
+scanned files=589 records=37 otherFiles=103 foreign=0 tooLarge=0 skipped=0
 M CHANGELOG.md:679 gpt-5.3-codex openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M benchmarks/data/response_templates.json:14 gpt-3.5-turbo-0613 openai:2023-11-06:chat-model-updates-shut-down
 M src/venice_ai/_request_classifier.py:136 gpt-5.3-codex openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M src/venice_ai/_request_classifier.py:141 gpt-5.3-codex openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M src/venice_ai/cli/utils/lint_rules.py:66 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/venice_ai/cli/utils/lint_rules.py:66 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M src/venice_ai/cli/utils/lint_rules.py:81 text-davinci-003 openai:2023-07-06:gpt-and-embeddings-shut-down
 M src/venice_ai/resources/models.py:142 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/venice_ai/resources/models.py:285 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M src/venice_ai/skills/venice-py/scripts/lint_v1_usage.py:59 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M src/venice_ai/skills/venice-py/scripts/lint_v1_usage.py:59 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M src/venice_ai/skills/venice-py/scripts/lint_v1_usage.py:74 text-davinci-003 openai:2023-07-06:gpt-and-embeddings-shut-down
 M tests/benchmarks/conftest.py:67 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/benchmarks/conftest.py:140 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -19,6 +21,9 @@ M tests/benchmarks/scenarios.py:638 gpt-4 openai:2026-04-22:legacy-gpt-model-sna
 M tests/benchmarks/scenarios.py:648 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/cli/test_conversation.py:126 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/cli/test_conversation.py:131 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/unit/resources/test_chat_completions.py:1043 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/resources/test_chat_completions.py:1051 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/unit/resources/test_chat_estimate_cost_accounting.py:4 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/unit/resources/test_models.py:97 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/resources/test_models.py:97 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/unit/resources/test_models.py:111 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

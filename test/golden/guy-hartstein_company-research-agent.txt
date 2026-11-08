@@ -1,3 +1,4 @@
 exit 0
-scanned files=45 records=36 otherFiles=32 foreign=0 tooLarge=0 skipped=0
+scanned files=45 records=37 otherFiles=32 foreign=0 tooLarge=0 skipped=0
+P backend/nodes/editor.py:32:19 #63c2f638 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P backend/nodes/researchers/base.py:28:19 #9dda5f5c gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down

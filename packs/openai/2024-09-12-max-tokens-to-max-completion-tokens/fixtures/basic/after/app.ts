@@ -4,7 +4,7 @@ const openai = new OpenAI();
 
 export async function summarize(messages: OpenAI.ChatCompletionMessageParam[]): Promise<string | null> {
   const res = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-test-model",
     messages,
     max_completion_tokens: 256,
   });

@@ -1,9 +1,26 @@
 exit 1
-scanned files=166 records=36 otherFiles=57 foreign=0 tooLarge=0 skipped=0
+scanned files=166 records=37 otherFiles=57 foreign=0 tooLarge=0 skipped=0
 H packages/backend/src/routes/aiProvider.ts:199:7 #722cabca openai:2024-09-12:max-tokens-to-max-completion-tokens
 H packages/backend/src/routes/aiProvider.ts:247:7 #722cabca openai:2024-09-12:max-tokens-to-max-completion-tokens
+P packages/backend/src/routes/aiProvider.ts:155:34 #e7b69a2f gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P packages/frontend/src/components/SettingsDialog.tsx:18:49 #ae2fd7ec gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P packages/frontend/src/components/SettingsDialog.tsx:546:34 #419c480f gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/api/rest.mdx:22 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/configuration.mdx:17 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/configuration.mdx:17 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M docs/features/ai-generate.mdx:32 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/backend/src/routes/aiProvider.ts:278 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/backend/src/routes/aiProvider.ts:279 gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/backend/src/routes/aiProvider.ts:280 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M packages/backend/src/routes/aiProvider.ts:281 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/backend/src/routes/aiProvider.ts:282 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/backend/src/routes/aiProvider.ts:283 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M packages/backend/src/routes/aiProvider.ts:294 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/backend/src/routes/aiProvider.ts:352 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/backend/src/routes/aiProvider.ts:353 gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/backend/src/routes/aiProvider.ts:354 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M packages/backend/src/routes/aiProvider.ts:355 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/backend/src/routes/aiProvider.ts:356 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/backend/src/routes/aiProvider.ts:357 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M packages/frontend/src/components/McpSettingsPanel.tsx:362 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M packages/frontend/src/store/settingsStore.ts:62 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down

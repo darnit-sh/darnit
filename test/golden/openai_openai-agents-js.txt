@@ -1,7 +1,13 @@
 exit 0
-scanned files=1149 records=36 otherFiles=487 foreign=0 tooLarge=0 skipped=0
+scanned files=1149 records=37 otherFiles=487 foreign=0 tooLarge=0 skipped=0
+P examples/agent-patterns/streamed.ts:28:10 #db0f7dec gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/agent-patterns/streaming-guardrails.ts:18:12 #ea584824 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/docs/agents/agentWithTools.ts:16:10 #14d3e786 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/docs/models/openaiProvider.ts:14:36 #737ebe0c gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P examples/docs/models/runnerWithModel.ts:3:36 #22a9b8d5 gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 P examples/research-bot/agents.ts:72:10 #eea7175d o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 P packages/agents-realtime/src/openaiRealtimeBase.ts:81:33 #6475f467 gpt-4o-mini-transcribe openai:2026-08-26:transcription-models-shut-down
+M examples/ai-sdk-ui/scripts/ai-sdk.ts:7 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M examples/ai-sdk/README.md:10 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M examples/ai-sdk/README.md:24 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M examples/ai-sdk/package.json:16 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
@@ -36,6 +42,10 @@ M packages/agents-core/src/defaultModel.ts:63 gpt-5 openai:2026-06-11:gpt-5-and-
 M packages/agents-core/src/defaultModel.ts:64 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/src/model.ts:33 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M packages/agents-core/src/model.ts:34 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M packages/agents-core/src/sandbox/capabilities/compaction.ts:169 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/src/sandbox/capabilities/compaction.ts:170 gpt-4.1-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/src/sandbox/capabilities/compaction.ts:171 gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/src/sandbox/capabilities/compaction.ts:172 gpt-4.1-mini-2025-04-14 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-core/src/sandbox/capabilities/compaction.ts:173 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M packages/agents-core/src/sandbox/capabilities/compaction.ts:174 gpt-4.1-nano-2025-04-14 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M packages/agents-core/src/sandbox/capabilities/compaction.ts:178 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
@@ -62,6 +72,10 @@ M packages/agents-core/src/sandbox/capabilities/compaction.ts:206 o3-deep-resear
 M packages/agents-core/src/sandbox/capabilities/compaction.ts:207 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M packages/agents-core/src/sandbox/capabilities/compaction.ts:208 o4-mini-2025-04-16 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M packages/agents-core/src/sandbox/capabilities/compaction.ts:209 o4-mini-deep-research openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
+M packages/agents-core/src/sandbox/capabilities/compaction.ts:213 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/src/sandbox/capabilities/compaction.ts:214 gpt-4o-2024-08-06 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/src/sandbox/capabilities/compaction.ts:215 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/src/sandbox/capabilities/compaction.ts:216 gpt-4o-mini-2024-07-18 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-core/src/sandbox/capabilities/compaction.ts:217 gpt-5-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M packages/agents-core/src/sandbox/capabilities/compaction.ts:218 gpt-5.1-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M packages/agents-core/src/sandbox/capabilities/compaction.ts:219 gpt-5.2-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
@@ -74,6 +88,8 @@ M packages/agents-core/test/agent.test.ts:477 gpt-5.2-codex openai:2026-04-22:le
 M packages/agents-core/test/agent.test.ts:485 gpt-5.3-codex openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M packages/agents-core/test/agent.test.ts:510 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/agent.test.ts:511 gpt-5-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
+M packages/agents-core/test/agent.test.ts:539 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/agent.test.ts:573 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-core/test/agent.test.ts:574 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/agent.test.ts:589 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/agent.test.ts:601 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
@@ -87,14 +103,17 @@ M packages/agents-core/test/defaultModel.test.ts:35 gpt-5-chat-latest openai:202
 M packages/agents-core/test/defaultModel.test.ts:36 gpt-5.1-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M packages/agents-core/test/defaultModel.test.ts:37 gpt-5.2-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
 M packages/agents-core/test/defaultModel.test.ts:38 gpt-5.3-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
+M packages/agents-core/test/defaultModel.test.ts:41 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-core/test/defaultModel.test.ts:45 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/defaultModel.test.ts:45 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
+M packages/agents-core/test/defaultModel.test.ts:53 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-core/test/defaultModel.test.ts:54 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/defaultModel.test.ts:55 gpt-5-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M packages/agents-core/test/defaultModel.test.ts:56 gpt-5.1-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M packages/agents-core/test/defaultModel.test.ts:57 gpt-5.2-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
 M packages/agents-core/test/defaultModel.test.ts:58 gpt-5.3-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
 M packages/agents-core/test/defaultModel.test.ts:81 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M packages/agents-core/test/defaultModel.test.ts:111 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-core/test/defaultModel.test.ts:135 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/defaultModel.test.ts:159 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M packages/agents-core/test/defaultModel.test.ts:181 gpt-5.3-codex openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
@@ -111,10 +130,15 @@ M packages/agents-core/test/defaultModel.test.ts:294 gpt-5-chat-latest openai:20
 M packages/agents-core/test/defaultModel.test.ts:295 gpt-5.1-chat-latest openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M packages/agents-core/test/defaultModel.test.ts:296 gpt-5.2-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
 M packages/agents-core/test/defaultModel.test.ts:297 gpt-5.3-chat-latest openai:2026-05-08:gpt-5-2-chat-latest-and-gpt-5-3-chat-latest-shut-down
+M packages/agents-core/test/defaultModel.test.ts:301 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-core/test/run.test.ts:9164 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/run.test.ts:9293 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/run.test.ts:9330 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M packages/agents-core/test/run.test.ts:11021 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/run.test.ts:11022 gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-core/test/runner/modelSettings.test.ts:72 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M packages/agents-core/test/runner/modelSettings.test.ts:100 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/runner/modelSettings.test.ts:133 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-core/test/sandboxCapabilities.test.ts:34 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/sandboxCapabilities.test.ts:44 gpt-5-2025-08-07 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/sandboxCapabilities.test.ts:73 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -125,11 +149,29 @@ M packages/agents-core/test/sandboxCapabilities.test.ts:80 o4-mini-deep-research
 M packages/agents-core/test/sandboxCompactionPolicy.test.ts:17 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/sandboxRunner.test.ts:2461 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-core/test/sandboxRunner.test.ts:2478 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M packages/agents-core/test/sandboxRunner.test.ts:2497 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxRunner.test.ts:2500 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxRunner.test.ts:2513 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxRuntime.test.ts:911 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:263 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:312 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:339 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:388 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:447 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:485 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:531 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:647 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:708 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/sandboxTools.test.ts:726 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-core/test/stubs.ts:86 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-extensions/src/ai-sdk/index.ts:797 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-extensions/src/ai-sdk/index.ts:1684 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-openai/CHANGELOG.md:877 gpt-image-1-mini openai:2026-06-02:gpt-image-model-deprecations-shut-down
 M packages/agents-openai/CHANGELOG.md:877 gpt-image-1.5 openai:2026-06-02:gpt-image-model-deprecations-shut-down
 M packages/agents-openai/CHANGELOG.md:932 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M packages/agents-openai/CHANGELOG.md:1068 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-openai/CHANGELOG.md:1072 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M packages/agents-openai/src/memory/openaiResponsesCompactionSession.ts:684 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-openai/src/openaiChatCompletionsModel.ts:71 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-openai/src/openaiResponsesModel.ts:371 computer-use-preview openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
 M packages/agents-openai/src/tools.ts:308 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -141,12 +183,32 @@ M packages/agents-openai/src/types/providerData.ts:52 gpt-image-1.5 openai:2026-
 M packages/agents-openai/test/openaiChatCompletionsModel.test.ts:1432 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M packages/agents-openai/test/openaiChatCompletionsModel.test.ts:1444 gpt-5.1 openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down
 M packages/agents-openai/test/openaiConversationsSession.test.ts:917 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:188 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:227 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:247 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:269 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:283 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:305 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:306 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:320 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:321 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:339 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:340 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:356 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:358 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiProvider.test.ts:373 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiResponsesCompactionSession.test.ts:178 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/openaiResponsesCompactionSession.test.ts:201 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-openai/test/openaiResponsesCompactionSession.test.ts:400 gpt-4.1-nano-2025-04-14 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M packages/agents-openai/test/openaiResponsesCompactionSession.test.ts:409 o1-pro openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M packages/agents-openai/test/openaiResponsesModel.helpers.test.ts:86 computer-use-preview openai:2026-04-22:legacy-gpt-model-snapshots-july-2026-shutdown-shut-down
+M packages/agents-openai/test/rawModelEvents.test.ts:44 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M packages/agents-openai/test/responsesWebSocketSession.test.ts:38 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-openai/test/runnerAstraSettings.test.ts:57 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M packages/agents-openai/test/runnerAstraSettings.test.ts:65 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M packages/agents-openai/test/runnerAstraSettings.test.ts:70 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-openai/test/runnerStoreSettings.test.ts:30 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M packages/agents-openai/test/runnerStoreSettings.test.ts:49 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M packages/agents-openai/test/tools.test.ts:112 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M packages/agents-openai/test/tools.test.ts:113 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M packages/agents-openai/test/tools.test.ts:118 gpt-image-1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

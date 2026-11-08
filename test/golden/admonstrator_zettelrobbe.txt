@@ -1,14 +1,29 @@
-exit 0
-scanned files=227 records=36 otherFiles=101 foreign=0 tooLarge=0 skipped=1
+exit 1
+scanned files=227 records=37 otherFiles=101 foreign=0 tooLarge=0 skipped=1
+H services/setupService.js:378:13 #4a0f565e openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P routes/setup.js:3438:12 #ea584824 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P routes/setup.js:4805:49 #34951d91 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P routes/setup.js:6317:45 #5b8278d9 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P routes/setup.js:7346:47 #34951d91 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M OPENAPI/openapi.json:5904 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M config/ai-provider-presets.json:8 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M config/changelog.js:103 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M public/js/setup.js:266 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M public/js/setup.js:269 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M routes/setup.js:4619 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M routes/setup.js:8713 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/loggerService.js:92 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M services/manualService.js:76 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/manualService.js:172 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/openaiService.js:288 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:12 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M services/serviceUtils.js:13 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+M services/serviceUtils.js:14 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M services/serviceUtils.js:15 gpt-4o-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
 M services/serviceUtils.js:17 gpt-4o-audio-preview-2024-10-01 openai:2025-06-10:gpt-4o-audio-preview-2024-10-01-shut-down
 M services/serviceUtils.js:18 gpt-4o-mini-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+M services/serviceUtils.js:22 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M services/serviceUtils.js:23 gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M services/serviceUtils.js:24 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/serviceUtils.js:27 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/serviceUtils.js:29 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
@@ -29,13 +44,38 @@ M services/serviceUtils.js:51 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecatio
 M services/serviceUtils.js:52 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/serviceUtils.js:55 text-davinci-003 openai:2023-07-06:gpt-and-embeddings-shut-down
 M services/serviceUtils.js:56 text-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M services/serviceUtils.js:78 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M services/serviceUtils.js:116 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M services/serviceUtils.js:156 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/helpers/mount-router.js:40 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/test-ai-provider-streaming.js:1029 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/test-ai-provider-streaming.js:1029 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M tests/test-ai-provider-streaming.js:1053 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/test-ai-provider-streaming.js:1055 gpt-5 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M tests/test-ai-provider-streaming.js:1058 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test-ai-provider-streaming.js:1062 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/test-ai-provider-streaming.js:1079 gpt-5-mini openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
+M tests/test-env-export.js:98 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-env-export.js:106 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-injected-env-priority.js:131 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-log-secret-redaction.js:251 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-log-secret-redaction.js:259 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-ocr-model-discovery-unfiltered.js:8 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-ocr-model-discovery-unfiltered.js:42 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-ocr-model-discovery-unfiltered.js:47 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-ocr-model-discovery-unfiltered.js:89 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-ocr-model-discovery-unfiltered.js:90 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-ocr-model-discovery-unfiltered.js:128 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-ocr-model-discovery-unfiltered.js:134 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-ocr-model-discovery-unfiltered.js:249 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M tests/test-response-truncation-detection.js:16 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M tests/test-setup-bootstrap-security.js:43 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-setup-preset-manual-reset.js:201 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-token-limit-config.js:232 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-truncate-returns-string.js:53 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/test-truncate-returns-string.js:86 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M views/settings.ejs:277 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M views/settings.ejs:278 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M views/settings.ejs:279 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M views/settings.ejs:280 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 S public/vendor dependency or build folder

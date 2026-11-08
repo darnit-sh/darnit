@@ -1,7 +1,11 @@
 exit 0
-scanned files=2 records=36 otherFiles=9 foreign=0 tooLarge=0 skipped=0
+scanned files=2 records=37 otherFiles=9 foreign=0 tooLarge=0 skipped=0
+M .voiceconfig:13 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M README.md:87 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M README.md:185 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M clickui.py:81 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M clickui.py:81 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:81 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M clickui.py:81 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M clickui.py:81 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M clickui.py:81 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -11,7 +15,9 @@ M clickui.py:2164 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M clickui.py:2164 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M clickui.py:2344 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecations-shut-down
 M clickui.py:2344 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:3471 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M clickui.py:3471 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M clickui.py:3471 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M clickui.py:3471 o1-mini openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-10-27
 M clickui.py:3471 o1-preview openai:2025-04-28:o1-preview-and-o1-mini-shut-down-2025-07-28
 M clickui.py:3471 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

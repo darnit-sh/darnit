@@ -1,3 +1,15 @@
 exit 0
-scanned files=8 records=36 otherFiles=16 foreign=0 tooLarge=0 skipped=0
+scanned files=8 records=37 otherFiles=16 foreign=0 tooLarge=0 skipped=0
+P config.py:3:31 #7f7e5634 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P config.py:24:38 #fb607025 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P config.py:25:38 #6c994f6d gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P inattack.py:157:29 #fb607025 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P inattack.py:158:29 #6c994f6d gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P judge.py:6:37 #1d35aa04 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P main.py:13:66 #acfeb56e gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P main.py:14:66 #466c0680 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P utils.py:96:60 #56b7e2da gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M README.md:56 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M README.md:57 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M inattack.py:16 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M inattack.py:131 o1 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down

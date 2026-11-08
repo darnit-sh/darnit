@@ -1,3 +1,9 @@
 exit 0
-scanned files=56 records=36 otherFiles=30 foreign=0 tooLarge=0 skipped=1
+scanned files=56 records=37 otherFiles=30 foreign=0 tooLarge=0 skipped=1
+P engines/openai.py:54:25 #f6d732b2 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/lib/test_engine.py:465 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/lib/test_engine.py:479 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/lib/test_engine.py:495 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/lib/test_engine.py:570 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/lib/test_engine.py:594 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 S vendor dependency or build folder

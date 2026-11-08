@@ -1,11 +1,15 @@
 exit 1
-scanned files=37 records=36 otherFiles=48 foreign=0 tooLarge=0 skipped=0
+scanned files=37 records=37 otherFiles=48 foreign=0 tooLarge=0 skipped=0
 H services/azureService.js:379:9 #2d843cd4 openai:2024-09-12:max-tokens-to-max-completion-tokens
 H services/azureService.js:412:9 #a6a9db97 openai:2024-09-12:max-tokens-to-max-completion-tokens
 H services/azureService.js:445:9 #2d843cd4 openai:2024-09-12:max-tokens-to-max-completion-tokens
 H services/chatService.js:132:11 #338734d5 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 H services/customService.js:396:9 #2a01f15d openai:2024-09-12:max-tokens-to-max-completion-tokens
 H services/customService.js:429:9 #2d843cd4 openai:2024-09-12:max-tokens-to-max-completion-tokens
+H services/setupService.js:74:11 #a4105fce openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P routes/setup.js:1886:49 #34951d91 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P routes/setup.js:2683:47 #34951d91 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+P routes/setup.js:3755:44 #86f80927 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M OPENAPI/openapi.json:2131 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M OPENAPI/openapi.json:3020 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M routes/setup.js:3455 gpt-4 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
@@ -14,10 +18,14 @@ M services/manualService.js:75 o3-mini openai:2026-04-22:legacy-gpt-model-snapsh
 M services/manualService.js:171 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/openaiService.js:190 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/openaiService.js:314 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M services/serviceUtils.js:9 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M services/serviceUtils.js:9 chatgpt-4o-latest openai:2025-11-18:chatgpt-4o-latest-snapshot-shut-down
+M services/serviceUtils.js:9 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M services/serviceUtils.js:9 gpt-4o-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
 M services/serviceUtils.js:10 gpt-4o-audio-preview-2024-10-01 openai:2025-06-10:gpt-4o-audio-preview-2024-10-01-shut-down
 M services/serviceUtils.js:11 gpt-4o-mini-audio-preview openai:2025-09-15:gpt-4o-realtime-preview-models-shut-down
+M services/serviceUtils.js:14 gpt-4.1 openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M services/serviceUtils.js:14 gpt-4.1-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M services/serviceUtils.js:14 gpt-4.1-nano openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/serviceUtils.js:17 gpt-3.5-turbo openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/serviceUtils.js:17 gpt-3.5-turbo-instruct openai:2025-09-26:legacy-gpt-model-snapshots-shut-down
@@ -38,7 +46,14 @@ M services/serviceUtils.js:27 o3 openai:2026-06-11:gpt-5-and-o3-model-deprecatio
 M services/serviceUtils.js:27 o4-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
 M services/serviceUtils.js:30 text-davinci-003 openai:2023-07-06:gpt-and-embeddings-shut-down
 M services/serviceUtils.js:30 text-davinci-002 openai:2023-07-06:gpt-and-embeddings-shut-down
+M services/serviceUtils.js:50 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M services/serviceUtils.js:75 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M services/serviceUtils.js:96 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M views/settings.ejs:301 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M views/settings.ejs:302 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M views/settings.ejs:303 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M views/settings.ejs:304 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M views/setup.ejs:236 gpt-3.5-turbo-0125 openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M views/setup.ejs:237 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
 M views/setup.ejs:238 o3-mini openai:2026-04-22:legacy-gpt-model-snapshots-shut-down
+M views/setup.ejs:239 gpt-4o-mini openai:2026-10-14:gpt-4-series-model-deprecations-shut-down

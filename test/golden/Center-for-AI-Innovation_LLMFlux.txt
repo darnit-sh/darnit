@@ -1,2 +1,4 @@
 exit 0
-scanned files=71 records=36 otherFiles=31 foreign=0 tooLarge=0 skipped=0
+scanned files=71 records=37 otherFiles=31 foreign=0 tooLarge=0 skipped=0
+M tests/converters/test_vision.py:315 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
+M tests/converters/test_vision.py:318 gpt-4o openai:2026-10-14:gpt-4-series-model-deprecations-shut-down
