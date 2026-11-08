@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, type RequestListener, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchPage, PAGE_LIMITS, unreadable, wholeRowRecords } from "../src/corpus/page-rows.js";
+import { fetchPage, listLines, PAGE_LIMITS, wholeRowRecords } from "../src/corpus/page-rows.js";
 import { readPage } from "../src/corpus/replacements.js";
 import { loadRecords } from "../src/records/load.js";
 import { recordModels } from "../src/records/schema.js";
@@ -65,6 +65,13 @@ describe("fetchPage", () => {
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
+  it("fails on an address fetch will not ask, naming why", async () => {
+    const url = "http://user:pass@127.0.0.1:1/deprecations";
+    await expect(fetchPage(url, limits)).rejects.toThrow(
+      `could not fetch ${url}: Request cannot be constructed from a URL that includes credentials`,
+    );
+  });
+
   it("fails when nothing answers at the address", async () => {
     const url = await serve(() => undefined);
     servers.pop()!.close();
@@ -89,14 +96,11 @@ describe("fetchPage", () => {
   });
 });
 
-describe("unreadable", () => {
-  it("finds nothing on the repository's copy of the page, and fails a page with no model row", async () => {
-    const records = (await loadRecords()).map((l) => l.record);
-    // No model the API spec lists is needed to read the page's rows; the committed spec changes with every refresh.
-    const known = new Set<string>();
-    expect(unreadable(readPage(await FIXTURE), records, known, new Set())).toEqual([]);
-    expect(unreadable(readPage("<p>Moved</p>"), records, known, new Set())).toEqual([
-      "darnit read no model row from the page",
+describe("listLines", () => {
+  it("reads a corpus list file as its lines, leaving out blank lines and # comments", () => {
+    expect(listLines("# Dates whose rows are detected whole.\n2026-12-11\n\n2027-01-14\n")).toEqual([
+      "2026-12-11",
+      "2027-01-14",
     ]);
   });
 });

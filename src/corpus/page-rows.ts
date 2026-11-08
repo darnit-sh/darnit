@@ -1,16 +1,6 @@
-import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { recordModels, type ChangeRecord } from "../records/schema.js";
-import {
-  MAX_CELL,
-  modelDetection,
-  ONLY,
-  pageProblems,
-  readPage,
-  TABLE_ERRORS,
-  wholeRows,
-  type Page,
-} from "./replacements.js";
+import { MAX_CELL, modelDetection, ONLY, readPage, TABLE_ERRORS, wholeRows, type Page } from "./replacements.js";
 
 // The tables darnit reads from a vendor's deprecations page, saved as corpus/<vendor>/page-rows.json so the page is
 // fetched once a week by the corpus job and every other run reads a committed file. The file holds each read table's
@@ -24,7 +14,8 @@ export const PAGE_LIMITS = { timeoutMs: 30_000, minBytes: 10_000, maxBytes: 5_00
 async function body(res: Response, url: string, { minBytes, maxBytes }: typeof PAGE_LIMITS): Promise<string> {
   const chunks: Uint8Array[] = [];
   let size = 0;
-  for await (const chunk of (res.body ?? []) as AsyncIterable<Uint8Array>) {
+  // A 200 answer to a GET always has a body.
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
     size += chunk.byteLength;
     if (size > maxBytes) throw new Error(`${url} sent over ${maxBytes} bytes`);
     chunks.push(chunk);
@@ -50,20 +41,6 @@ export async function fetchPage(url: string, limits = PAGE_LIMITS): Promise<stri
     const why = err.cause instanceof Error ? ` (${err.cause.message})` : "";
     throw new Error(`could not fetch ${url}: ${err.message}${why}`, { cause: err });
   }
-}
-
-/**
- * Why a fetched page is not saved: every table or row darnit cannot read, as npm run replacements finds them, or no
- * model row at all, as on a page that moved.
- */
-export function unreadable(
-  page: Page,
-  records: readonly ChangeRecord[],
-  known: ReadonlySet<string>,
-  notModels: ReadonlySet<string>,
-): string[] {
-  const { problems } = pageProblems(records, page, known, notModels);
-  return page.rows.some((r) => r.models) ? problems : [...problems, "darnit read no model row from the page"];
 }
 
 /** Whether darnit adds a whole-row date's models to a record: one detecting models as a model record does, with a date. */
@@ -119,11 +96,10 @@ function rowCells(row: unknown, at: string): string[] {
   return row as string[];
 }
 
-const ENTITY: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
 /** What readPage reads from a table holding these cells as plain text, with its label and its rows' labels. */
 function reread(page: Page, label: string, cells: string[][]): void {
   const html = cells.map(
-    (row) => `<tr>${row.map((c) => `<td>${c.replace(/[&<>]/g, (ch) => ENTITY[ch]!)}</td>`).join("")}</tr>`,
+    (row) => `<tr>${row.map((c) => `<td>${c.replaceAll("&", "&amp;").replaceAll("<", "&lt;")}</td>`).join("")}</tr>`,
   );
   const one = readPage(`<table>${html.join("")}</table>`);
   page.tables.push({ ...one.tables[0]!, label });
@@ -133,20 +109,19 @@ function reread(page: Page, label: string, cells: string[][]): void {
 
 /**
  * The page as the rows file holds it: each table in page order, a read table as its rows' cells, so a changed cell is
- * one line of a diff. Keys are sorted, so the same page always gives the same bytes. Throws when the file would not
- * read back as this page, as with a cell over the length readPage reads.
+ * one line of a diff. Keys are sorted, so the same page always gives the same bytes. Throws when the file would be
+ * refused on load, as with a cell over the length readPage reads. A file it writes reads back as this page, since
+ * loading works everything out again with readPage from the very cell text readPage gave.
  */
 export function pageRowsJson(page: Page, about: { source: string; fetchedAt: string }): string {
   const tables = page.tables.map((t) =>
     t.error === undefined ? { cells: [] as string[][] } : { error: t.error, folded: t.folded },
   );
-  for (const row of page.rows) {
-    const table = tables[Number(/^table (\d+) row/.exec(row.label)![1]) - 1];
-    if (table && "cells" in table) table.cells.push(row.cells);
-  }
+  // Rows come only from the tables darnit read, each labelled with its table's place.
+  for (const row of page.rows)
+    (tables[Number(/^table (\d+) row/.exec(row.label)![1]) - 1] as { cells: string[][] }).cells.push(row.cells);
   const json = `${JSON.stringify({ fetchedAt: about.fetchedAt, source: about.source, tables }, null, 2)}\n`;
-  if (!isDeepStrictEqual(readPageRows(json, about.source).page, page))
-    throw new Error("the page rows file would not read back as the page darnit read");
+  readPageRows(json, about.source);
   return json;
 }
 

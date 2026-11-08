@@ -6,9 +6,9 @@ import { parse as parseYaml } from "yaml";
 import { appendRemovals, removalsFrom, type Removal } from "../src/corpus/accounting.js";
 import { deriveCandidates, writeCandidate, type VendorConfig } from "../src/corpus/candidates.js";
 import { changelog } from "../src/corpus/oasdiff.js";
-import { fetchPage, listLines, pageRowsJson, unreadable, wholeRowRecords } from "../src/corpus/page-rows.js";
+import { fetchPage, listLines, pageRowsJson, wholeRowRecords } from "../src/corpus/page-rows.js";
 import { readmeCounts } from "../src/corpus/readme.js";
-import { readPage } from "../src/corpus/replacements.js";
+import { pageProblems, readPage } from "../src/corpus/replacements.js";
 import { prose } from "../src/fix.js";
 import { modelIds, parseSpec, sha256 } from "../src/corpus/spec.js";
 import { shown } from "../src/detect.js";
@@ -121,7 +121,8 @@ for (const [vendor, { page: url }] of Object.entries(vendors)) {
   const list = async (name: string) => new Set(listLines(await readFile(join(dir, name), "utf8").catch(() => "")));
   // The records npm run replacements checks the page against, so both commands run the same check.
   const { records } = wholeRowRecords(existing, page, await list("whole-rows.txt"));
-  const problems = unreadable(page, records, known, await list("non-model-rows.txt"));
+  const { problems } = pageProblems(records, page, known, await list("non-model-rows.txt"));
+  if (!page.rows.some((r) => r.models)) problems.push("darnit read no model row from the page");
   if (problems.length > 0) {
     fail(1, ["the page has a table or row darnit cannot read:", ...problems]);
     continue;

@@ -45,7 +45,11 @@ if ((values.page === undefined) === (values.rows === undefined) || (values.check
   process.exit(2);
 }
 // A rows file is refused, exiting 2 as for bad arguments, unless it reads as the page vendors.yml names would.
-const fromRows = (file: string, text: string, vendors: { openai?: { page?: string } }) => {
+const fromRows = async (file: string) => {
+  const text = await readFile(file, "utf8");
+  const vendors = parseYaml(await readFile(join(PACKS_DIR, "../vendors.yml"), "utf8")) as {
+    openai?: { page?: string };
+  };
   try {
     return readPageRows(text, vendors.openai?.page ?? "").page;
   } catch (err) {
@@ -53,13 +57,7 @@ const fromRows = (file: string, text: string, vendors: { openai?: { page?: strin
     return process.exit(2);
   }
 };
-const page = values.rows
-  ? fromRows(
-      values.rows,
-      await readFile(values.rows, "utf8"),
-      parseYaml(await readFile(join(PACKS_DIR, "../vendors.yml"), "utf8")) as { openai?: { page?: string } },
-    )
-  : readPage(await readFile(values.page!, "utf8"));
+const page = values.rows ? await fromRows(values.rows) : readPage(await readFile(values.page!, "utf8"));
 const loaded = await loadRecords();
 const corpus = join(PACKS_DIR, "../corpus/openai");
 const lines = async (file: string) => listLines(await readFile(join(corpus, file), "utf8"));

@@ -190,6 +190,18 @@ describe("npm run replacements with --rows", () => {
 });
 
 describe("npm run corpus on a page whose rows it cannot save", () => {
+  it("stops on a page with no model row, as one that moved, and saves nothing", async () => {
+    const at = await corpusRoot();
+    try {
+      const out = await at.run(200, `<html><body><p>${"This page has moved. ".repeat(600)}</p></body></html>`);
+      expect(out.code).toBe(1);
+      expect(out.out).toContain("darnit read no model row from the page");
+      expect(out.saved).toBeUndefined();
+    } finally {
+      await at.done();
+    }
+  });
+
   it("stops with the cause named, not a stack trace, and saves nothing", async () => {
     const at = await corpusRoot();
     try {
