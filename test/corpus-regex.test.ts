@@ -48,18 +48,19 @@ const listed = (text: string) => {
   return parts.every(isModel) ? parts : undefined;
 };
 const space = (s: string) => /^\s/.test(s);
+/** How many of these tokens split the prose: a comma and the spaces after it, or "and" with spaces around it. */
+const separator = ([token = "", next = "", after = ""]: string[]) => {
+  if (token === ",") return space(next) ? 2 : 1;
+  return space(token) && next === "and" && space(after) ? 3 : 0;
+};
 const prose = (inner: string) => {
   const parts = [""];
   const tokens = inner.match(/\s+|,|[^\s,]+/g) ?? [];
-  for (let i = 0; i < tokens.length; i++) {
-    const [token = "", next = "", after = ""] = tokens.slice(i, i + 3);
-    if (token === ",") i += space(next) ? 1 : 0;
-    else if (space(token) && next === "and" && space(after)) i += 2;
-    else {
-      parts[parts.length - 1] += token;
-      continue;
-    }
-    parts.push("");
+  for (let i = 0; i < tokens.length;) {
+    const taken = separator(tokens.slice(i, i + 3));
+    if (taken) parts.push("");
+    else parts.push(parts.pop()! + tokens[i]!);
+    i += taken || 1;
   }
   return parts.every(isModel) ? ["gpt-4o", ...parts] : undefined;
 };

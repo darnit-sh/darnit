@@ -15,6 +15,9 @@ import { serializePlan, type Plan } from "../src/plan.js";
 import { loadRecords } from "../src/records/load.js";
 import { cpuTime } from "./helpers.js";
 
+// The = signs that pad base64 at the end, each run read once.
+const PADDING = /(?<!=)=+$/;
+
 // A second record with the same rules, so a plan can hold two changes.
 vi.mock("../src/records/load.js", async (original) => {
   const real = await original<typeof import("../src/records/load.js")>();
@@ -843,10 +846,7 @@ describe("fix --publish", () => {
     const { dir, bare, branch } = await origin();
     const plan = await prepare(dir, { noTest: true });
     const value = await readPlan(plan);
-    const b64 = (s: string) =>
-      Buffer.from(s)
-        .toString("base64")
-        .replace(/(?<!=)=+$/, "");
+    const b64 = (s: string) => Buffer.from(s).toString("base64").replace(PADDING, "");
     const noise = Array.from({ length: 1000 }, (_, i) => `noise ${i}`).join("\n");
     const hostile = [
       noise,

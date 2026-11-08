@@ -266,8 +266,7 @@ async function runJob(id: string, pr: PullRequest, after?: string) {
   const outputs: Record<string, Record<string, string>> = {};
   const context = contextFor(pr);
   const value = (expr: string) => read(expr, outputs, context);
-  const expand = (s: string) =>
-    s.replace(EXPRESSION, (_, _space: string, e?: string, blank?: string) => value(e ?? blank!));
+  const expand = (s: string) => s.replace(EXPRESSION, (_, _s: string, e?: string, b?: string) => value(e ?? b!));
   const vars = (env: Record<string, string> = {}) =>
     Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expand(String(v))]));
   const machine = {

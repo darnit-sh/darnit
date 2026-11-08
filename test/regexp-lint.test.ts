@@ -33,11 +33,21 @@ describe("the regex rules", () => {
     );
   });
 
-  it("are errors in the config resolved for code in src/, scripts/ and test/, and for a .js file", async () => {
+  it("are errors in the config resolved for every file `eslint .` lints", async () => {
+    // eslint lists what it lints; with no rule run, the files need no types and the list takes seconds.
+    const listed = await new ESLint({
+      ruleFilter: () => false,
+      overrideConfig: { languageOptions: { parserOptions: { projectService: false } } },
+    }).lintFiles(["."]);
+    const files = listed.map((r) => relative(process.cwd(), r.filePath).replaceAll("\\", "/"));
+    expect(files).toEqual(expect.arrayContaining(["src/cli.ts", "scripts/allowlist.ts", "test/helpers.ts"]));
+    expect(files).toContain("eslint.config.js");
     const eslint = new ESLint();
-    for (const file of ["src/cli.ts", "scripts/allowlist.ts", "test/helpers.ts", "eslint.config.js"]) {
+    const off: string[] = [];
+    for (const file of files) {
       const { rules = {} } = (await eslint.calculateConfigForFile(file)) as { rules?: Record<string, unknown> };
-      expect([file, ...RULES.map((rule) => rules[rule])]).toEqual([file, [2], [2]]);
+      for (const rule of RULES) if (JSON.stringify(rules[rule]) !== "[2]") off.push(`${file} ${rule}`);
     }
+    expect(off).toEqual([]);
   });
 });

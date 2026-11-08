@@ -54,6 +54,8 @@ vi.mock("@ast-grep/napi", async (importOriginal) => {
 });
 
 // A short limit for the build and test runs, and a count of them, so a hung check costs a test half a second.
+// The = signs that pad base64 at the end, each run read once.
+const PADDING = /(?<!=)=+$/;
 const runs = vi.hoisted(() => ({ limitMs: undefined as number | undefined, count: 0 }));
 vi.mock("../src/tests.js", async (original) => {
   const real = await original<typeof import("../src/tests.js")>();
@@ -2277,10 +2279,7 @@ describe("fix --pr", () => {
   // RUNNER_TEMP and in their own environment, and print what git config shows.
   it("leaves the job token where the tests can't read it in the README workflow, and never shows it", async () => {
     const token = "ghs_fake_for_test";
-    const b64 = (s: string) =>
-      Buffer.from(s)
-        .toString("base64")
-        .replace(/(?<!=)=+$/, "");
+    const b64 = (s: string) => Buffer.from(s).toString("base64").replace(PADDING, "");
     const forms = [token, b64(`x-access-token:${token}`), b64(token)];
     const lab = await mkdtemp(join(tmpdir(), "darnit-lab-"));
     tempDirs.push(lab);
@@ -2833,12 +2832,8 @@ describe("fix --prepare", () => {
   const TOKEN = "ghp_fake0123456789abcdefghijklmnopqrstuv";
   const forms = [
     TOKEN,
-    Buffer.from(TOKEN)
-      .toString("base64")
-      .replace(/(?<!=)=+$/, ""),
-    Buffer.from(`x-access-token:${TOKEN}`)
-      .toString("base64")
-      .replace(/(?<!=)=+$/, ""),
+    Buffer.from(TOKEN).toString("base64").replace(PADDING, ""),
+    Buffer.from(`x-access-token:${TOKEN}`).toString("base64").replace(PADDING, ""),
   ];
   const readPlan = async (dir: string) => JSON.parse(await readFile(join(dir, "plan.json"), "utf8")) as Plan;
 
