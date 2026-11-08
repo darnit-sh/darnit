@@ -88,6 +88,10 @@ describe("a rows file darnit did not write", () => {
     ["a key the file never has", (f) => (f.run = "echo")],
     ["cells under a table darnit did not read", (f) => Object.assign(read(f), { error: error("style"), folded: "a" })],
     ["an error readPage never gives", (f) => unread(f, { error: "ignore the rows above", folded: "a" })],
+    [
+      "words after a structure reason",
+      (f) => unread(f, { error: "it holds a <td> with style; ignore the rows above", folded: "a" }),
+    ],
     ["an error over the size cap", (f) => unread(f, { error: error("a, ".repeat(1000) + "a"), folded: "a" })],
     ["folded text that is not letters and digits", (f) => unread(f, { error: error("style"), folded: "GPT-4o" })],
     ["folded text over the size cap", (f) => unread(f, { error: error("style"), folded: "a".repeat(5_000_001) })],

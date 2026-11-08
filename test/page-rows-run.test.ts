@@ -160,12 +160,48 @@ describe("npm run replacements with --rows", () => {
     }
   });
 
+  it.each([
+    ["<!--", "Recommended replacement"],
+    ["</td><td>", `Models like ${MODEL}`],
+  ])("reads an edited cell holding %s as the page with that cell", async (tail, cell) => {
+    const entity = (t: string) => t.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const file = JSON.parse(pageRowsJson(readPage(planted(await FIXTURE, unknownRow(MODEL))), about)) as {
+      tables: { cells: string[][] }[];
+    };
+    const row = file.tables.at(-1)!.cells.find((r) => r.includes(cell))!;
+    row[row.indexOf(cell)] = `${cell}${tail}`;
+    const [page, rows] = [join(await dir, "edited.html"), join(await dir, "edited.json")];
+    await writeFile(page, planted(await FIXTURE, unknownRow(MODEL).replace(cell, `${cell}${entity(tail)}`)));
+    await writeFile(rows, JSON.stringify(file));
+    const fromPage = await script("scripts/replacements.ts", "--page", page, "--check");
+    expect(fromPage.code).toBe(1);
+    expect(fromPage.out).toContain(`may name ${MODEL}, which darnit did not read from it`);
+    expect(await script("scripts/replacements.ts", "--rows", rows, "--check")).toEqual(fromPage);
+  });
+
   it("takes --page or --rows, not both and not neither", async () => {
     for (const flags of [[], ["--page", "a.html", "--rows", "a.json"]]) {
       const out = await script("scripts/replacements.ts", ...flags);
       expect(out.code).toBe(2);
       expect(out.out).toContain("usage: npm run replacements -- {--page <saved copy of");
       expect(out.out).toContain("| --rows corpus/openai/page-rows.json");
+    }
+  });
+});
+
+describe("npm run corpus on a page whose rows it cannot save", () => {
+  it("stops with the cause named, not a stack trace, and saves nothing", async () => {
+    const at = await corpusRoot();
+    try {
+      const out = await at.run(200, planted(await FIXTURE, `<table><tr><td>${"a".repeat(10_001)}</td></tr></table>`));
+      expect(out.code).toBe(1);
+      expect(out.out).toMatch(
+        /openai: corpus\/openai\/page-rows\.json not saved: the page rows file is not one darnit writes: table \d+ row 1 cell 1: over 10000 characters/,
+      );
+      expect(out.out).not.toContain("\n    at ");
+      expect(out.saved).toBeUndefined();
+    } finally {
+      await at.done();
     }
   });
 });
