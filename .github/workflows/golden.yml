@@ -23,6 +23,11 @@ on:
 permissions:
   contents: read
 
+# bash, not GitHub's default bash -e, so a step fails when any command in a pipe fails, not only the last.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   compare:
     runs-on: ubuntu-latest

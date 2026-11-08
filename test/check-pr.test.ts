@@ -243,8 +243,8 @@ const EXPRESSION = /\$\{\{(?=(\s*))\1(?:(\S(?:.*?\S)??)\s*|(?<=([^\S\n\r\u2028\u
 /**
  * Runs pr.yml's job `id` on `pr` as the runner would. Each run step gets the job's env, then what earlier steps
  * wrote to $GITHUB_ENV, then its own env, with the folders written to $GITHUB_PATH put before its PATH, and its
- * shell looked up on that PATH unless named by an absolute path. A step that names no shell runs with pipefail, on
- * purpose stricter than the runner's `bash -e`, so a failing command in a pipe fails it. Action steps do nothing:
+ * shell looked up on that PATH unless named by an absolute path. A step that names no shell runs as pr.yml's default
+ * `shell: bash` runs on the runner, with pipefail, so a failing command in a pipe fails it. Action steps do nothing:
  * the repo is the checkout, and node is on PATH. The install has nothing to install, so this repo's node_modules
  * stands in after it. `after`, when given, runs right after the install, as code of the change would if it had run
  * there.

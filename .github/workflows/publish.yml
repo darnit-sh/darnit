@@ -6,6 +6,11 @@ on:
 
 permissions: {}
 
+# bash, not GitHub's default bash -e, so a step fails when any command in a pipe fails, not only the last.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # Dependency code runs here, so this job gets no way to publish.
   build:
