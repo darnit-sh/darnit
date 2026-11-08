@@ -3,7 +3,7 @@ export async function ask(prompt) {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model: "gpt-6-luna",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 100,
     }),

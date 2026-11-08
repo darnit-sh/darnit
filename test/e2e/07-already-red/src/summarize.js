@@ -1,6 +1,6 @@
 export async function summarize(client, text) {
   const res = await client.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-6-luna",
     messages: [{ role: "user", content: `Summarize: ${text}` }],
     max_tokens: 256,
   });

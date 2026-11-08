@@ -18,7 +18,7 @@ export function plain(prompt, model = 'whisper-1') {
   return { model, modelName };
 }
 
-export const pick = (fast: boolean) => ({ model: fast ? "gpt-4o" : "gpt-4-32k" });
+export const pick = (fast: boolean) => ({ model: fast ? "gpt-test-model" : "gpt-4-32k" });
 export function fallback(opts: { model?: string }) {
   const model = opts.model ?? "gpt-3.5-turbo-0613";
   return model;

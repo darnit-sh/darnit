@@ -19,7 +19,7 @@ import {
   wholeRows,
 } from "../src/corpus/replacements.js";
 import { modelIds, parseSpec } from "../src/corpus/spec.js";
-import { loadRecords } from "../src/records/load.js";
+import { loadRecords, PACKS_DIR } from "../src/records/load.js";
 import { parseChangeRecord, recordModels, type ChangeRecord } from "../src/records/schema.js";
 
 const PAGE = "https://developers.openai.com/api/docs/deprecations";
@@ -28,6 +28,8 @@ const notes = (pairs: string) =>
 // Real rows from OpenAI's deprecations page, trimmed to its tables.
 const FIXTURE = readFile(new URL("./fixtures/deprecations.html", import.meta.url), "utf8");
 const SPEC = readFile(new URL("../corpus/openai/openapi.yaml", import.meta.url), "utf8");
+// Every model record is a shutdown, one pack folder each.
+const SHUTDOWNS = readdir(join(PACKS_DIR, "openai")).then((fs) => fs.filter((f) => f.includes("shut-down")).length);
 // Models the API accepts, in the crafted pages below.
 const KNOWN = new Set(["x-1", "y-1", "d-1", "b-1", "fam-latest"]);
 
@@ -741,7 +743,7 @@ describe("fix.models from the page", () => {
     expect(problems).toEqual([]);
     expect(pageMismatches(records, page)).toEqual([]);
     const shipped = records.filter((r) => recordModels(r).length > 0);
-    expect(shipped).toHaveLength(29);
+    expect(shipped).toHaveLength(await SHUTDOWNS);
     expect(
       shipped.filter((r) => JSON.stringify(r.fix?.models) !== JSON.stringify(models.get(r.id))).map((r) => r.id),
     ).toEqual([]);
@@ -924,7 +926,7 @@ describe("whole rows from the page", () => {
         if ((await readFile(join(packDir, rel), "utf8")) !== text) differ.push(`${record.id} ${rel}`);
     }
     expect(differ).toEqual([]);
-    expect(loaded).toHaveLength(29);
+    expect(loaded).toHaveLength(await SHUTDOWNS);
     expect(modelTitle(["a"], "2026-12-11")).toBe("a shut down on 2026-12-11");
     expect(modelTitle(["a", "b", "c"], "2026-12-11")).toBe("a, b and c shut down on 2026-12-11");
     expect(modelTitle(["a", "b", "c", "d", "e", "f", "g"], "2026-12-11")).toBe(

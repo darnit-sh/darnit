@@ -5,7 +5,7 @@ client = OpenAI()
 
 def summarize(text: str) -> str:
     res = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-test-model",
         messages=[{"role": "user", "content": text}],
         max_tokens=128,
     )

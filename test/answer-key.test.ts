@@ -103,7 +103,13 @@ describe("answer key for model-name mentions", () => {
     try {
       writeFileSync(
         join(dir, "probe.md"),
-        ["We use gpt-4o now.", "Deployment my_gpt-4 is ours.", "Ask the ada team.", 'Ask "ada" here.', ""].join("\n"),
+        [
+          "We use gpt-4o-test-model now.",
+          "Deployment my_gpt-4 is ours.",
+          "Ask the ada team.",
+          'Ask "ada" here.',
+          "",
+        ].join("\n"),
       );
       writeFileSync(join(dir, "probe.py"), "x = o1 + 1\n");
       // What a darnit without its word, letters-only and code-name skips would report.
