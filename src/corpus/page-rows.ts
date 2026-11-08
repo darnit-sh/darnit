@@ -74,17 +74,15 @@ export function wholeRowRecords(records: readonly ChangeRecord[], page: Page, da
 
 /**
  * One item for npm run accounting per shutdown date and model of the page's model rows, keyed "page <date> <model>",
- * with the ids of the vendor's records that detect the model. Every other row of a table headed "Shutdown date", such
- * as an endpoint, an API or a row darnit reads no model from, is an item too, keyed by its second cell and detected by
- * no record, so no row of such a table goes unaccounted.
+ * with the ids of the vendor's records that detect the model. Every other row of a table, below its first, is an item
+ * too, keyed by the date in its first cell and the text of its second, and detected by no record: an endpoint, an API,
+ * a dated update, or a row whose models darnit cannot read. So no row of any table goes unaccounted, whatever its
+ * table's header says.
  */
 export function pageItems(page: Page, records: readonly ChangeRecord[], vendor: string) {
   const detecting = detectedBy(records, vendor);
-  const shutdownTables = new Set(
-    page.rows.filter((r) => r.label.endsWith(" row 1") && r.cells[0]?.toLowerCase() === "shutdown date").map(tableOf),
-  );
   const items = new Map<string, string[]>();
-  for (const row of page.rows.filter((r) => !r.label.endsWith(" row 1") && shutdownTables.has(tableOf(r)))) {
+  for (const row of page.rows.filter((r) => !r.label.endsWith(" row 1"))) {
     const at = `page ${shutdownDate(row.cells[0] ?? "") ?? "no date read"}`;
     if (!row.models) items.set(`${at} ${row.cells[1] || row.cells.join(" | ")}`, []);
     for (const m of row.models ?? []) items.set(`${at} ${m}`, detecting.get(m) ?? []);
@@ -99,8 +97,6 @@ function detectedBy(records: readonly ChangeRecord[], vendor: string) {
     if (r.vendor === vendor) for (const m of recordModels(r)) detecting.set(m, [...(detecting.get(m) ?? []), r.id]);
   return detecting;
 }
-
-const tableOf = (row: { label: string }) => row.label.slice(0, row.label.lastIndexOf(" row "));
 
 /**
  * What npm run replacements --check finds between the records and the page, but for the shape of a record's files:

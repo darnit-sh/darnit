@@ -59,17 +59,13 @@ describe("pageItems", () => {
     ]);
   });
 
-  it("keeps every other row of a shutdown table as an item no record detects, and leaves other tables out", () => {
+  it("keeps every other row of every table as an item no record detects, whatever the header says", () => {
     const shutdowns = table([
       ["2027-03-01", "Assistants API", "Responses API"],
       ["2027-03-01", "zzq-a and zzq-b", "zzq-new"],
       ["2027-03-01", "zzq-c (1M context)", "zzq-new"],
       ["2024-10-28", "New fine-tuning training on zzq-one", "zzq-new"],
     ]);
-    const noReplacements = readPage(
-      "<table><tr><th>Shutdown date</th><th>Endpoint</th></tr><tr><td>2027-05-01</td><td>/v1/zzq</td></tr></table>",
-    );
-    const other = readPage("<table><tr><th>Model</th><th>Price</th></tr><tr><td>zzq-one</td><td>1</td></tr></table>");
     const records = [record("zzq-one")];
     expect(pageItems(shutdowns, records, "openai")).toEqual([
       { key: "page 2027-03-01 Assistants API", ids: [] },
@@ -77,8 +73,31 @@ describe("pageItems", () => {
       { key: "page 2027-03-01 zzq-c (1M context)", ids: [] },
       { key: "page 2024-10-28 New fine-tuning training on zzq-one", ids: [] },
     ]);
-    expect(pageItems(noReplacements, records, "openai")).toEqual([{ key: "page 2027-05-01 /v1/zzq", ids: [] }]);
-    expect(pageItems(other, records, "openai")).toEqual([]);
+    // Headers darnit does not read models under: a no-break space, a note mark, another name, the model first, a
+    // dated update, and a title row above the header.
+    const rows = "<tr><td>2027-03-01</td><td>zzq-a</td><td>zzq-new</td></tr>";
+    for (const head of [
+      "<th>Shutdown&nbsp;date</th><th>Model</th><th>Recommended replacement</th>",
+      "<th>Shutdown date*</th><th>Model</th><th>Recommended replacement</th>",
+      "<th>Retirement date</th><th>Model</th><th>Recommended replacement</th>",
+      "<th>Date</th><th>Update</th><th>Note</th>",
+      "<th>Models</th></tr><tr><th>Shutdown date</th><th>Model</th><th>Recommended replacement</th>",
+    ]) {
+      const page = readPage(`<table><tr>${head}</tr>${rows}</table>`);
+      expect(pageItems(page, records, "openai"), head).toContainEqual({ key: "page 2027-03-01 zzq-a", ids: [] });
+    }
+    const modelFirst = readPage(
+      "<table><tr><th>Model</th><th>Shutdown date</th></tr><tr><td>zzq-one</td><td>2027-03-01</td></tr></table>",
+    );
+    expect(pageItems(modelFirst, records, "openai")).toEqual([{ key: "page no date read 2027-03-01", ids: [] }]);
+    // A row with no second cell's text is keyed by all of it.
+    const bare = readPage(
+      "<table><tr><th>Date</th></tr><tr><td>2027-03-01</td></tr><tr><td>2027-04-01</td><td></td></tr></table>",
+    );
+    expect(pageItems(bare, records, "openai")).toEqual([
+      { key: "page 2027-03-01 2027-03-01", ids: [] },
+      { key: "page 2027-04-01 2027-04-01 | ", ids: [] },
+    ]);
   });
 });
 
