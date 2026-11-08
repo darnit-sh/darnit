@@ -1,6 +1,17 @@
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { recordModels, type ChangeRecord } from "../records/schema.js";
-import { MAX_CELL, modelDetection, ONLY, readPage, TABLE_ERRORS, wholeRows, type Page } from "./replacements.js";
+import {
+  MAX_CELL,
+  modelDetection,
+  ONLY,
+  pageMismatches,
+  readPage,
+  replacementsFor,
+  TABLE_ERRORS,
+  wholeRows,
+  type Page,
+} from "./replacements.js";
 
 // The tables darnit reads from a vendor's deprecations page, saved as corpus/<vendor>/page-rows.json so the page is
 // fetched once a week by the corpus job and every other run reads a committed file. The file holds each read table's
@@ -58,6 +69,42 @@ export function wholeRowRecords(records: readonly ChangeRecord[], page: Page, da
     return ids && oneModelRecord(r) ? { ...r, detection: modelDetection(ids) } : r;
   });
   return { whole, records: checked };
+}
+
+/**
+ * Each shutdown date and model of the page's model rows, keyed as "page <date> <model>" for npm run accounting, with
+ * the ids of the vendor's records that detect the model.
+ */
+export function pageModels(page: Page, records: readonly ChangeRecord[], vendor: string) {
+  const detecting = new Map<string, string[]>();
+  for (const r of records)
+    if (r.vendor === vendor) for (const m of recordModels(r)) detecting.set(m, [...(detecting.get(m) ?? []), r.id]);
+  const items = new Map<string, string[]>();
+  for (const row of page.rows)
+    for (const m of row.models ?? []) items.set(`page ${row.shutdown ?? "no date read"} ${m}`, detecting.get(m) ?? []);
+  return [...items].map(([key, ids]) => ({ key, ids }));
+}
+
+/**
+ * The records whose notes or replacements are not what the page gives, read as npm run replacements --check reads
+ * them: pageMismatches, and each record whose fix.models differs from what replacementsFor gives it.
+ */
+export function staleRecords(
+  records: readonly ChangeRecord[],
+  page: Page,
+  lists: { known: ReadonlySet<string>; notModels: ReadonlySet<string>; wholeDates: ReadonlySet<string> },
+): string[] {
+  const { models } = replacementsFor(
+    wholeRowRecords(records, page, lists.wholeDates).records,
+    page,
+    lists.known,
+    lists.notModels,
+  );
+  const fixes = records.filter((r) => models.has(r.id) && !isDeepStrictEqual(r.fix?.models, models.get(r.id)));
+  return [
+    ...pageMismatches(records, page),
+    ...fixes.map((r) => `${r.id}: its replacements are not what the page gives`),
+  ];
 }
 
 const MAX_COLUMNS = 50;

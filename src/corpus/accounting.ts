@@ -291,6 +291,7 @@ export function account(input: {
   notCovered: NotCovered;
   /** "POST /chat/completions" -> "chat.completions.create", as in vendors.yml */
   symbols?: Record<string, string> | undefined;
+  pageModels?: { key: string; ids: string[] }[] | undefined;
 }): Accounting {
   const { vendor, spec, records } = input;
   const deprecated = deprecatedItems(spec);
@@ -354,8 +355,7 @@ export function account(input: {
     );
   };
 
-  const entries = new Map<string, NotCovered[number]>();
-  for (const e of input.notCovered) for (const key of e.items) entries.set(key, e);
+  const entries = new Map(input.notCovered.flatMap((e) => e.items.map((key) => [key, e] as const)));
   const result: Accounting = {
     deprecated: deprecated.length,
     removals: removals.length,
@@ -368,9 +368,9 @@ export function account(input: {
     contradicted: [],
   };
   const known = new Set<string>();
-  for (const item of [...deprecated, ...removals]) {
+  for (const item of [...deprecated, ...removals, ...(input.pageModels ?? [])]) {
     known.add(item.key);
-    const ids = coveredBy(item).map((r) => r.id);
+    const ids = "ids" in item ? item.ids : coveredBy(item).map((r) => r.id);
     const entry = entries.get(item.key);
     if (ids.length > 0) {
       result.covered.set(item.key, ids);
