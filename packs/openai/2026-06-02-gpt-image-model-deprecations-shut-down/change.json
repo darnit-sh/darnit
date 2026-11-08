@@ -120,7 +120,7 @@
     }
   ],
   "notes": {
-    "migration": "OpenAI removes these models from the API on 2026-12-01: gpt-image-1-mini, gpt-image-1.5, chatgpt-image-latest. Calls that name them fail after that date. Recommended replacements: gpt-image-1-mini to gpt-image-2.5-sunburst or gpt-image-2.5-flare; gpt-image-1.5 to gpt-image-2.5-sunburst or gpt-image-2.5-flare; chatgpt-image-latest to gpt-image-2.5-sunburst or gpt-image-2.5-flare. A newer model can answer differently, so test the switch rather than only renaming.",
+    "migration": "OpenAI removes these models from the API on 2026-12-01: gpt-image-1-mini, gpt-image-1.5, chatgpt-image-latest. Calls that name them fail after that date. Recommended replacements: gpt-image-1-mini to gpt-image-2.6-sunburst or gpt-image-2.6-flare; gpt-image-1.5 to gpt-image-2.6-sunburst or gpt-image-2.6-flare; chatgpt-image-latest to gpt-image-2.6-sunburst or gpt-image-2.6-flare. A newer model can answer differently, so test the switch rather than only renaming.",
     "edgeCases": [
       "A model name read from an environment variable, a config file or a variable set elsewhere is not found.",
       "A model key nested inside another option of the call, such as metadata, is reported too.",
@@ -188,15 +188,15 @@
   "fix": {
     "models": {
       "gpt-image-1-mini": {
-        "human": "not a plain swap: OpenAI recommends gpt-image-2.5-sunburst or gpt-image-2.5-flare",
+        "human": "not a plain swap: OpenAI recommends gpt-image-2.6-sunburst or gpt-image-2.6-flare",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "gpt-image-1.5": {
-        "human": "not a plain swap: OpenAI recommends gpt-image-2.5-sunburst or gpt-image-2.5-flare",
+        "human": "not a plain swap: OpenAI recommends gpt-image-2.6-sunburst or gpt-image-2.6-flare",
         "source": "https://developers.openai.com/api/docs/deprecations"
       },
       "chatgpt-image-latest": {
-        "human": "not a plain swap: OpenAI recommends gpt-image-2.5-sunburst or gpt-image-2.5-flare",
+        "human": "not a plain swap: OpenAI recommends gpt-image-2.6-sunburst or gpt-image-2.6-flare",
         "source": "https://developers.openai.com/api/docs/deprecations"
       }
     }
