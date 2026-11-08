@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { account, readRemovals } from "../src/corpus/accounting.js";
 import type { VendorConfig } from "../src/corpus/candidates.js";
-import { parseSpec } from "../src/corpus/spec.js";
+import { listLines, pageDisagreements, pageItems, readPageRows } from "../src/corpus/page-rows.js";
+import { modelIds, parseSpec } from "../src/corpus/spec.js";
 import { forTerminal } from "../src/fix.js";
 import { loadRecords } from "../src/records/load.js";
 import {
@@ -12,6 +13,7 @@ import {
   notesSection,
   openEntries,
   parseFlags,
+  pageTooOld,
   readNotCovered,
   refuseExisting,
   writeNotes,
@@ -21,10 +23,14 @@ import { show } from "./show.js";
 // Every deprecation in each vendor's spec and every removal in its corpus history is either covered
 // by a record or listed in packs/<vendor>/not-covered.yaml with the reason it has none. Exit 1 on
 // anything unaccounted for, and on entries that name an item no longer there or one a record covers.
-// Items marked needs-record stay open and are listed on every run, soonest date first.
+// Items marked needs-record stay open and are listed on every run, soonest date first. For a vendor whose
+// deprecations page vendors.yml names, each row of corpus/<vendor>/page-rows.json is an item too, one per model for a
+// model row, and anything npm run replacements --check finds between the records and those rows fails the run.
+// Nothing is fetched: the weekly corpus run saves the rows.
 // --root <dir> reads vendors.yml, corpus/ and packs/ from another folder.
 // --final, for a final release, also exits 1 when a vendor has more open items than packs/<vendor>/record-ceiling.txt
-// allows or the accounting fails, and --notes <file> with it writes the open items as Markdown for the release notes
+// allows, the accounting fails, or a vendor's page-rows.json was fetched over 14 days before today or is dated after
+// it, and --notes <file> with it writes the open items as Markdown for the release notes
 // to a new file, on a pass only. Any other flag, or a misspelled one, exits 2.
 
 let flags: ReturnType<typeof parseFlags>;
@@ -43,21 +49,41 @@ const verdicts: string[] = [];
 // spec text (a YAML error quotes the line it stopped at), is shown quoted and escaped like an item.
 try {
   if (flags.notes !== undefined) await refuseExisting(flags.notes);
-  const vendors = parseYaml(await readFile(join(ROOT, "vendors.yml"), "utf8")) as Record<string, VendorConfig>;
+  const vendors = parseYaml(await readFile(join(ROOT, "vendors.yml"), "utf8")) as Record<
+    string,
+    VendorConfig & { page?: string }
+  >;
   const records = (await loadRecords(join(ROOT, "packs"))).map((l) => l.record);
 
   for (const [vendor, config] of Object.entries(vendors)) {
     const notCoveredFile = `packs/${vendor}/not-covered.yaml`;
+    const rowsFile = `corpus/${vendor}/page-rows.json`;
+    const corpus = (file: string) => readFile(join(ROOT, "corpus", vendor, file), "utf8");
+    const spec = parseSpec(await corpus("openapi.yaml"));
+    const rows = config.page === undefined ? undefined : readPageRows(await corpus("page-rows.json"), config.page);
+    const page = rows && pageItems(rows.page, records, vendor);
     const result = account({
       vendor,
-      spec: parseSpec(await readFile(join(ROOT, "corpus", vendor, "openapi.yaml"), "utf8")),
+      spec,
       removals: await readRemovals(join(ROOT, "corpus", vendor, "removals.json")),
       records,
       notCovered: await readNotCovered(ROOT, vendor),
       symbols: config.symbols,
+      pageItems: page,
     });
+    const list = async (file: string) => new Set(listLines(await corpus(file).catch(() => "")));
+    const disagreements = rows
+      ? pageDisagreements(records, rows.page, {
+          known: modelIds(spec),
+          notModels: await list("non-model-rows.txt"),
+          wholeDates: await list("whole-rows.txt"),
+        })
+      : [];
+    const onPage = rows
+      ? `, ${page!.length} item${page!.length === 1 ? "" : "s"} on the deprecations page fetched ${rows.fetchedAt}`
+      : "";
     out.push(
-      `${vendor}: ${result.deprecated} deprecated in the spec, ${result.removals} removals in the corpus history`,
+      `${vendor}: ${result.deprecated} deprecated in the spec, ${result.removals} removals in the corpus history${onPage}`,
     );
     out.push(
       `  ${result.covered.size} covered by records, ${result.reasons.length} with a reason, ${result.needsRecord.length} need a record, ${result.unaccounted.length} unaccounted for`,
@@ -83,12 +109,29 @@ try {
       `Reasons in ${notCoveredFile} that the spec or the corpus history contradicts (correct them):`,
       result.contradicted.map(show),
     );
+    section(
+      `Where the records and ${rowsFile} disagree, as npm run replacements -- --rows ${rowsFile} --check finds it (correct the records):`,
+      disagreements.map(show),
+    );
     const failed =
-      result.unaccounted.length + result.stale.length + result.redundant.length + result.contradicted.length > 0;
+      result.unaccounted.length +
+        result.stale.length +
+        result.redundant.length +
+        result.contradicted.length +
+        disagreements.length >
+      0;
     if (failed) process.exitCode = 1;
     if (flags.final) {
-      const items = result.deprecated + result.removals;
-      const verdict = await judgeCeiling({ root: ROOT, vendor, open: result.needsRecord.length, items, failed });
+      const items = result.deprecated + result.removals + (page?.length ?? 0);
+      const tooOld = rows && pageTooOld(rowsFile, rows.fetchedAt, new Date().toISOString().slice(0, 10));
+      const verdict = await judgeCeiling({
+        root: ROOT,
+        vendor,
+        open: result.needsRecord.length,
+        items,
+        failed,
+        tooOld,
+      });
       verdicts.push(verdict.line);
       if (!verdict.ok) process.exitCode = 1;
       notes.push(...notesSection(vendor, open));

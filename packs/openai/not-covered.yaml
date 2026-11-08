@@ -1,5 +1,6 @@
-# Every item OpenAI's spec marks deprecated, and every removal the corpus history logged, that no
-# change record covers, with the reason it has none. `npm run accounting` checks this file against
+# Every item OpenAI's spec marks deprecated, every removal the corpus history logged, and every
+# row of the deprecations page rows in corpus/openai/page-rows.json, that no change record covers,
+# with the reason it has none. `npm run accounting` checks this file against
 # corpus/openai: an item missing from it fails, and so does an entry for an item that is gone or
 # that a record now covers. An entry with needs-record instead of reason stays open and is listed
 # on every run, soonest date first, with the record it should get; date is the day OpenAI gives
@@ -8,7 +9,9 @@
 # Keys are what `npm run accounting` prints, quoted the same way. Records cover items on their own
 # when they can: an operation by a record for its endpoint or SDK call; a request schema or one of
 # its properties when every operation whose request reaches it has a record, for that field when
-# there is one; and an enum value when a record for a field that holds it names that value.
+# there is one; an enum value when a record for a field that holds it names that value; and a
+# model of a page row when a record detects it. A page row with no model is keyed by its cells as
+# JSON, so its key is written here in double quotes with JSON's escapes.
 #
 # A reason says only what a command shows: `darnit check` on a sample call, or a comparison of the
 # spec snapshots in git history.
@@ -286,6 +289,172 @@
     Deprecation, report-only. Finds geography in raw HTTP calls to /v1/organization/projects; the
     SDKs do not cover the Administration API. The spec says to use residency instead, at project
     creation only.
+
+# Deprecations page items still open
+
+- items:
+    - page 2026-10-23 ft-o4-mini-2025-04-16
+  date: "2026-10-23"
+  needs-record: >-
+    Add to openai:2026-04-22:legacy-gpt-model-snapshots-shut-down, which shuts down on the same
+    date and detects o4-mini-2025-04-16 but not this model.
+
+- items:
+    - page 2026-12-01 gpt-image-1.5-2025-12-16
+  date: "2026-12-01"
+  needs-record: >-
+    Add to openai:2026-06-02:gpt-image-model-deprecations-shut-down, which shuts down on the same
+    date and detects the alias gpt-image-1.5 but not this snapshot.
+
+- items:
+    - page 2027-01-06 gpt-4o-mini-tts
+  date: "2027-01-06"
+  needs-record: >-
+    Add to openai:2026-10-01:text-to-speech-models-shut-down, which shuts down on the same date and
+    detects both dated gpt-4o-mini-tts snapshots but not the alias.
+
+- items:
+    - page 2027-01-20 gpt-realtime-2025-08-28
+    - page 2027-01-20 gpt-audio-2025-08-28
+    - page 2027-01-20 gpt-realtime-mini-2025-12-15
+    - page 2027-01-20 gpt-audio-mini-2025-12-15
+  date: "2027-01-20"
+  needs-record: >-
+    Add to openai:2026-07-20:legacy-audio-realtime-and-transcription-models-shut-down, which shuts
+    down on the same date and detects the aliases gpt-realtime, gpt-audio, gpt-realtime-mini and
+    gpt-audio-mini but not these snapshots.
+
+- items:
+    - page 2027-02-01 gpt-5.5-cyber-preview
+  date: "2027-02-01"
+  needs-record: >-
+    A new record for gpt-5.5-cyber-preview, which shuts down on this date; the page names no
+    single replacement model.
+
+- items:
+    - page 2027-02-26 gpt-4o-mini-transcribe-2025-12-15
+  date: "2027-02-26"
+  needs-record: >-
+    Add to openai:2026-08-26:transcription-models-shut-down, which shuts down on the same date and
+    detects the alias gpt-4o-mini-transcribe but not this snapshot.
+
+- items:
+    - page 2027-04-01 gpt-5.4-nano-2026-03-17
+    - page 2027-04-01 gpt-5.1-2025-11-13
+  date: "2027-04-01"
+  needs-record: >-
+    Add to openai:2026-10-01:gpt-5-3-codex-gpt-5-1-gpt-5-4-nano-shut-down, which shuts down on the
+    same date and detects the aliases gpt-5.4-nano and gpt-5.1 but not these snapshots.
+
+- items:
+    - "page 2026-09-24 row [\"Videos API\",\"\u2014\"]"
+  date: "2026-09-24"
+  needs-record: >-
+    A report-only endpoint record for every Videos API call, as the spec items for /videos ask;
+    openai:2026-03-24:sora-2-video-generation-models-and-videos-api-shut-down finds only the model
+    names.
+
+- items:
+    - "page 2026-08-26 row [\"Assistants API\",\"Responses API and Conversations API\"]"
+  date: "2026-08-26"
+  needs-record: >-
+    A report-only endpoint record for every Assistants API call, as the spec item POST /assistants
+    asks.
+
+- items:
+    - "page 2026-05-12 row [\"OpenAI-Beta: realtime=v1\",\"Realtime API\"]"
+  date: "2026-05-12"
+  needs-record: >-
+    A record for the OpenAI-Beta: realtime=v1 header that the beta Realtime API takes; the Realtime
+    API replaces it.
+
+- items:
+    - "page 2024-12-18 row [\"OpenAI-Beta: assistants=v1\",\"OpenAI-Beta: assistants=v2\"]"
+  date: "2024-12-18"
+  needs-record: >-
+    A record for the OpenAI-Beta: assistants=v1 header; OpenAI-Beta: assistants=v2 replaces it.
+
+- items:
+    - "page 2024-01-04 row [\"/v1/fine-tunes\",\"/v1/fine_tuning/jobs\"]"
+    - "page 2024-01-04 row [\"/v1/edits\",\"/v1/chat/completions\"]"
+  date: "2024-01-04"
+  needs-record: >-
+    A report-only endpoint record for raw HTTP calls to /v1/fine-tunes and /v1/edits, which OpenAI
+    removed; the page names /v1/fine_tuning/jobs and /v1/chat/completions instead.
+
+- items:
+    - "page 2022-12-03 row [\"/v1/engines\",\"/v1/models\"]"
+    - "page 2022-12-03 row [\"/v1/search\",\"View transition guide\"]"
+    - "page 2022-12-03 row [\"/v1/classifications\",\"View transition guide\"]"
+    - "page 2022-12-03 row [\"/v1/answers\",\"View transition guide\"]"
+  date: "2022-12-03"
+  needs-record: >-
+    A report-only endpoint record for raw HTTP calls to /v1/engines, /v1/search, /v1/classifications
+    and /v1/answers, which OpenAI removed.
+
+- items:
+    - "page 2026-06-03 row [\"Deprecation announced and prompt creation de-emphasized in the platform.\"]"
+    - "page 2026-11-30 row [\"The v1/prompts API and reusable prompt objects are scheduled to shut down.\"]"
+  date: "2026-11-30"
+  needs-record: >-
+    A record for the v1/prompts API and reusable prompt objects, which shut down on this date; the
+    other row announced it.
+
+- items:
+    - "page 2026-06-03 row [\"Deprecation announced for the Evals platform.\"]"
+    - "page 2026-10-31 row [\"Existing evals become read-only.\"]"
+    - "page 2026-11-30 row [\"The Evals dashboard and API are scheduled to shut down.\"]"
+  date: "2026-11-30"
+  needs-record: >-
+    A record for the Evals dashboard and API, which shut down on this date; existing evals are read-
+    only from 2026-10-31, and the other row announced it.
+
+- items:
+    - "page 2026-06-03 row [\"Deprecation announced for Agent Builder.\"]"
+    - "page 2026-11-30 row [\"Agent Builder is scheduled to shut down.\"]"
+  date: "2026-11-30"
+  needs-record: >-
+    A record for Agent Builder, which shuts down on this date, for any call to it darnit can find;
+    the other row announced it.
+
+- items:
+    - "page 2026-05-07 row [\"Creating fine-tuning jobs or training is not available to organizations that have not previously run fine-tuning.\"]"
+    - "page 2026-07-02 row [\"Creating fine-tuning jobs is no longer available to organizations that have not run inference on a fine-tuned model in the past 60 days.\"]"
+    - "page 2027-01-06 row [\"Active existing customers will no longer be able to create new fine-tuning jobs on this date. Inference on fine-tuned models will be disabled only when the underlying base model is deprecated.\"]"
+  date: "2027-01-06"
+  needs-record: >-
+    A record for fine_tuning.jobs.create: OpenAI stops new fine-tuning jobs, first for organizations
+    that have not run fine-tuning or used a fine-tuned model lately, then for every existing
+    customer on this date.
+
+# Deprecations page items with no record needed
+
+- items:
+    - "page 2027-02-26 row [\"/v1/audio/translations\",\"v1/realtime/translations\"]"
+  reason: >-
+    openai:2026-08-26:audio-translations-deprecated reports every audio.translations.create call for
+    this removal, as `darnit check` shows on a sample call.
+
+- items:
+    - "page 2024-10-28 row [\"New fine-tuning training on babbage-002\",\"gpt-4o-mini\"]"
+    - "page 2024-10-28 row [\"New fine-tuning training on davinci-002\",\"gpt-4o-mini\"]"
+  reason: >-
+    openai:2025-09-26:legacy-gpt-model-snapshots-shut-down reports babbage-002 and davinci-002 in
+    every call, a fine_tuning.jobs.create call included, as `darnit check` shows on a sample call;
+    both models shut down on 2026-09-28.
+
+- items:
+    - "page no date read row [\"Shutdown date\",\"Model / system\",\"Recommended replacement\"]"
+    - "page no date read row [\"Shutdown date\",\"Model family / snapshot\",\"Recommended replacement\"]"
+    - "page no date read row [\"Date\",\"Update\"]"
+    - "page no date read row [\"Shutdown date\",\"Model snapshot\",\"Substitute model\"]"
+    - "page no date read row [\"Shutdown date\",\"Deprecated model\",\"Deprecated model price\",\"Recommended replacement\"]"
+    - "page no date read row [\"Shutdown date\",\"System\",\"Recommended replacement\"]"
+    - "page no date read row [\"Shutdown date\",\"Deprecated model\",\"Training price\",\"Usage price\",\"Recommended replacement\"]"
+    - "page no date read row [\"Shutdown date\",\"Legacy model\",\"Legacy model price\",\"Recommended replacement\"]"
+    - "page no date read row [\"Shutdown date\",\"Deprecated model\",\"Recommended replacement\"]"
+  reason: >-
+    A table's header row, which names its columns and retires nothing.
 
 # Spec deprecations with no record needed
 
