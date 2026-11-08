@@ -1,13 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { createServer, type RequestListener, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
-import { fetchPage, PAGE_LIMITS, pageRowsJson, readPageRows, unreadable } from "../src/corpus/page-rows.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fetchPage, PAGE_LIMITS, unreadable, wholeRowRecords } from "../src/corpus/page-rows.js";
 import { readPage } from "../src/corpus/replacements.js";
 import { loadRecords } from "../src/records/load.js";
+import { recordModels } from "../src/records/schema.js";
 
 const FIXTURE = readFile(new URL("./fixtures/deprecations.html", import.meta.url), "utf8");
-const about = { source: "https://developers.openai.com/api/docs/deprecations", fetchedAt: "2026-11-08" };
 
 const servers: Server[] = [];
 afterEach(() => {
@@ -34,6 +34,11 @@ describe("fetchPage", () => {
     await expect(fetchPage(url, limits)).rejects.toThrow(`${url} answered 500, not 200`);
   });
 
+  it("fails on a redirect rather than reading another address than the one it saves", async () => {
+    const url = await serve((_, res) => res.writeHead(302, { location: "http://127.0.0.1:1/elsewhere" }).end());
+    await expect(fetchPage(url, limits)).rejects.toThrow(`could not fetch ${url}: fetch failed (unexpected redirect)`);
+  });
+
   it("fails when the page sends nothing, or stops halfway, within the time limit", async () => {
     const silent = await serve(() => undefined);
     await expect(fetchPage(silent, limits)).rejects.toThrow(`${silent} did not answer within 0.3 seconds`);
@@ -48,71 +53,39 @@ describe("fetchPage", () => {
     await expect(fetchPage(tiny, limits)).rejects.toThrow(`${tiny} sent 99 bytes, under the 100`);
   });
 
+  it("stops reading an endless body as soon as it passes the size limit, long before the time limit", async () => {
+    const endless = await serve((_, res) => {
+      const timer = setInterval(() => res.write("x".repeat(1000)), 5);
+      res.on("close", () => clearInterval(timer));
+    });
+    const start = Date.now();
+    await expect(fetchPage(endless, { ...limits, timeoutMs: 10_000, maxBytes: 20_000 })).rejects.toThrow(
+      `${endless} sent over 20000 bytes`,
+    );
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
   it("fails when nothing answers at the address", async () => {
     const url = await serve(() => undefined);
     servers.pop()!.close();
     await expect(fetchPage(url, limits)).rejects.toThrow(`could not fetch ${url}`);
   });
 
-  it("takes the repository's copy of the page as plausible by default", async () => {
-    const size = Buffer.byteLength(await FIXTURE);
-    expect(size).toBeGreaterThanOrEqual(PAGE_LIMITS.minBytes);
-    expect(size).toBeLessThanOrEqual(PAGE_LIMITS.maxBytes);
-  });
-});
-
-describe("the rows file", () => {
-  it("gives back the page readPage read: its tables, rows and replacements, in page order", async () => {
-    const page = readPage(await FIXTURE);
-    const back = readPageRows(pageRowsJson(page, about));
-    expect(back.page).toStrictEqual(page);
-    expect([...back.page.replacements]).toEqual([...page.replacements]);
-    expect(back).toMatchObject(about);
-    expect(page.rows.filter((r) => r.models).length).toBeGreaterThan(0);
-  });
-
-  it("is the same bytes for the same page, with every key sorted", async () => {
-    const json = pageRowsJson(readPage(await FIXTURE), about);
-    expect(pageRowsJson(readPage(await FIXTURE), about)).toBe(json);
-    const unsorted: string[] = [];
-    JSON.parse(json, (key, value: unknown) => {
-      const keys = value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value) : [];
-      if (keys.join() !== [...keys].sort().join()) unsorted.push(key);
-      return value;
-    });
-    expect(unsorted).toEqual([]);
-    expect(json.endsWith("}\n")).toBe(true);
-  });
-
-  it("shows a changed replacement only in its own row and table", async () => {
-    const html = await FIXTURE;
-    const changed = html.replace("<td><code>gpt-6-luna</code></td> </tr>", "<td><code>gpt-6-sol</code></td> </tr>");
-    const [before, after] = [html, changed].map((h) => pageRowsJson(readPage(h), about).split("\n"));
-    expect(after).toHaveLength(before!.length);
-    const diff = after!.flatMap((line, i) => (line === before![i] ? [] : [line.trim().split(":")[0]]));
-    // The table's folded text, then the row's folded text, the model it reads and its replacement cell.
-    expect(diff).toEqual(['"folded"', '"folded"', '"gpt-6-sol"', '"replacement"']);
-  });
-
-  it("refuses a file holding what readPage never gives", async () => {
-    type File = { tables: { error?: string; rows: Record<string, unknown>[] }[] };
-    const json = pageRowsJson(readPage(await FIXTURE), about);
-    const row = (f: File) => f.tables[0]!.rows[1]!;
-    const bad: [string, (f: File) => void][] = [
-      ["markup in a replacement", (f) => (row(f).replacement = "<script>alert(1)</script>")],
-      ["a control character in a replacement", (f) => (row(f).replacement = "gpt-6‮")],
-      ["a model that is no model id", (f) => (row(f).models = ["GPT 4o; rm -rf /"])],
-      ["a model row with no replacement", (f) => delete row(f).replacement],
-      ["a replacement on a row with no models", (f) => delete row(f).models],
-      ["a key readPage never writes", (f) => (row(f).run = "echo")],
-      ["rows under a table darnit did not read", (f) => (f.tables[0]!.error = "it holds a <td> with style")],
-    ];
-    for (const [why, plant] of bad) {
-      const file = JSON.parse(json) as File;
-      plant(file);
-      expect(() => readPageRows(JSON.stringify(file)), why).toThrow("page rows file");
+  it("holds the shipped limits by default: 30 seconds, 10,000 to 5,000,000 bytes", async () => {
+    expect(PAGE_LIMITS).toEqual({ timeoutMs: 30_000, minBytes: 10_000, maxBytes: 5_000_000 });
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    try {
+      const small = await serve((_, res) => res.end("x".repeat(9_999)));
+      await expect(fetchPage(small)).rejects.toThrow(`${small} sent 9999 bytes, under the 10000`);
+      expect(timeout).toHaveBeenCalledWith(30_000);
+      const large = await serve((_, res) => res.end("x".repeat(5_000_001)));
+      await expect(fetchPage(large)).rejects.toThrow(`${large} sent over 5000000 bytes`);
+      const size = Buffer.byteLength(await FIXTURE);
+      expect(size).toBeGreaterThanOrEqual(PAGE_LIMITS.minBytes);
+      expect(size).toBeLessThanOrEqual(PAGE_LIMITS.maxBytes);
+    } finally {
+      timeout.mockRestore();
     }
-    expect(() => readPageRows("not json")).toThrow("page rows file");
   });
 });
 
@@ -125,5 +98,19 @@ describe("unreadable", () => {
     expect(unreadable(readPage("<p>Moved</p>"), records, known, new Set())).toEqual([
       "darnit read no model row from the page",
     ]);
+  });
+});
+
+describe("wholeRowRecords", () => {
+  it("has the record of a listed date detect every model of that date's rows, and leaves the rest as loaded", async () => {
+    const records = (await loadRecords()).map((l) => l.record);
+    const html = (await FIXTURE).replace(
+      "<td><code>gpt-5</code> | <code>gpt-5-2025-08-07</code></td>",
+      "<td><code>gpt-5</code> | <code>gpt-5-2025-08-07</code> | <code>zzq-9</code></td>",
+    );
+    const checked = wholeRowRecords(records, readPage(html), new Set(["2026-12-11"])).records;
+    const changed = checked.filter((r, i) => r !== records[i]);
+    expect(changed.map((r) => r.effectiveAt)).toEqual(["2026-12-11"]);
+    expect(recordModels(changed[0]!)).toContain("zzq-9");
   });
 });

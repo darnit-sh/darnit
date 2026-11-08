@@ -49,9 +49,7 @@ src/corpus/replacements.ts	complexity	shutdownDate	11	over complexity 10 before 
 src/corpus/replacements.ts	complexity	wholeRows	12	over complexity 10 before the limit was checked; goes when the function is split
 src/corpus/replacements.ts	max-depth	readPage	4	nested deeper than 3 before the limit was checked; goes when the block is flattened
 src/corpus/replacements.ts	max-lines	(file)	540	over 300 lines before the limit was checked; goes when the file is split by job
-src/corpus/replacements.ts	max-lines-per-function	readPage	52	over 50 lines before the limit was checked; goes when the function is split
 src/corpus/replacements.ts	max-lines-per-function	replacementsFor	86	over 50 lines before the limit was checked; goes when the function is split
-src/corpus/replacements.ts	no-nested-ternary	readPage	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
 src/corpus/replacements.ts	no-nested-ternary	retiring	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
 src/corpus/replacements.ts	no-nested-ternary	shutdownDate	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup
 src/corpus/replacements.ts	no-nested-ternary	text	1	a nested ternary from before the limit was checked; goes when it becomes an if or a lookup

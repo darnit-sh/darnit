@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
-import { listLines, readPageRows } from "../src/corpus/page-rows.js";
+import { parse as parseYaml } from "yaml";
+import { listLines, oneModelRecord, readPageRows, wholeRowRecords } from "../src/corpus/page-rows.js";
 import {
   modelDetection,
   modelFixtures,
@@ -10,7 +11,6 @@ import {
   pageMismatches,
   readPage,
   replacementsFor,
-  wholeRows,
 } from "../src/corpus/replacements.js";
 import { modelIds, parseSpec } from "../src/corpus/spec.js";
 import { shown, vendorName } from "../src/detect.js";
@@ -44,14 +44,27 @@ if ((values.page === undefined) === (values.rows === undefined) || (values.check
   );
   process.exit(2);
 }
+// A rows file is refused, exiting 2 as for bad arguments, unless it reads as the page vendors.yml names would.
+const fromRows = (file: string, text: string, vendors: { openai?: { page?: string } }) => {
+  try {
+    return readPageRows(text, vendors.openai?.page ?? "").page;
+  } catch (err) {
+    console.error(`npm run replacements: ${file}: ${shown((err as Error).message)}`);
+    return process.exit(2);
+  }
+};
 const page = values.rows
-  ? readPageRows(await readFile(values.rows, "utf8")).page
+  ? fromRows(
+      values.rows,
+      await readFile(values.rows, "utf8"),
+      parseYaml(await readFile(join(PACKS_DIR, "../vendors.yml"), "utf8")) as { openai?: { page?: string } },
+    )
   : readPage(await readFile(values.page!, "utf8"));
 const loaded = await loadRecords();
 const corpus = join(PACKS_DIR, "../corpus/openai");
 const lines = async (file: string) => listLines(await readFile(join(corpus, file), "utf8"));
 const known = modelIds(parseSpec(await readFile(join(corpus, "openapi.yaml"), "utf8")));
-const whole = wholeRows(
+const { whole, records: checked } = wholeRowRecords(
   loaded.map((l) => l.record),
   page,
   new Set(await lines("whole-rows.txt")),
@@ -65,10 +78,7 @@ const shaped = loaded.map(({ record, packDir, file }, i) => {
   const raw = JSON.parse(disk[i]!) as ChangeRecord;
   if (!ids) return { raw, record, packDir, file, files: {} };
   const missing = ids.filter((m) => !recordModels(record).includes(m));
-  if (
-    JSON.stringify(record.detection) !== JSON.stringify(modelDetection(recordModels(record))) ||
-    !record.effectiveAt
-  ) {
+  if (!oneModelRecord(record)) {
     problems.push(
       `${file}: its detection is not one model record's, so darnit does not add ${missing.join(", ") || "models"} to it`,
     );
@@ -92,7 +102,8 @@ const shaped = loaded.map(({ record, packDir, file }, i) => {
 
 const records = shaped.map((s) => s.record);
 const notModels = await lines("non-model-rows.txt");
-const { models: wanted, problems: found } = replacementsFor(records, page, known, new Set(notModels));
+// Checked against the same records as npm run corpus checks the page against.
+const { models: wanted, problems: found } = replacementsFor(checked, page, known, new Set(notModels));
 problems.push(...found, ...pageMismatches(records, page));
 
 // What --write would change: worked out whole before anything is written, so a run with a problem writes nothing.

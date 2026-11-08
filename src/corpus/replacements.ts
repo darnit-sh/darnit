@@ -54,7 +54,7 @@ const NONE = "no replacement named";
 const INLINE: Record<string, readonly string[]> = { code: [], a: ["href"], strong: [], em: [], br: [], sup: [] };
 export const MAX_CELL = 10_000;
 // A cell holding these is refused: markup characters, controls and bidi controls.
-export const UNSAFE = /[<>\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+const UNSAFE = /[<>\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 // A letter, digit or mark outside ASCII, such as a Cyrillic o: a table holding one is not read as a person would.
 const NON_ASCII = /(?![\0-\x7f])[\p{L}\p{N}\p{M}]/u;
 const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
@@ -130,7 +130,7 @@ function rowsOf(table: T.Element): { rows: T.Element[]; error?: string } {
   const odd = (e: T.Element, kinds: string[]) => !kinds.includes(e.tagName) || e.attrs.some((a) => a.name !== "class");
   const error = (e: T.Element) => ({
     rows,
-    error: `it holds a <${e.tagName}> with ${e.attrs.map((a) => a.name).join(", ") || "no attributes"} where darnit reads only a table, its sections, rows and cells, each with at most a class`,
+    error: `it holds a <${e.tagName}> with ${e.attrs.map((a) => a.name).join(", ") || "no attributes"}${ONLY}`,
   });
   if (odd(table, ["table"])) return error(table);
   for (const part of children(table)) {
@@ -146,11 +146,12 @@ function rowsOf(table: T.Element): { rows: T.Element[]; error?: string } {
 }
 
 /**
- * One row of a table on the page, folded, with the models darnit read from it and, for a fine-tuning row, its model.
- * A model row also has the models of its model cell and its shutdown date, when darnit reads the date.
+ * One row of a table on the page, its cells' text and folded, with the models darnit read from it and, for a
+ * fine-tuning row, its model. A model row also has the models of its model cell and its shutdown date, when read.
  */
 export type Row = {
   label: string;
+  cells: string[];
   folded: string;
   read: string[];
   exempt?: string;
@@ -176,6 +177,14 @@ export function shutdownDate(cell: string): string | undefined {
     : undefined;
 }
 
+// Why darnit does not read a table besides its structure: a row's cells, markup in a cell, a letter outside ASCII.
+export const TABLE_ERRORS = [
+  "a row has a different number of cells from its header",
+  "a cell holds markup darnit does not read in a deprecation table",
+  "it holds a letter, digit or mark outside ASCII",
+];
+export const ONLY = " where darnit reads only a table, its sections, rows and cells, each with at most a class";
+
 /** A table of the page, folded, and why darnit does not read it as a person would, if it does not. */
 export type Table = { label: string; folded: string; error?: string };
 
@@ -198,27 +207,16 @@ export function readPage(html: string): Page {
     const [head = []] = texts;
     const to =
       head[0]?.toLowerCase() === "shutdown date" ? head.findIndex((h) => REPLACEMENT.has(h.toLowerCase())) : -1;
-    const strict =
-      to < 2
-        ? undefined
-        : cells.find((row) => row.length !== head.length)
-          ? "a row has a different number of cells from its header"
-          : undefined;
-    const markup =
-      to >= 2 && cells.some((row) => row.some((c) => !c.childNodes.every(plain)))
-        ? "a cell holds markup darnit does not read in a deprecation table"
-        : undefined;
-    const error =
-      structure ??
-      strict ??
-      markup ??
-      (NON_ASCII.test(text(table)) ? "it holds a letter, digit or mark outside ASCII" : undefined);
+    const [strict, markup, ascii] = [
+      to >= 2 && cells.some((row) => row.length !== head.length),
+      to >= 2 && cells.some((row) => row.some((c) => !c.childNodes.every(plain))),
+      NON_ASCII.test(text(table)),
+    ].map((found, i) => (found ? TABLE_ERRORS[i] : undefined));
+    const error = structure ?? strict ?? markup ?? ascii;
     tables.push({ label, folded: fold(text(table)), ...(error ? { error } : {}) });
     if (error) continue;
     for (const [i, row] of texts.entries()) {
-      let read: string[] = [];
-      let exempt: string | undefined;
-      let models: string[] | undefined;
+      let [read, exempt, models]: [string[], string?, string[]?] = [[]];
       if (i > 0 && to >= 2 && row.every((c) => c.length <= MAX_CELL && !UNSAFE.test(c))) {
         models = cellModels(row[1]!);
         for (const m of models ?? []) replacements.set(m, [...(replacements.get(m) ?? []), row[to]!]);
@@ -229,6 +227,7 @@ export function readPage(html: string): Page {
       const shutdown = models && shutdownDate(row[0]!);
       rows.push({
         label: `${label} row ${i + 1}`,
+        cells: row,
         folded: fold(text(trs[i]!)),
         read,
         ...(exempt ? { exempt } : {}),
