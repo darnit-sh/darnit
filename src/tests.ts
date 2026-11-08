@@ -132,7 +132,7 @@ function redact(text: string): string {
 
 /** Terminal escape sequences (colors, cursor moves, links), so kept output is plain text. */
 // eslint-disable-next-line no-control-regex
-const ESCAPES = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b\n]*(?:\u0007|\u001b\\)?|[ -/]*[0-~])/g;
+const ESCAPES = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b\n]*(?:\u0007|\u001b\\)?|[ -/]+[0-~]|[0-\\^-~])/g;
 
 /** How long a build or test run may take before it is stopped. */
 export const TIME_LIMIT_MINUTES = 10;
