@@ -13,10 +13,15 @@ export default tseslint.config(
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
   },
-  // A regex that can backtrack for a time that grows faster than its input hangs on crafted text.
+  // Fails the super-linear backtracking and moves the plugin can prove, and alternatives that overlap, which can
+  // make a regex exponential. Some exponential forms, such as /^(a|aa)+$/, pass all three.
   {
     plugins: { regexp },
-    rules: { "regexp/no-super-linear-backtracking": "error", "regexp/no-super-linear-move": "error" },
+    rules: {
+      "regexp/no-super-linear-backtracking": "error",
+      "regexp/no-super-linear-move": "error",
+      "regexp/no-dupe-disjunctions": ["error", { report: "all" }],
+    },
   },
   {
     files: ["**/*.js"],
