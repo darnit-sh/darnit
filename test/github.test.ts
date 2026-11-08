@@ -182,7 +182,14 @@ describe("GitHub API calls", () => {
 
   // Sends `reply` once the request arrives, then goes quiet with the connection open.
   async function stall(reply: string) {
-    const server = createServer((socket) => socket.once("data", () => socket.write(reply))).listen(0, "127.0.0.1");
+    let closed: Promise<unknown> = Promise.resolve();
+    let reset: NodeJS.ErrnoException | undefined;
+    const server = createServer((socket) => {
+      // A reset counts as the client hanging up.
+      socket.on("error", (err) => (reset = err));
+      closed = new Promise((done) => socket.once("close", done));
+      socket.once("data", () => socket.write(reply));
+    }).listen(0, "127.0.0.1");
     await once(server, "listening");
     const connected = once(server, "connection") as Promise<[Socket]>;
     const local = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -200,7 +207,8 @@ describe("GitHub API calls", () => {
       expect(limit).toHaveBeenCalledWith(30_000);
       const [socket] = await connected;
       socket.resume();
-      if (!socket.closed) await once(socket, "close");
+      await closed;
+      if (reset) expect(reset.code).toBe("ECONNRESET");
     } finally {
       server.close();
     }
