@@ -1502,6 +1502,7 @@ describe("model shutdowns", () => {
         "export const c = (o) => openai.audio.transcriptions.create({ file, model: o.model ?? 'whisper-1' });",
         'export const d = await openai.chat.completions.create({ model: "gpt-4o", max_tokens: 5, messages });',
         'export const e = await openai.images.generate({ model: "dall-e-3", prompt });',
+        'export const f = await openai.images.generate({ model: "gpt-image-1.5", prompt });',
         "",
       ].join("\n"),
       "config.py": 'DEFAULT_MODEL = "text-ada-001"\n',
@@ -1515,11 +1516,13 @@ describe("model shutdowns", () => {
     // text-ada-001's replacement, gpt-3.5-turbo-instruct, shuts down too: its own replacement is named.
     expect(under("config.py:1:")).toBe("    use gpt-5.6-terra instead (OpenAI's recommendation)");
     expect(under("app.ts:6:")).toMatch(/^ {2}\d+ call sites? in/);
+    const image = "not a plain swap: OpenAI recommends gpt-image-2.6-sunburst or gpt-image-2.6-flare";
+    expect(under("app.ts:8:")).toBe(`    ${image}`);
     // gpt-image-1 and gpt-image-1-mini, two of the models the page offers, retire too: their own replacements are named.
-    expect(under("app.ts:7:")).toBe(
-      "    not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare",
-    );
-    expect(lines.filter((l) => /^ {4}(use|not a plain swap)/.test(l))).toHaveLength(5);
+    const dalle =
+      "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, gpt-image-2.5-flare, gpt-image-2.6-sunburst, or gpt-image-2.6-flare";
+    expect(under("app.ts:7:")).toBe(`    ${dalle}`);
+    expect(lines.filter((l) => /^ {4}(use|not a plain swap)/.test(l))).toHaveLength(6);
 
     const json = (list: Hit[]) => toJson(list) as { line: number; replacement?: object }[];
     const source = "https://developers.openai.com/api/docs/deprecations";
@@ -1532,13 +1535,8 @@ describe("model shutdowns", () => {
       [4, { human: "not a plain swap: OpenAI recommends gpt-5.6-sol with reasoning.mode: pro", source }],
       [5, { human: "not a plain swap: OpenAI recommends gpt-live-transcribe or gpt-transcribe", source }],
       [6, undefined],
-      [
-        7,
-        {
-          human: "not a plain swap: OpenAI recommends gpt-image-2, gpt-image-2.5-sunburst, or gpt-image-2.5-flare",
-          source,
-        },
-      ],
+      [7, { human: dalle, source }],
+      [8, { human: image, source }],
     ]);
     expect(json(values)).toMatchObject([{ model: "text-ada-001", replacement: { model: "gpt-5.6-terra", source } }]);
   });
