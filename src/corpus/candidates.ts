@@ -74,7 +74,7 @@ const settingsMemo = new WeakMap<ChangeRecord, Setting[]>();
 /**
  * Every key a record's patterns set: to any value (a metavariable such as `$V`, or a bare `{ key }`), to a string
  * (`value`), or to another literal (`true`, `1`, `None`, an object), which is only that literal. Keys are whole names:
- * `image_size: "x"` sets `image_size`, never `size`.
+ * `image_size: "x"` sets `image_size`, never `size`. Each word is tried once, from its start.
  */
 export function settingsOf(r: ChangeRecord): Setting[] {
   let found = settingsMemo.get(r);
@@ -82,7 +82,7 @@ export function settingsOf(r: ChangeRecord): Setting[] {
   found = [];
   for (const ps of Object.values(r.detection.astGrepPatterns))
     for (const { context } of ps ?? []) {
-      for (const m of context.matchAll(/["']?([A-Za-z_]\w*)["']?\s*[:=]\s*(\$|"([^"]*)"|'([^']*)')?/g))
+      for (const m of context.matchAll(/["']?(?<!\w)\d*([A-Za-z_]\w*)["']?\s*[:=]\s*(\$|"([^"]*)"|'([^']*)')?/g))
         found.push({ key: m[1]!, any: m[2] === "$", value: m[3] ?? m[4] });
       for (const m of context.matchAll(/\{\s*([A-Za-z_]\w*)\s*\}/g)) found.push({ key: m[1]!, any: true });
     }

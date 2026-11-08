@@ -31,7 +31,8 @@ const allModels = (parts: string[]) => (parts.every(isModel) ? parts : undefined
 /** The model ids in a table's model cell, or undefined for a row about something else, such as an endpoint, a header or an API. */
 export function cellModels(text: string): string[] | undefined {
   // "gpt-5", or a snapshot and the aliases pointing to it: "gpt-4-0613 | gpt-4, gpt-4-completions".
-  const listed = allModels(text.split(/\s*[|,]\s*/));
+  // Here and below, a run of spaces is tried only from where it starts, so a long run is read once.
+  const listed = allModels(text.split(/(?:(?<!\s)\s+)?[|,]\s*/));
   if (listed) return listed;
   // "GPT-4o (gpt-4o-2024-08-06, gpt-4o-2024-11-20)", "gpt-4-0125-preview (including a and b, which point to this snapshot)".
   // A family name stands for its alias: GPT-4o is gpt-4o, GPT-4o mini is gpt-4o-mini. Anything else, such as "Assistants API (v1)", is no model.
@@ -42,7 +43,7 @@ export function cellModels(text: string): string[] | undefined {
     .slice(open + 2, -1)
     .replace(/^including /, "")
     .replace(/,? which point to this snapshot$/, "");
-  const ids = allModels(inner.split(/,\s*|\s+and\s+/));
+  const ids = allModels(inner.split(/,\s*|(?<!\s)\s+and\s+/));
   return ids && [name, ...ids];
 }
 
@@ -57,6 +58,8 @@ const UNSAFE = /[<>\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u206
 // A letter, digit or mark outside ASCII, such as a Cyrillic o: a table holding one is not read as a person would.
 const NON_ASCII = /(?![\0-\x7f])[\p{L}\p{N}\p{M}]/u;
 const REPLACEMENT = new Set(["recommended replacement", "substitute model"]);
+// "!important" and the spaces before it, tried only where a run of spaces starts, so a long run is read once.
+const IMPORTANT = /(?<!\s)\s*!\s*important$/;
 
 const isElement = (n: T.ChildNode): n is T.Element => "tagName" in n;
 const children = (e: T.Element) => e.childNodes.filter(isElement);
@@ -66,10 +69,7 @@ const hides = (style: string) =>
   style.split(";").some((declaration) => {
     const at = declaration.indexOf(":");
     const [name, value] = [declaration.slice(0, at), declaration.slice(at + 1)].map((s) =>
-      s
-        .trim()
-        .toLowerCase()
-        .replace(/\s*!\s*important$/, ""),
+      s.trim().toLowerCase().replace(IMPORTANT, ""),
     );
     return (
       at !== -1 &&
