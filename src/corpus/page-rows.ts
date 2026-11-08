@@ -74,21 +74,27 @@ export function wholeRowRecords(records: readonly ChangeRecord[], page: Page, da
 
 /**
  * One item for npm run accounting per shutdown date and model of the page's model rows, keyed "page <date> <model>",
- * with the ids of the vendor's records that detect the model. Every other row of a table, below its first, is an item
- * too, keyed by the date in its first cell and the text of its second, and detected by no record: an endpoint, an API,
- * a dated update, or a row whose models darnit cannot read. So no row of any table goes unaccounted, whatever its
+ * with the ids of the vendor's records that detect the model. Every other row of a table is an item too, keyed by the
+ * date in its first cell and the text of the rest of the row (all of it when no date is read), and detected by no
+ * record: an endpoint, an API, a dated update, or a row whose models darnit cannot read. Only a table's first row is
+ * left out, and only when its first cell holds no date, as a header's does. So no row goes unaccounted, whatever its
  * table's header says.
  */
 export function pageItems(page: Page, records: readonly ChangeRecord[], vendor: string) {
   const detecting = detectedBy(records, vendor);
   const items = new Map<string, string[]>();
-  for (const row of page.rows.filter((r) => !r.label.endsWith(" row 1"))) {
-    const at = `page ${shutdownDate(row.cells[0] ?? "") ?? "no date read"}`;
-    if (!row.models) items.set(`${at} ${row.cells[1] || row.cells.join(" | ")}`, []);
+  for (const row of page.rows) {
+    const date = shutdownDate(row.cells[0] ?? "");
+    if (row.label.endsWith(" row 1") && date === undefined) continue;
+    const at = `page ${date ?? "no date read"}`;
+    if (!row.models) items.set(`${at} ${restOf(row.cells, date)}`, []);
     for (const m of row.models ?? []) items.set(`${at} ${m}`, detecting.get(m) ?? []);
   }
   return [...items].map(([key, ids]) => ({ key, ids }));
 }
+
+/** A row's text after its date, or all of it when no date was read from it. */
+const restOf = (cells: string[], date: string | undefined) => (date ? cells.slice(1) : cells).join(" | ");
 
 /** Each model the vendor's records detect, with the ids of those records. */
 function detectedBy(records: readonly ChangeRecord[], vendor: string) {

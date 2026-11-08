@@ -59,7 +59,7 @@ describe("pageItems", () => {
     ]);
   });
 
-  it("keeps every other row of every table as an item no record detects, whatever the header says", () => {
+  it("keeps every other row of every table as an item no record detects, keyed by all of it", () => {
     const shutdowns = table([
       ["2027-03-01", "Assistants API", "Responses API"],
       ["2027-03-01", "zzq-a and zzq-b", "zzq-new"],
@@ -68,13 +68,24 @@ describe("pageItems", () => {
     ]);
     const records = [record("zzq-one")];
     expect(pageItems(shutdowns, records, "openai")).toEqual([
-      { key: "page 2027-03-01 Assistants API", ids: [] },
-      { key: "page 2027-03-01 zzq-a and zzq-b", ids: [] },
-      { key: "page 2027-03-01 zzq-c (1M context)", ids: [] },
-      { key: "page 2024-10-28 New fine-tuning training on zzq-one", ids: [] },
+      { key: "page 2027-03-01 Assistants API | Responses API", ids: [] },
+      { key: "page 2027-03-01 zzq-a and zzq-b | zzq-new", ids: [] },
+      { key: "page 2027-03-01 zzq-c (1M context) | zzq-new", ids: [] },
+      { key: "page 2024-10-28 New fine-tuning training on zzq-one | zzq-new", ids: [] },
     ]);
-    // Headers darnit does not read models under: a no-break space, a note mark, another name, the model first, a
-    // dated update, and a title row above the header.
+    // Rows alike up to their last cell are two items, so an entry for one never stands for the other.
+    const endpoints = readPage(
+      "<table><tr><th>Shutdown date</th><th>Endpoint</th><th>Model</th></tr><tr><td>2027-03-01</td><td>/v1/zzq</td><td>zzq-a</td></tr><tr><td>2027-03-01</td><td>/v1/zzq</td><td>zzq-b</td></tr></table>",
+    );
+    expect(pageItems(endpoints, records, "openai")).toEqual([
+      { key: "page 2027-03-01 /v1/zzq | zzq-a", ids: [] },
+      { key: "page 2027-03-01 /v1/zzq | zzq-b", ids: [] },
+    ]);
+  });
+
+  it("trusts no header: a row under any header gives an item, and only a first row with no date is left out", () => {
+    const records = [record("zzq-one")];
+    // A no-break space, a note mark, another name, a dated update, and a title row above the header.
     const rows = "<tr><td>2027-03-01</td><td>zzq-a</td><td>zzq-new</td></tr>";
     for (const head of [
       "<th>Shutdown&nbsp;date</th><th>Model</th><th>Recommended replacement</th>",
@@ -84,20 +95,21 @@ describe("pageItems", () => {
       "<th>Models</th></tr><tr><th>Shutdown date</th><th>Model</th><th>Recommended replacement</th>",
     ]) {
       const page = readPage(`<table><tr>${head}</tr>${rows}</table>`);
-      expect(pageItems(page, records, "openai"), head).toContainEqual({ key: "page 2027-03-01 zzq-a", ids: [] });
+      expect(pageItems(page, records, "openai"), head).toContainEqual({
+        key: "page 2027-03-01 zzq-a | zzq-new",
+        ids: [],
+      });
     }
     const modelFirst = readPage(
-      "<table><tr><th>Model</th><th>Shutdown date</th></tr><tr><td>zzq-one</td><td>2027-03-01</td></tr></table>",
+      "<table><tr><th>Model</th><th>Shutdown date</th></tr><tr><td>zzq-a</td><td>2027-03-01</td></tr><tr><td>zzq-b</td><td>2027-03-01</td></tr></table>",
     );
-    expect(pageItems(modelFirst, records, "openai")).toEqual([{ key: "page no date read 2027-03-01", ids: [] }]);
-    // A row with no second cell's text is keyed by all of it.
-    const bare = readPage(
-      "<table><tr><th>Date</th></tr><tr><td>2027-03-01</td></tr><tr><td>2027-04-01</td><td></td></tr></table>",
-    );
-    expect(pageItems(bare, records, "openai")).toEqual([
-      { key: "page 2027-03-01 2027-03-01", ids: [] },
-      { key: "page 2027-04-01 2027-04-01 | ", ids: [] },
+    expect(pageItems(modelFirst, records, "openai")).toEqual([
+      { key: "page no date read zzq-a | 2027-03-01", ids: [] },
+      { key: "page no date read zzq-b | 2027-03-01", ids: [] },
     ]);
+    // No header row at all: the first row is a row like the others.
+    const headless = readPage("<table><tr><td>2027-03-01</td><td>zzq-a</td><td>zzq-new</td></tr></table>");
+    expect(pageItems(headless, records, "openai")).toEqual([{ key: "page 2027-03-01 zzq-a | zzq-new", ids: [] }]);
   });
 });
 
