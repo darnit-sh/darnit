@@ -4,9 +4,13 @@
 # symbols map "METHOD /path" in the spec to the SDK call users write, so a
 # detected change is only reported inside that call and not on a same-named
 # parameter of some other API.
+#
+# page, where given, is the vendor's deprecations page: the corpus run saves the rows
+# darnit reads from it as corpus/<vendor>/page-rows.json.
 
 openai:
   spec: https://raw.githubusercontent.com/openai/openai-openapi/main/openapi.yaml
+  page: https://developers.openai.com/api/docs/deprecations
   symbols:
     "POST /chat/completions": chat.completions.create
     "POST /responses": responses.create
