@@ -153,7 +153,7 @@ function importsOf(statements: readonly string[]): Map<string, Set<string>> {
         if (alias) add(alias[2] ?? alias[1]!, pkg);
       }
     }
-    const from = /^from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|([^\n]+))/.exec(text);
+    const from = /^from\s+([\w.]+)\s+import\s+(?:\(([^)]*)\)|(?!\([^)]*\))([^\n]+))/.exec(text);
     for (const part of from ? (from[2] ?? from[3]!).split(",") : []) {
       const alias = /^([\w]+)(?:\s+as\s+([\w]+))?/.exec(part.trim());
       if (alias) add(alias[2] ?? alias[1]!, pyPackage(from![1]!));
