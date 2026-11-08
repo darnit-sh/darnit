@@ -52,7 +52,9 @@ co-author line. Each type has a rule CI checks:
 
 Only a `ci` change may change how the checks run (the workflows, the pull request checks, the tools' settings,
 the `package.json` scripts), and it needs a `Proof: none, <reason>` line. Adding to a list under `scripts/allow/`
-needs a `ci` change with an `Allowlist: <reason>` line as well; any change may remove a line whose finding is gone.
+needs a `ci` change with an `Allowlist: <reason>` line as well; any change may remove a line whose finding is gone,
+and a `refactor` that moves listed code into files it adds may change where its lines say the finding sits, and
+nothing else in them; a move into a file that already exists, or of an import to another floor, needs a `ci` change.
 A `Proof: none, <reason>` line also lets a `fix` or `feat` through the proof check, and skips the run of the base's
 tests for a `refactor` or `perf`, with the reason shown on the pull request. Whatever the type, a dependency or lock
 entry a change adds or alters must be what the npm registry published.

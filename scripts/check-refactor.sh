@@ -318,9 +318,8 @@ gates() {
   gate '^"?scripts/(accounting|accounting-final|golden|installed|e2e-env|fixtures|allowlist|unseen|show|limits)\.ts"?$' "a runner behind a required check" "$edited"
   gate '^"?scripts/(check-[^/]+|pr-common\.[^/]*)"?$' "the pull request checks"
   gate '^"?test/(suppressions\.test|tool-ignores\.test|import-graph)\.ts"?$' "a test that guards the allowlists and tool settings"
-  # A list there that only loses lines is left out, so the change that removes dead code can drop its line too.
-  shrunk=$(git diff --no-renames --text --numstat --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' | awk '$1 == 0 { print $3 }')
-  gate '^"?scripts/allow/' "the lists the pull request checks accept" "$(printf '%s\n' "$all" | grep -vixF -- "${shrunk:-//}" || true)"
+  # A list kept_lists names below is left out.
+  gate '^"?scripts/allow/' "the lists the pull request checks accept" "$(printf '%s\n' "$all" | grep -vixF -- "${kept:-//}" || true)"
   gate '^"?('"$VITEST_CONFIG"'|coverage-thresholds\.json)"?$' "which tests run and how much they must cover"
   gate '(^|/)(tsconfig[^/]*\.json|eslint\.config\.[^/]*)"?$' "what the typecheck and lint steps check"
   gate '^"?(\.?knip(\.config)?\.[^/]*|\.jscpd\.json)"?$' "what the unused code and duplicate checks report"
@@ -343,6 +342,42 @@ ships() {
   paths | grep -iE '/\.gitignore"?$' | grep -viE '^"?test/' || true
 }
 
+# Each file name in git's -U0 diff, as paths prints it, and only the lines after each hunk header as lines.
+DIFF_FILES='/^diff --git / { h = 1 } /^@@/ { h = 0 }
+  h && /^\+\+\+ / { f = substr($0, 5); sub(/\t$/, "", f); if (!sub(/^b\//, "", f)) sub(/^"b\//, "\"", f); files[f] } h { next }'
+# The lists under scripts/allow/ this change edits without growing, which the gate and the Allowlist rule below leave
+# out: each only loses lines, so the change that removes dead code can drop its line too, or, in a refactor, moves
+# lines into files the change adds, so moved code carries them along. Each added line matches its own removed one.
+kept_lists() {
+  added=$(git -c core.quotePath=false diff --no-renames --name-only --diff-filter=A "$base...$head")
+  # Each path of the module map with its floor, read from base's test/architecture.test.ts as docs-facts.test.ts does.
+  floors=$(git show "$mb:test/architecture.test.ts" 2>/dev/null | awk '/^  [a-z]+: (at\(|\{ floor: NaN)/ {
+    fl = $0; if (!sub(/^[^(]*at\(/, "", fl)) sub(/.*kind: "/, "", fl); sub(/[^0-9a-z].*/, "", fl)
+    ps = $0; sub(/^[^[]*\[/, "", ps); sub(/\].*/, "", ps); np = split(ps, q, "\""); for (i = 2; i < np; i += 2) print q[i] "\t" fl }')
+  git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=M "$base...$head" -- ':(icase,glob)scripts/allow/*.tsv' |
+    ADDED=$added FLOORS=$floors awk -v type="$type" -v l=scripts/allow/ '
+      # The floor of a path, or the path itself when the map has none, so that it matches no other.
+      function floor(path, i) { for (i = 1; i <= nf; i++) if (path == fp[i] || (fp[i] ~ /\/$/ && index(path, fp[i]) == 1)) return ff[i]; return path }
+      # Each list line as a key, with the columns named in blank set apart from any text; a moved importer keeps its floor.
+      function key(blank, i, k, v) { k = f
+        for (i = 1; i <= n; i++) { v = p[i]; if (index(blank, " " i " ")) v = SUBSEP (f == l "imports.tsv" ? floor(v) : ""); k = k "\t" v }
+        return k }
+      # The columns that say where a finding sits: its file, or both files of a duplicate, but not what an import names.
+      BEGIN { nf = split(ENVIRON["FLOORS"], fs, "\n"); for (i = 1; i <= nf; i++) { split(fs[i], g, "\t"); fp[i] = g[1]; ff[i] = g[2] }
+        at[l "limits.tsv"] = at[l "imports.tsv"] = at[l "suppressions.tsv"] = " 1 "; at[l "duplicates.tsv"] = " 1 2 "; at[l "unused.tsv"] = " 2 " }
+      '"$DIFF_FILES"'
+      { n = split(substr($0, 2), p, "\t"); m = split(type == "refactor" ? at[f] : "", cols, " "); vars[1] = "" }
+      # A removed line, under each set of its location columns blanked; an added one, with those naming an added file.
+      /^-/ { for (j = 1; j <= m; j++) for (v = 1; v <= 2 ^ (j - 1); v++) vars[v + 2 ^ (j - 1)] = vars[v] " " cols[j] " "
+        r++; for (v = 1; v <= 2 ^ m; v++) gone[key(vars[v])] = gone[key(vars[v])] " " r }
+      /^\+/ { b = ""; for (j = 1; j <= m; j++) if (p[cols[j]] != "" && index("\n" ENVIRON["ADDED"] "\n", "\n" p[cols[j]] "\n")) b = b " " cols[j] " "
+        want[++w] = key(b); wf[w] = f; if (type != "refactor") grew[f] }
+      END { for (i = 1; i <= w; i++) { left = split(gone[want[i]], rs, " ")
+          for (j = 1; j <= left && used[rs[j]]; j++);
+          if (j > left) grew[wf[i]]; else used[rs[j]] = 1 }
+        for (f in files) if (!(f in grew)) print f }'
+}
+kept=$(kept_lists)
 gated=$(gates)
 if [ "$type" != ci ] && [ -n "$gated" ]; then
   say "**Failed:** how the checks run changes only in a ci change with a \`Proof: none, <reason>\` line, so that no other change can switch a check off. Touched:"
@@ -354,10 +389,12 @@ fi
 # list under scripts/allow/ (one edited in place counts as added), or an added line anywhere with a tag knip skips an
 # export for (@public, @beta, @alias) or a jscpd:ignore marker. These are lines, not paths, so they are not entries in
 # gates(): a marker lands in code, and growing a list takes its own reason beside the ci one. Names match in any case.
+# A list kept_lists names is left out.
 grown=$(
   git diff --no-renames --no-color --text --no-textconv --no-ext-diff -U0 "$base...$head" |
-    awk '/^\+\+\+ / { f = substr($0, 5); sub(/^"?b\//, "", f); next }
-      /^\+/ && (tolower(f) ~ /^scripts\/allow\/.*\.tsv"?$/ || /@(public|beta|alias)([^A-Za-z0-9_]|$)/ || tolower($0) ~ /jscpd:ignore-(start|end)/) { print f ": " substr($0, 2) }'
+    KEPT=$kept awk "$DIFF_FILES"'
+      index("\n" ENVIRON["KEPT"] "\n", "\n" f "\n") { next }
+      /^\+/ && (tolower(f) ~ /^"?scripts\/allow\/.*\.tsv"?$/ || /@(public|beta|alias)([^A-Za-z0-9_]|$)/ || tolower($0) ~ /jscpd:ignore-(start|end)/) { print f ": " substr($0, 2) }'
 )
 if [ -n "$grown" ]; then
   reason=
