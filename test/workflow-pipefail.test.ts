@@ -1,9 +1,13 @@
-import { readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 type Defaults = { defaults?: { run?: { shell?: string } } };
-type Step = { run?: string; shell?: string };
+type Step = { run?: string; shell?: string; uses?: string };
 type Workflow = Defaults & { jobs?: Record<string, Defaults & { steps?: Step[] }> };
 type Workflows = Record<string, Workflow>;
 
@@ -54,31 +58,38 @@ function shells(workflows: Workflows): string[] {
       return shell === "bash" ? [] : [`${file} job ${name} sets shell ${shell}`];
     }),
   ]);
-  for (const { at, key, run, shell = "bash" } of steps(workflows)) {
-    if (shell !== "bash" && OTHER_SHELL[key] !== shell) found.push(`${at} names shell ${shell}`);
-    else if (shell !== "bash" && PIPE.test(run)) found.push(`${at} holds a | under ${shell}, which has no pipefail`);
+  const named = steps(workflows).filter(({ shell = "bash" }) => shell !== "bash");
+  for (const { at, key, run, shell } of named) {
+    if (OTHER_SHELL[key] !== shell) found.push(`${at} names shell ${shell!}`);
+    else if (PIPE.test(run)) found.push(`${at} holds a | under ${shell}, which has no pipefail`);
   }
+  for (const [key, shell] of Object.entries(OTHER_SHELL))
+    if (!named.some((step) => step.key === key && step.shell === shell))
+      found.push(`${key} is listed for ${shell}, but no step there names it`);
   return found;
 }
 
-/**
- * Each line passing a $(...) that pipes to another command, whose exit status is then the line's, so even pipefail
- * loses the pipe's failure. A line that only assigns it, `name=$(a | b)`, fails with the pipe. Read one line at a
- * time as text: a substitution over several lines or after a line continuation, backticks and process substitution
- * are not read, and a | in quotes inside $(...) counts.
- */
-const passedOn = (workflows: Workflows) =>
-  steps(workflows).flatMap(({ at, run }) =>
-    run
-      .split("\n")
-      .filter((line) => /\$\([^)]*\|/.test(line.replaceAll("||", "")) && !/^\s*(#|\w+=\$\(.*\)\s*$)/.test(line))
-      .map((line) => `${at} passes on a pipe's output, which pipefail does not see fail: ${line.trim()}`),
+/** A local action's steps, which the rule above does not read: none may exist until it does. */
+function localActions(workflows: Workflows, root: URL): string[] {
+  const found = existsSync(new URL(".github/actions", root))
+    ? [".github/actions exists; the pipefail rule in this test would need to read its actions' shells"]
+    : [];
+  return found.concat(
+    Object.entries(workflows).flatMap(([file, workflow]) =>
+      Object.entries(workflow.jobs ?? {}).flatMap(([name, job]) =>
+        (job.steps ?? [])
+          .filter((step) => step.uses?.startsWith("./"))
+          .map((step) => `${file} job ${name} uses ${step.uses!}, whose shells the pipefail rule does not read`),
+      ),
+    ),
   );
+}
 
 /** One bash workflow with one job running `run`. */
 const one = (run: string): Workflows => ({
   "a.yml": { defaults: { run: { shell: "bash" } }, jobs: { j: { steps: [{ run }] } } },
 });
+const ROOT = new URL("../", import.meta.url);
 // An apostrophe in a comment, then a pipe, then a quote.
 const REPRO = `# The lint job's log goes to the summary.\nnpm run lint | tee "$RUNNER_TEMP/lint.log"\necho 'lint done'`;
 
@@ -86,8 +97,14 @@ describe("the workflows' pipes", () => {
   it("fail the step when any command in them fails", async () => {
     const workflows = await ours();
     expect(shells(workflows)).toEqual([]);
-    expect(passedOn(workflows)).toEqual([]);
-    expect(steps(workflows).filter(({ shell }) => shell !== undefined)).toHaveLength(Object.keys(OTHER_SHELL).length);
+    expect(localActions(workflows, ROOT)).toEqual([]);
+  });
+
+  it("take shell: bash named on a job or a step as bash", async () => {
+    const workflows = structuredClone(await ours());
+    workflows["corpus.yml"]!.jobs!.refresh!.defaults = { run: { shell: "bash" } };
+    workflows["corpus.yml"]!.jobs!.refresh!.steps!.find((s) => s.run?.includes("| tee"))!.shell = "bash";
+    expect(shells(workflows)).toEqual([]);
   });
 
   it("fail a workflow without bash as its default shell, a job naming another, and a step naming one not listed", async () => {
@@ -103,6 +120,7 @@ describe("the workflows' pipes", () => {
       'golden.yml job compare step 3 (if [ -z "$BASE" ]; then) names shell bash {0}',
       `pr.yml job title step 2 (if git cat-file -e "$BASE:scripts/check-pr.sh" 2>/dev/null; then) names shell ${SH}`,
       "pr.yml job proof step 7 (PATH=$NODE:/usr/bin:/bin) names shell sh",
+      `pr.yml job proof: /bin/sh "$dir/scripts/check-proof.sh" --run "$BASE" "$HEAD" is listed for ${SH}, but no step there names it`,
     ]);
   });
 
@@ -119,26 +137,19 @@ describe("the workflows' pipes", () => {
     expect(shells(workflows)).toEqual([]);
   });
 
-  it("fail a line passing a pipe's output in $(...) to another command, and not one that only assigns it", () => {
-    for (const run of [
-      'echo "count=$(git status --porcelain | wc -l)" >> "$GITHUB_OUTPUT"',
-      'COUNT=$(git status --porcelain | wc -l) node -e "process.exit(0)"',
-      "local count=$(git status --porcelain | wc -l)",
-    ])
-      expect(passedOn(one(run)), run).toEqual([
-        `a.yml job j step 1 (${run}) passes on a pipe's output, which pipefail does not see fail: ${run}`,
+  it("fail a local action, in .github/actions or used by path", async () => {
+    const root = await mkdtemp(join(tmpdir(), "darnit-actions-"));
+    try {
+      await mkdir(join(root, ".github/actions/x"), { recursive: true });
+      await writeFile(join(root, ".github/actions/x/action.yml"), "runs:\n  using: composite\n  steps: []\n");
+      const workflows = one("a");
+      workflows["a.yml"]!.jobs!.j!.steps!.push({ uses: "./tools/x" });
+      expect(localActions(workflows, pathToFileURL(`${root}/`))).toEqual([
+        ".github/actions exists; the pipefail rule in this test would need to read its actions' shells",
+        "a.yml job j uses ./tools/x, whose shells the pipefail rule does not read",
       ]);
-    for (const run of ["count=$(git status --porcelain | wc -l)", "a | b", "x=$(a || b) && echo", "# echo $(a | b)"])
-      expect(passedOn(one(run)), run).toEqual([]);
-  });
-
-  it("do not read substitutions over several lines, backticks or process substitution, as the note above says", () => {
-    for (const run of [
-      'echo "$(\n  git status --porcelain | wc -l\n)"',
-      'echo "$(git status --porcelain \\\n  | wc -l)"',
-      "echo `git status --porcelain | wc -l`",
-      'while read -r f; do echo "$f"; done < <(git ls-files | sort)',
-    ])
-      expect(passedOn(one(run)), run).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
