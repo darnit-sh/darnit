@@ -97,7 +97,7 @@ if [ "${1:-}" = --style ]; then
     list "$differ"
     exit 1
   fi
-  say "**(b) passed:** every changed file is what prettier $(node -p 'require(process.cwd() + "/node_modules/prettier").version') writes over base's copy with base's layout options."
+  say "**(b) passed:** every changed file is what prettier $(node -e 'console.log(require(process.cwd() + "/node_modules/prettier").version)') writes over base's copy with base's layout options."
   exit 0
 fi
 

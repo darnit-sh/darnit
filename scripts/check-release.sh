@@ -3,7 +3,7 @@
 # the npm dist-tag to publish under: next, latest, or latest-X.Y for a patch to an older line.
 # Usage: check-release.sh <tag> <full commit sha>. Needs gh signed in, or GH_TOKEN.
 set -eu
-version=$(node -p 'require("./package.json").version')
+version=$(node -e 'console.log(require("./package.json").version)')
 if [ "$1" != "v$version" ]; then
   echo "::error::tag $1 does not match package.json version $version" >&2
   exit 1
