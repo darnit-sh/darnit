@@ -8,6 +8,8 @@ import { listLines, pageDisagreements, pageItems, readPageRows } from "../src/co
 import { modelIds, parseSpec } from "../src/corpus/spec.js";
 import { forTerminal } from "../src/fix.js";
 import { loadRecords } from "../src/records/load.js";
+import { recordModels, type ChangeRecord } from "../src/records/schema.js";
+import type { Page } from "../src/corpus/replacements.js";
 import {
   judgeCeiling,
   notesSection,
@@ -42,6 +44,49 @@ try {
 }
 const ROOT = flags.root !== undefined ? resolve(flags.root) : fileURLToPath(new URL("../", import.meta.url));
 const out: string[] = [];
+// Today in UTC, as the corpus run dates the files it saves, so a run's verdict does not depend on its time zone.
+const today = new Date().toISOString().slice(0, 10);
+
+/**
+ * The first row in page order is taken as a model's newest only while its date is the latest of the model's rows with a
+ * date darnit reads; a row with no such date, as "at earliest 2024-06-13", is left out.
+ */
+function pageOrderProblems(page: Page): string[] {
+  const dated = new Map<string, string[]>();
+  for (const row of page.rows)
+    for (const m of row.models ?? []) if (row.shutdown) dated.set(m, [...(dated.get(m) ?? []), row.shutdown]);
+  return [...dated].flatMap(([m, [first, ...rest]]) => {
+    const later = rest.find((d) => d > first!);
+    return later
+      ? [`page order changed for ${m}: the first row is ${first}, a later row is ${later}; check which row is current`]
+      : [];
+  });
+}
+
+/**
+ * Each record whose shutdown date is not that of the newest row naming a model it detects: the first row in page
+ * order, the row npm run replacements takes a model's replacement from. Only that row counts, because an older table
+ * can name a model again with an older date: gpt-4-0314 in an earlier price table ("at earliest 2024-06-13") and
+ * code-davinci-002 in the Codex shutdown table (2023-03-23) both have newer rows with the dates their records give.
+ * Every record detecting the model must match it. That the first row is the newest is checked, not trusted: see
+ * pageOrderProblems.
+ */
+function shutdownMismatches(page: Page, records: readonly ChangeRecord[], vendor: string): string[] {
+  const newest = new Map<string, string>();
+  for (const row of page.rows)
+    for (const m of row.models ?? []) if (!newest.has(m)) newest.set(m, row.shutdown ?? "no date read");
+  return records.flatMap((r) =>
+    r.vendor !== vendor
+      ? []
+      : recordModels(r)
+          .filter((m) => newest.has(m) && newest.get(m) !== r.effectiveAt)
+          .map(
+            (m) =>
+              `${r.id}: ${m} shuts down on ${newest.get(m)} on the page, ${r.effectiveAt ?? "no date"} in the record`,
+          ),
+  );
+}
+
 const notes: string[] = [];
 // Printed only once the notes, when asked for, are written, so no verdict line stands above a failure to write them.
 const verdicts: string[] = [];
@@ -80,6 +125,8 @@ try {
           wholeDates: await list("whole-rows.txt"),
         })
       : [];
+    const dates = rows ? shutdownMismatches(rows.page, records, vendor) : [];
+    const order = rows ? pageOrderProblems(rows.page) : [];
     const onPage = rows
       ? `, ${page!.length} item${page!.length === 1 ? "" : "s"} on the deprecations page fetched ${rows.fetchedAt}`
       : "";
@@ -92,7 +139,7 @@ try {
     const section = (title: string, lines: string[]) => {
       if (lines.length > 0) out.push("", title, ...lines.map((line) => `  ${line}`));
     };
-    const open = openEntries(result.needsRecord, new Date().toISOString().slice(0, 10));
+    const open = openEntries(result.needsRecord, today);
     section(
       "Open, needs a record (soonest first):",
       open.flatMap((o) => [`- ${o.head}`, ...o.keys.map((k) => `    ${show(k)}`)]),
@@ -114,17 +161,24 @@ try {
       `Where the records and ${rowsFile} disagree, as npm run replacements -- --rows ${rowsFile} --check finds it (correct the records):`,
       disagreements.map(show),
     );
+    section(
+      `Records whose shutdown date is not the one the newest row of ${rowsFile} gives for a model they detect (correct the record):`,
+      dates.map(show),
+    );
+    section(`Models whose rows in ${rowsFile} are not newest first:`, order.map(show));
     const failed =
       result.unaccounted.length +
         result.stale.length +
         result.redundant.length +
         result.contradicted.length +
-        disagreements.length >
+        disagreements.length +
+        dates.length +
+        order.length >
       0;
     if (failed) process.exitCode = 1;
     if (flags.final) {
       const items = result.deprecated + result.removals + (page?.length ?? 0);
-      const tooOld = rows && pageTooOld(rowsFile, rows.fetchedAt, new Date().toISOString().slice(0, 10));
+      const tooOld = rows && pageTooOld(rowsFile, rows.fetchedAt, today);
       const verdict = await judgeCeiling({
         root: ROOT,
         vendor,

@@ -96,11 +96,11 @@ async function corpus(
   return dir;
 }
 
-async function accounting(dir: string, args: string[] = [], node: string[] = []) {
+async function accounting(dir: string, args: string[] = [], node: string[] = [], env: NodeJS.ProcessEnv = {}) {
   const run = await promisify(execFile)(
     process.execPath,
     [...node, "--import", "tsx", "scripts/accounting.ts", "--root", dir, ...args],
-    { cwd: ROOT, env: local },
+    { cwd: ROOT, env: { ...local, ...env } },
   ).then(
     (r) => ({ ...r, code: 0 }),
     (e: { stdout: string; code: number }) => e,
@@ -312,5 +312,89 @@ for (const reach of [() => require("node:net").connect(1, "127.0.0.1"), () => re
       expect(code).toBe(0);
     }
     await expect(readFile(log, "utf8")).rejects.toThrow("ENOENT");
+  });
+});
+
+describe("npm run accounting and the page's shutdown dates", () => {
+  /** One table of the page per list of rows, each row a shutdown date and a model retiring for zzq-new. */
+  const tables = (...rows: [string, string][][]) =>
+    rows
+      .map(
+        (t) =>
+          `<table><tr><th>Shutdown date</th><th>Model</th><th>Recommended replacement</th></tr>${t
+            .map(([date, m]) => `<tr><td>${date}</td><td>${m}</td><td>zzq-new</td></tr>`)
+            .join("")}</table>`,
+      )
+      .join("");
+  const mismatch = (id: string, page: string, kept: string) =>
+    JSON.stringify(`${id}: zzq-two shuts down on ${page} on the page, ${kept} in the record`);
+  const ID = "openai:2026-11-01:zzq-two-shut-down";
+  const run = async (page: string, records: object[] = [record("zzq-two")], args: string[] = []) =>
+    accounting(await corpus([], records, { [CEILING]: "4\n" }, 0, page), args);
+
+  it("fails on a record whose shutdown date is later or earlier than the page's, naming both dates", async () => {
+    for (const date of ["2027-02-01", "2027-04-01"]) {
+      const { out, code } = await run(tables([[date, "zzq-two"]]));
+      expect(out).toContain(
+        "Records whose shutdown date is not the one the newest row of corpus/openai/page-rows.json gives",
+      );
+      expect(out).toContain(mismatch(ID, date, "2027-03-01"));
+      expect(code).toBe(1);
+    }
+    expect((await run(tables([["2027-03-01", "zzq-two"]]))).code).toBe(0);
+  });
+
+  it("holds every record detecting a model to the page's date, not just one of them", async () => {
+    const later = { ...record("zzq-two"), id: "openai:2026-11-01:zzq-two-later", effectiveAt: "2027-05-01" };
+    const { out, code } = await run(tables([["2027-03-01", "zzq-two"]]), [record("zzq-two"), later]);
+    expect(out).toContain(mismatch("openai:2026-11-01:zzq-two-later", "2027-03-01", "2027-05-01"));
+    expect(out).not.toContain(`${ID}: zzq-two shuts down`);
+    expect(code).toBe(1);
+  });
+
+  it("reads only the newest row: an older table naming the model again with another date or none passes", async () => {
+    const older = tables(
+      [["2027-03-01", "zzq-two"]],
+      [["2026-01-01", "zzq-two"]],
+      [["at earliest 2024-06-13", "zzq-two"]],
+    );
+    const { out, code } = await run(older);
+    expect(out).not.toContain("shuts down on");
+    expect(out).not.toContain("not newest first");
+    expect(code).toBe(0);
+  });
+
+  it("fails when a newer row above the old one moves the date, as OpenAI moving a shutdown would", async () => {
+    const { out, code } = await run(tables([["2027-06-01", "zzq-two"]], [["2027-03-01", "zzq-two"]]));
+    expect(out).toContain(mismatch(ID, "2027-06-01", "2027-03-01"));
+    expect(code).toBe(1);
+  });
+
+  it("fails when the first row of a model is not its latest date, so page order is checked rather than trusted", async () => {
+    // A model no record detects, listed as needing one, so only the order of its rows can fail the run.
+    const keys = ["page 2026-01-01 zzq-old", "page 2027-03-01 zzq-old"];
+    const page = tables([["2026-01-01", "zzq-old"]], [["2027-03-01", "zzq-old"]]);
+    const { out, code } = await accounting(await corpus([], [], { [NOT_COVERED]: await notCovered(keys) }, 0, page));
+    expect(out).toContain(
+      `Models whose rows in corpus/openai/page-rows.json are not newest first:\n  ${JSON.stringify("page order changed for zzq-old: the first row is 2026-01-01, a later row is 2027-03-01; check which row is current")}`,
+    );
+    expect(out).not.toContain("shuts down on");
+    expect(code).toBe(1);
+  });
+
+  it("dates today in UTC, whatever the time zone it runs in", async () => {
+    // A zone whose date differs from UTC's right now: 14 hours ahead from 10:00 UTC, else 12 hours behind.
+    const ahead = new Date().getUTCHours() >= 10;
+    const zone = ahead ? "Etc/GMT-14" : "Etc/GMT+12";
+    const utc = new Date().toISOString().slice(0, 10);
+    expect(new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(new Date())).not.toBe(utc);
+    // Rows 14 days old in UTC are 15 days old where it is already tomorrow; rows from today are from tomorrow where
+    // it is still yesterday. Either way a local date refuses the release, and UTC passes it.
+    const dir = await corpus(["zzq-two"], [record("zzq-two")], { [CEILING]: "4\n" }, ahead ? 14 : 0);
+    const { out, code } = await accounting(dir, ["--final"], [], { TZ: zone });
+    expect(out.trimEnd().split("\n").at(-1)).toBe(
+      `final release passes, openai: 4 need a record, at the ceiling of 4 in ${CEILING}`,
+    );
+    expect(code).toBe(0);
   });
 });
