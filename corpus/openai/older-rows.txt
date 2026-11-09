@@ -1,0 +1,5 @@
+# Dates on OpenAI's deprecations page that a newer row for the same model replaces. npm run accounting fails when a
+# model's rows give more than one date, unless every date but one is listed here, so a date OpenAI moves cannot be
+# taken on trust. Each line is the model, the date as the accounting prints it and the reason, separated by spaces.
+# A line no row of the page matches any more fails the run too, until it is taken off.
+code-davinci-002 2023-03-23 The Codex shutdown table; the newer row in the 2024-01-04 shutdown table gives its current date.
