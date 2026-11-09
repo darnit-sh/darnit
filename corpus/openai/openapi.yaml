@@ -10076,8 +10076,7 @@ paths:
         for trunk setup and call monitoring.
 
         Set transport.type to `webrtc` and supply an SDP offer, or set it to `sip`
-        and supply an E.164 destination and trunk credentials. Outbound SIP calling
-        must be enabled for your organization.
+        and supply an E.164 destination and trunk credentials.
         Ringing is limited to 3 minutes and connected calls to 2 hours; these limits
         are not configurable in the request.
 
@@ -28807,6 +28806,569 @@ paths:
       x-oaiMeta:
         group: live
         returns: The stored session recording as binary stereo WAV audio.
+  /organization/workload_identity_providers:
+    get:
+      summary: List Platform workload identity providers
+      description: List OIDC providers in the authenticated Admin API key's organization.
+      operationId: ListPlatformworkloadidentityproviders
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: order
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - default: asc
+                x-stainless-const: true
+                type: string
+                enum:
+                  - asc
+              - default: desc
+                x-stainless-const: true
+                type: string
+                enum:
+                  - desc
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformProviderListResource"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X GET "https://api.openai.com/v1/organization/workload_identity_providers?limit=20&order=asc" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY"
+          response: |
+            {
+              "object": "list",
+              "data": [
+                {
+                  "object": "organization.workload_identity_provider",
+                  "id": "wip_example",
+                  "type": "oidc",
+                  "name": "CI provider",
+                  "issuer": "https://issuer.example.com",
+                  "audience": "openai",
+                  "verification": {
+                    "type": "discovery",
+                    "discovery_url": null
+                  },
+                  "description": null,
+                  "attribute_transformations": [],
+                  "enabled": true,
+                  "created_at": 1793664000,
+                  "updated_at": 1793664000
+                }
+              ],
+              "first_id": "wip_example",
+              "last_id": "wip_example",
+              "has_more": false
+            }
+      security:
+        - AdminApiKeyAuth: []
+    post:
+      summary: Create Platform workload identity provider
+      description: Register an OIDC provider for keyless project service-account
+        authentication.
+      operationId: CreatePlatformworkloadidentityprovider
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlatformWorkloadIdentityProviderBody"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformProvider"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X POST "https://api.openai.com/v1/organization/workload_identity_providers" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY" \
+                -H "Content-Type: application/json" \
+                -d '{
+                "name": "CI provider",
+                "type": "oidc",
+                "issuer": "https://issuer.example.com",
+                "audience": "openai"
+              }'
+          response: |
+            {
+              "object": "organization.workload_identity_provider",
+              "id": "wip_example",
+              "type": "oidc",
+              "name": "CI provider",
+              "issuer": "https://issuer.example.com",
+              "audience": "openai",
+              "verification": {
+                "type": "discovery",
+                "discovery_url": null
+              },
+              "description": null,
+              "attribute_transformations": [],
+              "enabled": true,
+              "created_at": 1793664000,
+              "updated_at": 1793664000
+            }
+      security:
+        - AdminApiKeyAuth: []
+  /organization/workload_identity_providers/{workload_identity_provider_id}:
+    get:
+      summary: Retrieve Platform workload identity provider
+      description: Retrieve an OIDC provider in the authenticated organization.
+      operationId: RetrievePlatformworkloadidentityprovider
+      parameters:
+        - name: workload_identity_provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformProvider"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X GET "https://api.openai.com/v1/organization/workload_identity_providers/wip_example" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY"
+          response: |
+            {
+              "object": "organization.workload_identity_provider",
+              "id": "wip_example",
+              "type": "oidc",
+              "name": "CI provider",
+              "issuer": "https://issuer.example.com",
+              "audience": "openai",
+              "verification": {
+                "type": "discovery",
+                "discovery_url": null
+              },
+              "description": null,
+              "attribute_transformations": [],
+              "enabled": true,
+              "created_at": 1793664000,
+              "updated_at": 1793664000
+            }
+      security:
+        - AdminApiKeyAuth: []
+    post:
+      summary: Update Platform workload identity provider
+      description: Update supplied provider fields, preserving omitted fields.
+      operationId: UpdatePlatformworkloadidentityprovider
+      parameters:
+        - name: workload_identity_provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlatformWorkloadIdentityProviderBody"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformProvider"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X POST "https://api.openai.com/v1/organization/workload_identity_providers/wip_example" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY" \
+                -H "Content-Type: application/json" \
+                -d '{
+                "enabled": false
+              }'
+          response: |
+            {
+              "object": "organization.workload_identity_provider",
+              "id": "wip_example",
+              "type": "oidc",
+              "name": "CI provider",
+              "issuer": "https://issuer.example.com",
+              "audience": "openai",
+              "verification": {
+                "type": "discovery",
+                "discovery_url": null
+              },
+              "description": null,
+              "attribute_transformations": [],
+              "enabled": false,
+              "created_at": 1793664000,
+              "updated_at": 1793664000
+            }
+      security:
+        - AdminApiKeyAuth: []
+    delete:
+      summary: Delete Platform workload identity provider
+      description: Delete a provider after deleting all its federation rules.
+      operationId: DeletePlatformworkloadidentityprovider
+      parameters:
+        - name: workload_identity_provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformProviderDeletedResource"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X DELETE "https://api.openai.com/v1/organization/workload_identity_providers/wip_example" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY"
+          response: |
+            {
+              "object": "organization.workload_identity_provider.deleted",
+              "id": "wip_example",
+              "deleted": true
+            }
+      security:
+        - AdminApiKeyAuth: []
+  /organization/workload_identity_providers/{workload_identity_provider_id}/federation_rules:
+    get:
+      summary: List Platform workload identity federation rules
+      description: List the provider's federation rules to project service accounts.
+      operationId: ListPlatformworkloadidentityfederationrules
+      parameters:
+        - name: workload_identity_provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: order
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - default: asc
+                x-stainless-const: true
+                type: string
+                enum:
+                  - asc
+              - default: desc
+                x-stainless-const: true
+                type: string
+                enum:
+                  - desc
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+        - name: service_account_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformFederationRuleListResource"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X GET "https://api.openai.com/v1/organization/workload_identity_providers/wip_example/federation_rules?limit=20&order=asc" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY"
+          response: |
+            {
+              "object": "list",
+              "data": [
+                {
+                  "object": "organization.workload_identity_federation_rule",
+                  "id": "wifr_example",
+                  "workload_identity_provider_id": "wip_example",
+                  "project_id": "proj_example",
+                  "service_account_id": "svc_acct_example",
+                  "name": null,
+                  "description": null,
+                  "attribute_matchers": {
+                    "sub": "ci:release"
+                  },
+                  "permissions": {
+                    "type": "service_account_default"
+                  },
+                  "enabled": true,
+                  "created_at": 1793664000,
+                  "updated_at": 1793664000
+                }
+              ],
+              "first_id": "wifr_example",
+              "last_id": "wifr_example",
+              "has_more": false
+            }
+      security:
+        - AdminApiKeyAuth: []
+    post:
+      summary: Create Platform workload identity federation rule
+      description: Bind verified token attributes to an existing project service account.
+      operationId: CreatePlatformworkloadidentityfederationrule
+      parameters:
+        - name: workload_identity_provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlatformWorkloadIdentityFederationRuleBody"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformFederationRule"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X POST "https://api.openai.com/v1/organization/workload_identity_providers/wip_example/federation_rules" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY" \
+                -H "Content-Type: application/json" \
+                -d '{
+                "project_id": "proj_example",
+                "service_account_id": "svc_acct_example",
+                "attribute_matchers": {
+                  "sub": "ci:release"
+                }
+              }'
+          response: |
+            {
+              "object": "organization.workload_identity_federation_rule",
+              "id": "wifr_example",
+              "workload_identity_provider_id": "wip_example",
+              "project_id": "proj_example",
+              "service_account_id": "svc_acct_example",
+              "name": null,
+              "description": null,
+              "attribute_matchers": {
+                "sub": "ci:release"
+              },
+              "permissions": {
+                "type": "service_account_default"
+              },
+              "enabled": true,
+              "created_at": 1793664000,
+              "updated_at": 1793664000
+            }
+      security:
+        - AdminApiKeyAuth: []
+  /organization/workload_identity_providers/{workload_identity_provider_id}/federation_rules/{workload_identity_federation_rule_id}:
+    get:
+      summary: Retrieve Platform workload identity federation rule
+      description: Retrieve a federation rule owned by the authenticated organization
+        and provider.
+      operationId: RetrievePlatformworkloadidentityfederationrule
+      parameters:
+        - name: workload_identity_provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: workload_identity_federation_rule_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformFederationRule"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X GET "https://api.openai.com/v1/organization/workload_identity_providers/wip_example/federation_rules/wifr_example" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY"
+          response: |
+            {
+              "object": "organization.workload_identity_federation_rule",
+              "id": "wifr_example",
+              "workload_identity_provider_id": "wip_example",
+              "project_id": "proj_example",
+              "service_account_id": "svc_acct_example",
+              "name": null,
+              "description": null,
+              "attribute_matchers": {
+                "sub": "ci:release"
+              },
+              "permissions": {
+                "type": "service_account_default"
+              },
+              "enabled": true,
+              "created_at": 1793664000,
+              "updated_at": 1793664000
+            }
+      security:
+        - AdminApiKeyAuth: []
+    post:
+      summary: Update Platform workload identity federation rule
+      description: Update supplied matcher, permission, metadata, or enabled fields.
+      operationId: UpdatePlatformworkloadidentityfederationrule
+      parameters:
+        - name: workload_identity_provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: workload_identity_federation_rule_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlatformWorkloadIdentityFederationRuleBody"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformFederationRule"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X POST "https://api.openai.com/v1/organization/workload_identity_providers/wip_example/federation_rules/wifr_example" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY" \
+                -H "Content-Type: application/json" \
+                -d '{
+                "enabled": false
+              }'
+          response: |
+            {
+              "object": "organization.workload_identity_federation_rule",
+              "id": "wifr_example",
+              "workload_identity_provider_id": "wip_example",
+              "project_id": "proj_example",
+              "service_account_id": "svc_acct_example",
+              "name": null,
+              "description": null,
+              "attribute_matchers": {
+                "sub": "ci:release"
+              },
+              "permissions": {
+                "type": "service_account_default"
+              },
+              "enabled": false,
+              "created_at": 1793664000,
+              "updated_at": 1793664000
+            }
+      security:
+        - AdminApiKeyAuth: []
+    delete:
+      summary: Delete Platform workload identity federation rule
+      description: Delete a federation rule to a project service account.
+      operationId: DeletePlatformworkloadidentityfederationrule
+      parameters:
+        - name: workload_identity_provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: workload_identity_federation_rule_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformFederationRuleDeletedResource"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl -X DELETE "https://api.openai.com/v1/organization/workload_identity_providers/wip_example/federation_rules/wifr_example" \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY"
+          response: >
+            {
+              "object": "organization.workload_identity_federation_rule.deleted",
+              "id": "wifr_example",
+              "deleted": true
+            }
+      security:
+        - AdminApiKeyAuth: []
   /organization/usage/decisions:
     get:
       summary: Decisions
@@ -29842,6 +30404,84 @@ paths:
                 "enforcement": {
                     "status": "enforcing"
                 }
+            }
+      security:
+        - AdminApiKeyAuth: []
+  /organization/projects/{project_id}/service_tier_settings:
+    get:
+      summary: Retrieve project service tier settings
+      description: Retrieve the configured default and enabled service tiers for a project.
+      operationId: Retrieveprojectservicetiersettings
+      parameters:
+        - name: project_id
+          in: path
+          description: The ID of the project
+          required: true
+          schema:
+            description: The ID of the project
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectServiceTierSettingsResource"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl https://api.openai.com/v1/organization/projects/proj_abc/service_tier_settings \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY"
+          response: |
+            {
+              "object": "project.service_tier_settings",
+              "default": "standard",
+              "enabled_tiers": "all"
+            }
+      security:
+        - AdminApiKeyAuth: []
+    post:
+      summary: Update project service tier settings
+      description: Update the default or enabled service tiers atomically. Supply at
+        least one field. Omitted fields keep their current values.
+      operationId: Updateprojectservicetiersettings
+      parameters:
+        - name: project_id
+          in: path
+          description: The ID of the project
+          required: true
+          schema:
+            description: The ID of the project
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectServiceTierSettingsBody"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectServiceTierSettingsResource"
+      x-oaiMeta:
+        group: administration
+        examples:
+          request:
+            curl: |
+              curl https://api.openai.com/v1/organization/projects/proj_abc/service_tier_settings \
+                -H "Authorization: Bearer $OPENAI_ADMIN_KEY" \
+                -H "Content-Type: application/json" \
+                -d '{"default":"standard","enabled_tiers":[]}'
+          response: |
+            {
+              "object": "project.service_tier_settings",
+              "default": "standard",
+              "enabled_tiers": []
             }
       security:
         - AdminApiKeyAuth: []
@@ -35788,9 +36428,9 @@ paths:
     post:
       operationId: updateAgentSession
       summary: Update an agent session
-      description: Updates session tools, metadata, model, reasoning effort, or
-        service tier. Model settings apply to subsequent turns. Omitted fields
-        are unchanged. See [managing
+      description: Updates session tools, metadata, model, reasoning effort, service
+        tier, or the default prompt cache lifetime. Model settings apply to
+        subsequent turns. Omitted fields are unchanged. See [managing
         sessions](https://developers.openai.com/api/docs/guides/agents-api/sessions/manage).
       tags:
         - Agents
@@ -36272,6 +36912,14 @@ paths:
             minLength: 0
             maxLength: 1048576
           description: The ID of the session.
+        - name: include_obfuscation
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: Whether to include obfuscation padding in events on this
+            connection. Defaults to `true`.
       responses:
         "200":
           description: A live stream of session events.
@@ -45497,6 +46145,8 @@ components:
         - $ref: "#/components/schemas/CreateModelResponseProperties"
         - type: object
           properties:
+            prompt_cache_options:
+              $ref: "#/components/schemas/PromptCacheOptionsParam"
             messages:
               description: |
                 A list of messages comprising the conversation so far. Depending on the
@@ -47614,6 +48264,12 @@ components:
     CreateImageEditRequest:
       type: object
       properties:
+        frame_count:
+          $ref: "#/components/schemas/frame_count"
+        frame_duration_ms:
+          $ref: "#/components/schemas/frame_duration_ms"
+        complexity:
+          $ref: "#/components/schemas/complexity"
         image:
           anyOf:
             - type: string
@@ -47707,6 +48363,8 @@ components:
                 - gpt-image-2.5-sunburst-2026-09-08
                 - gpt-image-2.5-flare
                 - gpt-image-2.5-flare-2026-09-08
+                - gpt-image-2.6-sunburst
+                - gpt-image-2.6-flare
                 - gpt-image-1
                 - gpt-image-1-mini
                 - chatgpt-image-latest
@@ -47720,14 +48378,23 @@ components:
               x-stainless-const: true
           x-oaiTypeLabel: string
           example: gpt-image-1.5
-          description: |
+          description: >
             The GPT image model to use for image editing
+
             (`gpt-image-1-mini`, `gpt-image-1.5`, `gpt-image-2`,
+
             `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`,
+
             `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`,
-            `gpt-image-2.5-flare-2026-09-08`, or `chatgpt-image-latest`).
+
+            `gpt-image-2.5-flare-2026-09-08`, `gpt-image-2.6-sunburst`,
+            `gpt-image-2.6-flare`,
+
+            or `chatgpt-image-latest`).
+
 
             `gpt-image-1` was shut down on October 23, 2026. Use
+
             `gpt-image-2.5-sunburst` or `gpt-image-2.5-flare` instead.
         n:
           type:
@@ -47785,11 +48452,7 @@ components:
             images.
         output_format:
           anyOf:
-            - type: string
-              enum:
-                - png
-                - jpeg
-                - webp
+            - $ref: "#/components/schemas/ImagesApiOutputFormat"
             - type: "null"
           default: png
           example: png
@@ -47797,10 +48460,20 @@ components:
             The format in which the generated images are returned. This
             parameter is
 
-            only supported for the GPT image models. Must be one of `png`,
-            `jpeg`, or `webp`.
+            only supported for the GPT image models.
 
             The default value is `png`.
+
+            SVG output requires a supported image model and project access.
+        svg:
+          anyOf:
+            - $ref: "#/components/schemas/SvgParam"
+            - type: "null"
+          description: Selects the author model and reasoning effort for
+            `output_format=svg`. Supply `svg.model` when SVG model selection is
+            enabled. Otherwise, omit this object. SVG output requires `n=1` and
+            cannot use streaming, partial images, or output compression. Use
+            multipart fields such as `svg[model]`.
         output_compression:
           type:
             - integer
@@ -47882,6 +48555,14 @@ components:
     CreateImageRequest:
       type: object
       properties:
+        frame_count:
+          $ref: "#/components/schemas/frame_count"
+        frame_duration_ms:
+          $ref: "#/components/schemas/frame_duration_ms"
+        complexity:
+          $ref: "#/components/schemas/complexity"
+        svg:
+          $ref: "#/components/schemas/svg"
         prompt:
           description: A text description of the desired image(s). The maximum length is
             32000 characters.
@@ -47899,6 +48580,8 @@ components:
                 - gpt-image-2.5-sunburst-2026-09-08
                 - gpt-image-2.5-flare
                 - gpt-image-2.5-flare-2026-09-08
+                - gpt-image-2.6-sunburst
+                - gpt-image-2.6-flare
                 - gpt-image-1
                 - gpt-image-1-mini
                 - chatgpt-image-latest
@@ -47925,7 +48608,10 @@ components:
 
             `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`,
 
-            `gpt-image-2.5-flare-2026-09-08`, and `chatgpt-image-latest`.
+            `gpt-image-2.5-flare-2026-09-08`, `gpt-image-2.6-sunburst`,
+            `gpt-image-2.6-flare`,
+
+            and `chatgpt-image-latest`.
 
 
             `gpt-image-1` was shut down on October 23, 2026. Use
@@ -47988,17 +48674,12 @@ components:
             images.
         output_format:
           anyOf:
-            - type: string
-              enum:
-                - png
-                - jpeg
-                - webp
+            - $ref: "#/components/schemas/ImagesApiOutputFormat"
             - type: "null"
           default: png
           example: png
           description: The format in which the generated images are returned. This
-            parameter is only supported for the GPT image models. Must be one of
-            `png`, `jpeg`, or `webp`.
+            parameter is only supported for the GPT image models.
         output_compression:
           type:
             - integer
@@ -48277,8 +48958,6 @@ components:
         - $ref: "#/components/schemas/ModelResponseProperties"
         - type: object
           properties:
-            prompt_cache_options:
-              $ref: "#/components/schemas/PromptCacheOptionsParam"
             top_logprobs:
               description: >
                 An integer between 0 and 20 specifying the maximum number of
@@ -48775,6 +49454,8 @@ components:
           properties:
             access_programs:
               $ref: "#/components/schemas/AccessProgramsParam"
+            image:
+              $ref: "#/components/schemas/ImageOptionsParam"
             prompt_cache_options:
               $ref: "#/components/schemas/ResponsePromptCacheOptionsParam"
             service_tier:
@@ -50718,6 +51399,12 @@ components:
 
         JSON edits support GPT image models.
       properties:
+        frame_count:
+          $ref: "#/components/schemas/frame_count"
+        frame_duration_ms:
+          $ref: "#/components/schemas/frame_duration_ms"
+        complexity:
+          $ref: "#/components/schemas/complexity"
         model:
           anyOf:
             - type: string
@@ -50730,6 +51417,8 @@ components:
                 - gpt-image-2.5-sunburst-2026-09-08
                 - gpt-image-2.5-flare
                 - gpt-image-2.5-flare-2026-09-08
+                - gpt-image-2.6-sunburst
+                - gpt-image-2.6-flare
                 - gpt-image-1
                 - gpt-image-1-mini
                 - chatgpt-image-latest
@@ -50747,10 +51436,12 @@ components:
 
             snapshot `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`,
 
-            `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`, and
+            `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`,
 
-            `gpt-image-2.5-flare-2026-09-08`. Defaults to
-            `gpt-image-2.5-sunburst`.
+            `gpt-image-2.5-flare-2026-09-08`, `gpt-image-2.6-sunburst`, and
+            `gpt-image-2.6-flare`.
+
+            Defaults to `gpt-image-2.5-sunburst`.
 
 
             `gpt-image-1` was shut down on October 23, 2026. Use
@@ -50869,15 +51560,20 @@ components:
             ctices#implement-safety-identifiers)."
         output_format:
           anyOf:
-            - type: string
-              enum:
-                - png
-                - jpeg
-                - webp
+            - $ref: "#/components/schemas/ImagesApiOutputFormat"
             - type: "null"
           default: png
           example: png
-          description: Output image format. Supported for GPT image models.
+          description: Output image format. Supported for GPT image models. SVG output
+            requires a supported image model and project access.
+        svg:
+          anyOf:
+            - $ref: "#/components/schemas/SvgParam"
+            - type: "null"
+          description: Selects the author model and reasoning effort for
+            `output_format=svg`. Supply `svg.model` when SVG model selection is
+            enabled. Otherwise, omit this object. SVG output requires `n=1` and
+            cannot use streaming, partial images, or output compression.
         output_compression:
           anyOf:
             - type: integer
@@ -54829,36 +55525,53 @@ components:
               enum:
                 - gpt-image-1
                 - gpt-image-1-mini
-                - gpt-image-1.5
                 - gpt-image-2
                 - gpt-image-2-2026-04-21
                 - gpt-image-2.5-sunburst
                 - gpt-image-2.5-sunburst-2026-09-08
                 - gpt-image-2.5-flare
                 - gpt-image-2.5-flare-2026-09-08
+                - gpt-image-2.6-sunburst
+                - gpt-image-2.6-flare
+                - gpt-image-1.5
+                - chatgpt-image-latest
               x-openai-enum-deprecations:
                 gpt-image-1:
                   message: GPT Image 1 was shut down on October 23, 2026. Use
                     gpt-image-2.5-sunburst or gpt-image-2.5-flare instead.
-              description: >
+              description: |
                 The image generation model to use. One of `gpt-image-1-mini`,
-
                 `gpt-image-1.5`, `gpt-image-2`,
-
                 `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`,
-
                 `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`,
-
-                `gpt-image-2.5-flare-2026-09-08`, or `chatgpt-image-latest`.
-                Default:
-
+                `gpt-image-2.5-flare-2026-09-08`, `gpt-image-2.6-sunburst`,
+                `gpt-image-2.6-flare`, or `chatgpt-image-latest`. Default:
                 `gpt-image-2`.
 
-
                 `gpt-image-1` was shut down on October 23, 2026. Use
-
                 `gpt-image-2.5-sunburst` or `gpt-image-2.5-flare` instead.
               default: gpt-image-2
+        complexity:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+          description: >
+            Computation spent planning the image, independently of rendering
+            quality.
+
+            Overrides the outer response's `reasoning.effort` for image
+            generation.
+
+            When omitted, inherits a supported outer reasoning effort or uses
+            the
+
+            image model's configured default.
+
+            For SVG output, controls the reference image, not the SVG author's
+
+            reasoning.
         quality:
           type: string
           enum:
@@ -54908,10 +55621,45 @@ components:
             - png
             - webp
             - jpeg
-          description: |
-            The output format of the generated image. One of `png`, `webp`, or
-            `jpeg`. Default: `png`.
+            - gif
+            - svg
+          description: >
+            The output format of the generated image. One of `png`, `webp`,
+            `jpeg`,
+
+            `gif`, or `svg`. Default: `png`. GIF and SVG output require a model
+
+            that supports the selected format. GIF output does not support
+
+            partial image streaming (`partial_images` greater than `0`),
+
+            `input_image_mask`, or custom `output_compression`.
+
+            Responses lifecycle events can still be streamed for GIF output.
           default: png
+        frame_count:
+          type: integer
+          minimum: 2
+          maximum: 16
+          default: 9
+          description: >
+            Number of GIF frames. Requires `output_format` to be `gif`. Default:
+            9.
+        frame_duration_ms:
+          type: integer
+          minimum: 20
+          maximum: 2000
+          default: 200
+          description: |
+            Duration of each GIF frame in milliseconds, rounded to 10 ms.
+            Requires `output_format` to be `gif`. Default: 200.
+        svg:
+          description: |
+            SVG author model settings. Requires `output_format` to be `svg`.
+            When SVG model selection is enabled, omitting this object uses the
+            outer response model. Otherwise, the default SVG author is used and
+            explicit model overrides are unavailable.
+          $ref: "#/components/schemas/SvgParam"
         output_compression:
           type: integer
           minimum: 0
@@ -55044,13 +55792,8 @@ components:
             - transparent
             - opaque
         output_format:
-          type: string
-          description: The output format of the image generation. Either `png`, `webp`, or
-            `jpeg`.
-          enum:
-            - png
-            - webp
-            - jpeg
+          $ref: "#/components/schemas/ImagesApiOutputFormat"
+          description: The output format of the generated or edited image.
         size:
           anyOf:
             - type: string
@@ -55073,6 +55816,9 @@ components:
             - max
         usage:
           $ref: "#/components/schemas/ImageGenUsage"
+        svg_usage:
+          $ref: "#/components/schemas/SvgUsage"
+          description: Token usage for SVG authoring, separate from image rendering usage.
       required:
         - created
       x-oaiMeta:
@@ -56254,10 +57000,9 @@ components:
       additionalProperties: false
     LiveSIPTransport:
       type: object
-      description: Place an outbound SIP call using your provider's trunk. Outbound
-        SIP calling must be enabled for your organization. The trunk must
-        support TLS signaling, Opus audio, and SDES-SRTP media. See [Telephony
-        and
+      description: Place an outbound SIP call using your provider's trunk. The trunk
+        must support TLS signaling, Opus audio, and SDES-SRTP media. See
+        [Telephony and
         SIP](https://developers.openai.com/api/docs/guides/voice-sip?api=live#place-an-outbound-call).
       properties:
         type:
@@ -57834,7 +58579,9 @@ components:
             - gpt-daybreak-blue-latest
             - gpt-daybreak-red-latest
             - gpt-5.6-cyber
+            - gpt-6-cyber
             - gpt-rosalind-research
+            - gpt-6-rosalind
           x-openai-enum-deprecations:
             o1-pro:
               message: "Announced shutdown date: 2026-10-23. See
@@ -71573,6 +72320,8 @@ components:
         - $ref: "#/components/schemas/ResponseProperties"
         - type: object
           properties:
+            image:
+              $ref: "#/components/schemas/ResolvedImageOptions"
             service_tier:
               $ref: "#/components/schemas/ServiceTierResponses"
             truncation:
@@ -75467,6 +76216,8 @@ components:
             cache_write_tokens:
               type: integer
               description: The number of input tokens that were written to the cache.
+            cache_write_tokens_details:
+              $ref: "#/components/schemas/CacheWriteTokensDetails"
           required:
             - cached_tokens
             - cache_write_tokens
@@ -83559,7 +84310,7 @@ components:
         breakpoints. For cache matching, OpenAI considers up to the latest 80
         breakpoints in the conversation, without a content-block lookback limit.
         Set `mode` to `explicit` to disable the implicit breakpoint. The `ttl`
-        defaults to `30m`, which is currently the only supported value. See the
+        defaults to `30m`. Supported lifetimes depend on the API. See the
         [prompt caching
         guide](https://developers.openai.com/api/docs/guides/prompt-caching) for
         current details.
@@ -84441,6 +85192,27 @@ components:
         - png
         - webp
         - jpeg
+        - gif
+        - svg
+    SvgUsage:
+      properties:
+        model:
+          type: string
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        reasoning_tokens:
+          type: integer
+      type: object
+      required:
+        - model
+        - input_tokens
+        - output_tokens
+        - total_tokens
+        - reasoning_tokens
     ImageGenToolCall:
       properties:
         type:
@@ -84512,6 +85284,8 @@ components:
               description: The output format used for generation.
             - type: "null"
           x-openai-go-optional-enum: true
+        svg_usage:
+          $ref: "#/components/schemas/SvgUsage"
         revised_prompt:
           anyOf:
             - type: string
@@ -85102,6 +85876,40 @@ components:
       type: object
       required:
         - type
+    ReasoningEffortEnum:
+      type: string
+      enum:
+        - none
+        - minimal
+        - low
+        - medium
+        - high
+        - xhigh
+        - max
+    SvgReasoningParam:
+      properties:
+        effort:
+          oneOf:
+            - $ref: "#/components/schemas/ReasoningEffortEnum"
+              description: Controls how much effort the model should spend on reasoning for
+                this request.
+      type: object
+      required: []
+      description: Reasoning effort for SVG authoring. When omitted, uses the author
+        model's default in both Images and Responses.
+    SvgParam:
+      properties:
+        model:
+          type: string
+          minLength: 1
+        reasoning:
+          anyOf:
+            - $ref: "#/components/schemas/SvgReasoningParam"
+              description: Reasoning effort for SVG authoring. When omitted, uses the author
+                model's default in both Images and Responses.
+            - type: "null"
+      type: object
+      required: []
     InputFidelity:
       type: string
       enum:
@@ -86464,7 +87272,7 @@ components:
         namespace:
           anyOf:
             - type: string
-              maxLength: 64
+              maxLength: 128
               minLength: 1
               pattern: ^[a-zA-Z0-9_-]+$
               description: The namespace of the tool that produced the output.
@@ -87322,6 +88130,40 @@ components:
         - object
         - metadata
         - created_at
+    frame_count:
+      type:
+        - integer
+        - "null"
+      minimum: 2
+      maximum: 16
+      description: Number of frames for GIF output. Accepts integers from 2 through
+        16. Defaults to 9 when omitted. Only supported with output_format=gif.
+        The requested size must satisfy the selected model's GIF size limits.
+        GIF output does not support streaming, partial images, masks, or custom
+        output compression. Requires access to the GIF preview for the selected
+        model.
+    frame_duration_ms:
+      type:
+        - integer
+        - "null"
+      minimum: 20
+      description: Requested delay per GIF frame, in milliseconds. Defaults to 200
+        when omitted. GIF output rounds to the nearest 10 ms and caps the
+        encoded delay at 655,350 ms per frame. Only supported with
+        output_format=gif.
+    complexity:
+      type:
+        - string
+        - "null"
+      enum:
+        - low
+        - medium
+        - high
+        - null
+      description: Computation spent planning the image, independently of rendering
+        quality. Uses the image model's configured default when omitted. For SVG
+        output, controls the reference image, independently of the SVG author's
+        reasoning.
     markup:
       type: string
       format: binary
@@ -87329,6 +88171,14 @@ components:
         Must match that image's dimensions after orientation and contain
         transparent pixels. Supports GPT Image 2.5 and 2.6. Cannot be combined
         with mask.
+    ImagesApiOutputFormat:
+      type: string
+      enum:
+        - png
+        - webp
+        - jpeg
+        - gif
+        - svg
     ImageGenOutputTokensDetails:
       properties:
         image_tokens:
@@ -87380,8 +88230,40 @@ components:
         - output_tokens
         - input_tokens_details
       title: Image generation usage
-      description: For `gpt-image-1` only, the token usage information for the image
-        generation.
+      description: Token usage information for image generation with GPT Image models.
+    svg:
+      type:
+        - object
+        - "null"
+      description: Selects the model and reasoning effort used to author SVG output.
+        Requires output_format=svg and access to SVG model selection. When model
+        selection is enabled, supply svg.model. When model selection is
+        disabled, omit this object. The top-level model selects the image model
+        that creates the reference image. SVG generation requires n=1 and does
+        not support streaming, partial images, prompt_rewriter, or
+        output_compression.
+      properties:
+        model:
+          type: string
+          minLength: 1
+          description: Model used to author the SVG. Required when SVG model selection is
+            enabled.
+        reasoning:
+          type:
+            - object
+            - "null"
+          description: Reasoning settings for the SVG author, independent of image
+            complexity. Omitted or null effort uses the author model's default.
+            Supported efforts depend on the selected author model.
+          properties:
+            effort:
+              anyOf:
+                - $ref: "#/components/schemas/ReasoningEffortEnum"
+                - type: "null"
+              description: Controls how much effort the SVG author spends on reasoning. Uses
+                the author model's default when omitted or null.
+      required:
+        - model
     instructions:
       anyOf:
         - description: Frontend instructions for voice, conversation, interruptions, and
@@ -89201,14 +90083,33 @@ components:
       type: object
       required: []
       description: Domain-specific access programs to use for this request.
+    ImageContextCompression:
+      type: string
+      enum:
+        - auto
+        - enabled
+        - disabled
+    ImageOptionsParam:
+      properties:
+        context_compression:
+          $ref: "#/components/schemas/ImageContextCompression"
+          description: Controls image context optimization. Defaults to `auto`, which uses
+            the model, transport, and input to select a policy. Use `enabled` to
+            require compression support or `disabled` to turn it off.
+      additionalProperties: false
+      type: object
+      required: []
+      description: Request level image options.
     ResponsePromptCacheOptionsParam:
       properties:
         ttl:
-          $ref: "#/components/schemas/PromptCacheTTLEnum"
+          type: string
+          enum:
+            - 30m
+            - 12h
           description: The minimum lifetime applied to every implicit and explicit cache
-            breakpoint written by the request. Defaults to `30m`, which is
-            currently the only supported value. The backend may retain cache
-            entries for longer.
+            breakpoint written by the request. Supported values are `30m` (the
+            default) and `12h`. The backend may retain cache entries for longer.
         mode:
           $ref: "#/components/schemas/PromptCacheModeEnum"
           description: Controls whether OpenAI automatically creates an implicit cache
@@ -89241,7 +90142,7 @@ components:
         breakpoints. For cache matching, OpenAI considers up to the latest 80
         breakpoints in the conversation, without a content-block lookback limit.
         Set `mode` to `explicit` to disable the implicit breakpoint. The `ttl`
-        defaults to `30m`, which is currently the only supported value. See the
+        defaults to `30m`. Supported lifetimes depend on the API. See the
         [prompt caching
         guide](https://developers.openai.com/api/docs/guides/prompt-caching) for
         current details.
@@ -89279,6 +90180,19 @@ components:
       type: object
       required:
         - type
+    ResolvedImageContextCompressionEnum:
+      type: string
+      enum:
+        - enabled
+        - disabled
+    ResolvedImageOptions:
+      properties:
+        context_compression:
+          $ref: "#/components/schemas/ResolvedImageContextCompressionEnum"
+          description: Effective image context optimization policy.
+      type: object
+      required:
+        - context_compression
     AccessProgramsBody:
       properties:
         cyber:
@@ -89287,6 +90201,18 @@ components:
       type: object
       required:
         - cyber
+    CacheWriteTokensDetails:
+      properties:
+        ttl_30m_tokens:
+          type: integer
+          description: The number of input tokens written with 30-minute retention.
+        ttl_12h_tokens:
+          type: integer
+          description: The number of input tokens written with 12-hour retention.
+      type: object
+      required:
+        - ttl_30m_tokens
+        - ttl_12h_tokens
     CachedUsageDetails:
       properties:
         cached_text_tokens:
@@ -89354,7 +90280,10 @@ components:
     PromptCacheOptions:
       properties:
         ttl:
-          $ref: "#/components/schemas/PromptCacheTTLEnum"
+          type: string
+          enum:
+            - 30m
+            - 12h
           description: The minimum lifetime applied to each cache breakpoint.
         mode:
           $ref: "#/components/schemas/PromptCacheModeEnum"
@@ -89918,6 +90847,14 @@ components:
           type: string
         kms_key_version:
           type: string
+        region:
+          type: string
+        vault_ocid:
+          type: string
+        key_ocid:
+          type: string
+        key_version_ocid:
+          type: string
         tenant_id:
           type: string
         vault_uri:
@@ -90093,11 +91030,52 @@ components:
         - tenant_id
         - vault_uri
         - key_name
+    OciExternalKeyParams:
+      properties:
+        name:
+          type: string
+          description: A friendly name to identify this config
+        type:
+          type: string
+          enum:
+            - oci
+          default: oci
+          x-stainless-const: true
+        region:
+          type: string
+          maxLength: 64
+          minLength: 1
+          description: The OCI region containing the vault
+        vault_ocid:
+          type: string
+          maxLength: 512
+          minLength: 1
+          description: The customer OCI Vault OCID
+        key_ocid:
+          type: string
+          maxLength: 512
+          minLength: 1
+          description: The OCI Vault key OCID
+        purpose:
+          $ref: "#/components/schemas/ExternalKeyPurpose"
+        key_version_ocid:
+          type: string
+          maxLength: 512
+          minLength: 1
+          description: The exact OCI key version OCID for PSP decryption.
+      type: object
+      required:
+        - name
+        - type
+        - region
+        - vault_ocid
+        - key_ocid
     V1OrganizationExternalKeysPostRequest:
       oneOf:
         - $ref: "#/components/schemas/AwsExternalKeyParams"
         - $ref: "#/components/schemas/GcpExternalKeyParams"
         - $ref: "#/components/schemas/AzureExternalKeyParams"
+        - $ref: "#/components/schemas/OciExternalKeyParams"
       discriminator:
         propertyName: type
     ValidateExternalKeyResource:
@@ -90107,6 +91085,478 @@ components:
       type: object
       required:
         - status
+    DiscoveryVerification:
+      properties:
+        type:
+          type: string
+          enum:
+            - discovery
+          default: discovery
+          x-stainless-const: true
+        discovery_url:
+          anyOf:
+            - type: string
+            - type: "null"
+      type: object
+      required:
+        - type
+        - discovery_url
+    UploadedJwksVerification:
+      properties:
+        type:
+          type: string
+          enum:
+            - uploaded_jwks
+          default: uploaded_jwks
+          x-stainless-const: true
+        jwks:
+          additionalProperties: {}
+          type: object
+          x-oaiTypeLabel: map
+      type: object
+      required:
+        - type
+        - jwks
+    Transformation:
+      properties:
+        attribute:
+          type: string
+        expression:
+          type: string
+      type: object
+      required:
+        - attribute
+        - expression
+    PlatformProvider:
+      properties:
+        object:
+          type: string
+          enum:
+            - organization.workload_identity_provider
+          default: organization.workload_identity_provider
+          x-stainless-const: true
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+            - oidc
+          default: oidc
+          x-stainless-const: true
+        name:
+          type: string
+        issuer:
+          type: string
+        audience:
+          type: string
+        verification:
+          oneOf:
+            - $ref: "#/components/schemas/DiscoveryVerification"
+            - $ref: "#/components/schemas/UploadedJwksVerification"
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+        attribute_transformations:
+          items:
+            $ref: "#/components/schemas/Transformation"
+          type: array
+        enabled:
+          type: boolean
+        created_at:
+          type: integer
+        updated_at:
+          type: integer
+      type: object
+      required:
+        - object
+        - id
+        - type
+        - name
+        - issuer
+        - audience
+        - verification
+        - description
+        - attribute_transformations
+        - enabled
+        - created_at
+        - updated_at
+    PlatformProviderListResource:
+      properties:
+        object:
+          type: string
+          enum:
+            - list
+          default: list
+          x-stainless-const: true
+        data:
+          items:
+            $ref: "#/components/schemas/PlatformProvider"
+          type: array
+        first_id:
+          anyOf:
+            - type: string
+            - type: "null"
+        last_id:
+          anyOf:
+            - type: string
+            - type: "null"
+        has_more:
+          type: boolean
+      type: object
+      required:
+        - object
+        - data
+        - first_id
+        - last_id
+        - has_more
+    DiscoveryVerificationParam:
+      properties:
+        type:
+          type: string
+          enum:
+            - discovery
+          default: discovery
+          x-stainless-const: true
+        discovery_url:
+          anyOf:
+            - type: string
+            - type: "null"
+      type: object
+      required:
+        - type
+        - discovery_url
+    UploadedJwksVerificationParam:
+      properties:
+        type:
+          type: string
+          enum:
+            - uploaded_jwks
+          default: uploaded_jwks
+          x-stainless-const: true
+        jwks:
+          additionalProperties: {}
+          type: object
+          x-oaiTypeLabel: map
+      type: object
+      required:
+        - type
+        - jwks
+    TransformationParam:
+      properties:
+        attribute:
+          type: string
+          maxLength: 256
+          minLength: 1
+        expression:
+          type: string
+          maxLength: 4096
+          minLength: 1
+      type: object
+      required:
+        - attribute
+        - expression
+    CreatePlatformWorkloadIdentityProviderBody:
+      properties:
+        name:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum:
+            - oidc
+          default: oidc
+          x-stainless-const: true
+        issuer:
+          type: string
+          minLength: 1
+        audience:
+          type: string
+          minLength: 1
+        verification:
+          oneOf:
+            - $ref: "#/components/schemas/DiscoveryVerificationParam"
+            - $ref: "#/components/schemas/UploadedJwksVerificationParam"
+        description:
+          type: string
+        attribute_transformations:
+          items:
+            $ref: "#/components/schemas/TransformationParam"
+          type: array
+          maxItems: 20
+        enabled:
+          type: boolean
+      type: object
+      required:
+        - name
+        - type
+        - issuer
+        - audience
+    UpdatePlatformWorkloadIdentityProviderBody:
+      properties:
+        name:
+          type: string
+          minLength: 1
+        issuer:
+          type: string
+          minLength: 1
+        audience:
+          type: string
+          minLength: 1
+        verification:
+          oneOf:
+            - $ref: "#/components/schemas/DiscoveryVerificationParam"
+            - $ref: "#/components/schemas/UploadedJwksVerificationParam"
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+        attribute_transformations:
+          items:
+            $ref: "#/components/schemas/TransformationParam"
+          type: array
+          maxItems: 20
+        enabled:
+          type: boolean
+      type: object
+      required: []
+    PlatformProviderDeletedResource:
+      properties:
+        object:
+          type: string
+          enum:
+            - organization.workload_identity_provider.deleted
+          default: organization.workload_identity_provider.deleted
+          x-stainless-const: true
+        id:
+          type: string
+        deleted:
+          type: boolean
+      type: object
+      required:
+        - object
+        - id
+        - deleted
+    DefaultPermissions:
+      properties:
+        type:
+          type: string
+          enum:
+            - service_account_default
+          default: service_account_default
+          x-stainless-const: true
+      type: object
+      required:
+        - type
+    RestrictedPermissions:
+      properties:
+        type:
+          type: string
+          enum:
+            - restricted
+          default: restricted
+          x-stainless-const: true
+        scopes:
+          items:
+            type: string
+          type: array
+      type: object
+      required:
+        - type
+        - scopes
+    PlatformFederationRule:
+      properties:
+        object:
+          type: string
+          enum:
+            - organization.workload_identity_federation_rule
+          default: organization.workload_identity_federation_rule
+          x-stainless-const: true
+        id:
+          type: string
+        workload_identity_provider_id:
+          type: string
+        project_id:
+          type: string
+        service_account_id:
+          type: string
+        name:
+          anyOf:
+            - type: string
+            - type: "null"
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+        attribute_matchers:
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: boolean
+              - anyOf:
+                  - type: integer
+                  - type: number
+          type: object
+          x-oaiTypeLabel: map
+        permissions:
+          oneOf:
+            - $ref: "#/components/schemas/DefaultPermissions"
+            - $ref: "#/components/schemas/RestrictedPermissions"
+        enabled:
+          type: boolean
+        created_at:
+          type: integer
+        updated_at:
+          type: integer
+      type: object
+      required:
+        - object
+        - id
+        - workload_identity_provider_id
+        - project_id
+        - service_account_id
+        - name
+        - description
+        - attribute_matchers
+        - permissions
+        - enabled
+        - created_at
+        - updated_at
+    PlatformFederationRuleListResource:
+      properties:
+        object:
+          type: string
+          enum:
+            - list
+          default: list
+          x-stainless-const: true
+        data:
+          items:
+            $ref: "#/components/schemas/PlatformFederationRule"
+          type: array
+        first_id:
+          anyOf:
+            - type: string
+            - type: "null"
+        last_id:
+          anyOf:
+            - type: string
+            - type: "null"
+        has_more:
+          type: boolean
+      type: object
+      required:
+        - object
+        - data
+        - first_id
+        - last_id
+        - has_more
+    DefaultPermissionsParam:
+      properties:
+        type:
+          type: string
+          enum:
+            - service_account_default
+          default: service_account_default
+          x-stainless-const: true
+      type: object
+      required:
+        - type
+    RestrictedPermissionsParam:
+      properties:
+        type:
+          type: string
+          enum:
+            - restricted
+          default: restricted
+          x-stainless-const: true
+        scopes:
+          items:
+            type: string
+          type: array
+          minItems: 1
+      type: object
+      required:
+        - type
+        - scopes
+    CreatePlatformWorkloadIdentityFederationRuleBody:
+      properties:
+        project_id:
+          type: string
+          minLength: 1
+        service_account_id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+        description:
+          type: string
+        attribute_matchers:
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: boolean
+              - anyOf:
+                  - type: integer
+                  - type: number
+          type: object
+          x-oaiTypeLabel: map
+        permissions:
+          oneOf:
+            - $ref: "#/components/schemas/DefaultPermissionsParam"
+            - $ref: "#/components/schemas/RestrictedPermissionsParam"
+        enabled:
+          type: boolean
+      type: object
+      required:
+        - project_id
+        - service_account_id
+        - attribute_matchers
+    UpdatePlatformWorkloadIdentityFederationRuleBody:
+      properties:
+        name:
+          anyOf:
+            - type: string
+            - type: "null"
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+        attribute_matchers:
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: boolean
+              - anyOf:
+                  - type: integer
+                  - type: number
+          type: object
+          x-oaiTypeLabel: map
+        permissions:
+          oneOf:
+            - $ref: "#/components/schemas/DefaultPermissionsParam"
+            - $ref: "#/components/schemas/RestrictedPermissionsParam"
+        enabled:
+          type: boolean
+      type: object
+      required: []
+    PlatformFederationRuleDeletedResource:
+      properties:
+        object:
+          type: string
+          enum:
+            - organization.workload_identity_federation_rule.deleted
+          default: organization.workload_identity_federation_rule.deleted
+          x-stainless-const: true
+        id:
+          type: string
+        deleted:
+          type: boolean
+      type: object
+      required:
+        - object
+        - id
+        - deleted
     DecisionsUsageBucketWidth:
       type: string
       enum:
@@ -90732,6 +92182,72 @@ components:
         - object
         - deleted
       description: Confirmation payload returned after deleting a project hard spend limit.
+    ProjectDefaultServiceTier:
+      type: string
+      enum:
+        - standard
+        - fast
+        - scale
+    ProjectOptionalServiceTier:
+      type: string
+      enum:
+        - flex
+        - fast
+        - ultrafast
+    ProjectServiceTierSettingsResource:
+      properties:
+        object:
+          type: string
+          enum:
+            - project.service_tier_settings
+          default: project.service_tier_settings
+          x-stainless-const: true
+        default:
+          $ref: "#/components/schemas/ProjectDefaultServiceTier"
+          description: Default tier for requests that omit service_tier or use auto.
+        enabled_tiers:
+          oneOf:
+            - type: string
+              enum:
+                - all
+              default: all
+              x-stainless-const: true
+            - items:
+                $ref: "#/components/schemas/ProjectOptionalServiceTier"
+              type: array
+          description: Additional service tiers enabled for this project. "all" includes
+            future tiers. An empty array allows only Standard. Organization
+            policy and eligibility still apply.
+      type: object
+      required:
+        - object
+        - default
+        - enabled_tiers
+    UpdateProjectServiceTierSettingsBody:
+      anyOf:
+        - required:
+            - default
+        - required:
+            - enabled_tiers
+      properties:
+        default:
+          $ref: "#/components/schemas/ProjectDefaultServiceTier"
+          description: Default tier for requests that omit service_tier or use auto.
+        enabled_tiers:
+          oneOf:
+            - type: string
+              enum:
+                - all
+              default: all
+              x-stainless-const: true
+            - items:
+                $ref: "#/components/schemas/ProjectOptionalServiceTier"
+              type: array
+          description: Additional service tiers enabled for this project. "all" includes
+            future tiers. An empty array allows only Standard. Organization
+            policy and eligibility still apply.
+      type: object
+      required: []
     CreateProjectServiceAccountApiKeyBody:
       properties:
         name:
@@ -90796,7 +92312,8 @@ components:
           type: string
           format: binary
           description: The image or audio file to check for supported OpenAI provenance
-            signals.
+            signals. Supported image formats are PNG, JPEG, WebP, and GIF
+            (including animated GIFs).
       type: object
       required:
         - file
@@ -91531,6 +93048,9 @@ components:
                 response. This makes it simple to swap out system (or developer)
                 messages in new responses.
             - type: "null"
+        image:
+          $ref: "#/components/schemas/ImageOptionsParam"
+          description: Request level image options.
         prompt_cache_key:
           anyOf:
             - type: string
@@ -91595,6 +93115,8 @@ components:
         propertyName: type
     CompactResource:
       properties:
+        image:
+          $ref: "#/components/schemas/ResolvedImageOptions"
         id:
           type: string
           description: The unique identifier for the compacted response.
@@ -91630,6 +93152,8 @@ components:
       example:
         id: resp_001
         object: response.compaction
+        image:
+          context_compression: disabled
         output:
           - id: msg_001
             status: completed
@@ -93368,7 +94892,7 @@ components:
             - string
             - "null"
           minLength: 1
-          maxLength: 64
+          maxLength: 128
           pattern: ^[a-zA-Z0-9_-]+$
         name:
           type: string
@@ -94258,6 +95782,9 @@ components:
         defer_loading:
           type: boolean
           description: Whether the function is deferred and discovered through tool search.
+        async:
+          type: boolean
+          description: Whether the agent continues without waiting for the function result.
       required:
         - type
         - name
@@ -95696,6 +97223,11 @@ components:
           default: false
           description: Whether this function is deferred and discovered through tool
             search. Defaults to `false`.
+        async:
+          type: boolean
+          default: false
+          description: Whether the agent continues without waiting for the function
+            result. Defaults to `false`.
       required:
         - type
         - name
@@ -99043,6 +100575,19 @@ components:
       additionalProperties: false
       description: A page of messages, reasoning, and tool calls from a session's item
         history.
+    PromptCacheTtlResource:
+      type: string
+      enum:
+        - 30m
+        - 12h
+    PromptCacheOptionsResource:
+      type: object
+      properties:
+        ttl:
+          $ref: "#/components/schemas/PromptCacheTtlResource"
+      required:
+        - ttl
+      additionalProperties: false
     TurnObjectResource:
       type: string
       enum:
@@ -99071,6 +100616,7 @@ components:
       type: string
       enum:
         - context_length_exceeded
+        - max_output_tokens
         - session_budget_exceeded
         - usage_limit_exceeded
         - project_spend_limit_exceeded
@@ -99095,6 +100641,7 @@ components:
         - internal_error
       x-enumDescriptions:
         - The request exceeds the model's context window.
+        - The model reached its output token limit before finishing the response.
         - The session has reached its usage budget.
         - The organization has reached a usage, plan, or billing limit.
         - The project has reached its enforced spend limit.
@@ -99189,6 +100736,13 @@ components:
     TurnResource:
       type: object
       properties:
+        prompt_cache_options:
+          anyOf:
+            - $ref: "#/components/schemas/PromptCacheOptionsResource"
+            - type: "null"
+          description: Prompt cache lifetime selected when this turn started, including an
+            inherited session TTL. Null when the turn used the model default or
+            no TTL was recorded.
         id:
           type: string
           minLength: 0
@@ -99329,6 +100883,9 @@ components:
         defer_loading:
           type: boolean
           description: Whether the function is deferred and discovered through tool search.
+        async:
+          type: boolean
+          description: Whether the agent continues without waiting for the function result.
       required:
         - type
         - name
@@ -99792,6 +101349,11 @@ components:
           default: false
           description: Whether this function is deferred and discovered through tool
             search. Defaults to `false`.
+        async:
+          type: boolean
+          default: false
+          description: Whether the agent continues without waiting for the function
+            result. Defaults to `false`.
       required:
         - type
         - name
@@ -101051,6 +102613,12 @@ components:
     SessionResource:
       type: object
       properties:
+        prompt_cache_options:
+          anyOf:
+            - $ref: "#/components/schemas/PromptCacheOptionsResource"
+            - type: "null"
+          description: Default prompt cache lifetime for turns in this session, when
+            configured.
         review:
           $ref: "#/components/schemas/SessionReviewResource"
           description: Review applied to eligible actions in this session. Omitted when
@@ -101198,6 +102766,31 @@ components:
           minItems: 0
           maxItems: 16384
       description: Initial input submitted when creating a session.
+    PromptCacheTtlParam:
+      type: string
+      enum:
+        - 30m
+        - 12h
+      description: Minimum lifetime for prompt cache entries written during the turn.
+    PromptCacheOptionsParam-2:
+      type: object
+      properties:
+        ttl:
+          $ref: "#/components/schemas/PromptCacheTtlParam"
+          default: 30m
+          description: Minimum lifetime for new prompt cache entries. Defaults to 30
+            minutes.
+      additionalProperties: false
+    SessionStreamOptionsParam:
+      type: object
+      properties:
+        include_obfuscation:
+          type: boolean
+          default: true
+          description: Whether to include obfuscation padding in events on this
+            connection. Defaults to `true`.
+      additionalProperties: false
+      description: Options for a Managed Agents session event stream.
     CreateAgentSessionParams:
       type: object
       properties:
@@ -101255,11 +102848,20 @@ components:
             `environment.type` is `none`, or when `stream` is `true` for an
             environment that is not `self_hosted`; optional for self-hosted and
             non-streaming execution environments.
+        prompt_cache_options:
+          anyOf:
+            - $ref: "#/components/schemas/PromptCacheOptionsParam-2"
+            - type: "null"
+          description: Default prompt cache lifetime for turns in this session. Omit to
+            use the model default.
         stream:
           type: boolean
           default: false
           description: Whether to stream session events as server-sent events. Defaults to
             `false`.
+        stream_options:
+          $ref: "#/components/schemas/SessionStreamOptionsParam"
+          description: Options for the event stream. Only allowed when `stream` is `true`.
       required:
         - environment
       additionalProperties: false
@@ -101309,6 +102911,11 @@ components:
           type: string
           minLength: 0
           description: The summary text that was appended.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101373,6 +102980,11 @@ components:
             - null
           description: Present as `incomplete` when summary generation was interrupted.
           x-stainless-const: true
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101430,6 +103042,11 @@ components:
           type: string
           minLength: 0
           description: The complete reasoning summary text.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101493,6 +103110,11 @@ components:
         error:
           $ref: "#/components/schemas/SessionErrorResource"
           description: The error that occurred.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101604,6 +103226,11 @@ components:
         environment:
           $ref: "#/components/schemas/SessionEnvironmentStateResource"
           description: The current environment state.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101639,6 +103266,11 @@ components:
         environment:
           $ref: "#/components/schemas/SessionEnvironmentStateResource"
           description: The current environment state.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101675,6 +103307,11 @@ components:
         environment:
           $ref: "#/components/schemas/SessionEnvironmentStateResource"
           description: The current environment state.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101718,6 +103355,11 @@ components:
           minimum: 0
           description: Monotonically increasing reset number. Repeated notifications share
             this number.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101767,6 +103409,11 @@ components:
           type: string
           minLength: 0
           description: The output text that was appended.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101794,6 +103441,11 @@ components:
         session:
           $ref: "#/components/schemas/SessionResource"
           description: The session that was created.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101825,6 +103477,11 @@ components:
         turn:
           $ref: "#/components/schemas/TurnResource"
           description: The turn at the time it was created.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101858,6 +103515,11 @@ components:
         turn:
           $ref: "#/components/schemas/TurnResource"
           description: The turn at the time it started running.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101896,6 +103558,11 @@ components:
             - $ref: "#/components/schemas/TokenUsageResource"
             - type: "null"
           description: Token usage by the root agent during the turn, when available.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101935,6 +103602,11 @@ components:
             - $ref: "#/components/schemas/TokenUsageResource"
             - type: "null"
           description: Token usage by the root agent during the turn, when available.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -101974,6 +103646,11 @@ components:
             - $ref: "#/components/schemas/TokenUsageResource"
             - type: "null"
           description: Token usage by the root agent during the turn, when available.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102019,6 +103696,11 @@ components:
         item:
           $ref: "#/components/schemas/SessionTurnItemResource"
           description: The item that was added.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102045,6 +103727,11 @@ components:
         session:
           $ref: "#/components/schemas/SessionResource"
           description: The session that became idle.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102068,6 +103755,11 @@ components:
         session:
           $ref: "#/components/schemas/SessionResource"
           description: The session that started processing.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102091,6 +103783,11 @@ components:
         session:
           $ref: "#/components/schemas/SessionResource"
           description: The session and its current required actions.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102114,6 +103811,11 @@ components:
         session:
           $ref: "#/components/schemas/SessionResource"
           description: The failed session.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102147,6 +103849,11 @@ components:
         environment:
           $ref: "#/components/schemas/SessionEnvironmentStateResource"
           description: The current environment state.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102182,6 +103889,11 @@ components:
         environment:
           $ref: "#/components/schemas/SessionEnvironmentStateResource"
           description: The current environment state.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102218,6 +103930,11 @@ components:
         environment:
           $ref: "#/components/schemas/SessionEnvironmentStateResource"
           description: The current environment state.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102253,6 +103970,11 @@ components:
         environment:
           $ref: "#/components/schemas/SessionEnvironmentStateResource"
           description: The current environment state.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102278,6 +104000,11 @@ components:
         subagent:
           $ref: "#/components/schemas/SubagentResource"
           description: The subagent that was created.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102301,6 +104028,11 @@ components:
         subagent:
           $ref: "#/components/schemas/SubagentResource"
           description: The subagent that resumed.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102324,6 +104056,11 @@ components:
         subagent:
           $ref: "#/components/schemas/SubagentResource"
           description: The subagent that was closed.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102462,6 +104199,11 @@ components:
         item:
           $ref: "#/components/schemas/AgentOutputItemResource"
           description: The completed output item.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102515,6 +104257,11 @@ components:
         part:
           $ref: "#/components/schemas/OutputTextResource"
           description: The initial content part.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102570,6 +104317,11 @@ components:
         part:
           $ref: "#/components/schemas/OutputTextResource"
           description: The completed content part.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102626,6 +104378,11 @@ components:
           type: string
           minLength: 0
           description: The text that was appended.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102681,6 +104438,11 @@ components:
           type: string
           minLength: 0
           description: The complete output text.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102736,6 +104498,11 @@ components:
         part:
           $ref: "#/components/schemas/SummaryTextResource"
           description: The initial summary part.
+        obfuscation:
+          type: string
+          minLength: 0
+          description: Random alphanumeric padding. Present when stream obfuscation is
+            enabled.
       required:
         - type
         - event_id
@@ -102908,6 +104675,12 @@ components:
     UpdateAgentSessionParams:
       type: object
       properties:
+        prompt_cache_options:
+          anyOf:
+            - $ref: "#/components/schemas/PromptCacheOptionsParam-2"
+            - type: "null"
+          description: Default prompt cache lifetime for future turns. Send null to clear
+            the session default.
         review:
           $ref: "#/components/schemas/SessionReviewParam"
           description: Default action review for new root turns. Existing turns and their
@@ -105841,7 +107614,7 @@ components:
             - description: The namespace of the function to call.
               type: string
               minLength: 1
-              maxLength: 64
+              maxLength: 128
               pattern: ^[a-zA-Z0-9_-]+$
             - type: "null"
         arguments:
@@ -107297,7 +109070,7 @@ components:
             - description: The namespace of the function to call.
               type: string
               minLength: 1
-              maxLength: 64
+              maxLength: 128
               pattern: ^[a-zA-Z0-9_-]+$
             - type: "null"
         arguments:
@@ -109529,36 +111302,53 @@ components:
               enum:
                 - gpt-image-1
                 - gpt-image-1-mini
-                - gpt-image-1.5
                 - gpt-image-2
                 - gpt-image-2-2026-04-21
                 - gpt-image-2.5-sunburst
                 - gpt-image-2.5-sunburst-2026-09-08
                 - gpt-image-2.5-flare
                 - gpt-image-2.5-flare-2026-09-08
+                - gpt-image-2.6-sunburst
+                - gpt-image-2.6-flare
+                - gpt-image-1.5
+                - chatgpt-image-latest
               x-openai-enum-deprecations:
                 gpt-image-1:
                   message: GPT Image 1 was shut down on October 23, 2026. Use
                     gpt-image-2.5-sunburst or gpt-image-2.5-flare instead.
-              description: >
+              description: |
                 The image generation model to use. One of `gpt-image-1-mini`,
-
                 `gpt-image-1.5`, `gpt-image-2`,
-
                 `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`,
-
                 `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`,
-
-                `gpt-image-2.5-flare-2026-09-08`, or `chatgpt-image-latest`.
-                Default:
-
+                `gpt-image-2.5-flare-2026-09-08`, `gpt-image-2.6-sunburst`,
+                `gpt-image-2.6-flare`, or `chatgpt-image-latest`. Default:
                 `gpt-image-2`.
 
-
                 `gpt-image-1` was shut down on October 23, 2026. Use
-
                 `gpt-image-2.5-sunburst` or `gpt-image-2.5-flare` instead.
               default: gpt-image-2
+        complexity:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+          description: >
+            Computation spent planning the image, independently of rendering
+            quality.
+
+            Overrides the outer response's `reasoning.effort` for image
+            generation.
+
+            When omitted, inherits a supported outer reasoning effort or uses
+            the
+
+            image model's configured default.
+
+            For SVG output, controls the reference image, not the SVG author's
+
+            reasoning.
         quality:
           type: string
           enum:
@@ -109608,10 +111398,45 @@ components:
             - png
             - webp
             - jpeg
-          description: |
-            The output format of the generated image. One of `png`, `webp`, or
-            `jpeg`. Default: `png`.
+            - gif
+            - svg
+          description: >
+            The output format of the generated image. One of `png`, `webp`,
+            `jpeg`,
+
+            `gif`, or `svg`. Default: `png`. GIF and SVG output require a model
+
+            that supports the selected format. GIF output does not support
+
+            partial image streaming (`partial_images` greater than `0`),
+
+            `input_image_mask`, or custom `output_compression`.
+
+            Responses lifecycle events can still be streamed for GIF output.
           default: png
+        frame_count:
+          type: integer
+          minimum: 2
+          maximum: 16
+          default: 9
+          description: >
+            Number of GIF frames. Requires `output_format` to be `gif`. Default:
+            9.
+        frame_duration_ms:
+          type: integer
+          minimum: 20
+          maximum: 2000
+          default: 200
+          description: |
+            Duration of each GIF frame in milliseconds, rounded to 10 ms.
+            Requires `output_format` to be `gif`. Default: 200.
+        svg:
+          description: |
+            SVG author model settings. Requires `output_format` to be `svg`.
+            When SVG model selection is enabled, omitting this object uses the
+            outer response model. Otherwise, the default SVG author is used and
+            explicit model overrides are unavailable.
+          $ref: "#/components/schemas/BetaSvgParam"
         output_compression:
           type: integer
           minimum: 0
@@ -109704,6 +111529,40 @@ components:
         and `low` on `gpt-image-1.5`; `gpt-image-1-mini` supports only `low`.
         For `gpt-image-2`, omit this parameter. Defaults to `low` on supported
         models.
+    BetaSvgParam:
+      properties:
+        model:
+          type: string
+          minLength: 1
+        reasoning:
+          anyOf:
+            - $ref: "#/components/schemas/BetaSvgReasoningParam"
+              description: Reasoning effort for SVG authoring. When omitted, uses the author
+                model's default in both Images and Responses.
+            - type: "null"
+      type: object
+      required: []
+    BetaSvgReasoningParam:
+      properties:
+        effort:
+          oneOf:
+            - $ref: "#/components/schemas/BetaReasoningEffortEnum"
+              description: Controls how much effort the model should spend on reasoning for
+                this request.
+      type: object
+      required: []
+      description: Reasoning effort for SVG authoring. When omitted, uses the author
+        model's default in both Images and Responses.
+    BetaReasoningEffortEnum:
+      type: string
+      enum:
+        - none
+        - minimal
+        - low
+        - medium
+        - high
+        - xhigh
+        - max
     BetaProgrammaticToolCallingParam:
       properties:
         type:
@@ -111834,6 +113693,8 @@ components:
               description: The output format used for generation.
             - type: "null"
           x-openai-go-optional-enum: true
+        svg_usage:
+          $ref: "#/components/schemas/BetaSvgUsage"
         revised_prompt:
           anyOf:
             - type: string
@@ -111847,12 +113708,33 @@ components:
         - result
       title: Image generation call
       description: An image generation request made by the model.
+    BetaSvgUsage:
+      properties:
+        model:
+          type: string
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        reasoning_tokens:
+          type: integer
+      type: object
+      required:
+        - model
+        - input_tokens
+        - output_tokens
+        - total_tokens
+        - reasoning_tokens
     BetaImageOutputFormat:
       type: string
       enum:
         - png
         - webp
         - jpeg
+        - gif
+        - svg
     BetaImageBackground:
       type: string
       enum:
@@ -112771,7 +114653,7 @@ components:
         namespace:
           anyOf:
             - type: string
-              maxLength: 64
+              maxLength: 128
               minLength: 1
               pattern: ^[a-zA-Z0-9_-]+$
               description: The namespace of the tool that produced the output.
@@ -114060,6 +115942,9 @@ components:
                 response. This makes it simple to swap out system (or developer)
                 messages in new responses.
             - type: "null"
+        image:
+          $ref: "#/components/schemas/BetaImageOptionsParam"
+          description: Request level image options.
         prompt_cache_key:
           anyOf:
             - type: string
@@ -114121,7 +116006,7 @@ components:
         breakpoints. For cache matching, OpenAI considers up to the latest 80
         breakpoints in the conversation, without a content-block lookback limit.
         Set `mode` to `explicit` to disable the implicit breakpoint. The `ttl`
-        defaults to `30m`, which is currently the only supported value. See the
+        defaults to `30m`. Supported lifetimes depend on the API. See the
         [prompt caching
         guide](https://developers.openai.com/api/docs/guides/prompt-caching) for
         current details.
@@ -114139,6 +116024,23 @@ components:
       enum:
         - in_memory
         - 24h
+    BetaImageOptionsParam:
+      properties:
+        context_compression:
+          $ref: "#/components/schemas/BetaImageContextCompression"
+          description: Controls image context optimization. Defaults to `auto`, which uses
+            the model, transport, and input to select a policy. Use `enabled` to
+            require compression support or `disabled` to turn it off.
+      additionalProperties: false
+      type: object
+      required: []
+      description: Request level image options.
+    BetaImageContextCompression:
+      type: string
+      enum:
+        - auto
+        - enabled
+        - disabled
     BetaModelIdsCompaction:
       anyOf:
         - $ref: "#/components/schemas/BetaModelIdsResponses"
@@ -114175,7 +116077,9 @@ components:
             - gpt-daybreak-blue-latest
             - gpt-daybreak-red-latest
             - gpt-5.6-cyber
+            - gpt-6-cyber
             - gpt-rosalind-research
+            - gpt-6-rosalind
           x-openai-enum-deprecations:
             o1-pro:
               message: "Announced shutdown date: 2026-10-23. See
@@ -115940,6 +117844,8 @@ components:
             - type
     BetaCompactResource:
       properties:
+        image:
+          $ref: "#/components/schemas/BetaResolvedImageOptions"
         id:
           type: string
           description: The unique identifier for the compacted response.
@@ -115975,6 +117881,8 @@ components:
       example:
         id: resp_001
         object: response.compaction
+        image:
+          context_compression: disabled
         output:
           - id: msg_001
             status: completed
@@ -116024,6 +117932,8 @@ components:
             cache_write_tokens:
               type: integer
               description: The number of input tokens that were written to the cache.
+            cache_write_tokens_details:
+              $ref: "#/components/schemas/BetaCacheWriteTokensDetails"
           required:
             - cached_tokens
             - cache_write_tokens
@@ -116048,6 +117958,18 @@ components:
         - output_tokens
         - output_tokens_details
         - total_tokens
+    BetaCacheWriteTokensDetails:
+      properties:
+        ttl_30m_tokens:
+          type: integer
+          description: The number of input tokens written with 30-minute retention.
+        ttl_12h_tokens:
+          type: integer
+          description: The number of input tokens written with 12-hour retention.
+      type: object
+      required:
+        - ttl_30m_tokens
+        - ttl_12h_tokens
     BetaItemField:
       oneOf:
         - $ref: "#/components/schemas/BetaMessage"
@@ -116157,6 +118079,19 @@ components:
         - in_progress
         - completed
         - incomplete
+    BetaResolvedImageOptions:
+      properties:
+        context_compression:
+          $ref: "#/components/schemas/BetaResolvedImageContextCompressionEnum"
+          description: Effective image context optimization policy.
+      type: object
+      required:
+        - context_compression
+    BetaResolvedImageContextCompressionEnum:
+      type: string
+      enum:
+        - enabled
+        - disabled
     BetaResponseCustomToolCallInputDoneEvent:
       title: ResponseCustomToolCallInputDone
       type: object
@@ -116310,6 +118245,8 @@ components:
         - $ref: "#/components/schemas/BetaResponseProperties"
         - type: object
           properties:
+            image:
+              $ref: "#/components/schemas/BetaResolvedImageOptions"
             service_tier:
               $ref: "#/components/schemas/BetaServiceTierResponses"
             truncation:
@@ -116800,7 +118737,10 @@ components:
     BetaPromptCacheOptions:
       properties:
         ttl:
-          $ref: "#/components/schemas/BetaPromptCacheTTLEnum"
+          type: string
+          enum:
+            - 30m
+            - 12h
           description: The minimum lifetime applied to each cache breakpoint.
         mode:
           $ref: "#/components/schemas/BetaPromptCacheModeEnum"
@@ -122295,6 +124235,8 @@ components:
           properties:
             access_programs:
               $ref: "#/components/schemas/BetaAccessProgramsParam"
+            image:
+              $ref: "#/components/schemas/BetaImageOptionsParam"
             prompt_cache_options:
               $ref: "#/components/schemas/BetaResponsePromptCacheOptionsParam"
             service_tier:
@@ -122555,11 +124497,13 @@ components:
     BetaResponsePromptCacheOptionsParam:
       properties:
         ttl:
-          $ref: "#/components/schemas/BetaPromptCacheTTLEnum"
+          type: string
+          enum:
+            - 30m
+            - 12h
           description: The minimum lifetime applied to every implicit and explicit cache
-            breakpoint written by the request. Defaults to `30m`, which is
-            currently the only supported value. The backend may retain cache
-            entries for longer.
+            breakpoint written by the request. Supported values are `30m` (the
+            default) and `12h`. The backend may retain cache entries for longer.
         mode:
           $ref: "#/components/schemas/BetaPromptCacheModeEnum"
           description: Controls whether OpenAI automatically creates an implicit cache
@@ -122592,7 +124536,7 @@ components:
         breakpoints. For cache matching, OpenAI considers up to the latest 80
         breakpoints in the conversation, without a content-block lookback limit.
         Set `mode` to `explicit` to disable the implicit breakpoint. The `ttl`
-        defaults to `30m`, which is currently the only supported value. See the
+        defaults to `30m`. Supported lifetimes depend on the API. See the
         [prompt caching
         guide](https://developers.openai.com/api/docs/guides/prompt-caching) for
         current details.
@@ -122621,8 +124565,6 @@ components:
         - $ref: "#/components/schemas/BetaModelResponseProperties"
         - type: object
           properties:
-            prompt_cache_options:
-              $ref: "#/components/schemas/BetaPromptCacheOptionsParam"
             top_logprobs:
               description: >
                 An integer between 0 and 20 specifying the maximum number of

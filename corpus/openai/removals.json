@@ -3301,5 +3301,47 @@
     "observedAt": "2026-11-02",
     "id": "api-schema-removed",
     "text": "removed the schema `LiveTransportDTMFSend`"
+  },
+  {
+    "observedAt": "2026-11-09",
+    "id": "request-property-any-of-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed `subschema #1` from the `output_format` request property `anyOf` list (media type: application/json)"
+  },
+  {
+    "observedAt": "2026-11-09",
+    "id": "request-property-any-of-removed",
+    "operation": "POST",
+    "path": "/images/edits",
+    "text": "removed `subschema #1` from the `output_format` request property `anyOf` list (media type: multipart/form-data)"
+  },
+  {
+    "observedAt": "2026-11-09",
+    "id": "request-property-any-of-removed",
+    "operation": "POST",
+    "path": "/images/generations",
+    "text": "removed `subschema #1` from the `output_format` request property `anyOf` list"
+  },
+  {
+    "observedAt": "2026-11-09",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/chat/completions",
+    "text": "removed the request property `allOf[#/components/schemas/CreateModelResponseProperties]/allOf[subschema #2]/prompt_cache_options`"
+  },
+  {
+    "observedAt": "2026-11-09",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/responses",
+    "text": "removed the request property `allOf[#/components/schemas/CreateModelResponseProperties]/allOf[subschema #2]/prompt_cache_options`"
+  },
+  {
+    "observedAt": "2026-11-09",
+    "id": "request-property-removed",
+    "operation": "POST",
+    "path": "/responses?beta=true",
+    "text": "removed the request property `allOf[#/components/schemas/BetaCreateModelResponseProperties]/allOf[subschema #2]/prompt_cache_options`"
   }
 ]
