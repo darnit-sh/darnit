@@ -18,6 +18,7 @@ const ROWS = join("corpus", "openai", "page-rows.json");
 const SPEC = join("corpus", "openai", "openapi.yaml");
 const NON_MODEL = join("corpus", "openai", "non-model-rows.txt");
 const WHOLE_ROWS = join("corpus", "openai", "whole-rows.txt");
+const OLDER = join("corpus", "openai", "older-rows.txt");
 const local = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "GITHUB_ACTIONS"));
 // The fixture's spec lists no model, so the page's replacement is for a person.
 const HUMAN = "not a plain swap: OpenAI recommends zzq-new, which its API spec does not list";
@@ -86,6 +87,7 @@ async function corpus(
   // The two lists npm run replacements reads beside the rows, empty unless a test writes them.
   await writeFile(join(dir, WHOLE_ROWS), "");
   await writeFile(join(dir, NON_MODEL), "");
+  await writeFile(join(dir, OLDER), "");
   await writeFile(join(dir, ROWS), pageRowsJson(page, { source: PAGE, fetchedAt: daysAgo(age) }));
   for (const r of records) {
     const pack = join(dir, "packs/openai", (r as { id: string }).id.split(":").pop()!);
@@ -329,15 +331,61 @@ describe("npm run accounting and the page's shutdown dates", () => {
   const mismatch = (id: string, page: string, kept: string) =>
     JSON.stringify(`${id}: zzq-two shuts down on ${page} on the page, ${kept} in the record`);
   const ID = "openai:2026-11-01:zzq-two-shut-down";
-  const run = async (page: string, records: object[] = [record("zzq-two")], args: string[] = []) =>
-    accounting(await corpus([], records, { [CEILING]: "4\n" }, 0, page), args);
+  const run = async (page: string, records: object[] = [record("zzq-two")], older = "") =>
+    accounting(await corpus([], records, { [CEILING]: "4\n", [OLDER]: older }, 0, page));
+  const disagree = (dates: string) =>
+    JSON.stringify(
+      `zzq-two: the page gives ${dates}; check which row is current, and list each date that is not, with its reason, in corpus/openai/older-rows.txt`,
+    );
+  // A shutdown moved earlier, with the old row left above the new one: in an older section, or lower in one table.
+  const moved = {
+    "in a table below the old one": tables([["2027-03-01", "zzq-two"]], [["2027-01-15", "zzq-two"]]),
+    "lower in the same table": tables([
+      ["2027-03-01", "zzq-two"],
+      ["2027-01-15", "zzq-two"],
+    ]),
+  };
+
+  it.each(Object.entries(moved))(
+    "fails when a model's rows disagree on the date, the newer row %s, and picks neither",
+    async (_, page) => {
+      const { out, code } = await run(page);
+      expect(out).toContain(
+        `Models whose rows in corpus/openai/page-rows.json disagree on the shutdown date:\n  ${disagree("2027-03-01 and 2027-01-15")}`,
+      );
+      expect(code).toBe(1);
+    },
+  );
+
+  it("does not tell a maintainer whose record has the moved date to change it back", async () => {
+    const { out, code } = await run(moved["in a table below the old one"], [
+      { ...record("zzq-two"), effectiveAt: "2027-01-15" },
+    ]);
+    expect(out).toContain(disagree("2027-03-01 and 2027-01-15"));
+    expect(out).not.toContain("shuts down on");
+    expect(code).toBe(1);
+  });
+
+  it("passes a disagreement whose other date is listed with its reason, and holds the record to the date left", async () => {
+    const listed = "zzq-two 2027-03-01 The row above is the old date.\n";
+    const at = (date: string) => [{ ...record("zzq-two"), effectiveAt: date }];
+    expect((await run(moved["in a table below the old one"], at("2027-01-15"), listed)).code).toBe(0);
+    const old = await run(moved["in a table below the old one"], at("2027-03-01"), listed);
+    expect(old.out).toContain(mismatch(ID, "2027-01-15", "2027-03-01"));
+    expect(old.code).toBe(1);
+    // A listed date no row gives fails until it is taken off; a line with no reason stops the run.
+    const gone = await run(tables([["2027-03-01", "zzq-two"]]), at("2027-03-01"), "zzq-two 2026-01-01 Gone.\n");
+    expect(gone.out).toContain('older-rows.txt lists \\"zzq-two 2026-01-01 Gone.\\", a date no row');
+    expect(gone.code).toBe(1);
+    const bare = await run(tables([["2027-03-01", "zzq-two"]]), at("2027-03-01"), "zzq-two 2026-01-01\n");
+    expect(bare.out).toContain("accounting stopped: ");
+    expect(bare.code).toBe(1);
+  });
 
   it("fails on a record whose shutdown date is later or earlier than the page's, naming both dates", async () => {
     for (const date of ["2027-02-01", "2027-04-01"]) {
       const { out, code } = await run(tables([[date, "zzq-two"]]));
-      expect(out).toContain(
-        "Records whose shutdown date is not the one the newest row of corpus/openai/page-rows.json gives",
-      );
+      expect(out).toContain("Records whose shutdown date is not the one corpus/openai/page-rows.json gives");
       expect(out).toContain(mismatch(ID, date, "2027-03-01"));
       expect(code).toBe(1);
     }
@@ -352,32 +400,35 @@ describe("npm run accounting and the page's shutdown dates", () => {
     expect(code).toBe(1);
   });
 
-  it("reads only the newest row: an older table naming the model again with another date or none passes", async () => {
+  it("leaves out a row with no date darnit reads, and a listed older date", async () => {
     const older = tables(
       [["2027-03-01", "zzq-two"]],
       [["2026-01-01", "zzq-two"]],
       [["at earliest 2024-06-13", "zzq-two"]],
     );
-    const { out, code } = await run(older);
+    const { out, code } = await run(older, undefined, "zzq-two 2026-01-01 An older table names it again.\n");
     expect(out).not.toContain("shuts down on");
-    expect(out).not.toContain("not newest first");
+    expect(out).not.toContain("disagree on");
     expect(code).toBe(0);
   });
 
   it("fails when a newer row above the old one moves the date, as OpenAI moving a shutdown would", async () => {
-    const { out, code } = await run(tables([["2027-06-01", "zzq-two"]], [["2027-03-01", "zzq-two"]]));
-    expect(out).toContain(mismatch(ID, "2027-06-01", "2027-03-01"));
-    expect(code).toBe(1);
+    const page = tables([["2027-06-01", "zzq-two"]], [["2027-03-01", "zzq-two"]]);
+    const unlisted = await run(page);
+    expect(unlisted.out).toContain(disagree("2027-06-01 and 2027-03-01"));
+    expect(unlisted.code).toBe(1);
+    // Once the old row is listed, the record still has to move.
+    const listed = await run(page, undefined, "zzq-two 2027-03-01 Moved.\n");
+    expect(listed.out).toContain(mismatch(ID, "2027-06-01", "2027-03-01"));
+    expect(listed.code).toBe(1);
   });
 
-  it("fails when the first row of a model is not its latest date, so page order is checked rather than trusted", async () => {
-    // A model no record detects, listed as needing one, so only the order of its rows can fail the run.
+  it("fails on a model no record detects whose rows disagree, so every dated row is checked", async () => {
+    // Listed as needing a record, so only the dates of its rows can fail the run.
     const keys = ["page 2026-01-01 zzq-old", "page 2027-03-01 zzq-old"];
     const page = tables([["2026-01-01", "zzq-old"]], [["2027-03-01", "zzq-old"]]);
     const { out, code } = await accounting(await corpus([], [], { [NOT_COVERED]: await notCovered(keys) }, 0, page));
-    expect(out).toContain(
-      `Models whose rows in corpus/openai/page-rows.json are not newest first:\n  ${JSON.stringify("page order changed for zzq-old: the first row is 2026-01-01, a later row is 2027-03-01; check which row is current")}`,
-    );
+    expect(out).toContain(disagree("2026-01-01 and 2027-03-01").replace("zzq-two", "zzq-old"));
     expect(out).not.toContain("shuts down on");
     expect(code).toBe(1);
   });

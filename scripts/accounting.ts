@@ -48,41 +48,53 @@ const out: string[] = [];
 const today = new Date().toISOString().slice(0, 10);
 
 /**
- * The first row in page order is taken as a model's newest only while its date is the latest of the model's rows with a
- * date darnit reads; a row with no such date, as "at earliest 2024-06-13", is left out.
+ * The shutdown date the page gives each model, and why it gives none. A model's rows must agree on one readable date,
+ * unless every other date is listed in corpus/<vendor>/older-rows.txt with its reason: the page names some models
+ * again in older tables, such as code-davinci-002 in the Codex shutdown table (2023-03-23) with a newer row at
+ * 2024-01-04. Rows that still disagree are named, never resolved by picking one, so a date OpenAI moved earlier with
+ * the old row left above cannot pass. A model whose first row has no date darnit reads gets "no date read".
  */
-function pageOrderProblems(page: Page): string[] {
-  const dated = new Map<string, string[]>();
+function pageDates(page: Page, older: string[], file: string) {
+  const listed = new Map<string, string>();
+  const problems: string[] = [];
+  for (const line of older) {
+    const [model, date, ...why] = line.split(" ");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "") || why.join(" ").trim() === "")
+      throw new Error(`${file}: ${JSON.stringify(line)} is not "<model> <YYYY-MM-DD> <reason>"`);
+    listed.set(`${model} ${date}`, line);
+  }
+  const rowsOf = new Map<string, (string | undefined)[]>();
   for (const row of page.rows)
-    for (const m of row.models ?? []) if (row.shutdown) dated.set(m, [...(dated.get(m) ?? []), row.shutdown]);
-  return [...dated].flatMap(([m, [first, ...rest]]) => {
-    const later = rest.find((d) => d > first!);
-    return later
-      ? [`page order changed for ${m}: the first row is ${first}, a later row is ${later}; check which row is current`]
-      : [];
-  });
+    for (const m of row.models ?? []) rowsOf.set(m, [...(rowsOf.get(m) ?? []), row.shutdown]);
+  const dates = new Map<string, string>();
+  for (const [m, shutdowns] of rowsOf) {
+    const left = [...new Set(shutdowns.filter((d): d is string => d !== undefined))].filter(
+      (d) => !listed.delete(`${m} ${d}`),
+    );
+    if (shutdowns[0] === undefined) dates.set(m, "no date read");
+    else if (left.length === 1) dates.set(m, left[0]!);
+    else
+      problems.push(
+        left.length === 0
+          ? `${m}: ${file} lists every date the page gives it`
+          : `${m}: the page gives ${left.join(" and ")}; check which row is current, and list each date that is not, with its reason, in ${file}`,
+      );
+  }
+  for (const line of listed.values())
+    problems.push(`${file} lists ${JSON.stringify(line)}, a date no row of the page gives that model; take it off`);
+  return { dates, problems };
 }
 
-/**
- * Each record whose shutdown date is not that of the newest row naming a model it detects: the first row in page
- * order, the row npm run replacements takes a model's replacement from. Only that row counts, because an older table
- * can name a model again with an older date: gpt-4-0314 in an earlier price table ("at earliest 2024-06-13") and
- * code-davinci-002 in the Codex shutdown table (2023-03-23) both have newer rows with the dates their records give.
- * Every record detecting the model must match it. That the first row is the newest is checked, not trusted: see
- * pageOrderProblems.
- */
-function shutdownMismatches(page: Page, records: readonly ChangeRecord[], vendor: string): string[] {
-  const newest = new Map<string, string>();
-  for (const row of page.rows)
-    for (const m of row.models ?? []) if (!newest.has(m)) newest.set(m, row.shutdown ?? "no date read");
+/** Each record whose shutdown date is not the one the page gives a model it detects. Every record detecting it must match. */
+function shutdownMismatches(dates: Map<string, string>, records: readonly ChangeRecord[], vendor: string): string[] {
   return records.flatMap((r) =>
     r.vendor !== vendor
       ? []
       : recordModels(r)
-          .filter((m) => newest.has(m) && newest.get(m) !== r.effectiveAt)
+          .filter((m) => dates.has(m) && dates.get(m) !== r.effectiveAt)
           .map(
             (m) =>
-              `${r.id}: ${m} shuts down on ${newest.get(m)} on the page, ${r.effectiveAt ?? "no date"} in the record`,
+              `${r.id}: ${m} shuts down on ${dates.get(m)} on the page, ${r.effectiveAt ?? "no date"} in the record`,
           ),
   );
 }
@@ -125,8 +137,10 @@ try {
           wholeDates: await list("whole-rows.txt"),
         })
       : [];
-    const dates = rows ? shutdownMismatches(rows.page, records, vendor) : [];
-    const order = rows ? pageOrderProblems(rows.page) : [];
+    const olderFile = `corpus/${vendor}/older-rows.txt`;
+    const onDates = rows && pageDates(rows.page, [...(await list("older-rows.txt"))], olderFile);
+    const dates = onDates ? shutdownMismatches(onDates.dates, records, vendor) : [];
+    const order = onDates?.problems ?? [];
     const onPage = rows
       ? `, ${page!.length} item${page!.length === 1 ? "" : "s"} on the deprecations page fetched ${rows.fetchedAt}`
       : "";
@@ -162,10 +176,10 @@ try {
       disagreements.map(show),
     );
     section(
-      `Records whose shutdown date is not the one the newest row of ${rowsFile} gives for a model they detect (correct the record):`,
+      `Records whose shutdown date is not the one ${rowsFile} gives for a model they detect (correct the record):`,
       dates.map(show),
     );
-    section(`Models whose rows in ${rowsFile} are not newest first:`, order.map(show));
+    section(`Models whose rows in ${rowsFile} disagree on the shutdown date:`, order.map(show));
     const failed =
       result.unaccounted.length +
         result.stale.length +
