@@ -300,14 +300,14 @@ export function account(input: {
   const held = holders(spec);
   const coversOp = (r: ChangeRecord, method: string, path: string, field: string | undefined) =>
     covers(r, vendor, path, field, method, input.symbols?.[`${method} ${path}`]);
-  // Whether a record names an operation, worked out once per record and operation, not once per enum value.
-  const named = new Map<ChangeRecord, Map<string, boolean>>();
+  // Whether a record names an operation, worked out once per record and operation (the object `reach` holds).
+  const named = new Map<ChangeRecord, Map<object, boolean>>();
   const namesOp = (r: ChangeRecord, op: { method: string; path: string }) => {
-    const key = `${op.method} ${op.path}`;
-    const known = named.get(r) ?? new Map<string, boolean>();
+    const known = named.get(r) ?? new Map<object, boolean>();
     named.set(r, known);
-    if (!known.has(key)) known.set(key, namesOperation(r, op.path, op.method, input.symbols?.[key]));
-    return known.get(key)!;
+    if (!known.has(op))
+      known.set(op, namesOperation(r, op.path, op.method, input.symbols?.[`${op.method} ${op.path}`]));
+    return known.get(op)!;
   };
   const coveredBy = (item: Item): ChangeRecord[] => {
     if (item.value !== undefined) {
@@ -320,13 +320,9 @@ export function account(input: {
           ),
       );
       // As for a property: every operation whose request reaches the schema needs a record that names it.
-      const found = new Set<ChangeRecord>();
-      for (const op of reach.get(item.schema ?? "") ?? []) {
-        const these = candidates.filter((r) => namesOp(r, op));
-        if (these.length === 0) return [];
-        for (const r of these) found.add(r);
-      }
-      return [...found];
+      const ops = reach.get(item.schema ?? "") ?? [];
+      const these = candidates.filter((r) => ops.some((op) => namesOp(r, op)));
+      return ops.every((op) => these.some((r) => namesOp(r, op))) ? these : [];
     }
     if (item.method !== undefined && item.path !== undefined)
       return records.filter((r) => coversOp(r, item.method!, item.path!, item.field));
